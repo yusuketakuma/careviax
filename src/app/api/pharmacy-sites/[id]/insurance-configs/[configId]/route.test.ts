@@ -39,21 +39,25 @@ vi.mock('@/lib/db/rls', () => ({
 import { DELETE, PATCH } from './route';
 
 function createPatchRequest(body: unknown) {
-  return new NextRequest(
-    'http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1',
-    {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json' },
-    },
-  );
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1', {
+    method: 'PATCH',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function createDeleteRequest() {
-  return new NextRequest(
-    'http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1',
-    { method: 'DELETE' },
-  );
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1', {
+    method: 'DELETE',
+  });
 }
 
 describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
@@ -133,6 +137,84 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     });
   });
 
+  it('rejects non-object patch payloads before loading the insurance config', async () => {
+    const response = (await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the insurance config', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid effective_to dates before loading the insurance config', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        revision_label: '更新版',
+        effective_from: '2024-04-01',
+        effective_to: '2024-04-31',
+        config: { base_fee: 1 },
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank config route ids before loading the insurance config', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        revision_label: '更新版',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: { base_fee: 1 },
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1', configId: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険設定IDが不正です',
+    });
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when the effective range overlaps another config', async () => {
     insuranceConfigFindFirstMock.mockResolvedValue({
       id: 'config_1',
@@ -160,6 +242,21 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
 
     expect(response.status).toBe(400);
     expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank config route ids before deleting the insurance config', async () => {
+    const response = (await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'site_1', configId: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険設定IDが不正です',
+    });
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigDeleteMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('deletes an insurance config', async () => {

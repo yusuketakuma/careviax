@@ -19,18 +19,16 @@ const {
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }) as AuthenticatedTestRequest,
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }) as AuthenticatedTestRequest,
+      );
+  }),
   dispenseTaskFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
@@ -91,6 +89,14 @@ function createPatchRequest(body: unknown, taskId = 'task_1') {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createMalformedJsonPatchRequest(taskId = 'task_1') {
+  return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"status":',
   } satisfies NextRequestInit);
 }
 
@@ -304,6 +310,21 @@ describe('/api/dispense-tasks/[id]', () => {
     });
   });
 
+  it('rejects blank route params before loading task details', async () => {
+    const response = await GET(createGetRequest('%20%20'), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤タスクIDが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(generateDispensePrefillMock).not.toHaveBeenCalled();
+  });
+
   it('keeps packaging groups available for completed tasks during auditing', async () => {
     generateDispensePrefillMock.mockResolvedValue({
       lines: [],
@@ -489,5 +510,50 @@ describe('/api/dispense-tasks/[id]', () => {
         status: 'in_progress',
       },
     });
+  });
+
+  it('rejects blank patch route params before body parsing or task side effects', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(''), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤タスクIDが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch bodies before loading or updating the task', async () => {
+    const response = await PATCH(createPatchRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'task_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before task lookup or workflow notification', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'task_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

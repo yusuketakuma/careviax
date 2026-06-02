@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { pharmacyDrugStockRequestedPayloadSchema } from '@/lib/validations/pharmacy-drug-stock';
 
 const routeParamsSchema = z.object({
   id: z.string().trim().min(1),
@@ -14,32 +17,21 @@ const decisionSchema = z.object({
 });
 
 function readPayload(value: unknown) {
-  const payload = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const data = payload as Record<string, unknown>;
-  return {
-    is_stocked: data.is_stocked === true,
-    reorder_point: typeof data.reorder_point === 'number' ? data.reorder_point : null,
-    preferred_generic_id:
-      typeof data.preferred_generic_id === 'string' ? data.preferred_generic_id : null,
-    adoption_note: typeof data.adoption_note === 'string' ? data.adoption_note : null,
-  };
+  const parsed = pharmacyDrugStockRequestedPayloadSchema.safeParse(readJsonObject(value));
+  return parsed.success ? parsed.data : null;
 }
 
 export const PATCH = withAuthContext(
-  async (
-    req: NextRequest,
-    authCtx,
-    routeContext: AuthRouteContext<{ id: string }>,
-  ) => {
+  async (req: NextRequest, authCtx, routeContext: AuthRouteContext<{ id: string }>) => {
     const params = routeParamsSchema.safeParse(await routeContext.params);
     if (!params.success) {
       return validationError('パスパラメータが不正です', params.error.flatten().fieldErrors);
     }
 
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = decisionSchema.safeParse(body);
+    const parsed = decisionSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -52,11 +44,45 @@ export const PATCH = withAuthContext(
       return conflict('この申請はすでに処理済みです', { status: request.status });
     }
 
+    const approvalPayload =
+      parsed.data.decision === 'approve' ? readPayload(request.requested_payload) : null;
+    if (parsed.data.decision === 'approve' && !approvalPayload) {
+      return conflict('申請内容が破損しているため承認できません', {
+        request_id: request.id,
+      });
+    }
+    if (approvalPayload?.preferred_generic_id) {
+      const [requestedDrug, preferredGeneric] = await Promise.all([
+        prisma.drugMaster.findFirst({
+          where: { id: request.drug_master_id },
+          select: { id: true, generic_name: true },
+        }),
+        prisma.drugMaster.findFirst({
+          where: { id: approvalPayload.preferred_generic_id },
+          select: { id: true, is_generic: true, generic_name: true },
+        }),
+      ]);
+
+      if (
+        !requestedDrug ||
+        !preferredGeneric ||
+        !preferredGeneric.is_generic ||
+        (requestedDrug.generic_name &&
+          preferredGeneric.generic_name &&
+          requestedDrug.generic_name !== preferredGeneric.generic_name)
+      ) {
+        return conflict('申請内容が破損しているため承認できません', {
+          request_id: request.id,
+          invalid_field: 'preferred_generic_id',
+        });
+      }
+    }
+
     const decidedAt = new Date();
     const result = await prisma.$transaction(async (tx) => {
       let stock = null;
       if (parsed.data.decision === 'approve') {
-        const payload = readPayload(request.requested_payload);
+        if (!approvalPayload) throw new Error('Approval payload must be validated before mutation');
         stock = await tx.pharmacyDrugStock.upsert({
           where: {
             site_id_drug_master_id: {
@@ -68,18 +94,18 @@ export const PATCH = withAuthContext(
             org_id: authCtx.orgId,
             site_id: request.site_id,
             drug_master_id: request.drug_master_id,
-            is_stocked: payload.is_stocked,
-            reorder_point: payload.reorder_point,
-            preferred_generic_id: payload.preferred_generic_id,
+            is_stocked: approvalPayload.is_stocked,
+            reorder_point: approvalPayload.reorder_point,
+            preferred_generic_id: approvalPayload.preferred_generic_id,
             adoption_source: 'approval',
-            adoption_note: payload.adoption_note,
+            adoption_note: approvalPayload.adoption_note,
           },
           update: {
-            is_stocked: payload.is_stocked,
-            reorder_point: payload.reorder_point,
-            preferred_generic_id: payload.preferred_generic_id,
+            is_stocked: approvalPayload.is_stocked,
+            reorder_point: approvalPayload.reorder_point,
+            preferred_generic_id: approvalPayload.preferred_generic_id,
             adoption_source: 'approval',
-            adoption_note: payload.adoption_note,
+            adoption_note: approvalPayload.adoption_note,
           },
         });
       }

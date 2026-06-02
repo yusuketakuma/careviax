@@ -62,10 +62,26 @@ function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1', { headers });
 }
 
-function createPatchRequest(body: unknown, headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+function createPatchRequest(
+  body: unknown,
+  headers: Record<string, string> = { 'x-org-id': 'org_1' },
+) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1', {
     method: 'PATCH',
     body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
+function createMalformedJsonPatchRequest(
+  headers: Record<string, string> = { 'x-org-id': 'org_1' },
+) {
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1', {
+    method: 'PATCH',
+    body: '{"schedule_status":',
     headers: {
       'content-type': 'application/json',
       ...headers,
@@ -130,6 +146,21 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
   });
 
+  it('rejects blank schedule ids before loading schedule details', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when a pharmacist reads a schedule they are not assigned to', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
@@ -167,12 +198,9 @@ describe('/api/visit-schedules/[id] GET', () => {
       },
     });
 
-    const response = await PATCH(
-      createPatchRequest({ schedule_status: 'in_progress' }),
-      {
-        params: Promise.resolve({ id: 'schedule_1' }),
-      },
-    );
+    const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
@@ -181,12 +209,9 @@ describe('/api/visit-schedules/[id] GET', () => {
   });
 
   it('allows an assigned pharmacist to patch a schedule', async () => {
-    const response = await PATCH(
-      createPatchRequest({ schedule_status: 'in_progress' }),
-      {
-        params: Promise.resolve({ id: 'schedule_1' }),
-      },
-    );
+    const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -250,6 +275,80 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid calendar scheduled dates before loading or mutating the schedule', async () => {
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-02-30' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        scheduled_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before loading the schedule', async () => {
+    const response = await PATCH(createPatchRequest(['in_progress']), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank schedule ids before loading or updating the schedule', async () => {
+    const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the schedule', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when a trainee deletes a schedule they are not assigned to', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     visitScheduleFindFirstMock.mockResolvedValue({
@@ -268,6 +367,23 @@ describe('/api/visit-schedules/[id] GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank schedule ids before deleting the schedule', async () => {
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('allows an admin to delete a schedule regardless of assignment', async () => {

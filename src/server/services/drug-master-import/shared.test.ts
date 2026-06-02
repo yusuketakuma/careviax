@@ -132,6 +132,28 @@ describe('fetchBytes', () => {
     ).rejects.toThrow(/サイズが上限/);
   });
 
+  it('caps invalid requested byte limits to the source policy limit', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response('oversized', {
+          status: 200,
+          headers: { 'content-length': '9' },
+        }),
+    );
+
+    await expect(
+      fetchBytes('https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx', {
+        fetchImpl,
+        policy: {
+          ...MHLW_IMPORT_URL_POLICY,
+          maxBytes: 8,
+        },
+        maxBytes: Number.POSITIVE_INFINITY,
+        resolveHostname: async () => ['8.8.8.8'],
+      }),
+    ).rejects.toThrow(/サイズが上限/);
+  });
+
   it('rejects streamed responses that exceed the size limit without content-length', async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -178,6 +200,48 @@ describe('fetchBytes', () => {
     ).rejects.toThrow(/リダイレクト回数が上限/);
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the default redirect limit when the configured redirect limit is invalid', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx' },
+        }),
+    );
+
+    await expect(
+      fetchBytes('https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx', {
+        fetchImpl,
+        policy: {
+          ...MHLW_IMPORT_URL_POLICY,
+          maxRedirects: Number.POSITIVE_INFINITY,
+        },
+        resolveHostname: async () => ['8.8.8.8'],
+      }),
+    ).rejects.toThrow(/リダイレクト回数が上限/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('uses the default fetch timeout when the configured timeout is invalid', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const fetchImpl = vi.fn(async () => new Response('ok', { status: 200 }));
+
+    await expect(
+      fetchBytes('https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx', {
+        fetchImpl,
+        policy: {
+          ...MHLW_IMPORT_URL_POLICY,
+          timeoutMs: Number.NaN,
+        },
+        maxBytes: 8,
+        resolveHostname: async () => ['8.8.8.8'],
+      }),
+    ).resolves.toEqual(Buffer.from('ok'));
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
   });
 
   it('aborts stalled response body reads with the configured timeout', async () => {

@@ -26,11 +26,13 @@ const {
     authRoleRef,
     withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler(Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: authRoleRef.current,
-        }));
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: authRoleRef.current,
+          }),
+        );
     }),
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
@@ -61,6 +63,14 @@ function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/reorder', {
     method: 'PATCH',
     body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-schedules/reorder', {
+    method: 'PATCH',
+    body: '{"updates":',
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -241,6 +251,38 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     });
     expect(scheduleFindFirstMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects non-object reorder payloads before loading schedules', async () => {
+    const response = (await PATCH(createRequest(['schedule_1'])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects malformed JSON reorder payloads before loading schedules', async () => {
+    const response = (await PATCH(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
     expectNoWriteAuditOrNotify();
   });
 

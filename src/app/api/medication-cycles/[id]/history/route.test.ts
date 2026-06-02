@@ -56,7 +56,7 @@ describe('/api/medication-cycles/[id]/history', () => {
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: 'Taro' }]);
 
     const req = createRequest('http://localhost/api/medication-cycles/cycle_1/history');
-    const res = await GET(req, { params: Promise.resolve({ id: 'cycle_1' }) });
+    const res = await GET(req, { params: Promise.resolve({ id: '  cycle_1  ' }) });
     expect(res!.status).toBe(200);
     expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
       where: {
@@ -72,9 +72,27 @@ describe('/api/medication-cycles/[id]/history', () => {
       },
       select: { id: true },
     });
+    expect(cycleTransitionLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { cycle_id: 'cycle_1', org_id: 'org_1' },
+      }),
+    );
     const json = await res!.json();
     expect(json).toHaveLength(1);
     expect(json[0].actor_name).toBe('Taro');
+  });
+
+  it('rejects blank cycle ids before loading cycle history', async () => {
+    const req = createRequest('http://localhost/api/medication-cycles/%20%20%20/history');
+    const res = await GET(req, { params: Promise.resolve({ id: '   ' }) });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: '処方サイクルIDが不正です',
+    });
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
   it('omits the assignment predicate for admin cycle history lookups', async () => {

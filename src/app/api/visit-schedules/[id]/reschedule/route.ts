@@ -2,6 +2,8 @@ import { addDays, format, parseISO } from 'date-fns';
 import { NextRequest } from 'next/server';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -123,15 +125,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問予定IDが不正です');
 
-  const parsed = rescheduleSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = rescheduleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { id } = await params;
   const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
 
   const schedule = (await prisma.visitSchedule.findFirst({

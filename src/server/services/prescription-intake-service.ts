@@ -25,6 +25,7 @@ import {
   buildMedicationCycleAssignmentWhere,
   type PrescriptionAccessContext,
 } from '@/server/services/prescription-access';
+import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
 
 export interface CreateIntakeLineInput {
   line_number: number;
@@ -138,6 +139,7 @@ type TransactionResult =
       blockedLines: Array<{ line_number: number; drug_name: string }>;
     }
   | { kind: 'error'; error: 'expiry_exceeded' }
+  | { kind: 'error'; error: 'future_prescribed_date' }
   | { kind: 'error'; error: 'invalid_transition' }
   | { kind: 'error'; error: 'version_conflict' };
 
@@ -170,6 +172,7 @@ export type CreateIntakeServiceResult =
       blockedLines: Array<{ line_number: number; drug_name: string }>;
     }
   | { ok: false; error: 'expiry_exceeded' }
+  | { ok: false; error: 'future_prescribed_date' }
   | { ok: false; error: 'prescriber_institution_not_found'; message: string }
   | { ok: false; error: 'invalid_transition' }
   | { ok: false; error: 'version_conflict' };
@@ -462,6 +465,13 @@ export async function createPrescriptionIntakeInTx(
   const prescribedDateObj = new Date(prescribed_date);
   const expiryDate = addDays(prescribedDateObj, 4);
 
+  if (!options.skipExpiryCheck) {
+    const dateWindow = validatePrescriptionDateWindow(prescribed_date);
+    if (!dateWindow.ok) {
+      return { kind: 'error', error: dateWindow.reason };
+    }
+  }
+
   const cycle = await loadCycleContext(tx, {
     orgId,
     cycleId: cycle_id,
@@ -677,12 +687,11 @@ export async function createPrescriptionIntake(
 ): Promise<CreateIntakeServiceResult> {
   const { prescribed_date, lines } = input;
 
-  const prescribedDateObj = new Date(prescribed_date);
-  const expiryDate = addDays(prescribedDateObj, 4);
-  const now = new Date();
-
-  if (!options.skipExpiryCheck && expiryDate < now) {
-    return { ok: false, error: 'expiry_exceeded' };
+  if (!options.skipExpiryCheck) {
+    const dateWindow = validatePrescriptionDateWindow(prescribed_date);
+    if (!dateWindow.ok) {
+      return { ok: false, error: dateWindow.reason };
+    }
   }
 
   let txResult: TransactionResult;
@@ -724,6 +733,9 @@ export async function createPrescriptionIntake(
     }
     if (txResult.error === 'expiry_exceeded') {
       return { ok: false, error: 'expiry_exceeded' };
+    }
+    if (txResult.error === 'future_prescribed_date') {
+      return { ok: false, error: 'future_prescribed_date' };
     }
     if (txResult.error === 'invalid_transition') {
       return { ok: false, error: 'invalid_transition' };

@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -50,17 +52,16 @@ function toResponse(item: {
   };
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '医療機関マスターの閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('医療機関IDが不正です');
 
   const item = await prisma.prescriberInstitution.findFirst({
     where: {
@@ -104,22 +105,21 @@ export async function GET(
   return success({ data: toResponse(item) });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '医療機関マスターの更新権限がありません',
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('医療機関IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updatePrescriberInstitutionSchema.safeParse(body);
+  const parsed = updatePrescriberInstitutionSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -130,36 +130,39 @@ export async function PATCH(
   });
   if (!existing) return notFound('医療機関が見つかりません');
 
-  const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.prescriberInstitution.update({
-      where: { id },
-      data: {
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(parsed.data.institution_code !== undefined
-          ? { institution_code: parsed.data.institution_code || null }
-          : {}),
-        ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
-        ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
-        ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
-        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
-      },
-    });
-  }, { requestContext: ctx });
+  const updated = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      return tx.prescriberInstitution.update({
+        where: { id },
+        data: {
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(parsed.data.institution_code !== undefined
+            ? { institution_code: parsed.data.institution_code || null }
+            : {}),
+          ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
+          ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
+          ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
+          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
+        },
+      });
+    },
+    { requestContext: ctx },
+  );
 
   return success({ data: toResponse(updated) });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '医療機関マスターの削除権限がありません',
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('医療機関IDが不正です');
 
   const existing = await prisma.prescriberInstitution.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -167,21 +170,25 @@ export async function DELETE(
   });
   if (!existing) return notFound('医療機関が見つかりません');
 
-  await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.prescriptionIntake.updateMany({
-      where: {
-        org_id: ctx.orgId,
-        prescriber_institution_id: id,
-      },
-      data: {
-        prescriber_institution_id: null,
-      },
-    });
+  await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      await tx.prescriptionIntake.updateMany({
+        where: {
+          org_id: ctx.orgId,
+          prescriber_institution_id: id,
+        },
+        data: {
+          prescriber_institution_id: null,
+        },
+      });
 
-    await tx.prescriberInstitution.delete({
-      where: { id },
-    });
-  }, { requestContext: ctx });
+      await tx.prescriberInstitution.delete({
+        where: { id },
+      });
+    },
+    { requestContext: ctx },
+  );
 
   return success({ data: { id } });
 }

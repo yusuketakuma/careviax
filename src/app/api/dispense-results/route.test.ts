@@ -69,10 +69,45 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/dispense-results', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"task_id":',
+  });
+}
+
 describe('/api/dispense-results POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     checkDispenseAlertsMock.mockResolvedValue([]);
+  });
+
+  it('rejects non-object create payloads before task lookup or safety checks', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before task lookup or safety checks', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('blocks dispense completion when the cycle has an unresolved cycle-level inquiry', async () => {

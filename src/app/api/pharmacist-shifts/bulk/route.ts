@@ -2,28 +2,16 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { z } from 'zod';
-
-const shiftRowSchema = z.object({
-  site_id: z.string().min(1, '店舗IDは必須です'),
-  user_id: z.string().min(1, '薬剤師IDは必須です'),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-  available: z.boolean().default(true),
-  available_from: z.string().optional(),
-  available_to: z.string().optional(),
-  note: z.string().optional(),
-});
-
-const bulkShiftSchema = z.object({
-  rows: z.array(shiftRowSchema).min(1, '取込対象のシフトがありません').max(500, 'CSV は 500 行までです'),
-});
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { readJsonResponseBody } from '@/lib/api/response-body';
+import { bulkPharmacistShiftSchema, toShiftTimeValue } from '@/lib/validations/pharmacist-shift';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = bulkShiftSchema.safeParse(body);
+    const parsed = bulkPharmacistShiftSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -36,7 +24,7 @@ export const POST = withAuth(
       if (!refResult.ok) {
         return validationError(`${index + 2} 行目の参照先が不正です`, {
           row: index + 2,
-          details: await refResult.response.json().catch(() => undefined),
+          details: (await readJsonResponseBody(refResult.response)) ?? undefined,
         });
       }
     }
@@ -45,33 +33,21 @@ export const POST = withAuth(
       let count = 0;
       for (const row of parsed.data.rows) {
         const { date, available_from, available_to, ...rest } = row;
+        const availableFromValue = toShiftTimeValue(available_from);
+        const availableToValue = toShiftTimeValue(available_to);
         await tx.pharmacistShift.upsert({
           where: { user_id_date: { user_id: rest.user_id, date: new Date(date) } },
           create: {
             org_id: req.orgId,
             date: new Date(date),
-            ...(available_from
-              ? { available_from: new Date(`1970-01-01T${available_from}`) }
-              : {}),
-            ...(available_to ? { available_to: new Date(`1970-01-01T${available_to}`) } : {}),
+            ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
+            ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
             ...rest,
           },
           update: {
             site_id: rest.site_id,
-            ...(available_from !== undefined
-              ? {
-                  available_from: available_from
-                    ? new Date(`1970-01-01T${available_from}`)
-                    : null,
-                }
-              : {}),
-            ...(available_to !== undefined
-              ? {
-                  available_to: available_to
-                    ? new Date(`1970-01-01T${available_to}`)
-                    : null,
-                }
-              : {}),
+            ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
+            ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
             available: rest.available,
             note: rest.note,
           },
@@ -86,5 +62,5 @@ export const POST = withAuth(
   {
     permission: 'canVisit',
     message: 'シフト情報の一括作成権限がありません',
-  }
+  },
 );

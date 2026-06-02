@@ -90,6 +90,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1/reschedule', {
+    method: 'POST',
+    body: '{"reason":',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
 function buildSchedule(overrides?: Record<string, unknown>) {
   return {
     id: 'schedule_1',
@@ -352,6 +363,91 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       message: 'この訪問予定はリスケできません',
     });
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object reschedule payloads before loading the source schedule', async () => {
+    const response = await POST(createRequest(['緊急案件対応'], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON reschedule payloads before loading the source schedule', async () => {
+    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank schedule ids before parsing or loading the source schedule', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          reason: '緊急案件対応',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('creates replacement proposals and a pending override approval log', async () => {

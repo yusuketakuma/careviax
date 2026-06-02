@@ -14,18 +14,16 @@ const {
   dispenseTaskFindManyMock,
   dispatchNotificationEventMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }) as AuthenticatedTestRequest,
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }) as AuthenticatedTestRequest,
+      );
+  }),
   withOrgContextMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
@@ -64,6 +62,14 @@ function createRequest(body: unknown) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/dispense-tasks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"cycle_id":',
   } satisfies NextRequestInit);
 }
 
@@ -208,6 +214,29 @@ describe('/api/dispense-tasks POST', () => {
       patient_id: 'patient_1',
       task_id: 'task_1',
     });
+  });
+
+  it('rejects non-object request bodies before cycle lookup or task creation', async () => {
+    const response = await POST(createRequest(['unexpected']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before cycle lookup or task creation', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned cycles before creating dispense tasks', async () => {

@@ -63,6 +63,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/medication-issues', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"patient_id":',
+  });
+}
+
 describe('/api/medication-issues', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +184,32 @@ describe('/api/medication-issues', () => {
         priority: 'medium',
       },
     });
+  });
+
+  it('rejects non-object create payloads before validating patient or case scope', async () => {
+    const response = (await POST(createRequest('http://localhost/api/medication-issues', [])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before validating patient or case scope', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects a patient and case mismatch before creating a medication issue', async () => {

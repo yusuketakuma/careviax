@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { upsertFacilityVisitDaysSchema } from '@/lib/validations/visit-constraints';
@@ -12,10 +13,10 @@ function toTimeValue(value?: string | null) {
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = upsertFacilityVisitDaysSchema.safeParse(body);
+    const parsed = upsertFacilityVisitDaysSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

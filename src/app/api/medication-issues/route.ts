@@ -6,6 +6,7 @@ import {
   createMedicationIssueSchema,
   medicationIssueStatusSchema,
 } from '@/lib/validations/medication';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
@@ -161,10 +162,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createMedicationIssueSchema.safeParse(body);
+    const parsed = createMedicationIssueSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  visitRecordFindFirstMock,
-  confirmHandoffMock,
-} = vi.hoisted(() => ({
+const { requireAuthContextMock, visitRecordFindFirstMock, confirmHandoffMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
@@ -38,8 +34,22 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PUT',
+    body: '{"confirmed":',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 const authCtx = {
-  ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist', ipAddress: '127.0.0.1', userAgent: 'test' },
+  ctx: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'test',
+  },
 };
 
 describe('/api/visit-records/[id]/handoff', () => {
@@ -62,6 +72,18 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(res!.status).toBe(200);
       const json = await res!.json();
       expect(json.data.next_check_items).toEqual(['item1']);
+    });
+
+    it('rejects blank visit record ids before loading handoff data', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: '   ' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '訪問記録IDが不正です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when record not found', async () => {
@@ -100,13 +122,62 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(res!.status).toBe(200);
     });
 
-    it('returns 400 on invalid body', async () => {
-      visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1', structured_soap: {} });
+    it('rejects blank visit record ids before confirming handoff data', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+      });
 
-      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
-      (req as unknown as { json: () => Promise<null> }).json = vi.fn().mockRejectedValue(new Error('bad'));
+      const res = await PUT(req, { params: Promise.resolve({ id: '   ' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '訪問記録IDが不正です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 on invalid body', async () => {
+      const req = createMalformedJsonRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'リクエストボディが不正です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-object confirmation payloads before loading the visit record', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', ['confirmed']);
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'リクエストボディが不正です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects schema-invalid confirmation payloads before loading the visit record', async () => {
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: false,
+      });
+
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+      });
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
   });
 });

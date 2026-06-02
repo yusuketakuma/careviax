@@ -73,6 +73,21 @@ describe('/api/visit-records/[id]/pdf', () => {
     );
   });
 
+  it('rejects blank visit record ids before rendering or auditing the export', async () => {
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問記録IDが不正です',
+    });
+    expect(buildVisitRecordPdfMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+  });
+
   it('does not audit or render a pdf when the scoped visit-record lookup fails', async () => {
     buildVisitRecordPdfMock.mockRejectedValue(new Error('訪問記録が見つかりません'));
 

@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, notFound } from '@/lib/api/response';
+import { success, notFound, validationError, conflict } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   buildQrDraftAssignmentWhere,
   getAssignedPatientIds,
@@ -11,7 +12,10 @@ import { prisma } from '@/lib/db/client';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('QRスキャン下書きIDが不正です');
+
     const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
     const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
@@ -55,7 +59,10 @@ export const GET = withAuth(
 
 export const DELETE = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('QRスキャン下書きIDが不正です');
+
     const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
     const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
@@ -73,8 +80,25 @@ export const DELETE = withAuth(
     if (!existing) {
       return notFound('QRスキャン下書きが見つかりません');
     }
+    if (existing.status !== 'pending') {
+      return validationError('このQRスキャン下書きはすでに処理済みです');
+    }
 
     const draft = await withOrgContext(req.orgId, async (tx) => {
+      const discardResult = await tx.qrScanDraft.updateMany({
+        where: {
+          id,
+          org_id: req.orgId,
+          status: 'pending',
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
+        data: { status: 'discarded' },
+      });
+
+      if (discardResult.count === 0) {
+        return null;
+      }
+
       const updated = await tx.qrScanDraft.update({
         where: { id },
         data: { status: 'discarded' },
@@ -90,6 +114,10 @@ export const DELETE = withAuth(
 
       return updated;
     });
+
+    if (!draft) {
+      return conflict('このQRスキャン下書きはすでに処理済みです');
+    }
 
     return success(draft);
   },

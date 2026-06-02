@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { createMedicationProfileSchema } from '@/lib/validations/medication';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { buildPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
@@ -76,10 +77,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createMedicationProfileSchema.safeParse(body);
+    const parsed = createMedicationProfileSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

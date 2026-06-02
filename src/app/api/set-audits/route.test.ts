@@ -66,6 +66,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedPostRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/set-audits', {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'content-type': 'application/json',
+    },
+    body: '{"plan_id":',
+  });
+}
+
 describe('/api/set-audits POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -169,6 +180,45 @@ describe('/api/set-audits POST', () => {
         carry_items_status: 'ready',
       },
     });
+  });
+
+  it('rejects non-object audit payloads before transaction side effects', async () => {
+    const response = await POST(createRequest([], { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(setBatchFindManyMock).not.toHaveBeenCalled();
+    expect(setAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before transaction side effects', async () => {
+    const response = await POST(createMalformedPostRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(setBatchFindManyMock).not.toHaveBeenCalled();
+    expect(setAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist set audits before writes or downstream side effects', async () => {

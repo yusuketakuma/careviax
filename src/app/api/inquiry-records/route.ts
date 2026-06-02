@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -72,10 +73,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createInquiryRecordSchema.safeParse(body);
+    const parsed = createInquiryRecordSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -228,6 +229,41 @@ export const POST = withAuth(
       await tx.medicationCycle.update({
         where: { id: cycle_id },
         data: { overall_status: 'inquiry_pending' },
+      });
+
+      await tx.cycleTransitionLog.create({
+        data: {
+          org_id: req.orgId,
+          cycle_id,
+          from_status: cycle.overall_status,
+          to_status: 'inquiry_pending',
+          actor_id: req.userId,
+          note: `inquiry_record_created:${inquiry.id}`,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: req.orgId,
+          actor_id: req.userId,
+          action: 'inquiry_record_created',
+          target_type: 'inquiry_record',
+          target_id: inquiry.id,
+          changes: {
+            cycle_id,
+            patient_id: cycle.patient_id,
+            case_id: cycle.case_id,
+            issue_id: issue_id ?? null,
+            line_id: rest.line_id ?? null,
+            reason: rest.reason,
+            inquiry_to_physician: rest.inquiry_to_physician,
+            proposal_origin: proposal_origin ?? 'post_inquiry',
+            residual_adjustment: residual_adjustment ?? false,
+            communication_request_id: communicationRequest.id,
+            cycle_status_before: cycle.overall_status,
+            cycle_status_after: 'inquiry_pending',
+          },
+        },
       });
 
       return {

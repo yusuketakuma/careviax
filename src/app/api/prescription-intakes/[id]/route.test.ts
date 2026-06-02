@@ -33,12 +33,26 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { PATCH } from './route';
+import { GET, PATCH } from './route';
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
+    method: 'GET',
+  });
+}
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
     method: 'PATCH',
     body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
+    method: 'PATCH',
+    body: '{"original_collected_at":',
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -52,6 +66,41 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         userId: 'user_1',
       },
     });
+  });
+
+  it('rejects blank prescription intake ids before loading the intake on GET', async () => {
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '処方受付IDが不正です',
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank prescription intake ids before parsing or loading the intake on PATCH', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_collected_at: '2026-03-28T09:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '処方受付IDが不正です',
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('records fax original collection and resolves follow-up tasks', async () => {
@@ -74,14 +123,14 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         prescriptionIntake: {
           update: updateMock,
         },
-      })
+      }),
     );
 
     const response = await PATCH(
       createRequest({
         original_collected_at: '2026-03-28T09:00:00.000Z',
       }),
-      { params: Promise.resolve({ id: 'intake_1' }) }
+      { params: Promise.resolve({ id: 'intake_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -92,7 +141,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           original_collected_at: new Date('2026-03-28T09:00:00.000Z'),
           original_collected_by: 'user_1',
         }),
-      })
+      }),
     );
     expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -102,8 +151,35 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         relatedEntityType: 'prescription_intake',
         relatedEntityId: 'intake_1',
         status: 'completed',
-      })
+      }),
     );
+  });
+
+  it('rejects non-object request bodies before loading the intake', async () => {
+    const response = await PATCH(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'intake_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before loading the intake', async () => {
+    const response = await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'intake_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('does not resolve fax follow-up tasks for non-fax intakes', async () => {
@@ -123,14 +199,14 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
             lines: [],
           }),
         },
-      })
+      }),
     );
 
     const response = await PATCH(
       createRequest({
         original_collected_at: '2026-03-28T09:00:00.000Z',
       }),
-      { params: Promise.resolve({ id: 'intake_2' }) }
+      { params: Promise.resolve({ id: 'intake_2' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -153,7 +229,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         split_dispense_total: 3,
         split_dispense_current: 1,
       }),
-      { params: Promise.resolve({ id: 'intake_3' }) }
+      { params: Promise.resolve({ id: 'intake_3' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -185,7 +261,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         prescriptionIntake: {
           update: updateMock,
         },
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -195,7 +271,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         split_next_dispense_date: null,
         refill_next_dispense_date: null,
       }),
-      { params: Promise.resolve({ id: 'intake_4' }) }
+      { params: Promise.resolve({ id: 'intake_4' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -206,7 +282,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           split_next_dispense_date: null,
           refill_next_dispense_date: null,
         }),
-      })
+      }),
     );
   });
 
@@ -223,7 +299,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       createRequest({
         emergency_category: null,
       }),
-      { params: Promise.resolve({ id: 'intake_5' }) }
+      { params: Promise.resolve({ id: 'intake_5' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -255,14 +331,14 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         prescriptionIntake: {
           update: updateMock,
         },
-      })
+      }),
     );
 
     const response = await PATCH(
       createRequest({
         prescription_category: 'regular',
       }),
-      { params: Promise.resolve({ id: 'intake_6' }) }
+      { params: Promise.resolve({ id: 'intake_6' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -273,7 +349,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           prescription_category: 'regular',
           emergency_category: null,
         }),
-      })
+      }),
     );
   });
 });

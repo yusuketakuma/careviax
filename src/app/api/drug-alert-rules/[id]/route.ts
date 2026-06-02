@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -26,34 +28,34 @@ const updateDrugAlertRuleSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateDrugAlertRuleSchema.safeParse(body);
+  const parsed = updateDrugAlertRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('処方安全アラートルールIDが不正です');
+
   const existing = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findFirst({
-      where: { id },
+      where: { id: ruleId },
       select: { id: true },
-    })
+    }),
   );
   if (!existing) return notFound('処方安全アラートルールが見つかりません');
 
   const updated = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.update({
-      where: { id },
+      where: { id: ruleId },
       data: {
         ...(parsed.data.alert_type ? { alert_type: parsed.data.alert_type } : {}),
         ...(parsed.data.condition !== undefined
@@ -63,30 +65,30 @@ export async function PATCH(
         ...(parsed.data.message ? { message: parsed.data.message } : {}),
         ...(parsed.data.is_active !== undefined ? { is_active: parsed.data.is_active } : {}),
       },
-    })
+    }),
   );
 
   return success({ data: updated });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('処方安全アラートルールIDが不正です');
+
   const existing = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findFirst({
-      where: { id },
+      where: { id: ruleId },
       select: { id: true },
-    })
+    }),
   );
   if (!existing) return notFound('処方安全アラートルールが見つかりません');
 
-  await withOrgContext(ctx.orgId, (tx) => tx.drugAlertRule.delete({ where: { id } }));
+  await withOrgContext(ctx.orgId, (tx) => tx.drugAlertRule.delete({ where: { id: ruleId } }));
 
   return success({ message: '処方安全アラートルールを削除しました' });
 }

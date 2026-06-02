@@ -1,15 +1,14 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, notFound } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { success, notFound, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
 export const GET = withAuthContext(
-  async (
-    _req: NextRequest,
-    _ctx,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
-    const { id } = await params;
+  async (_req: NextRequest, _ctx, { params }: { params: Promise<{ id: string }> }) => {
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('医薬品IDが不正です');
 
     const drug = await prisma.drugMaster.findUnique({
       where: { id },
@@ -46,5 +45,5 @@ export const GET = withAuthContext(
     if (!drug) return notFound('医薬品が見つかりません');
 
     return success(drug);
-  }
+  },
 );

@@ -6,6 +6,8 @@ import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-acce
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
@@ -306,9 +308,12 @@ export async function GET(
   const { ctx } = authResult;
 
   const { scheduleId } = await params;
+  const normalizedScheduleId = normalizeRequiredRouteParam(scheduleId);
+  if (!normalizedScheduleId) return validationError('訪問予定IDが不正です');
+
   const schedule = await prisma.visitSchedule.findFirst({
     where: {
-      id: scheduleId,
+      id: normalizedScheduleId,
       org_id: ctx.orgId,
     },
     select: {
@@ -1011,18 +1016,21 @@ export async function PUT(
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { scheduleId } = await params;
+  const normalizedScheduleId = normalizeRequiredRouteParam(scheduleId);
+  if (!normalizedScheduleId) return validationError('訪問予定IDが不正です');
 
-  const parsed = upsertVisitPreparationSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = upsertVisitPreparationSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { scheduleId } = await params;
   const schedule = await prisma.visitSchedule.findFirst({
     where: {
-      id: scheduleId,
+      id: normalizedScheduleId,
       org_id: ctx.orgId,
     },
     select: {

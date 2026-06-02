@@ -35,7 +35,13 @@ function createRequest(url: string) {
 }
 
 const authCtx = {
-  ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist', ipAddress: '127.0.0.1', userAgent: 'test' },
+  ctx: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'test',
+  },
 };
 
 describe('/api/visit-records/[id]/handoff/extract', () => {
@@ -59,6 +65,20 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(201);
+  });
+
+  it('rejects blank visit record ids before loading or extracting handoff data', async () => {
+    const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
+    const res = await POST(req, { params: Promise.resolve({ id: '   ' }) });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問記録IDが不正です',
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when visit record not found', async () => {

@@ -14,18 +14,16 @@ const {
   notifyWorkflowMutationMock,
   dispenseTaskFindManyMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }) as AuthenticatedTestRequest,
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }) as AuthenticatedTestRequest,
+      );
+  }),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
@@ -65,6 +63,14 @@ function createRequest(body: unknown) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/dispense-audits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"task_id":',
   } satisfies NextRequestInit);
 }
 
@@ -174,6 +180,29 @@ describe('/api/dispense-audits GET', () => {
 describe('/api/dispense-audits POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('rejects non-object audit payloads before transaction or notification side effects', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON audit payloads before transaction or notification side effects', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('moves a rejected task back to dispensing and notifies the assignee', async () => {

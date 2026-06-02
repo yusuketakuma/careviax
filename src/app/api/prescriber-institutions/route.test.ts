@@ -3,15 +3,12 @@ import { NextRequest } from 'next/server';
 
 type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
-const {
-  prescriberInstitutionFindManyMock,
-  prescriberInstitutionCreateMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  prescriberInstitutionFindManyMock: vi.fn(),
-  prescriberInstitutionCreateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { prescriberInstitutionFindManyMock, prescriberInstitutionCreateMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    prescriberInstitutionFindManyMock: vi.fn(),
+    prescriberInstitutionCreateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
@@ -37,6 +34,17 @@ function createRequest(url: string, body?: unknown, role = 'pharmacist'): Authen
       method: body === undefined ? 'GET' : 'POST',
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    { orgId: 'org_1', userId: 'user_1', role },
+  );
+}
+
+function createMalformedJsonRequest(role = 'admin'): AuthenticatedTestRequest {
+  return Object.assign(
+    new NextRequest('http://localhost/api/prescriber-institutions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
     }),
     { orgId: 'org_1', userId: 'user_1', role },
   );
@@ -78,7 +86,7 @@ describe('/api/prescriber-institutions', () => {
         prescriberInstitution: {
           create: prescriberInstitutionCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -131,8 +139,8 @@ describe('/api/prescriber-institutions', () => {
         {
           name: 'さくら病院',
           institution_code: '7654321',
-          phone: '03-9999-2222',
-          fax: '03-9999-3333',
+          phone: ' 03-9999-2222 ',
+          fax: ' 03-9999-3333 ',
           notes: '主治医向け',
         },
         'admin',
@@ -151,5 +159,79 @@ describe('/api/prescriber-institutions', () => {
         notes: '主治医向け',
       },
     });
+  });
+
+  it('normalizes blank optional contact fields to null on create', async () => {
+    const response = (await POST(
+      createRequest(
+        'http://localhost/api/prescriber-institutions',
+        {
+          name: 'さくら病院',
+          phone: '   ',
+          fax: '\t',
+        },
+        'admin',
+      ),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(prescriberInstitutionCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        name: 'さくら病院',
+        institution_code: null,
+        address: null,
+        phone: null,
+        fax: null,
+        notes: null,
+      },
+    });
+  });
+
+  it('rejects malformed contact numbers before opening an org transaction', async () => {
+    const response = (await POST(
+      createRequest(
+        'http://localhost/api/prescriber-institutions',
+        {
+          name: 'さくら病院',
+          phone: '03-ABCD-2222',
+          fax: 'FAX-3333',
+        },
+        'admin',
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/prescriber-institutions', [], 'admin'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before opening an org transaction', async () => {
+    const response = (await POST(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionCreateMock).not.toHaveBeenCalled();
   });
 });

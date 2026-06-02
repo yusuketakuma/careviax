@@ -5,7 +5,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { buildSearchFilter, buildSort } from '@/lib/api/search';
 import { parsePaginationParams } from '@/lib/api/pagination';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 
 const booleanParam = z
@@ -23,7 +23,7 @@ const drugMasterQuerySchema = z.object({
   stocked: booleanParam,
   site_id: z.string().trim().optional(),
   cursor: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: boundedIntegerSearchParam('limit', 1, 100, 50),
   sort: z.enum(['drug_name_kana', 'drug_name', 'drug_price', 'yj_code']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
@@ -35,7 +35,7 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
     return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
   }
   const pagination = parsePaginationParams(searchParams);
-  const limit = parsed.data.limit ?? pagination.limit;
+  const limit = parsed.data.limit;
   const cursor = parsed.data.cursor;
   const offset = cursor ? pagination.offset : 0;
 

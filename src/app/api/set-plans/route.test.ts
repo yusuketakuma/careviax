@@ -55,6 +55,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/set-plans', {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{"cycle_id":',
+  });
+}
+
 describe('/api/set-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,6 +165,33 @@ describe('/api/set-plans', () => {
       data: { overall_status: 'setting', version: { increment: 1 } },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before cycle lookup or writes', async () => {
+    const response = (await POST(createRequest('http://localhost/api/set-plans', [])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before cycle lookup or writes', async () => {
+    const response = (await POST(createMalformedPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects unassigned pharmacist set-plan creation before writes or cycle transition', async () => {

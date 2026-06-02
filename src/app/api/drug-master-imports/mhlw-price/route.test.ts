@@ -32,6 +32,20 @@ function createPostRequest(body: unknown) {
   } satisfies NextRequestInit);
 }
 
+function createEmptyPostRequest() {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-price', {
+    method: 'POST',
+  } satisfies NextRequestInit);
+}
+
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-price', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"workbookUrl":',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/drug-master-imports/mhlw-price', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,6 +54,41 @@ describe('/api/drug-master-imports/mhlw-price', () => {
       importedCount: 55,
       workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
     });
+  });
+
+  it('rejects non-object JSON payloads before import execution', async () => {
+    const response = (await POST(createPostRequest([]), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before import execution', async () => {
+    const response = (await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+  });
+
+  it('allows empty request bodies for default import options', async () => {
+    const response = (await POST(createEmptyPostRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(201);
+    expect(importMhlwPriceListMock).toHaveBeenCalledWith({}, {});
   });
 
   it('imports the MHLW price workbook', async () => {

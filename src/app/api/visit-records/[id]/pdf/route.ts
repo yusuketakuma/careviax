@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, notFound } from '@/lib/api/response';
+import { error, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { buildVisitRecordPdf } from '@/server/services/pdf-documents';
@@ -15,7 +16,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if ('response' in authResult) return authResult.response;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
 
   try {
     const rendered = await buildVisitRecordPdf(authResult.ctx.orgId, id, {

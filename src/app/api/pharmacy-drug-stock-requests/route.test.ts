@@ -8,7 +8,12 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     pharmacySite: { findFirst: vi.fn() },
     drugMaster: { findFirst: vi.fn() },
     pharmacyDrugStock: { findFirst: vi.fn() },
-    formularyChangeRequest: { count: vi.fn(), create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
+    formularyChangeRequest: {
+      count: vi.fn(),
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -28,6 +33,17 @@ function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+    method: 'POST',
+    body: '{"site_id":',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -148,6 +164,107 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('rejects non-object request bodies before lookup or mutation', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', ['unexpected']),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before lookup or mutation', async () => {
+    const response = await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank preferred generic ids before lookup or mutation', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: '   ',
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing preferred generic ids before request creation', async () => {
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'ノルバスク錠5mg',
+        generic_name: 'アムロジピン',
+      })
+      .mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: 'generic_missing',
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '採用後発薬が見つかりません',
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('lists pending requests scoped by site after validating same org site', async () => {
     prismaMock.formularyChangeRequest.findMany.mockResolvedValue([
       { id: 'request_1', status: 'pending' },
@@ -158,7 +275,9 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     });
 
     const response = await GET(
-      createRequest('http://localhost/api/pharmacy-drug-stock-requests?site_id=site_1&overdue_days=7'),
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stock-requests?site_id=site_1&overdue_days=%207%20&limit=%2010%20',
+      ),
       { params: Promise.resolve({}) },
     );
 
@@ -178,6 +297,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     expect(prismaMock.formularyChangeRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ org_id: 'org_1', site_id: 'site_1', status: 'pending' }),
+        take: 10,
       }),
     );
     expect(prismaMock.formularyChangeRequest.count).toHaveBeenNthCalledWith(
@@ -191,5 +311,25 @@ describe('/api/pharmacy-drug-stock-requests', () => {
         }),
       }),
     );
+  });
+
+  it('rejects malformed numeric query values before scoped reads', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stock-requests?site_id=site_1&overdue_days=1e1&limit=10.0',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.count).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
   });
 });

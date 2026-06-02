@@ -54,6 +54,21 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     vi.clearAllMocks();
   });
 
+  it('rejects blank route IDs before assignment lookup or draft lookup', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: ' \t\n ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QRスキャン下書きIDが不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('returns 200 with the draft when found', async () => {
     const mockDraft = {
       id: 'draft_1',
@@ -131,6 +146,21 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
     vi.clearAllMocks();
   });
 
+  it('rejects blank route IDs before assignment lookup or discard side effects', async () => {
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: ' \t\n ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QRスキャン下書きIDが不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('sets status to discarded and returns 200', async () => {
     const updatedDraft = { id: 'draft_1', status: 'discarded' };
     let callCount = 0;
@@ -146,6 +176,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       }
       return callback({
         qrScanDraft: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           update: vi.fn().mockResolvedValue(updatedDraft),
         },
         jahisSupplementalRecord: {
@@ -177,7 +208,80 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
     expect(response.status).toBe(404);
   });
 
+  it('rejects already processed drafts before discard side effects', async () => {
+    const updateManySpy = vi.fn();
+    const deleteSupplementalSpy = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'draft_1', status: 'confirmed' }),
+          updateMany: updateManySpy,
+        },
+        jahisSupplementalRecord: { deleteMany: deleteSupplementalSpy },
+      }),
+    );
+
+    const response = await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'このQRスキャン下書きはすでに処理済みです',
+    });
+    expect(updateManySpy).not.toHaveBeenCalled();
+    expect(deleteSupplementalSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not delete supplemental records when pending discard claim is lost', async () => {
+    const updateManySpy = vi.fn().mockResolvedValue({ count: 0 });
+    const updateSpy = vi.fn();
+    const deleteSupplementalSpy = vi.fn();
+    let callCount = 0;
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return callback({
+          qrScanDraft: {
+            findFirst: vi.fn().mockResolvedValue({ id: 'draft_1', status: 'pending' }),
+          },
+        });
+      }
+      return callback({
+        qrScanDraft: {
+          updateMany: updateManySpy,
+          update: updateSpy,
+        },
+        jahisSupplementalRecord: { deleteMany: deleteSupplementalSpy },
+      });
+    });
+
+    const response = await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'このQRスキャン下書きはすでに処理済みです',
+    });
+    expect(updateManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'draft_1',
+          org_id: 'org_1',
+          status: 'pending',
+        }),
+        data: { status: 'discarded' },
+      }),
+    );
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(deleteSupplementalSpy).not.toHaveBeenCalled();
+  });
+
   it('updates with discarded status targeting correct draft id', async () => {
+    const updateManySpy = vi.fn().mockResolvedValue({ count: 1 });
     const updateSpy = vi.fn().mockResolvedValue({ id: 'draft_1', status: 'discarded' });
     const deleteSupplementalSpy = vi.fn().mockResolvedValue({ count: 1 });
     let callCount = 0;
@@ -192,13 +296,23 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
         });
       }
       return callback({
-        qrScanDraft: { update: updateSpy },
+        qrScanDraft: { updateMany: updateManySpy, update: updateSpy },
         jahisSupplementalRecord: { deleteMany: deleteSupplementalSpy },
       });
     });
 
     await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
 
+    expect(updateManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'draft_1',
+          org_id: 'org_1',
+          status: 'pending',
+        }),
+        data: { status: 'discarded' },
+      }),
+    );
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'draft_1' },

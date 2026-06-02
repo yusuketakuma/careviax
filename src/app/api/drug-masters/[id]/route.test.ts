@@ -40,7 +40,7 @@ describe('/api/drug-masters/[id]', () => {
 
   it('returns the drug master detail with related safety data', async () => {
     const response = (await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
+      params: Promise.resolve({ id: '  drug_1  ' }),
     }))!;
 
     expect(response.status).toBe(200);
@@ -48,5 +48,17 @@ describe('/api/drug-masters/[id]', () => {
       where: { id: 'drug_1' },
       include: expect.any(Object),
     });
+  });
+
+  it('rejects blank drug master ids before querying safety data', async () => {
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品IDが不正です',
+    });
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
   });
 });

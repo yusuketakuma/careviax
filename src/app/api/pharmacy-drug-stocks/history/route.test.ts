@@ -22,7 +22,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(
-  url = 'http://localhost/api/pharmacy-drug-stocks/history?site_id=site_1&drug_master_id=drug_1',
+  url = 'http://localhost/api/pharmacy-drug-stocks/history?site_id=site_1&drug_master_id=drug_1&limit=%203%20',
 ) {
   return new NextRequest(url, {
     headers: { 'x-org-id': 'org_1' },
@@ -114,8 +114,61 @@ describe('/api/pharmacy-drug-stocks/history', () => {
             },
           ]),
         }),
+        take: 12,
       }),
     );
+  });
+
+  it('rejects malformed limit values before querying the site', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/history?site_id=site_1&drug_master_id=drug_1&limit=3abc',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('skips malformed site audit changes while keeping object-shaped matching rows', async () => {
+    prismaMock.auditLog.findMany.mockResolvedValue([
+      {
+        id: 'audit_array_changes',
+        actor_id: 'user_1',
+        action: 'pharmacy_drug_stock_reviewed',
+        target_type: 'PharmacySite',
+        target_id: 'site_1',
+        changes: ['drug_1'],
+        created_at: new Date('2026-05-27T00:00:00.000Z'),
+      },
+      {
+        id: 'audit_bulk_summary_match',
+        actor_id: 'user_1',
+        action: 'pharmacy_drug_stock_bulk_import_summary',
+        target_type: 'PharmacySite',
+        target_id: 'site_1',
+        changes: {
+          rows: [null, 'drug_1', { row_number: 2, drug_master_id: 'drug_1', status: 'update' }],
+        },
+        created_at: new Date('2026-05-26T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'audit_bulk_summary_match', action: 'pharmacy_drug_stock_bulk_import_summary' }],
+    });
   });
 
   it('returns an empty history when the drug is not configured for the site', async () => {

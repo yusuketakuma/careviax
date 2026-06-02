@@ -2,8 +2,12 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { z } from 'zod';
+
+const proposedDateSchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
 const batchPreviewSchema = z.object({
   items: z
@@ -11,7 +15,7 @@ const batchPreviewSchema = z.object({
       z.object({
         key: z.string().min(1),
         case_id: z.string().min(1),
-        proposed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        proposed_date: proposedDateSchema,
         pharmacist_id: z.string().optional(),
         site_id: z.string().optional(),
         visit_type: z.string().optional(),
@@ -23,10 +27,10 @@ const batchPreviewSchema = z.object({
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = batchPreviewSchema.safeParse(body);
+    const parsed = batchPreviewSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

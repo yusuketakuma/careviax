@@ -2,30 +2,26 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 const historyQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   drug_master_id: z.string().trim().min(1, 'drug_master_id は必須です'),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  limit: boundedIntegerSearchParam('limit', 1, 100, 25),
 });
 
-function readObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 function includesDrugMasterId(changes: unknown, drugMasterId: string) {
-  const data = readObject(changes);
+  const data = readJsonObject(changes);
+  if (!data) return false;
+
   if (data.drug_master_id === drugMasterId) return true;
   const drugMasterIds = data.drug_master_ids;
   if (Array.isArray(drugMasterIds) && drugMasterIds.includes(drugMasterId)) return true;
   const rows = data.rows;
   return (
-    Array.isArray(rows) &&
-    rows.some((row) => readObject(row).drug_master_id === drugMasterId)
+    Array.isArray(rows) && rows.some((row) => readJsonObject(row)?.drug_master_id === drugMasterId)
   );
 }
 
@@ -67,7 +63,9 @@ export const GET = withAuthContext(
           {
             target_type: 'PharmacySite',
             target_id: site.id,
-            action: { in: ['pharmacy_drug_stock_reviewed', 'pharmacy_drug_stock_bulk_import_summary'] },
+            action: {
+              in: ['pharmacy_drug_stock_reviewed', 'pharmacy_drug_stock_bulk_import_summary'],
+            },
           },
         ],
       },

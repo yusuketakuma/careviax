@@ -107,7 +107,7 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
   it('reports frequent QR-prescribed unstocked drugs and stocked drugs unused in recent QR drafts', async () => {
     const response = await GET(
       createRequest(
-        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=2',
+        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=%202%20&limit=%201%20',
       ),
       { params: Promise.resolve({}) },
     );
@@ -145,8 +145,29 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
           site_id: 'site_1',
           status: { not: 'discarded' },
         }),
+        take: 500,
       }),
     );
+  });
+
+  it('rejects malformed numeric query values before reading QR drafts', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&days=9e1&draft_limit=10.0',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.qrScanDraft.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
   });
 
   it('ignores non-object medication entries in QR parsed_data', async () => {

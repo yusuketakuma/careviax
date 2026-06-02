@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 const reviewSchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -11,10 +12,10 @@ const reviewSchema = z.object({
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = reviewSchema.safeParse(body);
+    const parsed = reviewSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
@@ -54,8 +55,10 @@ export const POST = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
-    const body = await req.json().catch(() => ({}));
-    const parsed = generateBatchesSchema.safeParse(body);
+    const payload = await readOptionalJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = generateBatchesSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -37,12 +37,76 @@ const renalAdjustmentSchema = z.object({
   recommendation: z.string().trim().min(1),
 });
 
+const packageInsertTextObjectSchema = z
+  .object({
+    text: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
+    summary: z.string().trim().min(1).optional(),
+    recommendation: z.string().trim().min(1).optional(),
+    severity: z.string().trim().min(1).optional(),
+    detail: z.string().trim().min(1).optional(),
+  })
+  .passthrough()
+  .refine(
+    (value) =>
+      Boolean(
+        value.text || value.name || value.description || value.summary || value.recommendation,
+      ),
+    { message: 'text、name、description、summary、recommendation のいずれかが必要です' },
+  )
+  .transform((value) => {
+    const text =
+      value.text ?? value.name ?? value.description ?? value.summary ?? value.recommendation;
+    if (!text) {
+      throw new Error('package insert text entry is missing text');
+    }
+
+    return {
+      text,
+      ...(value.severity ? { severity: value.severity } : {}),
+      ...(value.detail ? { detail: value.detail } : {}),
+    };
+  });
+
+const packageInsertTextEntrySchema = z.union([
+  z.string().trim().min(1),
+  packageInsertTextObjectSchema,
+]);
+
+function normalizePackageInsertTextSectionInput(value: unknown) {
+  if (typeof value === 'string') return [value];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+  const object = value as Record<string, unknown>;
+  if (
+    ['text', 'name', 'description', 'summary', 'recommendation'].some(
+      (key) => typeof object[key] === 'string',
+    )
+  ) {
+    return [value];
+  }
+
+  if (typeof object.note === 'string') return [object.note];
+
+  for (const key of ['notes', 'items', 'entries']) {
+    if (Array.isArray(object[key])) return object[key];
+  }
+
+  return value;
+}
+
+const packageInsertTextSectionSchema = z.preprocess(
+  normalizePackageInsertTextSectionInput,
+  z.array(packageInsertTextEntrySchema).min(1),
+);
+
 const renalAdjustmentEntrySchema = z
   .object({
     yj_code: z.string().trim().min(1).optional(),
     drug_name: z.string().trim().min(1).optional(),
     dosage_adjustment_renal: z.array(renalAdjustmentSchema).min(1),
-    precautions_elderly: z.unknown().optional(),
+    precautions_elderly: packageInsertTextSectionSchema.optional(),
   })
   .refine((value) => Boolean(value.yj_code || value.drug_name), {
     message: 'yj_code または drug_name のいずれかが必要です',

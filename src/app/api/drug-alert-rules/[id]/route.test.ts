@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  drugAlertRuleUpdateMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  drugAlertRuleUpdateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, drugAlertRuleUpdateMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    drugAlertRuleUpdateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -104,13 +100,45 @@ describe('/api/drug-alert-rules/[id]', () => {
       });
     });
 
-    it('returns 400 with invalid body', async () => {
+    it('rejects malformed JSON update payloads before loading the alert rule', async () => {
       const response = (await PATCH(
         createBadJsonRequest('http://localhost/api/drug-alert-rules/rule_1'),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 
       expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'リクエストボディが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(drugAlertRuleUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-object update payloads before loading the alert rule', async () => {
+      const response = (await PATCH(
+        createRequest('http://localhost/api/drug-alert-rules/rule_1', []),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(drugAlertRuleUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects blank route ids before loading the alert rule', async () => {
+      const response = (await PATCH(
+        createRequest('http://localhost/api/drug-alert-rules/%20%20%20', {
+          severity: 'warning',
+        }),
+        { params: Promise.resolve({ id: '   ' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '処方安全アラートルールIDが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(drugAlertRuleUpdateMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when rule not found', async () => {
@@ -142,6 +170,19 @@ describe('/api/drug-alert-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+    });
+
+    it('rejects blank route ids before loading the alert rule', async () => {
+      const response = (await DELETE(
+        createRequest('http://localhost/api/drug-alert-rules/%20%20%20'),
+        { params: Promise.resolve({ id: '   ' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '処方安全アラートルールIDが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when rule not found', async () => {

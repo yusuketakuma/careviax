@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -24,14 +26,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const siteId = normalizeRequiredRouteParam(id);
+  if (!siteId) return validationError('薬局IDが不正です');
+
   const site = await prisma.pharmacySite.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: siteId, org_id: ctx.orgId },
     select: { id: true },
   });
   if (!site) return notFound('薬局情報が見つかりません');
 
   const configs = await prisma.pharmacySiteInsuranceConfig.findMany({
-    where: { site_id: id, org_id: ctx.orgId },
+    where: { site_id: siteId, org_id: ctx.orgId },
     orderBy: [{ insurance_type: 'asc' }, { effective_from: 'desc' }],
   });
 
@@ -46,17 +51,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = pharmacySiteInsuranceConfigCreateSchema.safeParse(body);
+  const parsed = pharmacySiteInsuranceConfigCreateSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const { id } = await params;
+  const siteId = normalizeRequiredRouteParam(id);
+  if (!siteId) return validationError('薬局IDが不正です');
+
   const site = await prisma.pharmacySite.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: siteId, org_id: ctx.orgId },
     select: { id: true },
   });
   if (!site) return notFound('薬局情報が見つかりません');
@@ -64,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const existing = await prisma.pharmacySiteInsuranceConfig.findFirst({
     where: {
       org_id: ctx.orgId,
-      site_id: id,
+      site_id: siteId,
       insurance_type: parsed.data.insurance_type,
       revision_code: parsed.data.revision_code,
     },
@@ -79,7 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const overlappingConfigs = await prisma.pharmacySiteInsuranceConfig.findMany({
     where: {
       org_id: ctx.orgId,
-      site_id: id,
+      site_id: siteId,
       insurance_type: parsed.data.insurance_type,
     },
   });
@@ -113,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const created = await tx.pharmacySiteInsuranceConfig.create({
       data: {
         org_id: ctx.orgId,
-        site_id: id,
+        site_id: siteId,
         insurance_type: parsed.data.insurance_type,
         revision_code: parsed.data.revision_code,
         revision_label: parsed.data.revision_label ?? null,

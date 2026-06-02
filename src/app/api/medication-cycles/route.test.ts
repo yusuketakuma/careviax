@@ -58,6 +58,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/medication-cycles', {
+    method: 'POST',
+    body: '{"case_id":',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/medication-cycles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -160,6 +168,38 @@ describe('/api/medication-cycles', () => {
         version: 1,
       },
     });
+  });
+
+  it('rejects non-object create payloads before validating references', async () => {
+    const response = (await POST(createPostRequest(['case_1']), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before validating references', async () => {
+    const response = (await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects an unassigned case before creating a medication cycle', async () => {

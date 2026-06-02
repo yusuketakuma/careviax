@@ -4,6 +4,8 @@ import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
@@ -20,7 +22,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問予定IDが不正です');
 
   const schedule = await prisma.visitSchedule.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -58,12 +62,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問予定IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateVisitScheduleSchema.safeParse(body);
+  const parsed = updateVisitScheduleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -197,7 +203,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問予定IDが不正です');
 
   const existing = await prisma.visitSchedule.findFirst({
     where: { id, org_id: ctx.orgId },

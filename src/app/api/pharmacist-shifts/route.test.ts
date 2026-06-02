@@ -89,16 +89,28 @@ describe('/api/pharmacist-shifts', () => {
     });
   });
 
+  it('rejects non-object shift payloads before reference checks or upsert', async () => {
+    const response = (await POST(createRequest('http://localhost/api/pharmacist-shifts', [])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
+  });
+
   it('upserts shifts and updates site_id on existing rows', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/pharmacist-shifts', {
-        site_id: 'site_2',
-        user_id: 'user_2',
-        date: '2026-04-15',
+        site_id: ' site_2 ',
+        user_id: ' user_2 ',
+        date: ' 2026-04-15 ',
         available: false,
-        available_from: '09:00:00',
-        available_to: '12:00:00',
-        note: '午前のみ',
+        available_from: ' 09:00 ',
+        available_to: ' 12:00:00 ',
+        note: ' 午前のみ ',
       }),
     ))!;
 
@@ -120,17 +132,87 @@ describe('/api/pharmacist-shifts', () => {
         user_id: 'user_2',
         date: new Date('2026-04-15'),
         available: false,
-        available_from: new Date('1970-01-01T09:00:00'),
+        available_from: new Date('1970-01-01T09:00'),
         available_to: new Date('1970-01-01T12:00:00'),
         note: '午前のみ',
       },
       update: {
         site_id: 'site_2',
-        available_from: new Date('1970-01-01T09:00:00'),
+        available_from: new Date('1970-01-01T09:00'),
         available_to: new Date('1970-01-01T12:00:00'),
         available: false,
         note: '午前のみ',
       },
     });
+  });
+
+  it('clears blank shift times and blank notes with normalized row ids', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: ' site_3 ',
+        user_id: ' user_3 ',
+        date: '2026-04-16',
+        available_from: ' ',
+        available_to: ' ',
+        note: ' ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      site_id: 'site_3',
+      pharmacist_id: 'user_3',
+    });
+    expect(pharmacistShiftUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { user_id_date: { user_id: 'user_3', date: new Date('2026-04-16') } },
+        create: expect.objectContaining({
+          site_id: 'site_3',
+          user_id: 'user_3',
+          available: true,
+          available_from: null,
+          available_to: null,
+          note: null,
+        }),
+        update: expect.objectContaining({
+          site_id: 'site_3',
+          available: true,
+          available_from: null,
+          available_to: null,
+          note: null,
+        }),
+      }),
+    );
+  });
+
+  it('rejects blank ids and malformed shift times before reference checks', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: '   ',
+        user_id: 'user_2',
+        date: '2026-04-15',
+        available_from: '24:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid calendar dates before reference checks', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: 'site_2',
+        user_id: 'user_2',
+        date: '2026-02-31',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
   });
 });

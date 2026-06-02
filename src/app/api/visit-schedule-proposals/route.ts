@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -11,6 +12,7 @@ import {
   generateVisitScheduleProposalSchema,
   proposalStatusSchema,
 } from '@/lib/validations/visit-schedule-proposal';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
 import { findLatestPrescriptionIntakeClassification } from '@/server/services/prescription-intake-classification';
@@ -26,8 +28,26 @@ import {
 } from '@/server/services/billing-requirement-validator';
 import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
 
+const proposalDateQuerySchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+
+function parseProposalDateQuery(value: string | null, fieldName: 'date_from' | 'date_to') {
+  if (value == null) {
+    return { ok: true as const, value: null };
+  }
+
+  const parsed = proposalDateQuerySchema.safeParse(value);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError(`${fieldName} の日付形式が不正です（YYYY-MM-DD）`),
+    };
+  }
+
+  return { ok: true as const, value: parsed.data };
 }
 
 /**
@@ -166,6 +186,11 @@ export const GET = withAuth(
       return validationError('status が不正です');
     }
 
+    const parsedDateFrom = parseProposalDateQuery(dateFrom, 'date_from');
+    if (!parsedDateFrom.ok) return parsedDateFrom.response;
+    const parsedDateTo = parseProposalDateQuery(dateTo, 'date_to');
+    if (!parsedDateTo.ok) return parsedDateTo.response;
+
     const proposals = await prisma.visitScheduleProposal.findMany({
       where: {
         org_id: req.orgId,
@@ -183,8 +208,8 @@ export const GET = withAuth(
         ...(dateFrom || dateTo
           ? {
               proposed_date: {
-                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-                ...(dateTo ? { lte: new Date(dateTo) } : {}),
+                ...(parsedDateFrom.value ? { gte: new Date(parsedDateFrom.value) } : {}),
+                ...(parsedDateTo.value ? { lte: new Date(parsedDateTo.value) } : {}),
               },
             }
           : {}),
@@ -274,10 +299,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = generateVisitScheduleProposalSchema.safeParse(body);
+    const parsed = generateVisitScheduleProposalSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -307,7 +332,7 @@ export const POST = withAuth(
     });
     if (!refResult.ok) return refResult.response;
 
-    const hasExplicitVisitType = Object.prototype.hasOwnProperty.call(body, 'visit_type');
+    const hasExplicitVisitType = Object.prototype.hasOwnProperty.call(payload, 'visit_type');
     // Auto-propagate visitType from active PrescriptionIntake when not provided
     let resolvedVisitType = parsed.data.visit_type;
     if (hasExplicitVisitType) {
@@ -320,7 +345,7 @@ export const POST = withAuth(
       resolvedVisitType =
         activeIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular';
     }
-    const hasExplicitPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
+    const hasExplicitPriority = Object.prototype.hasOwnProperty.call(payload, 'priority');
     const resolvedPriority =
       !hasExplicitPriority && resolvedVisitType === 'emergency'
         ? 'emergency'

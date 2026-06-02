@@ -1,5 +1,7 @@
 import type { VisitBriefAiSummary } from '@/types/visit-brief';
-import { readJsonObject } from '@/lib/db/json';
+import { readJsonResponseBody } from '@/lib/api/response-body';
+import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 type VisitBriefAiInput = {
   patientName: string;
@@ -20,6 +22,8 @@ type OpenAiSummaryPayload = {
   must_check_today?: unknown;
 };
 
+const DEFAULT_VISIT_BRIEF_AI_TIMEOUT_MS = 3500;
+
 function toStringArray(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
   return value
@@ -30,14 +34,7 @@ function toStringArray(value: unknown, maxItems: number) {
 }
 
 function parseOpenAiSummaryPayload(raw: string): OpenAiSummaryPayload | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-
-  return readJsonObject(parsed);
+  return parseJsonObjectOrNull(raw);
 }
 
 function readOpenAiMessageContent(payload: unknown): string | null | undefined {
@@ -93,7 +90,9 @@ export async function generateVisitBriefAiSummary(
   const endpoint =
     process.env.VISIT_BRIEF_AI_BASE_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = process.env.VISIT_BRIEF_AI_MODEL ?? 'gpt-5-mini';
-  const timeoutMs = Number(process.env.VISIT_BRIEF_AI_TIMEOUT_MS ?? 3500);
+  const timeoutMs = normalizePositiveTimeoutMs(process.env.VISIT_BRIEF_AI_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_VISIT_BRIEF_AI_TIMEOUT_MS,
+  });
 
   try {
     const response = await fetch(endpoint, {
@@ -157,7 +156,7 @@ export async function generateVisitBriefAiSummary(
       return buildFallbackSummary(input);
     }
 
-    const raw = readOpenAiMessageContent((await response.json()) as unknown);
+    const raw = readOpenAiMessageContent(await readJsonResponseBody(response));
     if (raw === null) {
       console.warn('[visit-brief-ai] fallback', {
         provider,
@@ -277,17 +276,15 @@ export async function extractHandoffFromSoap(
   let decisionRationale: string | null = null;
 
   // Extract from structured plan
-  const plan = input.structuredPlan as Record<string, unknown> | null;
-  if (plan && typeof plan === 'object') {
-    if (Array.isArray(plan.followup_items)) {
-      nextCheckItems.push(
-        ...plan.followup_items.filter((i): i is string => typeof i === 'string').slice(0, 5),
-      );
+  const plan = readJsonObject(input.structuredPlan);
+  if (plan) {
+    const followupItems = toStringArray(plan.followup_items, 5);
+    if (followupItems.length > 0) {
+      nextCheckItems.push(...followupItems);
     }
-    if (Array.isArray(plan.monitoring_items)) {
-      ongoingMonitoring.push(
-        ...plan.monitoring_items.filter((i): i is string => typeof i === 'string').slice(0, 5),
-      );
+    const monitoringItems = toStringArray(plan.monitoring_items, 5);
+    if (monitoringItems.length > 0) {
+      ongoingMonitoring.push(...monitoringItems);
     }
     if (typeof plan.rationale === 'string' && plan.rationale.trim()) {
       decisionRationale = plan.rationale.trim();
@@ -295,22 +292,20 @@ export async function extractHandoffFromSoap(
   }
 
   // Extract from structured assessment
-  const assessment = input.structuredAssessment as Record<string, unknown> | null;
-  if (assessment && typeof assessment === 'object') {
-    if (Array.isArray(assessment.issues) && nextCheckItems.length === 0) {
-      nextCheckItems.push(
-        ...assessment.issues.filter((i): i is string => typeof i === 'string').slice(0, 3),
-      );
+  const assessment = readJsonObject(input.structuredAssessment);
+  if (assessment && nextCheckItems.length === 0) {
+    const issues = toStringArray(assessment.issues, 3);
+    if (issues.length > 0) {
+      nextCheckItems.push(...issues);
     }
   }
 
   // Carry over previous handoff items if no new ones found
-  const prev = input.previousHandoff as Record<string, unknown> | null;
-  if (prev && typeof prev === 'object') {
-    if (ongoingMonitoring.length === 0 && Array.isArray(prev.ongoing_monitoring)) {
-      ongoingMonitoring.push(
-        ...prev.ongoing_monitoring.filter((i): i is string => typeof i === 'string').slice(0, 5),
-      );
+  const prev = readJsonObject(input.previousHandoff);
+  if (prev && ongoingMonitoring.length === 0) {
+    const previousMonitoring = toStringArray(prev.ongoing_monitoring, 5);
+    if (previousMonitoring.length > 0) {
+      ongoingMonitoring.push(...previousMonitoring);
     }
   }
 

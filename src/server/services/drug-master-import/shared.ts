@@ -2,6 +2,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { unzipSync } from 'fflate';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 export type DrugMasterImportDbClient = Pick<
   PrismaClient,
@@ -30,7 +31,9 @@ export type FetchLike = typeof fetch;
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_IMPORT_FETCH_TIMEOUT_MS = 15_000;
 const DEFAULT_IMPORT_MAX_REDIRECTS = 3;
+const MAX_IMPORT_MAX_REDIRECTS = 10;
 const DEFAULT_IMPORT_TEXT_MAX_BYTES = 2 * BYTES_PER_MIB;
+const MAX_IMPORT_POLICY_MAX_BYTES = 512 * BYTES_PER_MIB;
 const EXTRA_ALLOWED_IMPORT_HOSTS_ENV = 'DRUG_MASTER_IMPORT_ALLOWED_HOSTS';
 
 export type HostnameResolver = (hostname: string) => Promise<string[]>;
@@ -266,6 +269,40 @@ function isRedirectStatus(status: number) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
+function normalizeImportMaxRedirects(value: number | undefined) {
+  if (value === undefined) return DEFAULT_IMPORT_MAX_REDIRECTS;
+  if (!Number.isFinite(value)) return DEFAULT_IMPORT_MAX_REDIRECTS;
+
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    return DEFAULT_IMPORT_MAX_REDIRECTS;
+  }
+
+  return Math.min(normalized, MAX_IMPORT_MAX_REDIRECTS);
+}
+
+function normalizeImportPolicyMaxBytes(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_IMPORT_TEXT_MAX_BYTES;
+
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
+    return DEFAULT_IMPORT_TEXT_MAX_BYTES;
+  }
+
+  return Math.min(normalized, MAX_IMPORT_POLICY_MAX_BYTES);
+}
+
+function normalizeImportRequestedMaxBytes(value: number | undefined, policyMaxBytes: number) {
+  if (value === undefined || !Number.isFinite(value)) return policyMaxBytes;
+
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
+    return policyMaxBytes;
+  }
+
+  return Math.min(normalized, policyMaxBytes);
+}
+
 function createImportTimeout(timeoutMs: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -306,8 +343,10 @@ async function fetchImportResponse(
   options: FetchImportOptions,
 ): Promise<FetchImportResponseResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const timeoutMs = options.policy.timeoutMs ?? DEFAULT_IMPORT_FETCH_TIMEOUT_MS;
-  const maxRedirects = options.policy.maxRedirects ?? DEFAULT_IMPORT_MAX_REDIRECTS;
+  const timeoutMs = normalizePositiveTimeoutMs(options.policy.timeoutMs, {
+    fallbackMs: DEFAULT_IMPORT_FETCH_TIMEOUT_MS,
+  });
+  const maxRedirects = normalizeImportMaxRedirects(options.policy.maxRedirects);
   const resolveHostname =
     options.resolveHostname ?? (fetchImpl === fetch ? resolveHostnameAddresses : null);
   let currentUrl = url;
@@ -412,6 +451,8 @@ async function readResponseBytes(response: Response, maxBytes: number, signal: A
 }
 
 export async function fetchBytes(url: string, options: FetchImportOptions) {
+  const policyMaxBytes = normalizeImportPolicyMaxBytes(options.policy.maxBytes);
+  const maxBytes = normalizeImportRequestedMaxBytes(options.maxBytes, policyMaxBytes);
   const result = await fetchImportResponse(url, {
     ...options,
     accept:
@@ -424,17 +465,18 @@ export async function fetchBytes(url: string, options: FetchImportOptions) {
       throw new Error(`外部ファイルの取得に失敗しました: ${result.response.status}`);
     }
 
-    return await readResponseBytes(
-      result.response,
-      options.maxBytes ?? options.policy.maxBytes,
-      result.signal,
-    );
+    return await readResponseBytes(result.response, maxBytes, result.signal);
   } finally {
     result.clearTimeout();
   }
 }
 
 export async function fetchText(url: string, options: FetchImportOptions) {
+  const textPolicyMaxBytes = Math.min(
+    normalizeImportPolicyMaxBytes(options.policy.maxBytes),
+    DEFAULT_IMPORT_TEXT_MAX_BYTES,
+  );
+  const maxBytes = normalizeImportRequestedMaxBytes(options.maxBytes, textPolicyMaxBytes);
   const result = await fetchImportResponse(url, {
     ...options,
     accept: options.accept ?? 'text/html,application/xhtml+xml',
@@ -445,11 +487,7 @@ export async function fetchText(url: string, options: FetchImportOptions) {
       throw new Error(`ページの取得に失敗しました: ${result.response.status}`);
     }
 
-    const buffer = await readResponseBytes(
-      result.response,
-      options.maxBytes ?? Math.min(options.policy.maxBytes, DEFAULT_IMPORT_TEXT_MAX_BYTES),
-      result.signal,
-    );
+    const buffer = await readResponseBytes(result.response, maxBytes, result.signal);
     return new TextDecoder('utf-8').decode(buffer);
   } finally {
     result.clearTimeout();

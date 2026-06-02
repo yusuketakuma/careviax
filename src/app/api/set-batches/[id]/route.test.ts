@@ -50,6 +50,14 @@ function createRequest(method: 'DELETE' | 'GET' | 'PATCH' = 'GET', body?: unknow
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/set-batches/batch_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"quantity":',
+  });
+}
+
 describe('/api/set-batches/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -159,6 +167,35 @@ describe('/api/set-batches/[id]', () => {
       orgId: 'org_1',
       payload: { source: 'set_batches_update', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
+  });
+
+  it('rejects non-object patch payloads before transaction side effects', async () => {
+    const response = (await PATCH(createRequest('PATCH', []), {
+      params: Promise.resolve({ id: 'batch_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setBatchFindFirstMock).not.toHaveBeenCalled();
+    expect(setBatchUpdateMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before transaction side effects', async () => {
+    const response = (await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'batch_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setBatchFindFirstMock).not.toHaveBeenCalled();
+    expect(setBatchUpdateMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist set-batch updates before side effects', async () => {

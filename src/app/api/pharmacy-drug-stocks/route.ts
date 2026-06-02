@@ -2,20 +2,112 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, notFound, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 const stockQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   drug_master_id: z.string().trim().optional(),
   q: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-  review_due: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  limit: optionalBoundedIntegerSearchParam('limit', 1, 200),
+  review_due: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
   missing_reorder_point: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
     .optional(),
 });
+
+const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_DATE_TIME_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?(Z|[+-]\d{2}:\d{2})$/;
+
+function buildValidUtcDate(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+  millisecond = 0,
+) {
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second ||
+    date.getUTCMilliseconds() !== millisecond
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function parseFollowUpDueDate(value: string) {
+  const dateKeyMatch = value.match(DATE_KEY_PATTERN);
+  if (dateKeyMatch) {
+    const [, year, month, day] = dateKeyMatch;
+    return buildValidUtcDate(Number(year), Number(month), Number(day));
+  }
+
+  const dateTimeMatch = value.match(ISO_DATE_TIME_PATTERN);
+  if (!dateTimeMatch) return null;
+
+  const [, year, month, day, hour, minute, second, millisecond = '000', offset] = dateTimeMatch;
+  const localDate = buildValidUtcDate(
+    Number(year),
+    Number(month),
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    Number(millisecond),
+  );
+  if (!localDate) return null;
+
+  if (offset !== 'Z') {
+    const offsetHour = Number(offset.slice(1, 3));
+    const offsetMinute = Number(offset.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+const followUpDueDateSchema = z
+  .unknown()
+  .optional()
+  .transform((value, ctx) => {
+    if (value === null || value === undefined) return value;
+    if (typeof value !== 'string') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'follow_up_due_date は YYYY-MM-DD または ISO日時で指定してください',
+      });
+      return z.NEVER;
+    }
+
+    const normalized = value.trim();
+    if (normalized.length === 0) return null;
+
+    const parsed = parseFollowUpDueDate(normalized);
+    if (!parsed) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'follow_up_due_date は YYYY-MM-DD または ISO日時で指定してください',
+      });
+      return z.NEVER;
+    }
+
+    return parsed;
+  });
 
 const upsertStockSchema = z.object({
   site_id: z.string().min(1, 'site_id は必須です'),
@@ -31,7 +123,7 @@ const upsertStockSchema = z.object({
     .nullable()
     .optional(),
   follow_up_reason: z.string().trim().max(500).nullable().optional(),
-  follow_up_due_date: z.coerce.date().nullable().optional(),
+  follow_up_due_date: followUpDueDateSchema,
 });
 
 const STOCK_REVIEW_INTERVAL_DAYS = 180;
@@ -177,15 +269,15 @@ export const GET = withAuthContext(
       data: stocked,
     });
   },
-  { permission: 'canAdmin' }
+  { permission: 'canAdmin' },
 );
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = upsertStockSchema.safeParse(body);
+    const parsed = upsertStockSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -377,5 +469,5 @@ export const POST = withAuthContext(
       data: stock,
     });
   },
-  { permission: 'canAdmin' }
+  { permission: 'canAdmin' },
 );

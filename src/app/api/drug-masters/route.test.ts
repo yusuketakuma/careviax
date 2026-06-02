@@ -192,7 +192,7 @@ describe('/api/drug-masters GET', () => {
 
   it('supports high-risk and LASA filters for medication-safety review', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/drug-masters?highRisk=true&lasa=true&limit=5'),
+      createRequest('http://localhost/api/drug-masters?highRisk=true&lasa=true&limit=%205%20'),
       { params: Promise.resolve({}) },
     );
 
@@ -204,6 +204,7 @@ describe('/api/drug-masters GET', () => {
           is_high_risk: true,
           is_lasa_risk: true,
         }),
+        take: 6,
         select: expect.objectContaining({
           is_high_risk: true,
           is_lasa_risk: true,
@@ -212,6 +213,25 @@ describe('/api/drug-masters GET', () => {
         }),
       }),
     );
+  });
+
+  it('rejects malformed limit values before site or drug lookup', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&limit=1e2'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(drugMasterCountMock).not.toHaveBeenCalled();
+    expect(pharmacyDrugStockFindManyMock).not.toHaveBeenCalled();
+    expect(genericDrugMappingFindManyMock).not.toHaveBeenCalled();
   });
 
   it.each(['abc', '-10', '25abc'])('uses a safe offset for malformed cursor %s', async (cursor) => {

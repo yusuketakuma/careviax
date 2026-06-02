@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -15,10 +16,17 @@ const importSourceSchema = z.enum([
 ]);
 const importStatusSchema = z.enum(['pending', 'running', 'completed', 'failed']);
 
+const importLogQuerySchema = z.object({
+  limit: boundedIntegerSearchParam('limit', 1, 50, 10),
+});
+
 export const GET = withAuthContext(async (req: NextRequest) => {
   const { searchParams } = new URL(req.url);
-  const rawLimit = Number(searchParams.get('limit') ?? '10');
-  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 10;
+  const parsedQuery = parseSearchParams(importLogQuerySchema, searchParams);
+  if (!parsedQuery.ok) {
+    return validationError('入力値が不正です', parsedQuery.error.flatten().fieldErrors);
+  }
+
   const sourceParam = searchParams.get('source');
   const statusParam = searchParams.get('status');
   const source = sourceParam ? importSourceSchema.safeParse(sourceParam) : null;
@@ -47,7 +55,7 @@ export const GET = withAuthContext(async (req: NextRequest) => {
   const logs = await prisma.drugMasterImportLog.findMany({
     where,
     orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
-    take: limit,
+    take: parsedQuery.data.limit,
     select: {
       id: true,
       source: true,

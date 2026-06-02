@@ -34,6 +34,41 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stocks/bulk', {
+    method: 'POST',
+    body: '{"site_id":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+type BulkPayload = {
+  importedCount: number;
+  unmatchedRows: Array<Record<string, unknown>>;
+  invalidRows: Array<Record<string, unknown>>;
+  preview: {
+    summary: Record<string, number>;
+    rows: Array<Record<string, unknown>>;
+  };
+};
+
+async function readBulkPayload(response: Response): Promise<BulkPayload> {
+  const payload: unknown = await response.json();
+  expect(payload).toMatchObject({
+    importedCount: expect.any(Number),
+    unmatchedRows: expect.any(Array),
+    invalidRows: expect.any(Array),
+    preview: {
+      summary: expect.any(Object),
+      rows: expect.any(Array),
+    },
+  });
+  return payload as BulkPayload;
+}
+
 describe('/api/pharmacy-drug-stocks/bulk', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -119,10 +154,47 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     );
   });
 
+  it('rejects non-object request bodies before lookup or import work', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before lookup or import work', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('rejects CSV input over 1000 rows instead of silently truncating it', async () => {
     const csvRows = [
       'YJコード,医薬品名,採用,発注点',
-      ...Array.from({ length: 1001 }, (_, index) => `123456789${String(index).padStart(3, '0')},薬${index},採用,10`),
+      ...Array.from(
+        { length: 1001 },
+        (_, index) => `123456789${String(index).padStart(3, '0')},薬${index},採用,10`,
+      ),
     ].join('\n');
 
     const response = await POST(
@@ -171,7 +243,14 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       createRequest({
         site_id: 'site_1',
         dry_run: true,
-        rows: [{ yj_code: '111111111111', drug_name: 'JSON薬', is_stocked: true }],
+        rows: [
+          {
+            yj_code: '111111111111',
+            drug_name: 'JSON薬',
+            is_stocked: true,
+            reorder_point: ' 7 ',
+          },
+        ],
         csv: 'YJコード,医薬品名,採用,発注点\n222222222222,CSV薬,採用,10',
       }),
       { params: Promise.resolve({}) },
@@ -186,11 +265,39 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
           processableRows: 2,
         },
         rows: [
-          { rowNumber: 1, status: 'create', yj_code: '111111111111' },
+          {
+            rowNumber: 1,
+            status: 'create',
+            yj_code: '111111111111',
+            after: { reorder_point: 7 },
+          },
           { rowNumber: 2, status: 'create', yj_code: '222222222222' },
         ],
       },
     });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON row reorder points before lookup or import work', async () => {
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        rows: [{ yj_code: '111111111111', reorder_point: '1e2' }],
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
@@ -200,7 +307,13 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       createRequest({
         site_id: 'site_1',
         dry_run: true,
-        csv: 'YJコード,医薬品名,採用,発注点\n123456789012,アムロジピン錠5mg,採用,abc',
+        csv: [
+          'YJコード,医薬品名,採用,発注点',
+          '123456789012,アムロジピン錠5mg,採用,abc',
+          '123456789013,アムロジピン錠10mg,採用,10abc',
+          '123456789014,アムロジピン錠2.5mg,採用,1e2',
+          '123456789015,アムロジピン錠1mg,採用,10.0',
+        ].join('\n'),
       }),
       { params: Promise.resolve({}) },
     );
@@ -214,16 +327,43 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
           rowNumber: 2,
           reason: '発注点は0以上の整数で入力してください',
         },
+        {
+          rowNumber: 3,
+          reason: '発注点は0以上の整数で入力してください',
+        },
+        {
+          rowNumber: 4,
+          reason: '発注点は0以上の整数で入力してください',
+        },
+        {
+          rowNumber: 5,
+          reason: '発注点は0以上の整数で入力してください',
+        },
       ],
       preview: {
         summary: {
-          totalRows: 1,
+          totalRows: 4,
           processableRows: 0,
-          invalidCount: 1,
+          invalidCount: 4,
         },
         rows: [
           {
             rowNumber: 2,
+            status: 'invalid',
+            reason: '発注点は0以上の整数で入力してください',
+          },
+          {
+            rowNumber: 3,
+            status: 'invalid',
+            reason: '発注点は0以上の整数で入力してください',
+          },
+          {
+            rowNumber: 4,
+            status: 'invalid',
+            reason: '発注点は0以上の整数で入力してください',
+          },
+          {
+            rowNumber: 5,
             status: 'invalid',
             reason: '発注点は0以上の整数で入力してください',
           },
@@ -347,7 +487,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    const json = await response.json();
+    const json = await readBulkPayload(response);
     expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
@@ -450,7 +590,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    const json = await response.json();
+    const json = await readBulkPayload(response);
     expect(json).toMatchObject({
       importedCount: 0,
       invalidRows: [
@@ -487,8 +627,18 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
                 row_number: 2,
                 status: 'invalid',
                 candidates: [
-                  { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬', generic_name: '成分A' },
-                  { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬', generic_name: '成分B' },
+                  {
+                    id: 'drug_1',
+                    yj_code: '111111111111',
+                    drug_name: '同名薬',
+                    generic_name: '成分A',
+                  },
+                  {
+                    id: 'drug_2',
+                    yj_code: '222222222222',
+                    drug_name: '同名薬',
+                    generic_name: '成分B',
+                  },
                 ],
               }),
             ],

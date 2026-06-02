@@ -19,7 +19,10 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-  withAuthContext: (handler: (req: NextRequest, ctx: unknown, routeCtx: unknown) => Promise<Response>, options?: unknown) => {
+  withAuthContext: (
+    handler: (req: NextRequest, ctx: unknown, routeCtx: unknown) => Promise<Response>,
+    options?: unknown,
+  ) => {
     return async (req: NextRequest, routeCtx: unknown) => {
       const authResult = await requireAuthContextMock(req, options);
       if ('response' in authResult) return authResult.response;
@@ -49,7 +52,9 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET, type DrugPackageInsertResponse } from './route';
+
+type DrugPackageInsert = NonNullable<DrugPackageInsertResponse['package_insert']>;
 
 function createRequest() {
   return new NextRequest('http://localhost/api/drug-masters/drug_1/package-insert');
@@ -59,6 +64,32 @@ async function invokeGet(id = 'drug_1') {
   return (await GET(createRequest(), {
     params: Promise.resolve({ id }),
   })) as Response;
+}
+
+async function readPackageInsertPayload(response: Response): Promise<DrugPackageInsertResponse> {
+  const payload: unknown = await response.json();
+
+  expect(payload).toMatchObject({
+    drug: expect.objectContaining({
+      id: expect.any(String),
+      yj_code: expect.any(String),
+      drug_name: expect.any(String),
+    }),
+    version_history: expect.any(Array),
+    interactions: expect.any(Array),
+    applicable_alert_rules: expect.any(Array),
+  });
+
+  return payload as DrugPackageInsertResponse;
+}
+
+function requirePackageInsert(body: DrugPackageInsertResponse): DrugPackageInsert {
+  if (!body.package_insert) throw new Error('package_insert is required');
+  return body.package_insert;
+}
+
+function alertRuleIds(body: DrugPackageInsertResponse) {
+  return body.applicable_alert_rules.map((rule) => rule.id);
 }
 
 const mockDrug = {
@@ -125,10 +156,14 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   });
 
   it('returns 200 with drug and package insert data on success', async () => {
-    const response = await invokeGet();
+    const response = await invokeGet('  drug_1  ');
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
+    expect(drugMasterFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'drug_1' },
+      select: expect.any(Object),
+    });
 
     expect(body.drug).toMatchObject({
       id: 'drug_1',
@@ -143,13 +178,26 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     });
   });
 
+  it('rejects blank drug master ids before package insert and interaction reads', async () => {
+    const response = await invokeGet('   ');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品IDが不正です',
+    });
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
+    expect(drugPackageInsertFindManyMock).not.toHaveBeenCalled();
+    expect(drugInteractionFindManyMock).not.toHaveBeenCalled();
+    expect(drugAlertRuleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns null package_insert when no package insert exists', async () => {
     drugPackageInsertFindManyMock.mockResolvedValue([]);
 
     const response = await invokeGet();
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
     expect(body.package_insert).toBeNull();
     expect(body.drug.id).toBe('drug_1');
   });
@@ -157,8 +205,8 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   it('returns structured sections from package insert', async () => {
     const response = await invokeGet();
 
-    const body = await response.json();
-    const sections = body.package_insert.sections;
+    const body = await readPackageInsertPayload(response);
+    const sections = requirePackageInsert(body).sections;
 
     expect(sections.contraindications).toEqual([
       { text: '重篤な腎障害', severity: 'high', detail: undefined },
@@ -166,14 +214,53 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     expect(sections.interactions).toEqual([
       { text: 'ワルファリンとの併用注意', severity: undefined, detail: undefined },
     ]);
-    expect(sections.adverse_effects).toEqual([
-      { text: '発疹' },
-      { text: '発熱' },
-    ]);
+    expect(sections.adverse_effects).toEqual([{ text: '発疹' }, { text: '発熱' }]);
     expect(sections.precautions_elderly).toEqual([
       { text: '高齢者には減量すること', severity: undefined, detail: '標準用量の半量から開始' },
     ]);
     expect(sections.dosage_adjustment_renal).toEqual([]);
+  });
+
+  it('formats object-root and mixed package insert sections without unsafe casts', async () => {
+    drugPackageInsertFindManyMock.mockResolvedValue([
+      {
+        ...mockPackageInsert,
+        contraindications: {
+          renal: ' 重篤な腎障害 ',
+          notes: ['脱水に注意', 42, { text: '転倒注意' }],
+          empty: '',
+          malformed: null,
+        },
+        interactions: [
+          { description: '併用注意', recommendation: 'INRを確認' },
+          ['unexpected'],
+          null,
+          42,
+          { unsupported_marker: true },
+        ],
+        adverse_effects: [
+          ' 発疹 ',
+          '',
+          null,
+          42,
+          { summary: '発熱' },
+          { unsupported_marker: true },
+        ],
+      },
+    ]);
+
+    const response = await invokeGet();
+
+    const body = await readPackageInsertPayload(response);
+    const sections = requirePackageInsert(body).sections;
+    expect(sections.contraindications).toEqual([
+      { text: 'renal: 重篤な腎障害' },
+      { text: 'notes: 脱水に注意 / 転倒注意' },
+    ]);
+    expect(sections.interactions).toEqual([
+      { text: '併用注意', severity: undefined, detail: 'INRを確認' },
+    ]);
+    expect(sections.adverse_effects).toEqual([{ text: '発疹' }, { text: '発熱' }]);
   });
 
   it('returns version_history with all package insert versions', async () => {
@@ -187,7 +274,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     const response = await invokeGet();
 
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
     expect(body.version_history).toHaveLength(2);
     expect(body.version_history[0].id).toBe('pi_1');
     expect(body.version_history[1].id).toBe('pi_old');
@@ -219,7 +306,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     const response = await invokeGet();
 
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
     expect(body.interactions).toHaveLength(2);
     expect(body.interactions[0]).toMatchObject({
       id: 'ix_1',
@@ -262,9 +349,43 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     const response = await invokeGet();
 
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
     expect(body.applicable_alert_rules).toHaveLength(2);
-    expect(body.applicable_alert_rules.map((r: { id: string }) => r.id)).toEqual(['rule_1', 'rule_2']);
+    expect(alertRuleIds(body)).toEqual(['rule_1', 'rule_2']);
+  });
+
+  it('ignores malformed alert rule conditions without matching string-like fields', async () => {
+    drugAlertRuleFindManyMock.mockResolvedValue([
+      {
+        id: 'rule_array_condition',
+        alert_type: 'other',
+        severity: 'low',
+        message: '配列ルートは無視',
+        is_active: true,
+        condition: ['unexpected'],
+      },
+      {
+        id: 'rule_string_codes',
+        alert_type: 'other',
+        severity: 'low',
+        message: '文字列コードは配列扱いしない',
+        is_active: true,
+        condition: { yj_codes: '1234567890123', therapeutic_categories: 'C03' },
+      },
+      {
+        id: 'rule_mixed_codes',
+        alert_type: 'elderly_pim',
+        severity: 'high',
+        message: '有効なコードだけで判定',
+        is_active: true,
+        condition: { yj_codes: ['1234567890123', 123], therapeutic_categories: [false] },
+      },
+    ]);
+
+    const response = await invokeGet();
+
+    const body = await readPackageInsertPayload(response);
+    expect(alertRuleIds(body)).toEqual(['rule_mixed_codes']);
   });
 
   it('returns empty applicable_alert_rules when no rules match', async () => {
@@ -281,7 +402,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     const response = await invokeGet();
 
-    const body = await response.json();
+    const body = await readPackageInsertPayload(response);
     expect(body.applicable_alert_rules).toHaveLength(0);
   });
 });

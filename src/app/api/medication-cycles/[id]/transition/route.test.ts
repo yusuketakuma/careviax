@@ -49,6 +49,13 @@ describe('/api/medication-cycles/[id]/transition', () => {
       headers: { 'content-type': 'application/json' },
     });
 
+  const createMalformedJsonPatchRequest = () =>
+    new NextRequest('http://localhost/api/medication-cycles/cycle_1/transition', {
+      method: 'PATCH',
+      body: '{"to":',
+      headers: { 'content-type': 'application/json' },
+    });
+
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
@@ -96,6 +103,66 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
     expect(response.status).toBe(409);
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank cycle ids before parsing or loading the cycle', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '服薬サイクルIDが不正です',
+    });
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object transition payloads before loading the cycle', async () => {
+    const response = (await PATCH(createPatchRequest(['dispensing']), {
+      params: Promise.resolve({ id: 'cycle_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON transition payloads before loading the cycle', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'cycle_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('transitions the cycle and creates a notification best-effort', async () => {

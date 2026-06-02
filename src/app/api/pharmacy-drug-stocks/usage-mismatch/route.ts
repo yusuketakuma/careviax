@@ -3,16 +3,16 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 
 const usageMismatchQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
-  days: z.coerce.number().int().min(1).max(365).default(90),
-  draft_limit: z.coerce.number().int().min(1).max(1000).default(500),
-  frequent_threshold: z.coerce.number().int().min(1).max(100).default(2),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  days: boundedIntegerSearchParam('days', 1, 365, 90),
+  draft_limit: boundedIntegerSearchParam('draft_limit', 1, 1000, 500),
+  frequent_threshold: boundedIntegerSearchParam('frequent_threshold', 1, 100, 2),
+  limit: boundedIntegerSearchParam('limit', 1, 100, 25),
 });
 
 type ParsedMedication = {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
@@ -75,10 +76,10 @@ export const GET = withAuthContext<Record<string, string>>(
 
 export const POST = withAuthContext<Record<string, string>>(
   async (req: NextRequest, ctx: AuthContext): Promise<NextResponse> => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createSetBatchSchema.safeParse(body);
+    const parsed = createSetBatchSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

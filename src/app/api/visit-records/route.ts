@@ -2,6 +2,7 @@ import { addDays, differenceInCalendarDays } from 'date-fns';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import {
@@ -9,7 +10,7 @@ import {
   type CreateVisitRecordInput,
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
-import { normalizeJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
@@ -87,13 +88,10 @@ type VisitRecordHandoffExtractionPayload = {
 };
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -900,7 +898,9 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     await replaceResidualMedications(tx, req.orgId, record.id, residual_medications);
 
     // Sync structured lab values to PatientLabObservation
-    const labValues = (structured_soap as StructuredSoap | undefined)?.objective?.lab_values;
+    const structuredSoapObject = readJsonObject(structured_soap);
+    const objective = readJsonObject(structuredSoapObject?.objective);
+    const labValues = readJsonObject(objective?.lab_values);
     if (labValues) {
       await syncLabObservations(
         tx,
@@ -908,7 +908,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         careCase.patient_id,
         record.id,
         visitRecordedAt,
-        labValues as Record<string, unknown>,
+        labValues,
       );
     }
 
@@ -1268,10 +1268,10 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createVisitRecordSchema.safeParse(body);
+    const parsed = createVisitRecordSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

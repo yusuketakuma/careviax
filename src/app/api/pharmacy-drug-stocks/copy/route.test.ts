@@ -33,6 +33,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stocks/copy', {
+    method: 'POST',
+    body: '{"source_site_id":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/pharmacy-drug-stocks/copy', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -255,6 +266,38 @@ describe('/api/pharmacy-drug-stocks/copy', () => {
     expect(response.status).toBe(400);
     expect(prismaMock.pharmacySite.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before querying sites', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.pharmacySite.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before querying sites', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.pharmacySite.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects cross-org or missing sites before querying stock rows', async () => {

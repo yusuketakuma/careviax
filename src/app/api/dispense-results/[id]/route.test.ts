@@ -63,6 +63,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonPatchRequest(id = 'result_1') {
+  return new NextRequest(`http://localhost/api/dispense-results/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"actual_drug_name":',
+  });
+}
+
 const expectedResultAssignmentWhere = {
   task: {
     cycle: {
@@ -142,6 +153,18 @@ describe('/api/dispense-results/[id]', () => {
     });
   });
 
+  it('rejects blank route params before result lookup', async () => {
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/%20%20'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤実績IDが不正です',
+    });
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('denies unassigned result reads through the cycle assignment scope', async () => {
     dispenseResultFindFirstMock.mockResolvedValue(null);
 
@@ -191,6 +214,57 @@ describe('/api/dispense-results/[id]', () => {
       eventType: 'cycle_transition',
       payload: { source: 'dispense_results_rework', result_id: 'result_1' },
     });
+  });
+
+  it('rejects blank patch route params before body parsing or rework side effects', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(''), {
+      params: Promise.resolve({ id: '\t\n' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤実績IDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before result lookup or rework side effects', async () => {
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', []),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before result lookup or rework side effects', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned result patches before audit checks or writes', async () => {

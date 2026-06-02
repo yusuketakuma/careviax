@@ -59,6 +59,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/medication-profiles', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"patient_id":',
+  });
+}
+
 describe('/api/medication-profiles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,9 +88,7 @@ describe('/api/medication-profiles', () => {
   });
 
   it('lists medication profiles', async () => {
-    const response = (await GET(
-      createGetRequest('?patient_id=patient_1&is_current=true'),
-    ))!;
+    const response = (await GET(createGetRequest('?patient_id=patient_1&is_current=true')))!;
 
     expect(response.status).toBe(200);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
@@ -163,6 +169,34 @@ describe('/api/medication-profiles', () => {
         start_date: new Date('2026-03-29'),
       }),
     });
+  });
+
+  it('rejects non-object create payloads before checking patient access', async () => {
+    const response = (await POST(createPostRequest(['patient_1'])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before checking patient access', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 before creating a medication profile for an inaccessible patient', async () => {

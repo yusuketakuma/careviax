@@ -1,22 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  withAuthMock,
-  medicationCycleFindFirstMock,
-  checkDispenseAlertsMock,
-} = vi.hoisted(() => ({
-  withAuthMock: vi.fn((
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-  ) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-        orgId: 'org_1',
-        userId: 'user_1',
-        }),
-      );
-  }),
+const { withAuthMock, medicationCycleFindFirstMock, checkDispenseAlertsMock } = vi.hoisted(() => ({
+  withAuthMock: vi.fn(
+    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
+      return (req: NextRequest) =>
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+          }),
+        );
+    },
+  ),
   medicationCycleFindFirstMock: vi.fn(),
   checkDispenseAlertsMock: vi.fn(),
 }));
@@ -46,6 +42,16 @@ function createRequest(body: unknown) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/cds/check', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
   });
 }
 
@@ -86,5 +92,23 @@ describe('/api/cds/check POST', () => {
         }),
       ],
     });
+  });
+
+  it('rejects non-object CDS payloads before loading the cycle', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the cycle', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 });

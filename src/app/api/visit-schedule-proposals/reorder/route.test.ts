@@ -52,6 +52,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/reorder', {
+    method: 'PATCH',
+    body: '{"ordered_proposal_ids":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/visit-schedule-proposals/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,6 +133,32 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
         }),
       }),
     );
+  });
+
+  it('rejects non-object reorder payloads before transaction side effects', async () => {
+    const response = (await PATCH(createRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON reorder payloads before transaction side effects', async () => {
+    const response = (await PATCH(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned reorder requests before update, audit, or notify side effects', async () => {

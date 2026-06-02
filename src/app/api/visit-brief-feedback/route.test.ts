@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  withOrgContextMock,
-  auditLogCreateMock,
-} = vi.hoisted(() => ({
+const { requireAuthContextMock, withOrgContextMock, auditLogCreateMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -28,6 +24,16 @@ function createRequest(body: unknown) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-brief-feedback', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
   });
 }
 
@@ -83,5 +89,21 @@ describe('/api/visit-brief-feedback POST', () => {
         target_id: 'gen_1',
       }),
     });
+  });
+
+  it('rejects non-object feedback payloads before audit logging', async () => {
+    const response = (await POST(createRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before audit logging', async () => {
+    const response = (await POST(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

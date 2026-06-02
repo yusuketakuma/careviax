@@ -12,6 +12,7 @@ const {
   evaluateVisitWorkflowGateMock,
   visitScheduleCreateMock,
   withOrgContextMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   evaluateVisitWorkflowGateMock: vi.fn(),
   visitScheduleCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -59,6 +61,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
@@ -70,6 +76,17 @@ function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/visit-schedules', {
+    method: 'POST',
+    body: '{"case_id":',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -138,7 +155,7 @@ describe('/api/visit-schedules', () => {
 
   it('lists visit schedules with workload and facility hints', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/visit-schedules?patient_id=patient_1'),
+      createRequest('http://localhost/api/visit-schedules?patient_id=patient_1&limit=%201%20'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -169,7 +186,42 @@ describe('/api/visit-schedules', () => {
         }),
       ],
     });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
     expect(payload).toMatchSnapshot();
+  });
+
+  it('rejects malformed limit values before listing schedules', async () => {
+    const response = (await GET(createRequest('http://localhost/api/visit-schedules?limit=10.0')))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        limit: ['limit は整数で指定してください'],
+      },
+    });
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid calendar date filters before listing schedules', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedules?date_from=2026-02-30'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        date_from: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
   it('supports the active schedule scope filter', async () => {
@@ -379,6 +431,67 @@ describe('/api/visit-schedules', () => {
     expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid calendar scheduled dates before service-side schedule creation', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-02-30',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        scheduled_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before schedule service work', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', ['case_1']),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before schedule service work', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported visit schedule notes instead of dropping them silently', async () => {

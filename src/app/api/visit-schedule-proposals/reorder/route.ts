@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -21,10 +22,10 @@ const reorderVisitScheduleProposalSchema = z.union([
 
 export const PATCH = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = reorderVisitScheduleProposalSchema.safeParse(body);
+    const parsed = reorderVisitScheduleProposalSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

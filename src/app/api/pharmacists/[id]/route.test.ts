@@ -65,6 +65,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/pharmacists/user_1', {
+    method: 'PATCH',
+    body: '{',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
 describe('/api/pharmacists/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -108,8 +119,97 @@ describe('/api/pharmacists/[id] PATCH', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
+  });
+
+  it('rejects non-object update payloads before loading the pharmacist', async () => {
+    const response = await PATCH(createRequest([], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'user_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the pharmacist', async () => {
+    const response = await PATCH(createMalformedJsonRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'user_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed phone numbers before loading the pharmacist', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'update',
+          name: '不正 電話',
+          name_kana: 'フセイ デンワ',
+          phone: '090-ABCD-1234',
+          role: 'admin',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank route ids before loading the pharmacist', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'suspend',
+          reason: '長期休職',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬剤師IDが不正です',
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+    expect(disableCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
   });
 
   it('updates pharmacist profile and membership', async () => {
@@ -119,15 +219,15 @@ describe('/api/pharmacists/[id] PATCH', () => {
           action: 'update',
           name: '更新 薬剤師',
           name_kana: 'コウシン ヤクザイシ',
-        phone: '090-1111-2222',
-        site_id: 'site_2',
-        role: 'admin',
-        visit_specialties: ['terminal_care'],
-        coverage_area: ['新宿区'],
-      },
-        { 'x-org-id': 'org_1' }
+          phone: ' 090-1111-2222 ',
+          site_id: 'site_2',
+          role: 'admin',
+          visit_specialties: ['terminal_care'],
+          coverage_area: ['新宿区'],
+        },
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'user_1' }) }
+      { params: Promise.resolve({ id: 'user_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -174,9 +274,9 @@ describe('/api/pharmacists/[id] PATCH', () => {
           can_audit_dispense: false,
           can_audit_set: true,
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'user_1' }) }
+      { params: Promise.resolve({ id: 'user_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -200,9 +300,9 @@ describe('/api/pharmacists/[id] PATCH', () => {
           action: 'suspend',
           reason: '長期休職',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'user_1' }) }
+      { params: Promise.resolve({ id: 'user_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -237,9 +337,9 @@ describe('/api/pharmacists/[id] PATCH', () => {
           phone: '090-2222-3333',
           role: 'external_viewer',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'user_1' }) }
+      { params: Promise.resolve({ id: 'user_1' }) },
     );
 
     if (!response) throw new Error('response is required');

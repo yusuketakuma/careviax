@@ -11,6 +11,7 @@ import {
   buildSetAuditAssignmentWhere,
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 
@@ -91,10 +92,10 @@ function buildSetCarryItems(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createSetAuditSchema.safeParse(body);
+    const parsed = createSetAuditSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -33,6 +33,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stocks/safety-follow-up', {
+    method: 'POST',
+    body: '{"site_id":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/pharmacy-drug-stocks/safety-follow-up', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -141,6 +152,38 @@ describe('/api/pharmacy-drug-stocks/safety-follow-up', () => {
       }),
     );
     expect(prismaMock.pharmacyDrugStock.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before looking up the site', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before looking up the site', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 

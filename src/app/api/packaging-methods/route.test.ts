@@ -54,6 +54,14 @@ function createRequest(init?: NextRequestInit) {
   return new NextRequest('http://localhost/api/packaging-methods', init);
 }
 
+function createMalformedJsonPostRequest() {
+  return createRequest({
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  });
+}
+
 describe('/api/packaging-methods', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -124,5 +132,32 @@ describe('/api/packaging-methods', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'method_2', name: 'カレンダー' },
     });
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    const response = (await POST(
+      createRequest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([]),
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(packagingMethodCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before opening an org transaction', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(packagingMethodCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

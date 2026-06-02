@@ -1,8 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import {
+  formularyTemplateItemSchema,
+  type FormularyTemplateItem,
+} from '@/lib/validations/pharmacy-drug-stock';
 
 const applyTemplateSchema = z.object({
   target_site_id: z.string().trim().min(1, 'target_site_id は必須です'),
@@ -10,35 +16,90 @@ const applyTemplateSchema = z.object({
   dry_run: z.boolean().default(false),
 });
 
-type TemplateItem = {
-  drug_master_id?: unknown;
-  reorder_point?: unknown;
-  preferred_generic_id?: unknown;
-  adoption_note?: unknown;
-};
-
 function readTemplateItems(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    const row = item as TemplateItem;
-    if (typeof row.drug_master_id !== 'string' || !row.drug_master_id) return [];
-    return [{
-      drug_master_id: row.drug_master_id,
-      reorder_point: typeof row.reorder_point === 'number' ? row.reorder_point : null,
-      preferred_generic_id:
-        typeof row.preferred_generic_id === 'string' ? row.preferred_generic_id : null,
-      adoption_note: typeof row.adoption_note === 'string' ? row.adoption_note : null,
-    }];
-  });
+  if (!Array.isArray(value)) {
+    return { items: [] as FormularyTemplateItem[], sourceItemCount: 0, invalidItemCount: 1 };
+  }
+
+  const items: FormularyTemplateItem[] = [];
+  let invalidItemCount = 0;
+
+  for (const item of value) {
+    const parsed = formularyTemplateItemSchema.safeParse(readJsonObject(item));
+    if (!parsed.success) {
+      invalidItemCount += 1;
+      continue;
+    }
+
+    items.push(parsed.data);
+  }
+
+  return { items, sourceItemCount: value.length, invalidItemCount };
+}
+
+function validateTemplateItemReferences(
+  items: FormularyTemplateItem[],
+  drugMasterById: Map<
+    string,
+    {
+      id: string;
+      yj_code: string;
+      drug_name: string;
+      is_generic?: boolean;
+      generic_name?: string | null;
+    }
+  >,
+) {
+  const validItems: FormularyTemplateItem[] = [];
+  const missingDrugMasterIds = new Set<string>();
+  const invalidPreferredGenericIds = new Set<string>();
+  let invalidReferenceItemCount = 0;
+
+  for (const item of items) {
+    const drug = drugMasterById.get(item.drug_master_id);
+    if (!drug) {
+      missingDrugMasterIds.add(item.drug_master_id);
+      invalidReferenceItemCount += 1;
+      continue;
+    }
+
+    if (item.preferred_generic_id) {
+      const preferredGeneric = drugMasterById.get(item.preferred_generic_id);
+      if (
+        !preferredGeneric ||
+        preferredGeneric.is_generic !== true ||
+        (drug.generic_name &&
+          preferredGeneric.generic_name &&
+          drug.generic_name !== preferredGeneric.generic_name)
+      ) {
+        invalidPreferredGenericIds.add(item.preferred_generic_id);
+        invalidReferenceItemCount += 1;
+        continue;
+      }
+    }
+
+    validItems.push(item);
+  }
+
+  return {
+    validItems,
+    invalidReferenceItemCount,
+    missingDrugMasterIds: [...missingDrugMasterIds],
+    invalidPreferredGenericIds: [...invalidPreferredGenericIds],
+  };
 }
 
 function buildPreview({
   items,
+  sourceItemCount,
+  invalidItemCount,
   existingDrugIds,
   drugMasterById,
   overwrite,
 }: {
-  items: ReturnType<typeof readTemplateItems>;
+  items: FormularyTemplateItem[];
+  sourceItemCount: number;
+  invalidItemCount: number;
   existingDrugIds: Set<string>;
   drugMasterById: Map<string, { id: string; yj_code: string; drug_name: string }>;
   overwrite: boolean;
@@ -60,6 +121,8 @@ function buildPreview({
   });
   const summary = {
     item_count: items.length,
+    source_item_count: sourceItemCount,
+    invalid_item_count: invalidItemCount,
     create_count: rows.filter((row) => row.action === 'create').length,
     update_count: rows.filter((row) => row.action === 'update').length,
     skip_existing_count: rows.filter((row) => row.action === 'skip_existing').length,
@@ -71,10 +134,10 @@ function buildPreview({
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx, ctx: AuthRouteContext<{ id: string }>) => {
     const { id } = await ctx.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = applyTemplateSchema.safeParse(body);
+    const parsed = applyTemplateSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -91,32 +154,72 @@ export const POST = withAuthContext(
     if (!template) return notFound('採用品テンプレートが見つかりません');
     if (!targetSite) return notFound('対象の薬局拠点が見つかりません');
 
-    const items = readTemplateItems(template.items);
+    const { items, sourceItemCount, invalidItemCount } = readTemplateItems(template.items);
+    if (invalidItemCount > 0 && !parsed.data.dry_run) {
+      return conflict('採用品テンプレートに破損した項目が含まれているため適用できません', {
+        template_id: template.id,
+        invalid_item_count: invalidItemCount,
+      });
+    }
+
     const itemDrugIds = items.map((item) => item.drug_master_id);
-    const [existing, drugMasters] = await Promise.all([
-      prisma.pharmacyDrugStock.findMany({
-        where: {
-          org_id: authCtx.orgId,
-          site_id: targetSite.id,
-          drug_master_id: { in: itemDrugIds },
-        },
-        select: { drug_master_id: true },
-      }),
-      itemDrugIds.length
-        ? prisma.drugMaster.findMany({
-            where: { id: { in: itemDrugIds } },
-            select: { id: true, yj_code: true, drug_name: true },
-          })
-        : Promise.resolve([]),
-    ]);
+    const preferredGenericIds = items
+      .map((item) => item.preferred_generic_id)
+      .filter((id): id is string => id !== null);
+    const referenceDrugIds = [...new Set([...itemDrugIds, ...preferredGenericIds])];
+    const drugMasters = referenceDrugIds.length
+      ? await prisma.drugMaster.findMany({
+          where: { id: { in: referenceDrugIds } },
+          select: {
+            id: true,
+            yj_code: true,
+            drug_name: true,
+            is_generic: true,
+            generic_name: true,
+          },
+        })
+      : [];
+    const drugMasterById = new Map(drugMasters.map((drug) => [drug.id, drug]));
+    const {
+      validItems,
+      invalidReferenceItemCount,
+      missingDrugMasterIds,
+      invalidPreferredGenericIds,
+    } = validateTemplateItemReferences(items, drugMasterById);
+    const totalInvalidItemCount = invalidItemCount + invalidReferenceItemCount;
+
+    if (totalInvalidItemCount > 0 && !parsed.data.dry_run) {
+      return conflict('採用品テンプレートに破損した項目が含まれているため適用できません', {
+        template_id: template.id,
+        invalid_item_count: totalInvalidItemCount,
+        ...(missingDrugMasterIds.length ? { missing_drug_master_ids: missingDrugMasterIds } : {}),
+        ...(invalidPreferredGenericIds.length
+          ? { invalid_preferred_generic_ids: invalidPreferredGenericIds }
+          : {}),
+      });
+    }
+
+    const validItemDrugIds = validItems.map((item) => item.drug_master_id);
+    const existing = validItemDrugIds.length
+      ? await prisma.pharmacyDrugStock.findMany({
+          where: {
+            org_id: authCtx.orgId,
+            site_id: targetSite.id,
+            drug_master_id: { in: validItemDrugIds },
+          },
+          select: { drug_master_id: true },
+        })
+      : [];
     const existingDrugIds = new Set(existing.map((stock) => stock.drug_master_id));
     const preview = buildPreview({
-      items,
+      items: validItems,
+      sourceItemCount,
+      invalidItemCount: totalInvalidItemCount,
       existingDrugIds,
-      drugMasterById: new Map(drugMasters.map((drug) => [drug.id, drug])),
+      drugMasterById,
       overwrite: parsed.data.overwrite,
     });
-    const operations = items.filter(
+    const operations = validItems.filter(
       (item) => parsed.data.overwrite || !existingDrugIds.has(item.drug_master_id),
     );
 
@@ -124,9 +227,13 @@ export const POST = withAuthContext(
       return success({
         template: { id: template.id, name: template.name },
         targetSite,
-        itemCount: items.length,
+        itemCount: validItems.length,
+        sourceItemCount,
+        invalidItemCount: totalInvalidItemCount,
+        ...(missingDrugMasterIds.length ? { missingDrugMasterIds } : {}),
+        ...(invalidPreferredGenericIds.length ? { invalidPreferredGenericIds } : {}),
         appliedCount: 0,
-        skippedCount: items.length - preview.summary.apply_count,
+        skippedCount: validItems.length - preview.summary.apply_count,
         overwrite: parsed.data.overwrite,
         dryRun: true,
         preview,
@@ -176,9 +283,11 @@ export const POST = withAuthContext(
             template_id: template.id,
             template_name: template.name,
             target_site_id: targetSite.id,
-            item_count: items.length,
+            item_count: validItems.length,
+            source_item_count: sourceItemCount,
+            invalid_item_count: totalInvalidItemCount,
             applied_count: count,
-            skipped_count: items.length - count,
+            skipped_count: validItems.length - count,
             overwrite: parsed.data.overwrite,
             drug_master_ids: operations.map((item) => item.drug_master_id),
             preview_summary: preview.summary,
@@ -194,9 +303,11 @@ export const POST = withAuthContext(
     return success({
       template: { id: template.id, name: template.name },
       targetSite,
-      itemCount: items.length,
+      itemCount: validItems.length,
+      sourceItemCount,
+      invalidItemCount: totalInvalidItemCount,
       appliedCount,
-      skippedCount: items.length - appliedCount,
+      skippedCount: validItems.length - appliedCount,
       overwrite: parsed.data.overwrite,
       dryRun: false,
       preview,

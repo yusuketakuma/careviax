@@ -129,6 +129,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/visit-records', {
+    method: 'POST',
+    body: '{"schedule_id":',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
 const completedVisitStructuredSoap = {
   legacy_debug: undefined,
   subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
@@ -633,6 +644,40 @@ describe('/api/visit-records POST', () => {
       message: '訪問予定に紐づく患者と記録対象患者が一致しません',
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before loading the visit schedule', async () => {
+    const response = await POST(createRequest(['schedule_1'], { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before loading the visit schedule', async () => {
+    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
   it.each(['pharmacist', 'pharmacist_trainee'] as const)(

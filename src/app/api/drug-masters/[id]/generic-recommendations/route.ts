@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 
 const routeParamsSchema = z.object({
@@ -11,7 +11,7 @@ const routeParamsSchema = z.object({
 
 const recommendationQuerySchema = z.object({
   site_id: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(20).default(8),
+  limit: boundedIntegerSearchParam('limit', 1, 20, 8),
 });
 
 function toNumber(value: unknown): number | null {
@@ -21,11 +21,7 @@ function toNumber(value: unknown): number | null {
 }
 
 export const GET = withAuthContext(
-  async (
-    req: NextRequest,
-    authCtx,
-    routeContext: AuthRouteContext<{ id: string }>,
-  ) => {
+  async (req: NextRequest, authCtx, routeContext: AuthRouteContext<{ id: string }>) => {
     const params = routeParamsSchema.safeParse(await routeContext.params);
     if (!params.success) {
       return validationError('パスパラメータが不正です', params.error.flatten().fieldErrors);

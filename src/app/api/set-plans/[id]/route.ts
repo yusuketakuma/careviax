@@ -4,6 +4,7 @@ import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
@@ -191,10 +192,10 @@ export const GET = withAuthContext<{ id: string }>(
 export const PATCH = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = updateSetPlanSchema.safeParse(body);
+    const parsed = updateSetPlanSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

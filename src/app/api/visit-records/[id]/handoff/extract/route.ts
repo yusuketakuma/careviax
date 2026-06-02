@@ -1,14 +1,12 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, error } from '@/lib/api/response';
+import { success, notFound, error, validationError } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { processHandoffExtraction } from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
@@ -16,7 +14,9 @@ export async function POST(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
 
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },

@@ -3,12 +3,29 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+
+const MAX_REORDER_POINT = 2_147_483_647;
+
+const reorderPointIntegerSchema = z
+  .union([
+    z.number().int().min(0).max(MAX_REORDER_POINT),
+    z
+      .string()
+      .trim()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().min(0).max(MAX_REORDER_POINT)),
+    z.null(),
+  ])
+  .optional()
+  .transform((value) => value ?? null);
 
 const bulkRowSchema = z.object({
   yj_code: z.string().trim().optional(),
   drug_name: z.string().trim().optional(),
   is_stocked: z.boolean().default(true),
-  reorder_point: z.coerce.number().int().min(0).nullable().optional(),
+  reorder_point: reorderPointIntegerSchema,
   preferred_generic_yj_code: z.string().trim().optional(),
   adoption_note: z.string().trim().max(500).nullable().optional(),
 });
@@ -22,7 +39,13 @@ const bulkImportSchema = z.object({
 
 const MAX_BULK_ROWS = 1000;
 
-type BulkRow = z.infer<typeof bulkRowSchema> & {
+type BulkRowData = z.output<typeof bulkRowSchema>;
+
+type BulkRow = BulkRowData & {
+  rowNumber: number;
+};
+
+type BulkRowInput = z.input<typeof bulkRowSchema> & {
   rowNumber: number;
 };
 
@@ -66,7 +89,7 @@ type InvalidRow = {
 const HEADER_ALIASES: Record<string, keyof z.infer<typeof bulkRowSchema>> = {
   yj_code: 'yj_code',
   yj: 'yj_code',
-  'YJコード': 'yj_code',
+  YJコード: 'yj_code',
   drug_name: 'drug_name',
   name: 'drug_name',
   医薬品名: 'drug_name',
@@ -111,13 +134,16 @@ function parseCsvLine(line: string): string[] {
 
 function parseBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
-  const normalized = String(value ?? '').trim().toLowerCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (['false', '0', 'no', '解除', '未採用'].includes(normalized)) return false;
   return true;
 }
 
 function readBulkRowValidationReason(error: z.ZodError): string {
-  const hasFieldError = (field: keyof BulkRow) => error.issues.some((issue) => issue.path[0] === field);
+  const hasFieldError = (field: keyof BulkRowData) =>
+    error.issues.some((issue) => issue.path[0] === field);
   if (hasFieldError('reorder_point')) return '発注点は0以上の整数で入力してください';
   if (hasFieldError('adoption_note')) return 'メモは500文字以内で入力してください';
   if (hasFieldError('preferred_generic_yj_code')) {
@@ -126,7 +152,7 @@ function readBulkRowValidationReason(error: z.ZodError): string {
   return 'CSV行の入力値が不正です';
 }
 
-function parseCsv(csv: string): BulkRow[] {
+function parseCsv(csv: string): BulkRowInput[] {
   const lines = csv
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -136,16 +162,16 @@ function parseCsv(csv: string): BulkRow[] {
   const headers = parseCsvLine(lines[0]).map((header) => HEADER_ALIASES[header] ?? header);
   return lines.slice(1).map((line, index) => {
     const values = parseCsvLine(line);
-    const raw = Object.fromEntries(headers.map((header, columnIndex) => [header, values[columnIndex] ?? '']));
+    const raw = Object.fromEntries(
+      headers.map((header, columnIndex) => [header, values[columnIndex] ?? '']),
+    );
+    const rawReorderPoint = raw.reorder_point == null ? '' : String(raw.reorder_point).trim();
     return {
       rowNumber: index + 2,
       yj_code: String(raw.yj_code ?? '').trim(),
       drug_name: String(raw.drug_name ?? '').trim(),
       is_stocked: parseBoolean(raw.is_stocked),
-      reorder_point:
-        raw.reorder_point == null || raw.reorder_point === ''
-          ? null
-          : Number.parseInt(String(raw.reorder_point), 10),
+      reorder_point: rawReorderPoint === '' ? null : rawReorderPoint,
       preferred_generic_yj_code: String(raw.preferred_generic_yj_code ?? '').trim(),
       adoption_note: String(raw.adoption_note ?? '').trim() || null,
     };
@@ -266,10 +292,10 @@ function buildPreviewRows({
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = bulkImportSchema.safeParse(body);
+    const parsed = bulkImportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -280,16 +306,18 @@ export const POST = withAuthContext(
     });
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
-    const requestRows = (parsed.data.rows ?? []).map((row, index) => ({
+    const requestRows: BulkRowInput[] = (parsed.data.rows ?? []).map((row, index) => ({
       ...row,
       is_stocked: parseBoolean(row.is_stocked),
       rowNumber: index + 1,
     }));
-    const csvRows = (parsed.data.csv ? parseCsv(parsed.data.csv) : []).map((row, index) => ({
-      ...row,
-      rowNumber: requestRows.length > 0 ? requestRows.length + index + 1 : row.rowNumber,
-    }));
-    const parsedRows = [...requestRows, ...csvRows];
+    const csvRows: BulkRowInput[] = (parsed.data.csv ? parseCsv(parsed.data.csv) : []).map(
+      (row, index) => ({
+        ...row,
+        rowNumber: requestRows.length > 0 ? requestRows.length + index + 1 : row.rowNumber,
+      }),
+    );
+    const parsedRows: BulkRowInput[] = [...requestRows, ...csvRows];
 
     if (parsedRows.length > MAX_BULK_ROWS) {
       return validationError('一度に登録できる採用薬データは1000行までです', {
@@ -454,7 +482,9 @@ export const POST = withAuthContext(
             where: {
               org_id: authCtx.orgId,
               site_id: site.id,
-              drug_master_id: { in: [...new Set(operations.map((operation) => operation.drug.id))] },
+              drug_master_id: {
+                in: [...new Set(operations.map((operation) => operation.drug.id))],
+              },
             },
             select: {
               drug_master_id: true,

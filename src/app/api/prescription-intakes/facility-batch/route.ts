@@ -2,6 +2,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createFacilityBatchPrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { addDays } from 'date-fns';
 import { collectDuplicatePrescriptionLines, collectStructuringBlockedLines } from '../shared';
@@ -14,10 +15,10 @@ import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createFacilityBatchPrescriptionIntakeSchema.safeParse(body);
+    const parsed = createFacilityBatchPrescriptionIntakeSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

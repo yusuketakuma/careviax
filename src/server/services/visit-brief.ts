@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { isoOrNull } from '@/lib/utils/date';
-import { normalizeJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type { BillingEvidenceBlockersReader } from '@/server/services/billing-evidence';
@@ -9,9 +9,7 @@ import {
   getInquiryPresentationBadges,
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
-import {
-  listCommunicationQueue,
-} from '@/server/services/communication-queue';
+import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
@@ -44,123 +42,121 @@ type FindFirstDelegate<T> = {
 };
 
 type VisitBriefDataReader = BillingEvidenceBlockersReader & {
-    auditLog?: {
-      count?(args: unknown): Promise<number>;
-      create?(args: unknown): Promise<unknown>;
-    };
-    careCase: FindManyDelegate<{ id: string; required_visit_support?: unknown }> & {
-      findFirst?(args: unknown): Promise<{ required_visit_support: unknown } | null>;
-    };
-    conferenceNote?: FindManyDelegate<{
-      id: string;
-      title: string;
-      conference_date: Date;
-      action_items: unknown;
-      metadata: unknown;
-    }>;
-    communicationEvent: FindManyDelegate<{
-      event_type: string;
-      subject: string | null;
-      content: string | null;
-      counterpart_name: string | null;
-      occurred_at: Date;
-      direction: string;
-      channel: string;
-    }>;
-    communicationRequest: FindManyDelegate<{
-      request_type: string;
-      subject: string;
-      content: string;
-      status: string;
-      due_date: Date | null;
-      requested_at: Date;
-    }>;
-    drugMaster?: FindManyDelegate<DrugMasterEnrichment>;
-    drugPackageInsert: FindManyDelegate<{
-      drug_master: { yj_code: string; drug_name: string };
-      contraindications: unknown;
-      adverse_effects: unknown;
-      precautions_elderly: unknown;
-    }>;
-    jahisSupplementalRecord?: FindManyDelegate<JahisSupplementalRecordForBrief>;
-    inquiryRecord: FindManyDelegate<{
-      reason: string;
-      inquiry_content: string;
-      proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
-      residual_adjustment?: boolean | null;
-      change_detail?: string | null;
-    }>;
-    medicationCycle: FindManyDelegate<{ id: string }>;
-    medicationIssue: FindManyDelegate<{
-      title: string;
-      description: string;
-      priority: string;
-      category: string | null;
-    }>;
-    medicationProfile: FindManyDelegate<{
-      drug_name: string;
-      dose: string | null;
-      frequency: string | null;
-      start_date: Date | null;
-      end_date: Date | null;
-      prescriber: string | null;
-      source: string | null;
-    }>;
-    patient: FindFirstDelegate<{
-      id: string;
-      name: string;
-      scheduling_preference?: {
-        visit_before_contact_required: boolean | null;
-      } | null;
-    }>;
-    patientSelfReport: FindManyDelegate<{
-      subject: string;
-      category: string;
-      content: string;
-      status: string;
-      reported_by_name: string;
-      requested_callback: boolean;
-      created_at: Date;
-    }>;
-    prescriptionIntake: FindManyDelegate<
-      {
-        prescribed_date: Date;
-        prescriber_name: string | null;
-        lines: PrescriptionLineLike[];
-      }
-    >;
-    residence?: FindFirstDelegate<{
-      facility: {
-        acceptance_time_from: Date | null;
-        acceptance_time_to: Date | null;
-        notes: string | null;
-      } | null;
-    }>;
-    setPlan: FindFirstDelegate<{
-      set_method?: string | null;
-      target_period_start?: Date | null;
-      target_period_end?: Date | null;
-      notes?: string | null;
-      audits?: Array<{ result: string }>;
-    }>;
-    task: FindManyDelegate<{
-      title: string;
-      description: string | null;
-      priority: string;
-    }>;
-    visitScheduleContactLog: FindManyDelegate<{
-      outcome: string;
-      contact_name: string | null;
-      note: string | null;
-      callback_due_at: Date | null;
-      called_at: Date;
-    }>;
-    visitRecord: FindFirstDelegate<{
-      soap_plan: string | null;
-    }> & {
-      findMany?(args: unknown): Promise<Array<{ id: string }>>;
-    };
+  auditLog?: {
+    count?(args: unknown): Promise<number>;
+    create?(args: unknown): Promise<unknown>;
   };
+  careCase: FindManyDelegate<{ id: string; required_visit_support?: unknown }> & {
+    findFirst?(args: unknown): Promise<{ required_visit_support: unknown } | null>;
+  };
+  conferenceNote?: FindManyDelegate<{
+    id: string;
+    title: string;
+    conference_date: Date;
+    action_items: unknown;
+    metadata: unknown;
+  }>;
+  communicationEvent: FindManyDelegate<{
+    event_type: string;
+    subject: string | null;
+    content: string | null;
+    counterpart_name: string | null;
+    occurred_at: Date;
+    direction: string;
+    channel: string;
+  }>;
+  communicationRequest: FindManyDelegate<{
+    request_type: string;
+    subject: string;
+    content: string;
+    status: string;
+    due_date: Date | null;
+    requested_at: Date;
+  }>;
+  drugMaster?: FindManyDelegate<DrugMasterEnrichment>;
+  drugPackageInsert: FindManyDelegate<{
+    drug_master: { yj_code: string; drug_name: string };
+    contraindications: unknown;
+    adverse_effects: unknown;
+    precautions_elderly: unknown;
+  }>;
+  jahisSupplementalRecord?: FindManyDelegate<JahisSupplementalRecordForBrief>;
+  inquiryRecord: FindManyDelegate<{
+    reason: string;
+    inquiry_content: string;
+    proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
+    residual_adjustment?: boolean | null;
+    change_detail?: string | null;
+  }>;
+  medicationCycle: FindManyDelegate<{ id: string }>;
+  medicationIssue: FindManyDelegate<{
+    title: string;
+    description: string;
+    priority: string;
+    category: string | null;
+  }>;
+  medicationProfile: FindManyDelegate<{
+    drug_name: string;
+    dose: string | null;
+    frequency: string | null;
+    start_date: Date | null;
+    end_date: Date | null;
+    prescriber: string | null;
+    source: string | null;
+  }>;
+  patient: FindFirstDelegate<{
+    id: string;
+    name: string;
+    scheduling_preference?: {
+      visit_before_contact_required: boolean | null;
+    } | null;
+  }>;
+  patientSelfReport: FindManyDelegate<{
+    subject: string;
+    category: string;
+    content: string;
+    status: string;
+    reported_by_name: string;
+    requested_callback: boolean;
+    created_at: Date;
+  }>;
+  prescriptionIntake: FindManyDelegate<{
+    prescribed_date: Date;
+    prescriber_name: string | null;
+    lines: PrescriptionLineLike[];
+  }>;
+  residence?: FindFirstDelegate<{
+    facility: {
+      acceptance_time_from: Date | null;
+      acceptance_time_to: Date | null;
+      notes: string | null;
+    } | null;
+  }>;
+  setPlan: FindFirstDelegate<{
+    set_method?: string | null;
+    target_period_start?: Date | null;
+    target_period_end?: Date | null;
+    notes?: string | null;
+    audits?: Array<{ result: string }>;
+  }>;
+  task: FindManyDelegate<{
+    title: string;
+    description: string | null;
+    priority: string;
+  }>;
+  visitScheduleContactLog: FindManyDelegate<{
+    outcome: string;
+    contact_name: string | null;
+    note: string | null;
+    callback_due_at: Date | null;
+    called_at: Date;
+  }>;
+  visitRecord: FindFirstDelegate<{
+    soap_plan: string | null;
+  }> & {
+    findMany?(args: unknown): Promise<Array<{ id: string }>>;
+  };
+};
 
 export type VisitBriefDbClient = typeof prisma | Prisma.TransactionClient | VisitBriefDataReader;
 
@@ -170,6 +166,47 @@ function compactTimelineValues(values: Array<string | null | undefined | false>)
   return values.filter(
     (value): value is string => typeof value === 'string' && value.trim().length > 0,
   );
+}
+
+type PackageInsertTextEntry = {
+  text: string;
+  severity?: string;
+};
+
+function readPackageInsertTextEntry(value: unknown): PackageInsertTextEntry | null {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text.length > 0 ? { text } : null;
+  }
+
+  const entry = readJsonObject(value);
+  if (!entry) return null;
+
+  const text = ['text', 'description', 'name', 'summary']
+    .map((key) => entry[key])
+    .find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0,
+    );
+  if (!text) return null;
+
+  const severity =
+    typeof entry.severity === 'string' && entry.severity.trim().length > 0
+      ? entry.severity.trim()
+      : undefined;
+
+  return { text: text.trim(), severity };
+}
+
+function readPackageInsertTextEntries(value: unknown): PackageInsertTextEntry[] {
+  if (Array.isArray(value)) {
+    return value
+      .map(readPackageInsertTextEntry)
+      .filter((entry): entry is PackageInsertTextEntry => entry !== null);
+  }
+
+  const entry = readPackageInsertTextEntry(value);
+  return entry ? [entry] : [];
 }
 
 type PrescriptionLineLike = {
@@ -442,52 +479,34 @@ async function buildDrugCautions(
     const code = pi.drug_master.yj_code;
     const name = pi.drug_master.drug_name;
 
-    // Contraindications
-    if (pi.contraindications && Array.isArray(pi.contraindications)) {
-      for (const c of (pi.contraindications as Array<{ text?: string }>).slice(0, 3)) {
-        if (c.text) {
-          cautions.push({
-            drug_name: name,
-            drug_code: code,
-            caution_type: 'contraindication',
-            severity: 'critical',
-            summary: c.text.slice(0, 120),
-          });
-        }
-      }
+    for (const c of readPackageInsertTextEntries(pi.contraindications).slice(0, 3)) {
+      cautions.push({
+        drug_name: name,
+        drug_code: code,
+        caution_type: 'contraindication',
+        severity: 'critical',
+        summary: c.text.slice(0, 120),
+      });
     }
 
-    // Adverse effects (top 3 serious ones)
-    if (pi.adverse_effects && Array.isArray(pi.adverse_effects)) {
-      for (const a of (pi.adverse_effects as Array<{ text?: string; severity?: string }>).slice(
-        0,
-        3,
-      )) {
-        if (a.text) {
-          cautions.push({
-            drug_name: name,
-            drug_code: code,
-            caution_type: 'adverse_effect',
-            severity: a.severity === 'serious' ? 'critical' : 'warning',
-            summary: a.text.slice(0, 120),
-          });
-        }
-      }
+    for (const a of readPackageInsertTextEntries(pi.adverse_effects).slice(0, 3)) {
+      cautions.push({
+        drug_name: name,
+        drug_code: code,
+        caution_type: 'adverse_effect',
+        severity: a.severity?.toLowerCase() === 'serious' ? 'critical' : 'warning',
+        summary: a.text.slice(0, 120),
+      });
     }
 
-    // Elderly precautions
-    if (pi.precautions_elderly && Array.isArray(pi.precautions_elderly)) {
-      for (const e of (pi.precautions_elderly as Array<{ text?: string }>).slice(0, 2)) {
-        if (e.text) {
-          cautions.push({
-            drug_name: name,
-            drug_code: code,
-            caution_type: 'elderly_precaution',
-            severity: 'warning',
-            summary: e.text.slice(0, 120),
-          });
-        }
-      }
+    for (const e of readPackageInsertTextEntries(pi.precautions_elderly).slice(0, 2)) {
+      cautions.push({
+        drug_name: name,
+        drug_code: code,
+        caution_type: 'elderly_precaution',
+        severity: 'warning',
+        summary: e.text.slice(0, 120),
+      });
     }
   }
 
@@ -1433,16 +1452,7 @@ export async function getPatientVisitBrief(
       }
     }
     const latest = recentConferenceNotes[0];
-    const visitBriefMetadata =
-      latest?.metadata &&
-      typeof latest.metadata === 'object' &&
-      !Array.isArray(latest.metadata) &&
-      'visit_brief' in latest.metadata &&
-      latest.metadata.visit_brief &&
-      typeof latest.metadata.visit_brief === 'object' &&
-      !Array.isArray(latest.metadata.visit_brief)
-        ? (latest.metadata.visit_brief as Record<string, unknown>)
-        : null;
+    const visitBriefMetadata = readJsonObject(readJsonObject(latest?.metadata)?.visit_brief);
     const highlightedRisks = Array.isArray(visitBriefMetadata?.highlighted_risks)
       ? visitBriefMetadata.highlighted_risks.filter(
           (item): item is string => typeof item === 'string' && item.length > 0,
@@ -1467,15 +1477,12 @@ export async function getPatientVisitBrief(
     patient.scheduling_preference?.visit_before_contact_required ?? null;
   const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
-  const communicationQueue = await listCommunicationQueue(
-    db,
-    {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      caseIds: args.caseIds,
-      limit: 6,
-    },
-  );
+  const communicationQueue = await listCommunicationQueue(db, {
+    orgId: args.orgId,
+    patientId: args.patientId,
+    caseIds: args.caseIds,
+    limit: 6,
+  });
 
   const currentIntake = latestIntakes[0] ?? null;
   const previousIntake = latestIntakes[1] ?? null;
@@ -1612,17 +1619,18 @@ export async function getPatientVisitBrief(
           : 'visit_brief_generated_success',
         target_type: 'visit_brief',
         target_id: aiSummary.generation_id,
-        changes: normalizeJsonInput({
-          patient_id: args.patientId,
-          context: args.context,
-          provider: aiSummary.provider,
-          requested_provider: aiSummary.requested_provider,
-          model: aiSummary.model,
-          fallback_reason: aiSummary.fallback_reason,
-          source_refs: aiSummary.source_refs,
-          duration_ms: aiSummary.duration_ms,
-          generated_at: aiSummary.generated_at,
-        }) ?? {},
+        changes:
+          normalizeJsonInput({
+            patient_id: args.patientId,
+            context: args.context,
+            provider: aiSummary.provider,
+            requested_provider: aiSummary.requested_provider,
+            model: aiSummary.model,
+            fallback_reason: aiSummary.fallback_reason,
+            source_refs: aiSummary.source_refs,
+            duration_ms: aiSummary.duration_ms,
+            generated_at: aiSummary.generated_at,
+          }) ?? {},
       },
     });
   }

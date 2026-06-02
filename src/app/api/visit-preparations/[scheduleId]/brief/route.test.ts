@@ -118,6 +118,32 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
     });
   });
 
+  it('trims padded schedule ids before loading the schedule', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: '  schedule_1  ' }),
+    });
+
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'schedule_1', org_id: 'org_1' },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('rejects blank schedule ids before loading the schedule', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+  });
+
   it('returns forbidden when the schedule is outside the assignment scope', async () => {
     canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
 

@@ -2,27 +2,24 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { pharmacyDrugStockRequestedPayloadSchema } from '@/lib/validations/pharmacy-drug-stock';
 
 const requestQuerySchema = z.object({
   site_id: z.string().trim().min(1).optional(),
   drug_master_id: z.string().trim().min(1).optional(),
   status: z.enum(['pending', 'approved', 'rejected']).default('pending'),
-  overdue_days: z.coerce.number().int().min(1).max(90).default(7),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  overdue_days: boundedIntegerSearchParam('overdue_days', 1, 90, 7),
+  limit: boundedIntegerSearchParam('limit', 1, 100, 25),
 });
 
 const requestPayloadSchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   drug_master_id: z.string().trim().min(1, 'drug_master_id は必須です'),
   action_type: z.enum(['adopt', 'deactivate', 'update_settings']).default('update_settings'),
-  requested_payload: z.object({
-    is_stocked: z.boolean(),
-    reorder_point: z.number().int().min(0).nullable().optional(),
-    preferred_generic_id: z.string().trim().nullable().optional(),
-    adoption_note: z.string().trim().max(500).nullable().optional(),
-  }),
+  requested_payload: pharmacyDrugStockRequestedPayloadSchema,
   reason: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -83,8 +80,7 @@ export const GET = withAuthContext(
         overdue_count: overdueCount,
         overdue_days: parsed.data.overdue_days,
         oldest_pending_created_at: oldestPending?.created_at?.toISOString() ?? null,
-        notification_level:
-          overdueCount > 0 ? 'overdue' : totalCount > 0 ? 'pending' : 'clear',
+        notification_level: overdueCount > 0 ? 'overdue' : totalCount > 0 ? 'pending' : 'clear',
       },
     });
   },
@@ -93,10 +89,10 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = requestPayloadSchema.safeParse(body);
+    const parsed = requestPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

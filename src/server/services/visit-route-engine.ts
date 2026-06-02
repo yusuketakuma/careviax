@@ -1,7 +1,10 @@
-import { createRoadTravelEstimator, type RouteTravelMode } from './road-routing';
+import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createRoadTravelEstimator, type RouteTravelMode } from './road-routing';
 
 export type VisitRouteTravelMode = RouteTravelMode;
+const DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS = 5000;
 
 export type VisitRouteWaypoint = {
   scheduleId: string;
@@ -261,7 +264,11 @@ async function computeGoogleWaypointRoute(args: {
   try {
     response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
-      signal: AbortSignal.timeout(Number(process.env.ROUTING_API_TIMEOUT_MS ?? 5000)),
+      signal: AbortSignal.timeout(
+        normalizePositiveTimeoutMs(process.env.ROUTING_API_TIMEOUT_MS, {
+          fallbackMs: DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS,
+        }),
+      ),
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': args.apiKey,
@@ -323,7 +330,7 @@ async function computeGoogleWaypointRoute(args: {
     throw new Error(errorText || 'Google Routes API request failed');
   }
 
-  const payload = (await response.json()) as unknown;
+  const payload = await readJsonResponseBody(response);
   const routes = readGoogleRoutes(payload, args.waypoints.length);
   if (!routes) {
     return unavailableGoogleRoutePlan({

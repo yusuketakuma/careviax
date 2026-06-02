@@ -6,18 +6,17 @@ type AuthenticatedTestRequest = NextRequest & {
   userId: string;
 };
 
-const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }) as AuthenticatedTestRequest,
-        );
-    },
-  ),
+const { notifyWorkflowMutationMock, withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
+  notifyWorkflowMutationMock: vi.fn(),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+        }) as AuthenticatedTestRequest,
+      );
+  }),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -27,6 +26,10 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { POST } from './route';
@@ -41,9 +44,44 @@ function createRequest(body: unknown) {
   } satisfies NextRequestInit);
 }
 
+function createMalformedRequest() {
+  return new NextRequest('http://localhost/api/facility-visit-batches/visit-days', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"schedule_ids":',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/facility-visit-batches/visit-days POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    notifyWorkflowMutationMock.mockResolvedValue(undefined);
+  });
+
+  it('rejects non-object JSON payloads before schedule lookup, preference upsert, or notification', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before schedule lookup, preference upsert, or notification', async () => {
+    const response = await POST(createMalformedRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects updates when schedules span multiple facilities', async () => {

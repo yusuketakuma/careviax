@@ -15,18 +15,16 @@ const {
   residualMedicationCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist' as const,
-          }),
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist' as const,
+        }),
+      );
+  }),
   visitRecordFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   residualMedicationFindManyMock: vi.fn(),
@@ -64,6 +62,14 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"visit_record_id":',
+  });
+}
+
 describe('/api/residual-medications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,7 +92,9 @@ describe('/api/residual-medications', () => {
     visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }, { id: 'visit_2' }]);
 
     const response = await GET(
-      createRequest('http://localhost/api/residual-medications?patient_id=patient_1&limit=20'),
+      createRequest(
+        'http://localhost/api/residual-medications?patient_id=patient_1&limit=%2020%20',
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -119,6 +127,51 @@ describe('/api/residual-medications', () => {
       orderBy: { created_at: 'asc' },
       take: 20,
     });
+  });
+
+  it('rejects malformed residual medication limits before visit record lookup', async () => {
+    visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/residual-medications?patient_id=patient_1&limit=20abc'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        limit: ['limit は整数で指定してください'],
+      },
+    });
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized residual medication limits before visit record lookup', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/residual-medications?patient_id=patient_1&limit=9999'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves unbounded residual medication reads when limit is omitted', async () => {
+    visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
+
+    await GET(createRequest('http://localhost/api/residual-medications?patient_id=patient_1'));
+
+    expect(residualMedicationFindManyMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        take: expect.any(Number),
+      }),
+    );
   });
 
   it('returns an empty payload without querying residuals when the patient has no visit records', async () => {
@@ -197,6 +250,32 @@ describe('/api/residual-medications', () => {
         is_reduction_target: true,
       }),
     });
+  });
+
+  it('rejects non-object create payloads before visit record lookup or writes', async () => {
+    const response = await POST(createRequest('http://localhost/api/residual-medications', []));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before visit record lookup or writes', async () => {
+    const response = await POST(
+      createMalformedJsonRequest('http://localhost/api/residual-medications'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(residualMedicationCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 before writing residual medications for an inaccessible visit record', async () => {

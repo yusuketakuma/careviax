@@ -48,6 +48,16 @@ function createJsonRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/packaging-methods/method_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
+  });
+}
+
 describe('/api/packaging-methods/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -96,5 +106,32 @@ describe('/api/packaging-methods/[id]', () => {
         is_active: false,
       },
     });
+  });
+
+  it('rejects non-object update payloads before loading the packaging method', async () => {
+    const response = (await PATCH(createJsonRequest([]), {
+      params: Promise.resolve({ id: 'method_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(packagingMethodUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the packaging method', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'method_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(packagingMethodUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

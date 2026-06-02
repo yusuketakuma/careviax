@@ -1,35 +1,37 @@
 import { Prisma } from '@prisma/client';
-import type { JahisSupplementalRecord } from '@/lib/pharmacy/jahis-qr';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
+import { readJsonObject } from '@/lib/db/json';
+import { isSupplementalRecordType, type JahisSupplementalRecord } from '@/lib/pharmacy/jahis-qr';
 
 export function readJahisSupplementalRecords(value: unknown): JahisSupplementalRecord[] {
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((item): JahisSupplementalRecord[] => {
-    if (!isRecord(item)) return [];
+    const record = readJsonObject(item);
+    if (!record) return [];
 
-    const recordType = typeof item.recordType === 'string' ? item.recordType : null;
-    const recordLabel = typeof item.recordLabel === 'string' ? item.recordLabel : null;
-    const lineNumber =
-      typeof item.lineNumber === 'number' && Number.isFinite(item.lineNumber)
-        ? item.lineNumber
+    const recordType =
+      typeof record.recordType === 'string' && isSupplementalRecordType(record.recordType)
+        ? record.recordType
         : null;
-    const fields = Array.isArray(item.fields)
-      ? item.fields.filter((field): field is string => typeof field === 'string')
+    const recordLabel = typeof record.recordLabel === 'string' ? record.recordLabel : null;
+    const lineNumber =
+      typeof record.lineNumber === 'number' && Number.isFinite(record.lineNumber)
+        ? record.lineNumber
+        : null;
+    const fields = Array.isArray(record.fields)
+      ? record.fields.filter((field): field is string => typeof field === 'string')
       : null;
-    const details = Array.isArray(item.details)
-      ? item.details.flatMap((detail): JahisSupplementalRecord['details'] => {
-          if (!isRecord(detail)) return [];
-          const label = typeof detail.label === 'string' ? detail.label : null;
-          const value = typeof detail.value === 'string' ? detail.value : null;
+    const details = Array.isArray(record.details)
+      ? record.details.flatMap((detail): JahisSupplementalRecord['details'] => {
+          const detailRecord = readJsonObject(detail);
+          if (!detailRecord) return [];
+          const label = typeof detailRecord.label === 'string' ? detailRecord.label : null;
+          const value = typeof detailRecord.value === 'string' ? detailRecord.value : null;
           return label && value ? [{ label, value }] : [];
         })
       : [];
-    const summary = typeof item.summary === 'string' ? item.summary : null;
-    const rawLine = typeof item.rawLine === 'string' ? item.rawLine : null;
+    const summary = typeof record.summary === 'string' ? record.summary : null;
+    const rawLine = typeof record.rawLine === 'string' ? record.rawLine : null;
 
     if (!recordType || !recordLabel || lineNumber == null || !fields || !summary || !rawLine) {
       return [];
@@ -37,7 +39,7 @@ export function readJahisSupplementalRecords(value: unknown): JahisSupplementalR
 
     return [
       {
-        recordType: recordType as JahisSupplementalRecord['recordType'],
+        recordType,
         recordLabel,
         lineNumber,
         fields,

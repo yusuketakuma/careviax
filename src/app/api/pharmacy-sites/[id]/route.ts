@@ -1,25 +1,13 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { updatePharmacySiteSchema } from '@/lib/validations/pharmacy-site';
 
-const updateSiteSchema = z.object({
-  name: z.string().min(1, '薬局名は必須です'),
-  address: z.string().min(1, '住所は必須です'),
-  phone: z.string().optional().nullable(),
-  fax: z.string().optional().nullable(),
-  is_health_support_pharmacy: z.boolean().default(false),
-  is_regional_support: z.boolean().default(false),
-  is_specialized_pharmacy: z.boolean().default(false),
-  dispensing_fee_category: z.string().optional().nullable(),
-});
-
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬局情報の閲覧権限がありません',
@@ -28,8 +16,11 @@ export async function GET(
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const siteId = normalizeRequiredRouteParam(id);
+  if (!siteId) return validationError('薬局IDが不正です');
+
   const site = await prisma.pharmacySite.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: siteId, org_id: ctx.orgId },
     include: {
       insurance_configs: {
         orderBy: [{ insurance_type: 'asc' }, { effective_from: 'desc' }],
@@ -41,10 +32,7 @@ export async function GET(
   return success({ data: site });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬局情報の更新権限がありません',
@@ -52,24 +40,27 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateSiteSchema.safeParse(body);
+  const parsed = updatePharmacySiteSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const { id } = await params;
+  const siteId = normalizeRequiredRouteParam(id);
+  if (!siteId) return validationError('薬局IDが不正です');
+
   const existing = await prisma.pharmacySite.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: siteId, org_id: ctx.orgId },
     select: { id: true },
   });
   if (!existing) return notFound('薬局情報が見つかりません');
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     const site = await tx.pharmacySite.update({
-      where: { id },
+      where: { id: siteId },
       data: {
         name: parsed.data.name,
         address: parsed.data.address,
@@ -88,7 +79,7 @@ export async function PATCH(
         actor_id: ctx.userId,
         action: 'pharmacy_site_updated',
         target_type: 'PharmacySite',
-        target_id: id,
+        target_id: siteId,
         changes: parsed.data,
         ip_address: ctx.ipAddress,
         user_agent: ctx.userAgent,

@@ -58,6 +58,26 @@ function createRequest(body: unknown) {
   });
 }
 
+function createEmptyRequest() {
+  return new NextRequest('http://localhost/api/set-plans/plan_1/generate-batches', {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createMalformedRequest() {
+  return new NextRequest('http://localhost/api/set-plans/plan_1/generate-batches', {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{"force":',
+  });
+}
+
 describe('set-plans/[id]/generate-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -101,7 +121,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 
-  it('reuses existing batches instead of duplicating them when force is false', async () => {
+  it('reuses existing batches instead of duplicating them when force is omitted', async () => {
     txMock.setBatch.count.mockResolvedValue(1);
     txMock.setBatch.findFirst.mockResolvedValue({
       updated_at: new Date('2026-03-01T00:00:00.000Z'),
@@ -121,7 +141,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
       },
     ]);
 
-    const response = await POST(createRequest({ force: false }), {
+    const response = await POST(createEmptyRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),
     });
     if (!response) throw new Error('response is required');
@@ -131,6 +151,37 @@ describe('set-plans/[id]/generate-batches POST', () => {
     expect(txMock.setBatch.createMany).not.toHaveBeenCalled();
     expect(payload.data.reused).toBe(true);
     expect(payload.data.count).toBe(1);
+  });
+
+  it('rejects malformed JSON before plan lookup or writes', async () => {
+    const response = await POST(createMalformedRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setBatch.createMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object generation payloads before plan lookup or writes', async () => {
+    const response = await POST(createRequest([]), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    expect(prismaMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setBatch.createMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects generation when the cycle is not audit-ready', async () => {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { forbidden, success, validationError } from '@/lib/api/response';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -69,10 +70,10 @@ function compareUnitName(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = upsertFacilityVisitBatchSchema.safeParse(body);
+    const parsed = upsertFacilityVisitBatchSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -1,7 +1,8 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, conflict } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -12,11 +13,15 @@ import {
   mergeJahisQRPages,
   detectMultiQR,
 } from '@/lib/pharmacy/jahis-qr';
+import {
+  assessQrPatientIdentity,
+  collectMissingQrPatientIdentityFields,
+} from '@/lib/pharmacy/qr-patient-match';
+import { buildQrPayloadHash } from '@/lib/pharmacy/qr-draft-fingerprint';
 import type { JahisQRData } from '@/lib/pharmacy/jahis-qr';
 import { mapJahisToIntake } from '@/lib/pharmacy/qr-intake-mapper';
 import { replaceJahisSupplementalRecords } from '@/server/services/jahis-supplemental-records';
 import { z } from 'zod';
-import { addDays, subDays, parseISO } from 'date-fns';
 import {
   buildQrDraftAssignmentWhere,
   canAccessPrescriptionPatient,
@@ -28,12 +33,18 @@ import {
 const MAX_QR_TEXT_COUNT = 16;
 const MAX_QR_TEXT_LENGTH = 8192;
 
+const optionalTrimmedStringSchema = z.string().trim().min(1).optional();
+
 const createQrDraftSchema = z.object({
-  qr_texts: z.array(z.string().min(1).max(MAX_QR_TEXT_LENGTH)).min(1).max(MAX_QR_TEXT_COUNT),
-  patient_id: z.string().optional(),
-  site_id: z.string().min(1),
-  session_id: z.string().optional(),
+  qr_texts: z.array(z.string().trim().min(1).max(MAX_QR_TEXT_LENGTH)).min(1).max(MAX_QR_TEXT_COUNT),
+  patient_id: optionalTrimmedStringSchema,
+  site_id: z.string().trim().min(1),
+  session_id: optionalTrimmedStringSchema,
 });
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 function buildDraftParsedData(args: {
   qrData: JahisQRData;
@@ -128,15 +139,29 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createQrDraftSchema.safeParse(body);
+    const parsed = createQrDraftSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { qr_texts, patient_id, site_id, session_id: clientSessionId } = parsed.data;
+    const {
+      qr_texts: parsedQrTexts,
+      patient_id,
+      site_id,
+      session_id: clientSessionId,
+    } = parsed.data;
+    const qr_texts = Array.from(new Set(parsedQrTexts));
+    const qrPayloadHash = buildQrPayloadHash(qr_texts);
+    let selectedPatient: {
+      id: string;
+      name: string;
+      name_kana: string | null;
+      birth_date: Date;
+      gender: string;
+    } | null = null;
 
     if (patient_id) {
       if (!(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
@@ -144,13 +169,14 @@ export const POST = withAuth(
       }
       const patient = await prisma.patient.findFirst({
         where: { id: patient_id, org_id: req.orgId },
-        select: { id: true },
+        select: { id: true, name: true, name_kana: true, birth_date: true, gender: true },
       });
       if (!patient) {
         return validationError('指定された患者が見つかりません', {
           patient_id: ['指定された患者が見つかりません'],
         });
       }
+      selectedPatient = patient;
     }
 
     const site = await prisma.pharmacySite.findFirst({
@@ -191,6 +217,36 @@ export const POST = withAuth(
     const mergedData: JahisQRData =
       successfulPages.length === 1 ? successfulPages[0] : mergeJahisQRPages(successfulPages);
 
+    const qrPatientIdentity = {
+      name: mergedData.patient.name,
+      nameKana: mergedData.patient.nameKana,
+      birthDate: mergedData.patient.birthDate,
+      gender: mergedData.patient.gender,
+    };
+    const missingIdentity = collectMissingQrPatientIdentityFields(qrPatientIdentity);
+    if (missingIdentity.length > 0) {
+      return validationError('QRコードの患者情報を確認できません', {
+        patient_id: ['QRコードの患者名と生年月日を確認できません'],
+        missing_identity: missingIdentity,
+      });
+    }
+
+    if (selectedPatient) {
+      const identityAssessment = assessQrPatientIdentity(qrPatientIdentity, selectedPatient);
+      if (identityAssessment.kind === 'unverifiable') {
+        return validationError('QRコードの患者情報を確認できません', {
+          patient_id: ['QRコードの患者名と生年月日を確認できません'],
+          missing_identity: identityAssessment.missing,
+        });
+      }
+      if (identityAssessment.kind === 'mismatch') {
+        return validationError('QRコードの患者情報が選択患者と一致しません', {
+          patient_id: ['QRコードの患者情報が選択患者と一致しません'],
+          mismatches: identityAssessment.mismatches,
+        });
+      }
+    }
+
     // Detect multi-QR info from the first QR text (record 911 may appear anywhere in the text)
     const multiQrInfo = detectMultiQR(qr_texts[0]);
     const expected_qr_count = multiQrInfo?.splitCount ?? null;
@@ -211,65 +267,64 @@ export const POST = withAuth(
       // Mapper failure is non-fatal; continue with raw parsed data only
     }
 
-    // Duplicate detection: look for an existing pending draft for the same patient
-    // with a prescribed_date within ±1 day
-    let duplicate_draft_id: string | undefined;
-    if (patient_id && mergedData.dispensingDate) {
-      try {
-        const prescribedDate = parseISO(mergedData.dispensingDate);
-        const windowStart = subDays(prescribedDate, 1);
-        const windowEnd = addDays(prescribedDate, 1);
+    try {
+      const existingDraft = await prisma.qrScanDraft.findFirst({
+        where: {
+          org_id: req.orgId,
+          status: { in: ['pending', 'confirmed'] },
+          qr_payload_hash: qrPayloadHash,
+        },
+        select: { id: true, status: true },
+        orderBy: { created_at: 'desc' },
+      });
 
-        const existingDraft = await prisma.qrScanDraft.findFirst({
-          where: {
-            org_id: req.orgId,
-            patient_id,
-            status: 'pending',
-            created_at: {
-              gte: windowStart,
-              lte: windowEnd,
-            },
-          },
-          select: { id: true },
-          orderBy: { created_at: 'desc' },
+      if (existingDraft) {
+        return conflict('同じQRスキャン下書きが既に存在します', {
+          duplicate_draft_id: existingDraft.id,
+          status: existingDraft.status,
         });
-
-        if (existingDraft) {
-          duplicate_draft_id = existingDraft.id;
-        }
-      } catch {
-        // Duplicate detection is best-effort; skip on error
       }
+    } catch {
+      return conflict('QRスキャン下書きの重複確認に失敗しました');
     }
 
     // Create QrScanDraft record
-    const draft = await withOrgContext(req.orgId, async (tx) => {
-      const created = await tx.qrScanDraft.create({
-        data: {
-          org_id: req.orgId,
-          site_id,
-          patient_id: patient_id ?? null,
-          scanned_by: req.userId,
-          session_id,
-          status: 'pending',
-          schema_version: 1,
-          raw_qr_texts: qr_texts,
-          parsed_data: toPrismaJsonInput(draftParsedData),
-          parse_errors: allErrors.length > 0 ? toPrismaJsonInput(allErrors) : Prisma.JsonNull,
-          auto_completed: toPrismaJsonInput(autoCompleted),
-          expected_qr_count,
-        },
-      });
+    let draft;
+    try {
+      draft = await withOrgContext(req.orgId, async (tx) => {
+        const created = await tx.qrScanDraft.create({
+          data: {
+            org_id: req.orgId,
+            site_id,
+            patient_id: patient_id ?? null,
+            scanned_by: req.userId,
+            session_id,
+            status: 'pending',
+            schema_version: 1,
+            raw_qr_texts: qr_texts,
+            qr_payload_hash: qrPayloadHash,
+            parsed_data: toPrismaJsonInput(draftParsedData),
+            parse_errors: allErrors.length > 0 ? toPrismaJsonInput(allErrors) : Prisma.JsonNull,
+            auto_completed: toPrismaJsonInput(autoCompleted),
+            expected_qr_count,
+          },
+        });
 
-      await replaceJahisSupplementalRecords(tx, {
-        orgId: req.orgId,
-        patientId: patient_id ?? null,
-        qrDraftId: created.id,
-        records: mergedData.supplementalRecords,
-      });
+        await replaceJahisSupplementalRecords(tx, {
+          orgId: req.orgId,
+          patientId: patient_id ?? null,
+          qrDraftId: created.id,
+          records: mergedData.supplementalRecords,
+        });
 
-      return created;
-    });
+        return created;
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        return conflict('同じQRスキャン下書きが既に存在します');
+      }
+      throw error;
+    }
 
     // Emit SSE event (best-effort)
     await broadcastOrgRealtimeEvent({
@@ -285,7 +340,6 @@ export const POST = withAuth(
           warnings: allWarnings,
           errors: allErrors,
         },
-        ...(duplicate_draft_id ? { duplicate_draft_id } : {}),
         session_id,
       },
       201,

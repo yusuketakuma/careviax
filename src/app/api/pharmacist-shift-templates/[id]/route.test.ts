@@ -58,6 +58,20 @@ describe('/api/pharmacist-shift-templates/[id] DELETE', () => {
     );
   });
 
+  it('rejects blank route ids before loading the shift template', async () => {
+    const response = (await DELETE(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '定型シフトIDが不正です',
+    });
+    expect(pharmacistShiftTemplateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftTemplateDeleteMock).not.toHaveBeenCalled();
+  });
+
   it('deletes an existing shift template', async () => {
     const response = (await DELETE(createRequest(), {
       params: Promise.resolve({ id: 'template_1' }),

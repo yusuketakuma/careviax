@@ -2,12 +2,13 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 const templateQuerySchema = z.object({
   q: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: boundedIntegerSearchParam('limit', 1, 100, 50),
 });
 
 const createTemplateSchema = z.object({
@@ -54,10 +55,10 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createTemplateSchema.safeParse(body);
+    const parsed = createTemplateSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

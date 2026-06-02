@@ -43,10 +43,25 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/prescriber-institutions/institution_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 function createDeleteRequest() {
   return new NextRequest('http://localhost/api/prescriber-institutions/institution_1', {
     method: 'DELETE',
   });
+}
+
+function expectNoInstitutionMutation() {
+  expect(withOrgContextMock).not.toHaveBeenCalled();
+  expect(prescriberInstitutionUpdateMock).not.toHaveBeenCalled();
+  expect(prescriptionIntakeUpdateManyMock).not.toHaveBeenCalled();
+  expect(prescriberInstitutionDeleteMock).not.toHaveBeenCalled();
 }
 
 describe('/api/prescriber-institutions/[id]', () => {
@@ -105,17 +120,22 @@ describe('/api/prescriber-institutions/[id]', () => {
         prescriptionIntake: {
           updateMany: prescriptionIntakeUpdateManyMock,
         },
-      })
+      }),
     );
   });
 
   it('returns institution detail with recent prescriptions', async () => {
     const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'institution_1' }),
+      params: Promise.resolve({ id: '  institution_1  ' }),
     });
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(200);
+    expect(prescriberInstitutionFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'institution_1', org_id: 'org_1' },
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'institution_1',
@@ -130,15 +150,32 @@ describe('/api/prescriber-institutions/[id]', () => {
     });
   });
 
+  it('rejects blank institution ids before loading recent prescriptions', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '医療機関IDが不正です',
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expectNoInstitutionMutation();
+  });
+
   it('updates an institution row', async () => {
     const response = await PATCH(
       createRequest({
         name: 'みなと在宅クリニック',
+        phone: ' 03-2222-3333 ',
+        fax: '   ',
         notes: '更新',
       }),
       {
         params: Promise.resolve({ id: 'institution_1' }),
-      }
+      },
     );
     if (!response) throw new Error('response is required');
 
@@ -147,9 +184,99 @@ describe('/api/prescriber-institutions/[id]', () => {
       where: { id: 'institution_1' },
       data: {
         name: 'みなと在宅クリニック',
+        phone: '03-2222-3333',
+        fax: null,
         notes: '更新',
       },
     });
+  });
+
+  it('does not clear contact numbers when PATCH omits them', async () => {
+    const response = await PATCH(
+      createRequest({
+        notes: '更新',
+      }),
+      {
+        params: Promise.resolve({ id: 'institution_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(200);
+    expect(prescriberInstitutionUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'institution_1' },
+      data: {
+        notes: '更新',
+      },
+    });
+  });
+
+  it('rejects malformed contact numbers before loading the institution', async () => {
+    const response = await PATCH(
+      createRequest({
+        phone: '03-ABCD-2222',
+        fax: 'FAX-3333',
+      }),
+      {
+        params: Promise.resolve({ id: 'institution_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object update payloads before loading the institution', async () => {
+    const response = await PATCH(createRequest([]), {
+      params: Promise.resolve({ id: 'institution_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank institution ids before parsing or loading update payloads', async () => {
+    const response = await PATCH(createRequest({ notes: '更新' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '医療機関IDが不正です',
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expectNoInstitutionMutation();
+  });
+
+  it('rejects malformed JSON before loading the institution', async () => {
+    const response = await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'institution_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionUpdateMock).not.toHaveBeenCalled();
   });
 
   it('clears intake references before deleting an institution row', async () => {
@@ -171,5 +298,20 @@ describe('/api/prescriber-institutions/[id]', () => {
     expect(prescriberInstitutionDeleteMock).toHaveBeenCalledWith({
       where: { id: 'institution_1' },
     });
+  });
+
+  it('rejects blank institution ids before clearing intake references or deleting', async () => {
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '医療機関IDが不正です',
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expectNoInstitutionMutation();
   });
 });

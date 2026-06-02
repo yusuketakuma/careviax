@@ -8,6 +8,7 @@ const {
   careCaseFindFirstMock,
   pharmacistShiftFindFirstMock,
   visitScheduleCreateMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -16,17 +17,20 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler(Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        }));
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }),
+        );
     },
   ),
   withOrgContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleCreateMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -48,12 +52,24 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/generate', {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-schedules/generate', {
+    method: 'POST',
+    body: '{"case_id":',
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -217,6 +233,65 @@ describe('/api/visit-schedules/generate POST', () => {
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid recurring date keys before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-02-30',
+        end_date: '2026-03-03',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        start_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object generate payloads before loading the case', async () => {
+    const response = await POST(createRequest(['case_1']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON generate payloads before loading the case', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects schedules when patient and facility windows do not overlap', async () => {

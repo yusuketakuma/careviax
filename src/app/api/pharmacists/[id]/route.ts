@@ -1,14 +1,13 @@
 import { NextRequest } from 'next/server';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import {
-  isOperationalMemberRole,
-  membershipFlagsForRole,
-} from '@/lib/auth/member-roles';
+import { isOperationalMemberRole, membershipFlagsForRole } from '@/lib/auth/member-roles';
 import { updatePharmacistSchema } from '@/lib/validations/pharmacist';
 import {
   disableCognitoUser,
@@ -17,10 +16,7 @@ import {
   updateCognitoUserProfile,
 } from '@/server/services/cognito-admin';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬剤師管理の権限がありません',
@@ -28,18 +24,21 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updatePharmacistSchema.safeParse(body);
+  const parsed = updatePharmacistSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const { id } = await params;
+  const pharmacistId = normalizeRequiredRouteParam(id);
+  if (!pharmacistId) return validationError('薬剤師IDが不正です');
+
   const pharmacist = await prisma.user.findFirst({
     where: {
-      id,
+      id: pharmacistId,
       org_id: ctx.orgId,
     },
     include: {
@@ -80,13 +79,13 @@ export async function PATCH(
       return validationError(
         error instanceof Error && error.message === 'COGNITO_NOT_CONFIGURED'
           ? 'Cognito 設定が不足しているため薬剤師情報を更新できません'
-          : 'Cognito 上の薬剤師情報更新に失敗しました'
+          : 'Cognito 上の薬剤師情報更新に失敗しました',
       );
     }
 
     const updated = await withOrgContext(ctx.orgId, async (tx) => {
       const user = await tx.user.update({
-        where: { id },
+        where: { id: pharmacistId },
         data: {
           name: data.name,
           name_kana: data.name_kana,
@@ -106,8 +105,7 @@ export async function PATCH(
           site_id: data.site_id ?? null,
           role: data.role,
           can_dispense: data.can_dispense ?? roleFlags.can_dispense,
-          can_audit_dispense:
-            data.can_audit_dispense ?? roleFlags.can_audit_dispense,
+          can_audit_dispense: data.can_audit_dispense ?? roleFlags.can_audit_dispense,
           can_set: data.can_set ?? roleFlags.can_set,
           can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
         },
@@ -119,14 +117,13 @@ export async function PATCH(
           actor_id: ctx.userId,
           action: 'pharmacist_updated',
           target_type: 'User',
-          target_id: id,
+          target_id: pharmacistId,
           changes: {
             site_id: data.site_id,
             role: data.role,
             phone: data.phone ?? null,
             can_dispense: data.can_dispense ?? roleFlags.can_dispense,
-            can_audit_dispense:
-              data.can_audit_dispense ?? roleFlags.can_audit_dispense,
+            can_audit_dispense: data.can_audit_dispense ?? roleFlags.can_audit_dispense,
             can_set: data.can_set ?? roleFlags.can_set,
             can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
           },
@@ -148,16 +145,15 @@ export async function PATCH(
       return validationError(
         error instanceof Error && error.message === 'COGNITO_NOT_CONFIGURED'
           ? 'Cognito 設定が不足しているため招待を再送できません'
-          : '招待メールの再送に失敗しました'
+          : '招待メールの再送に失敗しました',
       );
     }
 
     const updated = await withOrgContext(ctx.orgId, async (tx) => {
       const user = await tx.user.update({
-        where: { id },
+        where: { id: pharmacistId },
         data: {
-          account_status:
-            pharmacist.account_status === 'retired' ? 'retired' : 'invited',
+          account_status: pharmacist.account_status === 'retired' ? 'retired' : 'invited',
           last_invited_at: new Date(),
         },
       });
@@ -168,7 +164,7 @@ export async function PATCH(
           actor_id: ctx.userId,
           action: 'pharmacist_invite_resent',
           target_type: 'User',
-          target_id: id,
+          target_id: pharmacistId,
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,
         },
@@ -187,13 +183,13 @@ export async function PATCH(
       return validationError(
         error instanceof Error && error.message === 'COGNITO_NOT_CONFIGURED'
           ? 'Cognito 設定が不足しているため再有効化できません'
-          : '薬剤師アカウントの再有効化に失敗しました'
+          : '薬剤師アカウントの再有効化に失敗しました',
       );
     }
 
     const updated = await withOrgContext(ctx.orgId, async (tx) => {
       const user = await tx.user.update({
-        where: { id },
+        where: { id: pharmacistId },
         data: {
           is_active: true,
           account_status: 'active',
@@ -204,7 +200,7 @@ export async function PATCH(
 
       await tx.membership.updateMany({
         where: {
-          user_id: id,
+          user_id: pharmacistId,
           org_id: ctx.orgId,
         },
         data: {
@@ -218,7 +214,7 @@ export async function PATCH(
           actor_id: ctx.userId,
           action: 'pharmacist_reactivated',
           target_type: 'User',
-          target_id: id,
+          target_id: pharmacistId,
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,
         },
@@ -239,13 +235,13 @@ export async function PATCH(
     return validationError(
       error instanceof Error && error.message === 'COGNITO_NOT_CONFIGURED'
         ? 'Cognito 設定が不足しているため停止処理を実行できません'
-        : '薬剤師アカウントの停止に失敗しました'
+        : '薬剤師アカウントの停止に失敗しました',
     );
   }
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     const user = await tx.user.update({
-      where: { id },
+      where: { id: pharmacistId },
       data: {
         is_active: false,
         account_status: nextStatus,
@@ -256,7 +252,7 @@ export async function PATCH(
 
     await tx.membership.updateMany({
       where: {
-        user_id: id,
+        user_id: pharmacistId,
         org_id: ctx.orgId,
       },
       data: {
@@ -268,12 +264,9 @@ export async function PATCH(
       data: {
         org_id: ctx.orgId,
         actor_id: ctx.userId,
-        action:
-          parsed.data.action === 'retire'
-            ? 'pharmacist_retired'
-            : 'pharmacist_suspended',
+        action: parsed.data.action === 'retire' ? 'pharmacist_retired' : 'pharmacist_suspended',
         target_type: 'User',
-        target_id: id,
+        target_id: pharmacistId,
         changes: {
           reason,
         },

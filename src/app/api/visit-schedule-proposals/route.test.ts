@@ -112,6 +112,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals', {
+    method: 'POST',
+    body: '{"case_id":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/visit-schedule-proposals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -249,6 +260,20 @@ describe('/api/visit-schedule-proposals', () => {
     expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid proposal date filters before querying proposals', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?date_from=2026-02-30'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'date_from の日付形式が不正です（YYYY-MM-DD）',
+    });
+    expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates proposal drafts and supersedes open proposals', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedule-proposals', {
@@ -284,6 +309,96 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+  });
+
+  it('rejects non-object generation payloads before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', []),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON generation payloads before case lookup or planner side effects', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid generation start_date before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+        start_date: '2026-02-30',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid generation locked_date before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+        locked_date: '2026-04-31',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned proposal generation before billing, planner, writes, audit, or notify side effects', async () => {

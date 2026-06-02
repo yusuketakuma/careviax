@@ -4,10 +4,27 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+
+const monthKeyPattern = /^\d{4}-\d{2}$/;
+
+function isValidMonthKey(value: string) {
+  if (!monthKeyPattern.test(value)) return false;
+  const [, month] = value.split('-').map(Number);
+  return month >= 1 && month <= 12;
+}
 
 const applyTemplateSchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/, 'month の形式が不正です（YYYY-MM）'),
-  user_id: z.string().optional(),
+  month: z
+    .string()
+    .trim()
+    .regex(monthKeyPattern, 'month の形式が不正です（YYYY-MM）')
+    .refine(isValidMonthKey, 'month の形式が不正です（YYYY-MM）'),
+  user_id: z
+    .string()
+    .trim()
+    .transform((value) => (value === '' ? undefined : value))
+    .optional(),
 });
 
 function datesForWeekday(year: number, monthIndex: number, weekday: number) {
@@ -30,10 +47,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = applyTemplateSchema.safeParse(body);
+  const parsed = applyTemplateSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

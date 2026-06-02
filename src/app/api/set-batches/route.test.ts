@@ -48,6 +48,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/set-batches', {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{"plan_id":',
+  });
+}
+
 function createGetRequest(url: string) {
   return new NextRequest(url, {
     headers: {
@@ -68,9 +79,12 @@ describe('set-batches POST', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist_trainee' });
     prismaMock.setBatch.findMany.mockResolvedValue([]);
 
-    const response = await GET(createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'), {
-      params: Promise.resolve({}),
-    });
+    const response = await GET(
+      createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'),
+      {
+        params: Promise.resolve({}),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -136,6 +150,37 @@ describe('set-batches POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+  });
+
+  it('rejects non-object create payloads before transaction side effects', async () => {
+    const response = await POST(createRequest([]), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(txMock.prescriptionLine.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before transaction side effects', async () => {
+    const response = await POST(createMalformedPostRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(txMock.prescriptionLine.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist batch creation before line lookup or writes', async () => {

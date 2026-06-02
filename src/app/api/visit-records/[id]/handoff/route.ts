@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, error } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { confirmHandoff } from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -17,10 +19,7 @@ const confirmHandoffSchema = z.object({
     .optional(),
 });
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
@@ -28,7 +27,17 @@ export async function PUT(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = confirmHandoffSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
   // Verify visit record exists and belongs to org
   const record = await prisma.visitRecord.findFirst({
@@ -36,14 +45,6 @@ export async function PUT(
     select: { id: true, structured_soap: true },
   });
   if (!record) return notFound('訪問記録が見つかりません');
-
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-
-  const parsed = confirmHandoffSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
 
   const { edits } = parsed.data;
 
@@ -64,10 +65,7 @@ export async function PUT(
   }
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の閲覧権限がありません',
@@ -75,7 +73,9 @@ export async function GET(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },
     select: { id: true, structured_soap: true },

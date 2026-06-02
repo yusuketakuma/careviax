@@ -4,11 +4,12 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { getScheduleVisitBriefsForSchedules } from '@/server/services/visit-brief';
 import type { VisitBrief } from '@/types/visit-brief';
 
 const briefBatchSchema = z.object({
-  schedule_ids: z.array(z.string().min(1)).min(1).max(100),
+  schedule_ids: z.array(z.string().trim().min(1)).min(1).max(100),
 });
 
 export async function POST(req: NextRequest) {
@@ -19,10 +20,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = briefBatchSchema.safeParse(body);
+  const parsed = briefBatchSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

@@ -6,6 +6,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     membership: { findFirst: vi.fn() },
     formularyChangeRequest: { findFirst: vi.fn(), update: vi.fn() },
+    drugMaster: { findFirst: vi.fn() },
     pharmacyDrugStock: { upsert: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
@@ -21,6 +22,17 @@ function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pharmacy-drug-stock-requests/request_1', {
     method: 'PATCH',
     body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stock-requests/request_1', {
+    method: 'PATCH',
+    body: '{"decision":',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -124,6 +136,136 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
         }),
       }),
     );
+  });
+
+  it('rejects non-object request bodies before looking up the request', async () => {
+    const response = await PATCH(createRequest(['approve']), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before looking up the request', async () => {
+    const response = await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.formularyChangeRequest.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed persisted requested payloads before approval mutation', async () => {
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue({
+      id: 'request_1',
+      org_id: 'org_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      status: 'pending',
+      requested_payload: ['unexpected'],
+    });
+
+    const response = await PATCH(createRequest({ decision: 'approve' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '申請内容が破損しているため承認できません',
+      details: { request_id: 'request_1' },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank persisted preferred generic ids before approval mutation', async () => {
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue({
+      id: 'request_1',
+      org_id: 'org_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      status: 'pending',
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: '   ',
+        adoption_note: '承認反映',
+      },
+    });
+
+    const response = await PATCH(createRequest({ decision: 'approve' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '申請内容が破損しているため承認できません',
+      details: { request_id: 'request_1' },
+    });
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing persisted preferred generic ids before approval mutation', async () => {
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue({
+      id: 'request_1',
+      org_id: 'org_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      status: 'pending',
+      requested_payload: {
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: 'generic_missing',
+        adoption_note: '承認反映',
+      },
+    });
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({ id: 'drug_1', generic_name: 'アムロジピン' })
+      .mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ decision: 'approve' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '申請内容が破損しているため承認できません',
+      details: {
+        request_id: 'request_1',
+        invalid_field: 'preferred_generic_id',
+      },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects already processed requests before mutation', async () => {

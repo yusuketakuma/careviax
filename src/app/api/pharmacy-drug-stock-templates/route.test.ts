@@ -34,6 +34,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-drug-stock-templates', {
+    method: 'POST',
+    body: '{"name":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/pharmacy-drug-stock-templates', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -69,7 +80,9 @@ describe('/api/pharmacy-drug-stock-templates', () => {
     ]);
 
     const response = await GET(
-      createRequest('http://localhost/api/pharmacy-drug-stock-templates?q=%E5%9C%A8%E5%AE%85&limit=10'),
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stock-templates?q=%E5%9C%A8%E5%AE%85&limit=%2010%20',
+      ),
       { params: Promise.resolve({}) },
     );
 
@@ -82,14 +95,28 @@ describe('/api/pharmacy-drug-stock-templates', () => {
       expect.objectContaining({
         where: {
           org_id: 'org_1',
-          OR: [
-            { name: { contains: '在宅' } },
-            { description: { contains: '在宅' } },
-          ],
+          OR: [{ name: { contains: '在宅' } }, { description: { contains: '在宅' } }],
         },
         take: 10,
       }),
     );
+  });
+
+  it('rejects malformed numeric query values before listing templates', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stock-templates?q=%E5%9C%A8%E5%AE%85&limit=1e2',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.formularyTemplate.findMany).not.toHaveBeenCalled();
   });
 
   it('creates a template from stocked drugs at a same-org site', async () => {
@@ -114,7 +141,14 @@ describe('/api/pharmacy-drug-stock-templates', () => {
           source_site_id: 'site_1',
           created_by_id: 'user_1',
           item_count: 1,
-          items: [{ drug_master_id: 'drug_1', reorder_point: 10, preferred_generic_id: null, adoption_note: '標準採用' }],
+          items: [
+            {
+              drug_master_id: 'drug_1',
+              reorder_point: 10,
+              preferred_generic_id: null,
+              adoption_note: '標準採用',
+            },
+          ],
         }),
       }),
     );
@@ -126,6 +160,41 @@ describe('/api/pharmacy-drug-stock-templates', () => {
         }),
       }),
     );
+  });
+
+  it('rejects non-object request bodies before reading the source site', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-templates', ['unexpected']),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before reading the source site', async () => {
+    const response = await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate template names in the same org before reading source stocks', async () => {

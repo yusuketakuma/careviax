@@ -86,6 +86,17 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-records/visit_1', {
+    method: 'PATCH',
+    body: '{"version":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/visit-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -169,6 +180,8 @@ describe('/api/visit-records/[id]', () => {
       created_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
       updated_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
       attachments: [
+        null,
+        'legacy-bad-value',
         {
           file_id: '11111111-1111-4111-8111-111111111111',
           file_name: 'visit-photo.png',
@@ -213,6 +226,23 @@ describe('/api/visit-records/[id]', () => {
         },
       ],
     });
+  });
+
+  it('rejects blank visit record ids before loading visit details', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問記録IDが不正です',
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 when a pharmacist reads another schedule assignment visit record', async () => {
@@ -356,8 +386,9 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
-    const savedAttachments = visitRecordUpdateMock.mock.calls[0][0].data
-      .attachments as Array<Record<string, unknown>>;
+    const savedAttachments = visitRecordUpdateMock.mock.calls[0][0].data.attachments as Array<
+      Record<string, unknown>
+    >;
     expect(savedAttachments[0].legacy_debug).toBeUndefined();
   });
 
@@ -376,6 +407,60 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before loading the visit record', async () => {
+    const response = await PATCH(createRequest(['visit_1']), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank visit record ids before loading or updating the visit record', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問記録IDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the visit record', async () => {
+    const response = await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
     expect(visitRecordUpdateMock).not.toHaveBeenCalled();
   });
 

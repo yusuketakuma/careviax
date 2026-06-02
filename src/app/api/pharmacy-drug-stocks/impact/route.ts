@@ -3,16 +3,16 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 
 const impactQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
-  expiry_within_days: z.coerce.number().int().min(1).max(365).default(90),
-  review_overdue_days: z.coerce.number().int().min(30).max(730).default(180),
-  price_impact_days: z.coerce.number().int().min(1).max(365).default(90),
-  price_impact_draft_limit: z.coerce.number().int().min(1).max(1000).default(500),
+  expiry_within_days: boundedIntegerSearchParam('expiry_within_days', 1, 365, 90),
+  review_overdue_days: boundedIntegerSearchParam('review_overdue_days', 30, 730, 180),
+  price_impact_days: boundedIntegerSearchParam('price_impact_days', 1, 365, 90),
+  price_impact_draft_limit: boundedIntegerSearchParam('price_impact_draft_limit', 1, 1000, 500),
   queue: z
     .enum([
       'action_required',
@@ -26,7 +26,7 @@ const impactQuerySchema = z.object({
       'review_due',
     ])
     .default('action_required'),
-  queue_limit: z.coerce.number().int().min(1).max(100).default(25),
+  queue_limit: boundedIntegerSearchParam('queue_limit', 1, 100, 25),
 });
 
 type ImpactQueueKey = z.infer<typeof impactQuerySchema>['queue'];

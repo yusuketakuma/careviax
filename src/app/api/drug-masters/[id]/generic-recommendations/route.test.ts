@@ -75,7 +75,7 @@ describe('/api/drug-masters/[id]/generic-recommendations', () => {
 
     const response = await GET(
       createRequest(
-        'http://localhost/api/drug-masters/brand_1/generic-recommendations?site_id=site_1',
+        'http://localhost/api/drug-masters/brand_1/generic-recommendations?site_id=site_1&limit=%205%20',
       ),
       { params: Promise.resolve({ id: 'brand_1' }) },
     );
@@ -104,7 +104,29 @@ describe('/api/drug-masters/[id]/generic-recommendations', () => {
           id: { not: 'brand_1' },
         }),
         orderBy: [{ drug_price: 'asc' }, { drug_name_kana: 'asc' }, { drug_name: 'asc' }],
+        take: 5,
       }),
     );
+  });
+
+  it('rejects malformed limit values before site or target lookup', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/drug-masters/brand_1/generic-recommendations?site_id=site_1&limit=10.0',
+      ),
+      { params: Promise.resolve({ id: 'brand_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.genericDrugMapping.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
   });
 });

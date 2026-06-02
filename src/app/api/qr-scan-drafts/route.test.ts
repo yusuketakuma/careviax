@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
 
@@ -20,17 +21,15 @@ const {
   detectMultiQRMock,
   mapJahisToIntakeMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+        }),
+      );
+  }),
   withOrgContextMock: vi.fn(),
   qrScanDraftFindFirstMock: vi.fn().mockResolvedValue(null),
   qrScanDraftCreateMock: vi.fn(),
@@ -99,10 +98,24 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/qr-scan-drafts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"qr_texts":',
+  });
+}
+
 describe('/api/qr-scan-drafts POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1950-03-15T00:00:00.000Z'),
+      gender: 'male',
+    });
     pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
     isJahisQRMock.mockReturnValue(true);
     mergeJahisQRPagesMock.mockImplementation((pages: unknown[]) => pages[0]);
@@ -212,22 +225,72 @@ describe('/api/qr-scan-drafts POST', () => {
     );
   });
 
+  it('rejects non-object JSON payloads before patient/site lookup or draft creation', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON payloads before patient/site lookup or draft creation', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('persists enriched parsed_data from the QR mapper', async () => {
     const response = await POST(
       createRequest({
-        qr_texts: ['JAHISTC08,1'],
-        patient_id: 'patient_1',
-        site_id: 'site_1',
+        qr_texts: [' JAHISTC08,1 ', 'JAHISTC08,1'],
+        patient_id: ' patient_1 ',
+        site_id: ' site_1 ',
+        session_id: ' session_1 ',
       }),
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'site_1', org_id: 'org_1' },
+      select: { id: true },
+    });
+    expect(isJahisQRMock).toHaveBeenCalledTimes(1);
+    expect(isJahisQRMock).toHaveBeenCalledWith('JAHISTC08,1');
     expect(mapJahisToIntakeMock).toHaveBeenCalled();
     expect(qrScanDraftCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          site_id: 'site_1',
           patient_id: 'patient_1',
+          session_id: 'session_1',
+          raw_qr_texts: ['JAHISTC08,1'],
+          qr_payload_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
           parsed_data: expect.objectContaining({
             patientName: '山田 太郎',
             prescriberInstitutionId: 'inst_1',
@@ -290,6 +353,24 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(JSON.stringify(event)).not.toContain('patient_1');
   });
 
+  it('rejects blank QR texts and blank site ids before lookup or parsing', async () => {
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1', '   '],
+        site_id: '   ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects patient_id outside the current org before saving the draft', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
@@ -305,6 +386,200 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(response.status).toBe(400);
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects selected patients whose master identity does not match the QR patient', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1960-06-15T00:00:00.000Z'),
+      gender: 'male',
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QRコードの患者情報が選択患者と一致しません',
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects QR payloads whose patient identity cannot be verified', async () => {
+    parseJahisQRSafeMock.mockReturnValueOnce({
+      success: true,
+      warnings: [],
+      data: {
+        patient: {
+          name: '山田 太郎',
+          nameKana: 'ヤマダ タロウ',
+          birthDate: null,
+          gender: 'male',
+        },
+        medications: [{ drugName: 'アムロジピン錠5mg' }],
+        prescribingInstitution: {},
+        dispensingInstitution: {},
+        supplementalRecords: [],
+        rawText: 'JAHISTC08,1',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QRコードの患者情報を確認できません',
+      details: {
+        missing_identity: ['birth_date'],
+      },
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects exact duplicate QR payloads before creating another draft', async () => {
+    qrScanDraftFindFirstMock.mockResolvedValueOnce({
+      id: 'draft_existing',
+      status: 'confirmed',
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じQRスキャン下書きが既に存在します',
+      details: {
+        duplicate_draft_id: 'draft_existing',
+        status: 'confirmed',
+      },
+    });
+    expect(qrScanDraftFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: { in: ['pending', 'confirmed'] },
+          qr_payload_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      }),
+    );
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unmatched duplicate QR payloads using the canonical payload hash', async () => {
+    qrScanDraftFindFirstMock.mockResolvedValueOnce({
+      id: 'draft_unmatched_existing',
+      status: 'pending',
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じQRスキャン下書きが既に存在します',
+      details: {
+        duplicate_draft_id: 'draft_unmatched_existing',
+        status: 'pending',
+      },
+    });
+    expect(qrScanDraftFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: { in: ['pending', 'confirmed'] },
+          qr_payload_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      }),
+    );
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('maps QR payload unique conflicts during create to workflow conflict', async () => {
+    qrScanDraftCreateMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じQRスキャン下書きが既に存在します',
+    });
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when duplicate QR lookup fails', async () => {
+    qrScanDraftFindFirstMock.mockRejectedValueOnce(new Error('db unavailable'));
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'QRスキャン下書きの重複確認に失敗しました',
+    });
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects site_id outside the current org before QR parsing and stock mapping', async () => {

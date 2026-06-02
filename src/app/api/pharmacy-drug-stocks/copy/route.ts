@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 const copyFormularySchema = z.object({
   source_site_id: z.string().trim().min(1, 'source_site_id は必須です'),
@@ -15,10 +16,10 @@ type CopyPreviewAction = 'create' | 'update' | 'skip_existing';
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = copyFormularySchema.safeParse(body);
+    const parsed = copyFormularySchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -85,7 +86,11 @@ export const POST = withAuthContext(
     );
     const previewRows = sourceStocks.map((stock) => {
       const exists = existingTargetDrugIds.has(stock.drug_master_id);
-      const action: CopyPreviewAction = exists ? (overwrite ? 'update' : 'skip_existing') : 'create';
+      const action: CopyPreviewAction = exists
+        ? overwrite
+          ? 'update'
+          : 'skip_existing'
+        : 'create';
       return {
         action,
         drug_master_id: stock.drug_master_id,

@@ -10,17 +10,15 @@ const {
   scheduleFindManyMock,
   proposalFindManyMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+        }),
+      );
+  }),
   withOrgContextMock: vi.fn(),
   computeOptimizedVisitRouteMock: vi.fn(),
   scheduleFindManyMock: vi.fn(),
@@ -46,6 +44,14 @@ function createRequest(body: unknown) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-routes', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
   });
 }
 
@@ -138,6 +144,28 @@ describe('/api/visit-routes POST', () => {
         expect.objectContaining({ scheduleId: 'schedule_2', priority: 'urgent' }),
       ],
     });
+  });
+
+  it('rejects non-object route payloads before loading route inputs', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading route inputs', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 
   it('annotates the response when some schedules are missing coordinates', async () => {

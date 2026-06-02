@@ -32,6 +32,20 @@ function createJsonRequest(body: unknown) {
   });
 }
 
+function createEmptyRequest() {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-generic', {
+    method: 'POST',
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-generic', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"mode":',
+  });
+}
+
 describe('/api/drug-master-imports/mhlw-generic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,11 +61,49 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     });
   });
 
+  it('rejects non-object JSON payloads before import execution', async () => {
+    const response = (await POST(createJsonRequest([]), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before import execution', async () => {
+    const response = (await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+  });
+
+  it('allows empty request bodies for default all-mode import options', async () => {
+    const response = (await POST(createEmptyRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(201);
+    expect(importMhlwGenericFlagsMock).toHaveBeenCalledWith({}, { workbookUrl: undefined });
+    expect(importGenericNameMappingsMock).toHaveBeenCalledWith({}, { workbookUrl: undefined });
+  });
+
   it('imports both generic flags and mappings in all mode', async () => {
     const response = (await POST(
       createJsonRequest({
-          mode: 'all',
-          workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
+        mode: 'all',
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
       }),
       { params: Promise.resolve({}) },
     ))!;
@@ -64,8 +116,8 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
   it('rejects credential-bearing workbook URLs without echoing credentials', async () => {
     const response = (await POST(
       createJsonRequest({
-          mode: 'all',
-          workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
+        mode: 'all',
+        workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
       }),
       { params: Promise.resolve({}) },
     ))!;

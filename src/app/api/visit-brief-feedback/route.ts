@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 
@@ -25,41 +26,45 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = feedbackSchema.safeParse(body);
+  const parsed = feedbackSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action:
-          parsed.data.rating === 'helpful'
-            ? 'visit_brief_feedback_helpful'
-            : 'visit_brief_feedback_needs_review',
-        target_type: 'visit_brief_feedback',
-        target_id: parsed.data.generation_id,
-        changes: {
-          patient_id: parsed.data.patient_id,
-          context: parsed.data.context,
-          summary_kind: parsed.data.summary_kind,
-          rating: parsed.data.rating,
-          comment: parsed.data.comment ?? null,
-          provider: parsed.data.provider ?? null,
-          requested_provider: parsed.data.requested_provider ?? null,
-          model: parsed.data.model ?? null,
-          is_fallback: parsed.data.is_fallback ?? false,
+  await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          org_id: ctx.orgId,
+          actor_id: ctx.userId,
+          action:
+            parsed.data.rating === 'helpful'
+              ? 'visit_brief_feedback_helpful'
+              : 'visit_brief_feedback_needs_review',
+          target_type: 'visit_brief_feedback',
+          target_id: parsed.data.generation_id,
+          changes: {
+            patient_id: parsed.data.patient_id,
+            context: parsed.data.context,
+            summary_kind: parsed.data.summary_kind,
+            rating: parsed.data.rating,
+            comment: parsed.data.comment ?? null,
+            provider: parsed.data.provider ?? null,
+            requested_provider: parsed.data.requested_provider ?? null,
+            model: parsed.data.model ?? null,
+            is_fallback: parsed.data.is_fallback ?? false,
+          },
         },
-      },
-    });
-  }, {
-    requestContext: ctx,
-  });
+      });
+    },
+    {
+      requestContext: ctx,
+    },
+  );
 
   return success({ ok: true }, 201);
 }

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
-import { forbiddenResponse, notFound, success } from '@/lib/api/response';
+import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 
@@ -16,7 +17,10 @@ export async function GET(
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { scheduleId } = await params;
+  const { scheduleId: rawScheduleId } = await params;
+  const scheduleId = normalizeRequiredRouteParam(rawScheduleId);
+  if (!scheduleId) return validationError('訪問予定IDが不正です');
+
   const schedule = await prisma.visitSchedule.findFirst({
     where: {
       id: scheduleId,

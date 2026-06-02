@@ -82,7 +82,9 @@ describe('/api/drug-masters/[id]/ingredient-group', () => {
     ]);
 
     const response = await GET(
-      createRequest('http://localhost/api/drug-masters/brand_1/ingredient-group?site_id=site_1'),
+      createRequest(
+        'http://localhost/api/drug-masters/brand_1/ingredient-group?site_id=site_1&limit=%202%20',
+      ),
       { params: Promise.resolve({ id: 'brand_1' }) },
     );
 
@@ -112,6 +114,11 @@ describe('/api/drug-masters/[id]/ingredient-group', () => {
           site_id: 'site_1',
           drug_master_id: { in: ['brand_1', 'generic_1'] },
         },
+      }),
+    );
+    expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
       }),
     );
   });
@@ -155,5 +162,25 @@ describe('/api/drug-masters/[id]/ingredient-group', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed limit values before site or target lookup', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/drug-masters/brand_1/ingredient-group?site_id=site_1&limit=2abc',
+      ),
+      { params: Promise.resolve({ id: 'brand_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,6 @@
+import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 type RoutePoint = {
   lat: number | null;
@@ -101,7 +103,7 @@ class OsrmProvider implements RoutingProvider {
       });
       if (!response.ok) return null;
 
-      const payload = (await response.json()) as unknown;
+      const payload = await readJsonResponseBody(response);
       const durationSeconds = readMatrixCell(payload, 'durations');
       if (durationSeconds === null) {
         return null;
@@ -162,7 +164,7 @@ class GoogleRoutesProvider implements RoutingProvider {
       });
       if (!response.ok) return null;
 
-      const route = readGoogleRouteEstimate((await response.json()) as unknown);
+      const route = readGoogleRouteEstimate(await readJsonResponseBody(response));
       if (!route) return null;
 
       return {
@@ -181,24 +183,20 @@ class GoogleRoutesProvider implements RoutingProvider {
 
 function createProvider(): RoutingProvider | null {
   const providerName = process.env.ROUTING_API_PROVIDER ?? 'osrm';
+  const timeoutMs = normalizePositiveTimeoutMs(process.env.ROUTING_API_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_TIMEOUT_MS,
+  });
 
   if (providerName === 'google') {
     const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
     if (!apiKey) return null;
-    return new GoogleRoutesProvider(
-      apiKey,
-      Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS),
-    );
+    return new GoogleRoutesProvider(apiKey, timeoutMs);
   }
 
   // Default: OSRM
   const baseUrl = process.env.ROUTING_API_BASE_URL;
   if (!baseUrl) return null;
-  return new OsrmProvider(
-    baseUrl,
-    process.env.ROUTING_API_PROFILE ?? 'driving',
-    Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS),
-  );
+  return new OsrmProvider(baseUrl, process.env.ROUTING_API_PROFILE ?? 'driving', timeoutMs);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

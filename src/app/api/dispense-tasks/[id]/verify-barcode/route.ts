@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { parseGS1Barcode, isExpired } from '@/lib/pharmacy/barcode';
@@ -13,8 +15,19 @@ const verifyBarcodeSchema = z.object({
 
 export const POST = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx, { params }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('調剤タスクIDが不正です');
+
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = verifyBarcodeSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
     const task = await prisma.dispenseTask.findFirst({
       where: {
@@ -25,14 +38,6 @@ export const POST = withAuthContext<{ id: string }>(
       select: { id: true, cycle_id: true },
     });
     if (!task) return notFound('タスクが見つかりません');
-
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
-
-    const parsed = verifyBarcodeSchema.safeParse(body);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
 
     const { barcode, line_id } = parsed.data;
 

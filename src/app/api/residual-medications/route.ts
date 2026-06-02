@@ -1,18 +1,29 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
+const MAX_RESIDUAL_MEDICATION_LIMIT = 200;
+
+const residualMedicationQuerySchema = z.object({
+  limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
+});
+
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
     const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
     const patientId = searchParams.get('patient_id') ?? undefined;
-    const limitParam = Number(searchParams.get('limit') ?? '');
-    const take = Number.isFinite(limitParam) && limitParam > 0 ? Math.floor(limitParam) : undefined;
+    const parsed = parseSearchParams(residualMedicationQuerySchema, searchParams);
+    if (!parsed.ok) {
+      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+    const take = parsed.data.limit;
 
     const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere({
       userId: req.userId,
@@ -75,7 +86,7 @@ export const GET = withAuth(
             : {}),
       },
       orderBy: { created_at: 'asc' },
-      ...(take ? { take } : {}),
+      ...(take !== undefined ? { take } : {}),
     });
 
     return success({ data: records });
@@ -104,10 +115,10 @@ const createResidualMedicationSchema = z.object({
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createResidualMedicationSchema.safeParse(body);
+    const parsed = createResidualMedicationSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

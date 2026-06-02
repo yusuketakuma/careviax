@@ -3,6 +3,7 @@ import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import {
@@ -77,133 +78,136 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   return success({ data, nextCursor, hasMore });
 });
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createDispenseTaskSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = createDispenseTaskSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  const { cycle_id, priority, due_date, assigned_to } = parsed.data;
-  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const { cycle_id, priority, due_date, assigned_to } = parsed.data;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
 
-  const cycle = await prisma.medicationCycle.findFirst({
-    where: {
-      id: cycle_id,
-      org_id: req.orgId,
-      ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
-    },
-    select: {
-      id: true,
-      patient_id: true,
-      overall_status: true,
-      case_: {
-        select: {
-          primary_pharmacist_id: true,
-          backup_pharmacist_id: true,
-          patient: {
-            select: {
-              name: true,
+    const cycle = await prisma.medicationCycle.findFirst({
+      where: {
+        id: cycle_id,
+        org_id: req.orgId,
+        ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        overall_status: true,
+        case_: {
+          select: {
+            primary_pharmacist_id: true,
+            backup_pharmacist_id: true,
+            patient: {
+              select: {
+                name: true,
+              },
             },
           },
         },
-      },
-      visit_schedules: {
-        select: {
-          pharmacist_id: true,
-        },
-      },
-    },
-  });
-  if (!cycle) return notFound('サイクルが見つかりません');
-
-  const created = await withOrgContext(req.orgId, async (tx) => {
-    const task = await tx.dispenseTask.create({
-      data: {
-        org_id: req.orgId,
-        cycle_id,
-        priority,
-        due_date: due_date ? new Date(due_date) : undefined,
-        assigned_to: assigned_to ?? null,
-        status: 'pending',
-      },
-      include: cycleInclude,
-    });
-
-    // Update cycle status to 'dispensing' if currently ready_to_dispense or dispensing
-    if (cycle.overall_status === 'ready_to_dispense' || cycle.overall_status === 'dispensing') {
-      try {
-        await transitionCycleStatus(tx, cycle_id, req.orgId, 'dispensing', req.userId);
-      } catch (err) {
-        if (err instanceof InvalidTransitionError) {
-          return validationError(`ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`);
-        }
-        if (err instanceof VersionConflictError) {
-          return conflict(err.message);
-        }
-        throw err;
-      }
-    }
-
-    if (priority === 'emergency') {
-      const bypassRecipients = await tx.membership.findMany({
-        where: {
-          org_id: req.orgId,
-          is_active: true,
-          role: { in: [...ADMIN_MEMBER_ROLES] },
-          user: {
-            is_active: true,
+        visit_schedules: {
+          select: {
+            pharmacist_id: true,
           },
         },
-        select: {
-          user_id: true,
-        },
-      });
+      },
+    });
+    if (!cycle) return notFound('サイクルが見つかりません');
 
-      const explicitUserIds = Array.from(
-        new Set(
-          [
-            assigned_to &&
-            [
-              cycle.case_?.primary_pharmacist_id,
-              cycle.case_?.backup_pharmacist_id,
-              ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
-            ].includes(assigned_to)
-              ? assigned_to
-              : null,
-            cycle.case_?.primary_pharmacist_id ?? null,
-            cycle.case_?.backup_pharmacist_id ?? null,
-            ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
-            ...bypassRecipients.map((member) => member.user_id),
-          ].filter((value): value is string => Boolean(value)),
-        ),
-      );
-
-      await dispatchNotificationEvent(tx, {
-        orgId: req.orgId,
-        eventType: 'dispense_task_emergency_created',
-        type: 'urgent',
-        title: '緊急の調剤対応が追加されました',
-        message: `${task.cycle.case_.patient.name} の緊急調剤タスクを確認してください${due_date ? `（期限 ${due_date.slice(0, 10)}）` : ''}`,
-        link: `/dispensing/${task.id}`,
-        metadata: {
-          task_id: task.id,
+    const created = await withOrgContext(req.orgId, async (tx) => {
+      const task = await tx.dispenseTask.create({
+        data: {
+          org_id: req.orgId,
           cycle_id,
-          patient_id: task.cycle.patient_id,
           priority,
+          due_date: due_date ? new Date(due_date) : undefined,
+          assigned_to: assigned_to ?? null,
+          status: 'pending',
         },
-        explicitUserIds,
-        dedupeKey: `dispense-task-emergency:${task.id}`,
+        include: cycleInclude,
       });
-    }
 
-    return task;
-  });
+      // Update cycle status to 'dispensing' if currently ready_to_dispense or dispensing
+      if (cycle.overall_status === 'ready_to_dispense' || cycle.overall_status === 'dispensing') {
+        try {
+          await transitionCycleStatus(tx, cycle_id, req.orgId, 'dispensing', req.userId);
+        } catch (err) {
+          if (err instanceof InvalidTransitionError) {
+            return validationError(`ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`);
+          }
+          if (err instanceof VersionConflictError) {
+            return conflict(err.message);
+          }
+          throw err;
+        }
+      }
 
-  return success(created, 201);
-}, {
-  permission: 'canDispense',
-  message: '調剤タスクの作成権限がありません',
-});
+      if (priority === 'emergency') {
+        const bypassRecipients = await tx.membership.findMany({
+          where: {
+            org_id: req.orgId,
+            is_active: true,
+            role: { in: [...ADMIN_MEMBER_ROLES] },
+            user: {
+              is_active: true,
+            },
+          },
+          select: {
+            user_id: true,
+          },
+        });
+
+        const explicitUserIds = Array.from(
+          new Set(
+            [
+              assigned_to &&
+              [
+                cycle.case_?.primary_pharmacist_id,
+                cycle.case_?.backup_pharmacist_id,
+                ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
+              ].includes(assigned_to)
+                ? assigned_to
+                : null,
+              cycle.case_?.primary_pharmacist_id ?? null,
+              cycle.case_?.backup_pharmacist_id ?? null,
+              ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
+              ...bypassRecipients.map((member) => member.user_id),
+            ].filter((value): value is string => Boolean(value)),
+          ),
+        );
+
+        await dispatchNotificationEvent(tx, {
+          orgId: req.orgId,
+          eventType: 'dispense_task_emergency_created',
+          type: 'urgent',
+          title: '緊急の調剤対応が追加されました',
+          message: `${task.cycle.case_.patient.name} の緊急調剤タスクを確認してください${due_date ? `（期限 ${due_date.slice(0, 10)}）` : ''}`,
+          link: `/dispensing/${task.id}`,
+          metadata: {
+            task_id: task.id,
+            cycle_id,
+            patient_id: task.cycle.patient_id,
+            priority,
+          },
+          explicitUserIds,
+          dedupeKey: `dispense-task-emergency:${task.id}`,
+        });
+      }
+
+      return task;
+    });
+
+    return success(created, 201);
+  },
+  {
+    permission: 'canDispense',
+    message: '調剤タスクの作成権限がありません',
+  },
+);

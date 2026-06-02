@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
-import { normalizeJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import {
   success,
   validationError,
@@ -12,6 +12,8 @@ import {
   conflict,
   forbiddenResponse,
 } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   updateVisitRecordSchema,
   type VisitRecordAttachmentRefInput,
@@ -39,9 +41,9 @@ function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachmen
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((entry) => {
-    if (!entry || typeof entry !== 'object') return [];
+    const record = readJsonObject(entry);
+    if (!record) return [];
 
-    const record = entry as Record<string, unknown>;
     if (
       typeof record.file_id !== 'string' ||
       typeof record.file_name !== 'string' ||
@@ -104,7 +106,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
 
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -192,19 +196,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問記録IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-  if (
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    ('schedule_id' in body || 'patient_id' in body)
-  ) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+  if ('schedule_id' in payload || 'patient_id' in payload) {
     return validationError('訪問記録のスケジュールIDと患者IDは変更できません');
   }
 
-  const parsed = updateVisitRecordSchema.safeParse(body);
+  const parsed = updateVisitRecordSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

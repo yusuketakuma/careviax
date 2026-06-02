@@ -5,6 +5,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createMedicationCycleSchema } from '@/lib/validations/medication';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { MEDICATION_CYCLE_STATUSES } from '@/lib/prescription/intake-filters';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -77,10 +78,10 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createMedicationCycleSchema.safeParse(body);
+    const parsed = createMedicationCycleSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

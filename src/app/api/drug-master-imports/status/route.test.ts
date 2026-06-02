@@ -46,7 +46,9 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET, type DrugMasterImportStatusResponse } from './route';
+
+type DrugMasterImportSourceStatus = DrugMasterImportStatusResponse['sources'][number];
 
 function createRequest() {
   return new NextRequest('http://localhost/api/drug-master-imports/status', {
@@ -54,7 +56,42 @@ function createRequest() {
   });
 }
 
-const SOURCES = ['ssk', 'mhlw_price', 'mhlw_generic', 'hot', 'pmda', 'manual_clinical'];
+const SOURCES = [
+  'ssk',
+  'mhlw_price',
+  'mhlw_generic',
+  'hot',
+  'pmda',
+  'manual_clinical',
+] satisfies DrugMasterImportSourceStatus['source'][];
+
+async function readStatusPayload(response: Response): Promise<DrugMasterImportStatusResponse> {
+  const payload: unknown = await response.json();
+
+  expect(payload).toMatchObject({
+    sources: expect.any(Array),
+    totals: {
+      drug_master_count: expect.any(Number),
+      hot_code_coverage: expect.any(Number),
+      package_insert_count: expect.any(Number),
+      interaction_count: expect.any(Number),
+      active_alert_rule_count: expect.any(Number),
+      generic_mapping_count: expect.any(Number),
+    },
+    checked_at: expect.any(String),
+  });
+
+  return payload as DrugMasterImportStatusResponse;
+}
+
+function findStatusSource(
+  body: DrugMasterImportStatusResponse,
+  source: DrugMasterImportSourceStatus['source'],
+) {
+  const status = body.sources.find((item) => item.source === source);
+  if (!status) throw new Error(`missing status source: ${source}`);
+  return status;
+}
 
 describe('GET /api/drug-master-imports/status', () => {
   beforeEach(() => {
@@ -90,17 +127,17 @@ describe('GET /api/drug-master-imports/status', () => {
           source,
           imported_at: recentDate,
           record_count: 100,
-        }))
+        })),
       )
       .mockResolvedValueOnce([]); // no failures
 
     const response = await GET(createRequest());
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
     expect(body.sources).toHaveLength(6);
-    expect(body.sources.map((s: { source: string }) => s.source)).toEqual(SOURCES);
+    expect(body.sources.map((source) => source.source)).toEqual(SOURCES);
   });
 
   it('returns correct response structure with totals', async () => {
@@ -111,7 +148,7 @@ describe('GET /api/drug-master-imports/status', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
     expect(body).toMatchObject({
       sources: expect.any(Array),
@@ -133,15 +170,13 @@ describe('GET /api/drug-master-imports/status', () => {
     const recentDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
 
     drugMasterImportLogFindManyMock
-      .mockResolvedValueOnce([
-        { source: 'ssk', imported_at: recentDate, record_count: 50 },
-      ])
+      .mockResolvedValueOnce([{ source: 'ssk', imported_at: recentDate, record_count: 50 }])
       .mockResolvedValueOnce([]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
-    const ssk = body.sources.find((s: { source: string }) => s.source === 'ssk');
+    const ssk = findStatusSource(body, 'ssk');
     expect(ssk.freshness).toBe('fresh');
   });
 
@@ -151,15 +186,13 @@ describe('GET /api/drug-master-imports/status', () => {
     const agingDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     drugMasterImportLogFindManyMock
-      .mockResolvedValueOnce([
-        { source: 'ssk', imported_at: agingDate, record_count: 50 },
-      ])
+      .mockResolvedValueOnce([{ source: 'ssk', imported_at: agingDate, record_count: 50 }])
       .mockResolvedValueOnce([]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
-    const ssk = body.sources.find((s: { source: string }) => s.source === 'ssk');
+    const ssk = findStatusSource(body, 'ssk');
     expect(ssk.freshness).toBe('aging');
   });
 
@@ -169,15 +202,13 @@ describe('GET /api/drug-master-imports/status', () => {
     const staleDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
     drugMasterImportLogFindManyMock
-      .mockResolvedValueOnce([
-        { source: 'ssk', imported_at: staleDate, record_count: 50 },
-      ])
+      .mockResolvedValueOnce([{ source: 'ssk', imported_at: staleDate, record_count: 50 }])
       .mockResolvedValueOnce([]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
-    const ssk = body.sources.find((s: { source: string }) => s.source === 'ssk');
+    const ssk = findStatusSource(body, 'ssk');
     expect(ssk.freshness).toBe('stale');
   });
 
@@ -187,7 +218,7 @@ describe('GET /api/drug-master-imports/status', () => {
       .mockResolvedValueOnce([]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
     for (const src of body.sources) {
       expect(src.freshness).toBe('never');
@@ -210,9 +241,9 @@ describe('GET /api/drug-master-imports/status', () => {
       ]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
-    const pmda = body.sources.find((s: { source: string }) => s.source === 'pmda');
+    const pmda = findStatusSource(body, 'pmda');
     expect(pmda.last_failure).toMatchObject({
       imported_at: expect.any(String),
       error: 'Connection timeout after 30s',
@@ -233,9 +264,9 @@ describe('GET /api/drug-master-imports/status', () => {
       ]);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
-    const pmda = body.sources.find((s: { source: string }) => s.source === 'pmda');
+    const pmda = findStatusSource(body, 'pmda');
     expect(pmda.recent_runs_30d).toMatchObject({
       total: 2,
       failed: 2,
@@ -244,7 +275,7 @@ describe('GET /api/drug-master-imports/status', () => {
       latest_imported_at: expect.any(String),
     });
 
-    const ssk = body.sources.find((s: { source: string }) => s.source === 'ssk');
+    const ssk = findStatusSource(body, 'ssk');
     expect(ssk.recent_runs_30d).toMatchObject({
       total: 1,
       failed: 0,
@@ -254,30 +285,26 @@ describe('GET /api/drug-master-imports/status', () => {
   });
 
   it('calculates hot_code_coverage as percentage of drugs with hot_code', async () => {
-    drugMasterImportLogFindManyMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    drugMasterImportLogFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     // total = 1000, hot_code coverage count = 800
     drugMasterCountMock
-      .mockResolvedValueOnce(1000)  // total
-      .mockResolvedValueOnce(800);  // hot_code not null
+      .mockResolvedValueOnce(1000) // total
+      .mockResolvedValueOnce(800); // hot_code not null
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
     expect(body.totals.hot_code_coverage).toBe(80);
   });
 
   it('returns 0 hot_code_coverage when no drugs exist', async () => {
-    drugMasterImportLogFindManyMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    drugMasterImportLogFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     drugMasterCountMock.mockResolvedValue(0);
 
     const response = await GET(createRequest());
-    const body = await response.json();
+    const body = await readStatusPayload(response);
 
     expect(body.totals.hot_code_coverage).toBe(0);
   });

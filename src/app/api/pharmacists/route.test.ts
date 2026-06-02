@@ -9,6 +9,7 @@ const {
   userFindFirstMock,
   validateOrgReferencesMock,
   inviteCognitoUserMock,
+  deleteCognitoUserMock,
   withOrgContextMock,
   userCreateMock,
   membershipCreateMock,
@@ -21,6 +22,7 @@ const {
   userFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   inviteCognitoUserMock: vi.fn(),
+  deleteCognitoUserMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   userCreateMock: vi.fn(),
   membershipCreateMock: vi.fn(),
@@ -52,6 +54,7 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/server/services/cognito-admin', () => ({
   inviteCognitoUser: inviteCognitoUserMock,
+  deleteCognitoUser: deleteCognitoUserMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -64,6 +67,17 @@ function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pharmacists', {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/pharmacists', {
+    method: 'POST',
+    body: '{',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -144,7 +158,7 @@ describe('/api/pharmacists GET', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
         }),
-      })
+      }),
     );
     expect(membershipFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('is_active');
     await expect(response.json()).resolves.toMatchObject({
@@ -281,6 +295,7 @@ describe('/api/pharmacists POST', () => {
       sub: 'cognito-sub-1',
       username: 'external@example.com',
     });
+    deleteCognitoUserMock.mockResolvedValue(undefined);
     userCreateMock.mockResolvedValue({
       id: 'user_1',
       email: 'external@example.com',
@@ -300,6 +315,62 @@ describe('/api/pharmacists POST', () => {
         },
       }),
     );
+  });
+
+  it('rejects non-object create payloads before reference checks or invites', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before reference checks or invites', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed phone numbers before reference checks or invites', async () => {
+    const response = await POST(
+      createRequest({
+        name: '不正 電話',
+        name_kana: 'フセイ デンワ',
+        email: 'bad-phone@example.com',
+        phone: '090-ABCD-1234',
+        role: 'external_viewer',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates an external viewer without a site assignment', async () => {
@@ -347,7 +418,7 @@ describe('/api/pharmacists POST', () => {
         name: '訪問 薬剤師',
         name_kana: 'ホウモン ヤクザイシ',
         email: 'visit@example.com',
-        phone: '090-1234-5678',
+        phone: ' 090-1234-5678 ',
         role: 'pharmacist',
         site_id: 'site_1',
         max_daily_visits: 6,
@@ -361,9 +432,15 @@ describe('/api/pharmacists POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(inviteCognitoUserMock).toHaveBeenCalledWith({
+      email: 'visit@example.com',
+      name: '訪問 薬剤師',
+      phone: '090-1234-5678',
+    });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         email: 'visit@example.com',
+        phone: '090-1234-5678',
         max_daily_visits: 6,
         max_weekly_visits: 24,
         max_travel_minutes: 45,
@@ -372,5 +449,56 @@ describe('/api/pharmacists POST', () => {
         coverage_area: ['新宿区'],
       }),
     });
+  });
+
+  it('deletes the invited Cognito user when database creation fails', async () => {
+    userCreateMock.mockRejectedValueOnce(new Error('database write failed'));
+
+    const response = await POST(
+      createRequest({
+        name: '失敗 薬剤師',
+        name_kana: 'シッパイ ヤクザイシ',
+        email: 'rollback@example.com',
+        role: 'external_viewer',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(inviteCognitoUserMock).toHaveBeenCalledWith({
+      email: 'rollback@example.com',
+      name: '失敗 薬剤師',
+      phone: undefined,
+    });
+    expect(deleteCognitoUserMock).toHaveBeenCalledWith('external@example.com');
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬剤師情報の保存に失敗しました',
+    });
+    expect(membershipCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('reports administrator follow-up when Cognito cleanup also fails', async () => {
+    userCreateMock.mockRejectedValueOnce(new Error('database write failed'));
+    deleteCognitoUserMock.mockRejectedValueOnce(new Error('delete failed'));
+
+    const response = await POST(
+      createRequest({
+        name: '削除失敗 薬剤師',
+        name_kana: 'サクジョシッパイ ヤクザイシ',
+        email: 'cleanup-failed@example.com',
+        role: 'external_viewer',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(deleteCognitoUserMock).toHaveBeenCalledWith('external@example.com');
+    await expect(response.json()).resolves.toMatchObject({
+      message:
+        '薬剤師情報の保存に失敗しました。Cognito ユーザーの削除に失敗したため管理者確認が必要です',
+    });
+    expect(membershipCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

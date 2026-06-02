@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
@@ -23,7 +25,8 @@ function buildBatchScheduleAccessWhere(req: AuthenticatedRequest, batchId: strin
 
 export const DELETE = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
 
     const result = await withOrgContext(req.orgId, async (tx) => {
@@ -79,13 +82,14 @@ export const DELETE = withAuth(
 
 export const PATCH = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
 
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = patchFacilityVisitBatchSchema.safeParse(body);
+    const parsed = patchFacilityVisitBatchSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

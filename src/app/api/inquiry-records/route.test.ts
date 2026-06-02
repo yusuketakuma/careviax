@@ -9,18 +9,16 @@ type AuthenticatedTestRequest = NextRequest & {
 
 const { withAuthMock, withOrgContextMock, inquiryRecordFindManyMock, upsertOperationalTaskMock } =
   vi.hoisted(() => ({
-    withAuthMock: vi.fn(
-      (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-        return (req: NextRequest) =>
-          handler(
-            Object.assign(req, {
-              orgId: 'org_1',
-              userId: 'user_1',
-              role: 'pharmacist',
-            }) as AuthenticatedTestRequest,
-          );
-      },
-    ),
+    withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+      return (req: NextRequest) =>
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }) as AuthenticatedTestRequest,
+        );
+    }),
     withOrgContextMock: vi.fn(),
     inquiryRecordFindManyMock: vi.fn(),
     upsertOperationalTaskMock: vi.fn(),
@@ -59,6 +57,14 @@ function createPostRequest(body: unknown) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/inquiry-records', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"cycle_id":',
   } satisfies NextRequestInit);
 }
 
@@ -103,6 +109,30 @@ describe('/api/inquiry-records POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     upsertOperationalTaskMock.mockResolvedValue({ id: 'operational_task_1' });
+  });
+
+  it('rejects non-object create payloads before creating inquiry side effects', async () => {
+    const response = await POST(createPostRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before creating inquiry side effects', async () => {
+    const response = await POST(createMalformedPostRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned cycles before creating inquiry side effects', async () => {
@@ -237,6 +267,8 @@ describe('/api/inquiry-records POST', () => {
       .mockResolvedValue({ id: 'communication_request_1' });
     const communicationEventCreateMock = vi.fn().mockResolvedValue({ id: 'event_1' });
     const medicationCycleUpdateMock = vi.fn().mockResolvedValue({ id: 'cycle_1' });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({ id: 'transition_1' });
+    const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'audit_1' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -264,6 +296,12 @@ describe('/api/inquiry-records POST', () => {
         },
         communicationEvent: {
           create: communicationEventCreateMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -312,6 +350,27 @@ describe('/api/inquiry-records POST', () => {
     expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1' },
       data: { overall_status: 'inquiry_pending' },
+    });
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        cycle_id: 'cycle_1',
+        from_status: 'ready_to_dispense',
+        to_status: 'inquiry_pending',
+        actor_id: 'user_1',
+        note: 'inquiry_record_created:inquiry_1',
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'inquiry_record_created',
+        target_type: 'inquiry_record',
+        target_id: 'inquiry_1',
+        changes: expect.objectContaining({
+          cycle_id: 'cycle_1',
+          patient_id: 'patient_1',
+          communication_request_id: 'communication_request_1',
+        }),
+      }),
     });
   });
 });

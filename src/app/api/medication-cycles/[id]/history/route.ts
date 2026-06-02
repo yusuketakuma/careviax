@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { success, notFound } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { success, notFound, validationError } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,12 +13,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const cycleId = normalizeRequiredRouteParam(rawId);
+  if (!cycleId) return validationError('処方サイクルIDが不正です');
 
   const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const cycle = await prisma.medicationCycle.findFirst({
     where: {
-      id,
+      id: cycleId,
       org_id: ctx.orgId,
       ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
     },
@@ -26,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!cycle) return notFound('サイクルが見つかりません');
 
   const logs = await prisma.cycleTransitionLog.findMany({
-    where: { cycle_id: id, org_id: ctx.orgId },
+    where: { cycle_id: cycleId, org_id: ctx.orgId },
     orderBy: { created_at: 'asc' },
     select: {
       id: true,

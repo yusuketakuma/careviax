@@ -46,6 +46,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/visit-preparations/brief-batch', {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'content-type': 'application/json',
+    },
+    body: '{"schedule_ids":',
+  });
+}
+
 const brief = {
   patient: { id: 'patient_1', name: '患者A' },
   context: 'schedule',
@@ -113,7 +124,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     const response = await POST(
       createRequest(
         {
-          schedule_ids: ['schedule_1', 'schedule_2', 'schedule_1'],
+          schedule_ids: [' schedule_1 ', 'schedule_2', 'schedule_1'],
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -177,6 +188,39 @@ describe('/api/visit-preparations/brief-batch POST', () => {
 
     expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
+  });
+
+  it('rejects non-object batch payloads before loading schedules', async () => {
+    const response = await POST(createRequest([], { 'x-org-id': 'org_1' }));
+
+    expect(response.status).toBe(400);
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON batch payloads before loading schedules', async () => {
+    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank schedule ids before loading schedules', async () => {
+    const response = await POST(
+      createRequest({ schedule_ids: ['schedule_1', '   '] }, { 'x-org-id': 'org_1' }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
   });
 
   it('returns not found when any requested schedule is missing from the organization', async () => {

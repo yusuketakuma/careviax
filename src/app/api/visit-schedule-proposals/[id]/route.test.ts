@@ -109,6 +109,17 @@ function createRequest(body?: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/proposal_1', {
+    method: 'PATCH',
+    body: '{"action":',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
 function buildProposal(overrides?: Record<string, unknown>) {
   return {
     id: 'proposal_1',
@@ -445,6 +456,25 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     );
   });
 
+  it('rejects blank proposal ids before detail lookups or route preview side effects', async () => {
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問候補IDが不正です',
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
   it('denies unassigned proposal detail before route planning or enrichment reads', async () => {
     proposalFindFirstMock.mockResolvedValueOnce(null);
 
@@ -522,6 +552,105 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       message: 'この候補は承認後の電話確認を経てから確定してください',
     });
     expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before loading the proposal', async () => {
+    const response = await PATCH(createRequest([], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the proposal', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank proposal ids before parsing or mutating the proposal', async () => {
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問候補IDが不正です',
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(contactLogUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(overrideUpdateMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed contact phone before loading the proposal', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'attempted',
+          contact_method: 'phone',
+          contact_phone: '090-ABCD-1234',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        contact_phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned contact attempts before update, contact, audit, task, or notify side effects', async () => {
@@ -605,6 +734,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           outcome: 'confirmed',
           contact_method: 'phone',
           contact_name: '本人',
+          contact_phone: ' 090-0000-1111 ',
           note: '了承済み',
         },
         { 'x-org-id': 'org_1' },
@@ -622,6 +752,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         outcome: 'confirmed',
         contact_method: 'phone',
         contact_name: '本人',
+        contact_phone: '090-0000-1111',
         note: '了承済み',
       }),
     });

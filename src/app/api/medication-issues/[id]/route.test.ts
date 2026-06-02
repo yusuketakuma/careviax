@@ -55,6 +55,14 @@ function createPatchRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/medication-issues/issue_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"status":',
+  });
+}
+
 describe('/api/medication-issues/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,6 +94,66 @@ describe('/api/medication-issues/[id]', () => {
         },
       }),
     );
+  });
+
+  it('rejects non-object patch payloads before loading the medication issue', async () => {
+    const response = (await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the medication issue', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank medication issue ids before parsing or loading the issue', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '服薬課題IDが不正です',
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
   });
 
   it('sets resolver metadata when an issue is resolved', async () => {

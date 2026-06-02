@@ -131,6 +131,17 @@ function createPutRequest(
   });
 }
 
+function createMalformedJsonPutRequest(headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+  return new NextRequest('http://localhost/api/visit-preparations/schedule_1', {
+    method: 'PUT',
+    headers: {
+      ...headers,
+      'content-type': 'application/json',
+    },
+    body: '{"medication_changes_reviewed":',
+  });
+}
+
 const completePreparationBody = {
   checklist: { legacy_debug: undefined },
   medication_changes_reviewed: true,
@@ -632,6 +643,20 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     );
   });
 
+  it('rejects blank schedule ids before schedule lookup', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+  });
+
   it('ignores malformed conference JSON sections and sync summaries', async () => {
     conferenceNoteFindManyMock.mockResolvedValue([
       {
@@ -990,6 +1015,57 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     );
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
+  });
+
+  it('rejects non-object preparation payloads before schedule lookup or upsert', async () => {
+    const response = await PUT(createPutRequest([]), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON preparation payloads before schedule lookup or upsert', async () => {
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank schedule ids before parsing preparation payloads or schedule lookup', async () => {
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 and does not upsert for an unassigned pharmacist', async () => {

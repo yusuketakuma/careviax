@@ -30,6 +30,14 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/drug-masters/batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/drug-masters/batch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,7 +64,7 @@ describe('/api/drug-masters/batch', () => {
   it('returns drug master records keyed by yj code', async () => {
     const response = (await POST(
       createRequest({
-        yj_codes: ['1111111A'],
+        yj_codes: [' 1111111A ', '1111111A'],
       }),
       { params: Promise.resolve({}) },
     ))!;
@@ -80,5 +88,34 @@ describe('/api/drug-masters/batch', () => {
         tall_man_name: 'acetAMINOPHEN',
       }),
     });
+  });
+
+  it('rejects non-object batch payloads before querying drug masters', async () => {
+    const response = (await POST(createRequest([]), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(400);
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before querying drug masters', async () => {
+    const response = (await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank yj codes before querying drug masters', async () => {
+    const response = (await POST(createRequest({ yj_codes: ['1111111A', '   '] }), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
   });
 });

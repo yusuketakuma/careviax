@@ -122,7 +122,7 @@ describe('importManualClinicalRules', () => {
     });
   });
 
-  it('normalizes elderly precautions on existing package updates', async () => {
+  it('canonicalizes elderly precaution notes on existing package updates', async () => {
     db.drugPackageInsert.findFirst.mockResolvedValueOnce({
       id: 'insert_1',
       contraindications: null,
@@ -152,8 +152,32 @@ describe('importManualClinicalRules', () => {
       where: { id: 'insert_1' },
       data: {
         dosage_adjustment_renal: [{ recommendation: '投与間隔を延長' }],
-        precautions_elderly: { notes: ['ふらつきに注意'] },
+        precautions_elderly: ['ふらつきに注意'],
       },
+    });
+  });
+
+  it('rejects malformed elderly precaution payloads before package insert writes', async () => {
+    await expect(
+      importManualClinicalRules(db, {
+        renal_adjustments: [
+          {
+            yj_code: '123456789012',
+            dosage_adjustment_renal: [{ recommendation: '投与間隔を延長' }],
+            precautions_elderly: [null, 42, { unsupported_marker: true }],
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    expect(db.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.create).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.update).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'failed',
+      }),
     });
   });
 });

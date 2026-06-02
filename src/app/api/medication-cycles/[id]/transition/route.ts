@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -83,12 +85,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('服薬サイクルIDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = transitionSchema.safeParse(body);
+  const parsed = transitionSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

@@ -1,21 +1,21 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
-import { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import {
+  createVisitScheduleSchema,
+  visitScheduleDateKeySchema,
+} from '@/lib/validations/visit-schedule';
 import { prisma } from '@/lib/db/client';
 import { createSchedule, listSchedules } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
-const optionalDateParam = z
-  .string()
-  .trim()
-  .refine((value) => !Number.isNaN(Date.parse(value)), '日付形式が不正です')
-  .optional();
+const optionalDateParam = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
 
 const visitScheduleQuerySchema = z.object({
   cursor: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: optionalBoundedIntegerSearchParam('limit', 1, 100),
   date_from: optionalDateParam,
   date_to: optionalDateParam,
   status_scope: z.enum(['active']).optional(),
@@ -44,10 +44,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createVisitScheduleSchema.safeParse(body);
+    const parsed = createVisitScheduleSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

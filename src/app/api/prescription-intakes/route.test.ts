@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { NextRequest } from 'next/server';
 
 /** 今日の日付文字列（有効期限チェックを通過させるため動的に生成） */
 const TODAY = format(new Date(), 'yyyy-MM-dd');
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'admin';
+};
 
 const {
   withAuthMock,
@@ -13,26 +19,29 @@ const {
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
   careCaseFindFirstMock,
+  patientFindFirstMock,
   broadcastOrgRealtimeEventMock,
+  notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-        );
-    },
-  ),
+  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+    return (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'admin' as const,
+        }),
+      );
+  }),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
+  patientFindFirstMock: vi.fn(),
   broadcastOrgRealtimeEventMock: vi.fn().mockResolvedValue(undefined),
+  notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -56,6 +65,10 @@ vi.mock('@/server/services/org-realtime', () => ({
   broadcastOrgRealtimeEvent: broadcastOrgRealtimeEventMock,
 }));
 
+vi.mock('@/server/services/outbound-webhook', () => ({
+  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+}));
+
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     prescriptionIntake: {
@@ -71,6 +84,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
     },
   },
 }));
@@ -85,6 +102,14 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/prescription-intakes', {
+    method: 'POST',
+    body: '{"case_id":',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 function createGetRequest(url: string) {
   return new NextRequest(url);
 }
@@ -92,6 +117,14 @@ function createGetRequest(url: string) {
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_qr',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1950-03-15T00:00:00.000Z'),
+      gender: 'male',
+    });
+    notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
   });
 
   it('rejects refill intakes when the next dispense date is outside the allowed window', async () => {
@@ -154,6 +187,113 @@ describe('/api/prescription-intakes POST', () => {
         window_end: '2026-04-05',
       },
     });
+  });
+
+  it('rejects non-object request bodies before reference validation or intake creation', async () => {
+    const response = await POST(createRequest(['unexpected']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before reference validation or intake creation', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank required prescription intake fields before reference validation or intake creation', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '   ',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid prescription dates before reference validation or intake creation', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        source_type: 'paper',
+        prescribed_date: '2026-02-30',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            start_date: '2026-04-10',
+            end_date: '2026-04-01',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects future prescribed dates before intake creation', async () => {
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '未来日の処方箋は登録できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate prescription-line candidates before creating the intake', async () => {
@@ -416,18 +556,24 @@ describe('/api/prescription-intakes POST', () => {
 
     const response = await POST(
       createRequest({
-        case_id: 'case_1',
-        patient_id: 'patient_1',
+        case_id: ' case_1 ',
+        patient_id: ' patient_1 ',
         source_type: 'paper',
-        prescribed_date: TODAY,
+        prescribed_date: ` ${TODAY} `,
+        prescriber_name: ' 鈴木医師 ',
+        prescriber_institution: ' ',
         lines: [
           {
             line_number: 1,
-            drug_name: 'アムロジピン錠5mg',
-            drug_code: '2149001',
-            dose: '1錠',
-            frequency: '1日1回朝食後',
+            drug_name: ' アムロジピン錠5mg ',
+            drug_code: ' 2149001 ',
+            dosage_form: ' ',
+            dose: ' 1錠 ',
+            frequency: ' 1日1回朝食後 ',
             days: 14,
+            packaging_instructions: ' 一包化 ',
+            dispensing_method: ' unit_dose ',
+            notes: ' ',
           },
         ],
       }),
@@ -447,6 +593,23 @@ describe('/api/prescription-intakes POST', () => {
         overall_status: 'intake_received',
         version: 1,
       },
+    });
+    expect(intakeCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prescriber_name: '鈴木医師',
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_name: 'アムロジピン錠5mg',
+              drug_code: '2149001',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              packaging_instructions: '一包化',
+              dispensing_method: 'unit_dose',
+            }),
+          ],
+        },
+      }),
     });
     expect(dispenseTaskCreateMock).toHaveBeenCalledWith({
       data: {
@@ -629,6 +792,10 @@ describe('/api/prescription-intakes POST', () => {
       status: 'pending',
       patient_id: 'patient_qr',
       parsed_data: {
+        patientName: '山田 太郎',
+        patientNameKana: 'ヤマダ タロウ',
+        patientBirthdate: '1950-03-15',
+        patientGender: 'male',
         supplementalRecords: [
           {
             recordType: '421',
@@ -643,12 +810,14 @@ describe('/api/prescription-intakes POST', () => {
       },
     });
     const qrDraftUpdateMock = vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' });
+    const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
     const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         qrScanDraft: {
           findFirst: qrDraftFindFirstMock,
+          updateMany: qrDraftClaimMock,
           update: qrDraftUpdateMock,
         },
         jahisSupplementalRecord: {
@@ -708,6 +877,17 @@ describe('/api/prescription-intakes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(qrDraftClaimMock).toHaveBeenCalledWith({
+      where: {
+        id: 'draft_qr',
+        org_id: 'org_1',
+        status: 'pending',
+      },
+      data: {
+        patient_id: 'patient_qr',
+        status: 'confirmed',
+      },
+    });
     expect(supplementalUpdateManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -731,41 +911,55 @@ describe('/api/prescription-intakes POST', () => {
       orgId: 'org_1',
       type: 'qr_draft_confirmed',
     });
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
+      'org_1',
+      'prescription.created',
+      expect.objectContaining({
+        intakeId: 'intake_qr',
+        cycleId: 'cycle_qr',
+        patientId: 'patient_qr',
+        sourceType: 'qr_scan',
+      }),
+    );
   });
 
-  it('does not use supplemental fallback records when QR parsed_data is malformed', async () => {
-    const cycleCreateMock = vi.fn().mockResolvedValue({
-      id: 'cycle_qr',
-      patient_id: 'patient_qr',
-      case_id: 'case_qr',
-      overall_status: 'intake_received',
-      version: 1,
-    });
-    const cycleFindFirstMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        id: 'cycle_qr',
-        patient_id: 'patient_qr',
-        overall_status: 'intake_received',
-        version: 1,
-      })
-      .mockResolvedValueOnce({
-        id: 'cycle_qr',
-        patient_id: 'patient_qr',
-        overall_status: 'structuring',
-        version: 2,
-      })
-      .mockResolvedValueOnce({
-        id: 'cycle_qr',
-        patient_id: 'patient_qr',
-        overall_status: 'ready_to_dispense',
-        version: 3,
-      })
-      .mockResolvedValueOnce({
-        id: 'cycle_qr',
-        patient_id: 'patient_qr',
+  it('rejects qr_draft_id imports unless source_type is qr_scan', async () => {
+    const response = await POST(
+      createRequest({
         case_id: 'case_qr',
-      });
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'fax',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'QRスキャン下書きからの登録はQRスキャンの受付種別のみ指定できます',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects QR draft imports when parsed_data cannot prove patient identity', async () => {
+    const qrDraftClaimMock = vi.fn();
+    const intakeCreateMock = vi.fn();
     const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
     const supplementalDeleteManyMock = vi.fn();
     const supplementalCreateManyMock = vi.fn();
@@ -779,6 +973,7 @@ describe('/api/prescription-intakes POST', () => {
             patient_id: 'patient_qr',
             parsed_data: ['unexpected'],
           }),
+          updateMany: qrDraftClaimMock,
           update: vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' }),
         },
         jahisSupplementalRecord: {
@@ -787,16 +982,12 @@ describe('/api/prescription-intakes POST', () => {
           createMany: supplementalCreateManyMock,
         },
         careCase: {
-          findFirst: vi.fn().mockResolvedValue({
-            id: 'case_qr',
-            patient_id: 'patient_qr',
-            primary_pharmacist_id: 'pharmacist_1',
-          }),
+          findFirst: vi.fn(),
         },
         medicationCycle: {
-          create: cycleCreateMock,
-          findFirst: cycleFindFirstMock,
-          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
         },
         cycleTransitionLog: {
           create: vi.fn().mockResolvedValue({}),
@@ -806,14 +997,14 @@ describe('/api/prescription-intakes POST', () => {
           create: vi.fn(),
         },
         prescriptionIntake: {
-          create: vi.fn().mockResolvedValue({ id: 'intake_qr' }),
+          create: intakeCreateMock,
         },
         inquiryRecord: {
-          count: vi.fn().mockResolvedValue(0),
+          count: vi.fn(),
         },
         dispenseTask: {
-          findFirst: vi.fn().mockResolvedValue(null),
-          create: vi.fn().mockResolvedValue({ id: 'task_qr' }),
+          findFirst: vi.fn(),
+          create: vi.fn(),
         },
       }),
     );
@@ -839,10 +1030,185 @@ describe('/api/prescription-intakes POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(201);
-    expect(supplementalUpdateManyMock).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'QRコードの患者情報を確認できません',
+      details: {
+        missing_identity: ['name', 'birth_date'],
+      },
+    });
+    expect(qrDraftClaimMock).not.toHaveBeenCalled();
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
     expect(supplementalDeleteManyMock).not.toHaveBeenCalled();
     expect(supplementalCreateManyMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects QR draft imports when parsed patient identity differs from the selected patient', async () => {
+    const qrDraftClaimMock = vi.fn();
+    const intakeCreateMock = vi.fn();
+    const supplementalUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_qr',
+            status: 'pending',
+            patient_id: 'patient_qr',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientBirthdate: '1940-01-01',
+            },
+          }),
+          updateMany: qrDraftClaimMock,
+          update: vi.fn(),
+        },
+        jahisSupplementalRecord: {
+          updateMany: supplementalUpdateManyMock,
+        },
+        careCase: {
+          findFirst: vi.fn(),
+        },
+        medicationCycle: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        workflowException: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn(),
+        },
+        dispenseTask: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'QRコードの患者情報が選択患者と一致しません',
+      details: {
+        mismatches: ['birth_date'],
+      },
+    });
+    expect(qrDraftClaimMock).not.toHaveBeenCalled();
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without intake side effects when QR draft claim is lost', async () => {
+    const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 0 });
+    const intakeCreateMock = vi.fn();
+    const supplementalUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_qr',
+            status: 'pending',
+            patient_id: 'patient_qr',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientBirthdate: '1950-03-15',
+            },
+          }),
+          updateMany: qrDraftClaimMock,
+          update: vi.fn(),
+        },
+        jahisSupplementalRecord: {
+          updateMany: supplementalUpdateManyMock,
+        },
+        careCase: {
+          findFirst: vi.fn(),
+        },
+        medicationCycle: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        workflowException: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn(),
+        },
+        dispenseTask: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'このQRスキャン下書きはすでに処理済みです',
+    });
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
   });
 
   it('creates a fax original follow-up task for fax-based prescription intake', async () => {

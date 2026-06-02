@@ -86,15 +86,30 @@ describe('/api/pharmacist-shift-templates', () => {
     });
   });
 
+  it('rejects non-object template payloads before reference checks or upsert', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shift-templates', []),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftTemplateUpsertMock).not.toHaveBeenCalled();
+  });
+
   it('upserts a shift template', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/pharmacist-shift-templates', {
-        user_id: 'user_2',
-        site_id: 'site_1',
+        user_id: ' user_2 ',
+        site_id: ' site_1 ',
         weekday: 1,
         available: true,
-        available_from: '09:00',
-        available_to: '18:00',
+        available_from: ' 09:00 ',
+        available_to: ' 18:00 ',
+        note: ' ',
       }),
     ))!;
 
@@ -128,5 +143,21 @@ describe('/api/pharmacist-shift-templates', () => {
         note: null,
       },
     });
+  });
+
+  it('rejects blank ids and malformed template times before reference checks', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shift-templates', {
+        user_id: '   ',
+        site_id: 'site_1',
+        weekday: 1,
+        available_from: '24:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftTemplateUpsertMock).not.toHaveBeenCalled();
   });
 });

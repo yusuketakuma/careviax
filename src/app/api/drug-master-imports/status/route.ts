@@ -69,7 +69,10 @@ export type DrugMasterImportStatusResponse = {
   checked_at: string;
 };
 
-function assessFreshness(daysSinceImport: number | null, threshold: number): DrugMasterImportFreshnessLevel {
+function assessFreshness(
+  daysSinceImport: number | null,
+  threshold: number,
+): DrugMasterImportFreshnessLevel {
   if (daysSinceImport === null) return 'never';
   if (daysSinceImport <= threshold * 0.5) return 'fresh';
   if (daysSinceImport <= threshold) return 'aging';
@@ -89,7 +92,14 @@ export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response as NextResponse;
 
-  const sources: ImportSource[] = ['ssk', 'mhlw_price', 'mhlw_generic', 'hot', 'pmda', 'manual_clinical'];
+  const sources: ImportSource[] = [
+    'ssk',
+    'mhlw_price',
+    'mhlw_generic',
+    'hot',
+    'pmda',
+    'manual_clinical',
+  ];
   const now = new Date();
   const recentSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 

@@ -28,6 +28,28 @@ function createRequest(url: string) {
   });
 }
 
+type ImpactPayload = {
+  selected_queue: {
+    key: string;
+    total_count: number;
+    rows: Array<Record<string, unknown>>;
+  };
+  totals: Record<string, number>;
+};
+
+async function readImpactPayload(response: Response): Promise<ImpactPayload> {
+  const payload: unknown = await response.json();
+  expect(payload).toMatchObject({
+    selected_queue: {
+      key: expect.any(String),
+      total_count: expect.any(Number),
+      rows: expect.any(Array),
+    },
+    totals: expect.any(Object),
+  });
+  return payload as ImpactPayload;
+}
+
 describe('/api/pharmacy-drug-stocks/impact', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -231,7 +253,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     const response = await GET(
       createRequest(
-        'http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1&queue=recently_changed&queue_limit=1',
+        'http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1&queue=recently_changed&queue_limit=%201%20',
       ),
       { params: Promise.resolve({}) },
     );
@@ -297,6 +319,27 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         take: 500,
       }),
     );
+  });
+
+  it('rejects malformed numeric query values before loading the site', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1&expiry_within_days=9e1&queue_limit=25.0',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMasterChangeEvent.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.qrScanDraft.findMany).not.toHaveBeenCalled();
   });
 
   it('does not cap impact totals to the first 500 adopted drugs', async () => {
@@ -371,7 +414,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ take: 500 }),
     );
-    const json = await response.json();
+    const json = await readImpactPayload(response);
     expect(json.selected_queue.key).toBe('review_due');
     expect(json.selected_queue.total_count).toBe(501);
     expect(json.selected_queue.rows).toHaveLength(25);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { addDays, format } from 'date-fns';
 
 const {
   withOrgContextMock,
@@ -6,24 +7,23 @@ const {
   upsertOperationalTaskMock,
   createDispenseDraftMock,
   prismaMock,
-} =
-  vi.hoisted(() => ({
-    withOrgContextMock: vi.fn(),
-    notifyWebhookEventForOrgMock: vi.fn(),
-    upsertOperationalTaskMock: vi.fn(),
-    createDispenseDraftMock: vi.fn(),
-    prismaMock: {
-      prescriptionIntake: {
-        findFirst: vi.fn(),
-      },
-      medicationProfile: {
-        findMany: vi.fn(),
-        create: vi.fn(),
-        update: vi.fn(),
-        updateMany: vi.fn(),
-      },
+} = vi.hoisted(() => ({
+  withOrgContextMock: vi.fn(),
+  notifyWebhookEventForOrgMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+  createDispenseDraftMock: vi.fn(),
+  prismaMock: {
+    prescriptionIntake: {
+      findFirst: vi.fn(),
     },
-  }));
+    medicationProfile: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+  },
+}));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
@@ -45,7 +45,10 @@ vi.mock('@/server/services/dispense-draft-service', () => ({
   createDispenseDraft: createDispenseDraftMock,
 }));
 
-import { createPrescriptionIntake, createPrescriptionIntakeInTx } from './prescription-intake-service';
+import {
+  createPrescriptionIntake,
+  createPrescriptionIntakeInTx,
+} from './prescription-intake-service';
 
 function createMockTx() {
   return {
@@ -279,5 +282,51 @@ describe('createPrescriptionIntake', () => {
         shouldPauseForInquiry: true,
       }),
     );
+  });
+
+  it('rejects expired prescriptions in the transaction flow before DB side effects', async () => {
+    const tx = createMockTx();
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2000-01-01',
+        lines: [validLine()],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true },
+    );
+
+    expect(result).toEqual({ kind: 'error', error: 'expiry_exceeded' });
+    expect(tx.medicationCycle.findFirst).not.toHaveBeenCalled();
+    expect(tx.careCase.findFirst).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects future prescriptions in the transaction flow before DB side effects', async () => {
+    const tx = createMockTx();
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        lines: [validLine()],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true },
+    );
+
+    expect(result).toEqual({ kind: 'error', error: 'future_prescribed_date' });
+    expect(tx.medicationCycle.findFirst).not.toHaveBeenCalled();
+    expect(tx.careCase.findFirst).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
   });
 });

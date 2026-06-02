@@ -106,6 +106,12 @@ describe('getPatientVisitBrief', () => {
               { label: '訪問初回日の調整', converted_task_id: 'task_1' },
               { label: '家族へ持参薬説明', converted_task_id: null },
             ],
+            metadata: {
+              visit_brief: {
+                summary: '退院直後の服薬支援を重点確認',
+                highlighted_risks: ['転倒', 123, '', '飲み忘れ'],
+              },
+            },
           },
         ]),
       },
@@ -302,7 +308,25 @@ describe('getPatientVisitBrief', () => {
         ]),
       },
       drugPackageInsert: {
-        findMany: vi.fn().mockResolvedValue([]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            drug_master: { yj_code: '123', drug_name: 'アムロジピン錠' },
+            contraindications: [
+              '重度低血圧の患者',
+              null,
+              { text: '妊婦' },
+              { value: 'ignored' },
+              '',
+            ],
+            adverse_effects: [
+              { text: '血管浮腫', severity: ' serious ' },
+              'めまい',
+              { description: '浮腫' },
+              null,
+            ],
+            precautions_elderly: ['過度の降圧に注意', { name: '転倒に注意' }, 42],
+          },
+        ]),
       },
       auditLog: {
         create: vi.fn().mockResolvedValue({ id: 'audit_1' }),
@@ -380,6 +404,32 @@ describe('getPatientVisitBrief', () => {
         expect.objectContaining({
           drug_name: '睡眠薬A',
           change_type: 'removed',
+        }),
+      ]),
+    );
+    expect(result.drug_cautions).toHaveLength(7);
+    expect(result.drug_cautions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          drug_name: 'アムロジピン錠',
+          caution_type: 'contraindication',
+          severity: 'critical',
+          summary: '重度低血圧の患者',
+        }),
+        expect.objectContaining({
+          caution_type: 'adverse_effect',
+          severity: 'critical',
+          summary: '血管浮腫',
+        }),
+        expect.objectContaining({
+          caution_type: 'adverse_effect',
+          severity: 'warning',
+          summary: 'めまい',
+        }),
+        expect.objectContaining({
+          caution_type: 'elderly_precaution',
+          severity: 'warning',
+          summary: '転倒に注意',
         }),
       ]),
     );
@@ -474,6 +524,8 @@ describe('getPatientVisitBrief', () => {
         recent_conferences: 1,
         pending_action_items: 1,
         last_conference_type: '退院前カンファレンス',
+        summary: '退院直後の服薬支援を重点確認',
+        highlighted_risks: ['転倒', '飲み忘れ'],
       }),
     );
   });

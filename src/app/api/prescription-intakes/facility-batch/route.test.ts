@@ -14,15 +14,15 @@ const {
   medicationProfileUpdateManyMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-    ) => {
+    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler(Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-        }));
-    }
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+          }),
+        );
+    },
   ),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn().mockResolvedValue(null),
@@ -64,6 +64,14 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/prescription-intakes/facility-batch', {
+    method: 'POST',
+    body: '{"entries":',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/prescription-intakes/facility-batch POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,7 +108,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         prescriptionIntake: {
           create: vi.fn(),
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -137,7 +145,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             ],
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -148,6 +156,35 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         facilities: ['facility_a', 'facility_b'],
       },
     });
+  });
+
+  it('rejects non-object request bodies before facility batch transaction work', async () => {
+    const response = await POST(createRequest(['unexpected']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before facility batch transaction work', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('creates one medication cycle and intake per patient in a facility batch', async () => {
@@ -273,7 +310,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseTaskCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -321,7 +358,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             ],
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

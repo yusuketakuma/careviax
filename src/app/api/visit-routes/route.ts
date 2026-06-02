@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import {
@@ -38,12 +39,12 @@ const computeVisitRouteSchema = z
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) {
       return validationError('リクエストボディが不正です');
     }
 
-    const parsed = computeVisitRouteSchema.safeParse(body);
+    const parsed = computeVisitRouteSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

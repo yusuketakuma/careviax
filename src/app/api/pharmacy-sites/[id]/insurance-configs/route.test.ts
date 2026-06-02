@@ -55,6 +55,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs', {
+    method: 'POST',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,6 +117,103 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'config_1', insurance_type: 'medical' }],
     });
+  });
+
+  it('rejects blank route ids before loading insurance configs', async () => {
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬局IDが不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before loading the pharmacy site', async () => {
+    const response = (await POST(createPostRequest([]), {
+      params: Promise.resolve({ id: 'site_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank route ids before creating an insurance config', async () => {
+    const response = (await POST(
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2024',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: {},
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬局IDが不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before loading the pharmacy site', async () => {
+    const response = (await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({ id: 'site_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid effective_from dates before loading the pharmacy site', async () => {
+    const response = (await POST(
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2024',
+        effective_from: '2024-02-30',
+        effective_to: null,
+        config: {},
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
+    expect(insuranceConfigFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates an insurance config with wrapped data', async () => {

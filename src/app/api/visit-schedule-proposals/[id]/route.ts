@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-schedule-proposal';
@@ -281,7 +283,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
-  const { id } = await params;
+
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問候補IDが不正です');
+
   const url = new URL(req.url);
   const requestedTravelMode = url.searchParams.get('travel_mode');
   const travelMode: VisitRouteTravelMode =
@@ -582,15 +588,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('訪問候補IDが不正です');
 
-  const parsed = updateVisitScheduleProposalSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateVisitScheduleProposalSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { id } = await params;
   const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
   const existing = await prisma.visitScheduleProposal.findFirst({

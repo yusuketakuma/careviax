@@ -12,11 +12,13 @@ const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBat
       ) => {
         void _options;
         return (req: NextRequest) =>
-          handler(Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          } as const));
+          handler(
+            Object.assign(req, {
+              orgId: 'org_1',
+              userId: 'user_1',
+              role: 'pharmacist',
+            } as const),
+          );
       },
     ),
     careCaseFindFirstMock: vi.fn(),
@@ -47,6 +49,14 @@ function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedule-proposals/billing-preview-batch', {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/billing-preview-batch', {
+    method: 'POST',
+    body: '{"items":',
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -146,6 +156,45 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         }),
       },
     });
+  });
+
+  it('rejects non-object batch preview payloads before case lookup', async () => {
+    const response = await POST(createPostRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON batch preview payloads before case lookup', async () => {
+    const response = await POST(createMalformedJsonPostRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid proposed_date values before case lookup', async () => {
+    const response = await POST(
+      createPostRequest({
+        items: [{ key: 'proposal_1', case_id: 'case_1', proposed_date: '2026-02-30' }],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned batch preview requests before calling the billing-preview service', async () => {

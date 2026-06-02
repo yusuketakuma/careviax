@@ -70,11 +70,23 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
     );
   });
 
+  it('rejects non-object apply payloads before loading templates', async () => {
+    const response = (await POST(createRequest([])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(pharmacistShiftTemplateFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
+  });
+
   it('applies weekday templates across the target month', async () => {
     const response = (await POST(
       createRequest({
-        month: '2026-04',
-        user_id: 'user_2',
+        month: ' 2026-04 ',
+        user_id: ' user_2 ',
       }),
     ))!;
 
@@ -91,5 +103,19 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
         applied_count: 4,
       },
     });
+  });
+
+  it('rejects invalid month keys before loading templates', async () => {
+    const response = (await POST(
+      createRequest({
+        month: '2026-13',
+        user_id: 'user_2',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(pharmacistShiftTemplateFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
   });
 });

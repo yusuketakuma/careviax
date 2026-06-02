@@ -94,6 +94,16 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/facility-visit-batches/batch_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"ordered_schedule_ids":',
+  });
+}
+
 function routeContext(id: string): RouteContext {
   return { params: Promise.resolve({ id }) };
 }
@@ -179,6 +189,35 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
       expect(withOrgContextMock).not.toHaveBeenCalled();
       expectNoMutationSideEffects();
+    });
+
+    it('rejects a blank batch id before schedule unlink, batch delete, or notify', async () => {
+      const response = await DELETE(createRequest(), routeContext('   '));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'バッチIDが指定されていません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('trims padded batch ids before schedule unlink, batch delete, or notify', async () => {
+      const response = await DELETE(createRequest(), routeContext('  batch_1  '));
+
+      expect(response.status).toBe(200);
+      expect(facilityVisitBatchFindFirstMock).toHaveBeenCalledWith({
+        where: { id: 'batch_1', org_id: 'org_1' },
+        select: { id: true, pharmacist_id: true },
+      });
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
+        data: { facility_batch_id: null, route_order: null },
+      });
+      expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
+        where: { id: 'batch_1' },
+      });
     });
 
     it('returns 404 for a missing org-scoped batch without schedule unlink, batch delete, or notify', async () => {
@@ -308,6 +347,54 @@ describe('/api/facility-visit-batches/[id]', () => {
         message: '施設一括訪問の更新権限がありません',
       });
       expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects non-object JSON payloads before batch lookup, schedule reorder, or notify', async () => {
+      const response = await PATCH(createRequest([]), routeContext('batch_1'));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'リクエストボディが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects a blank batch id before body parsing, batch lookup, schedule reorder, or notify', async () => {
+      const response = await PATCH(
+        createRequest({ ordered_schedule_ids: ['schedule_1', 'schedule_2'] }),
+        routeContext('   '),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'バッチIDが指定されていません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('rejects malformed JSON before batch lookup, schedule reorder, or notify', async () => {
+      const response = await PATCH(createMalformedPatchRequest(), routeContext('batch_1'));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'リクエストボディが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchFindFirstMock).not.toHaveBeenCalled();
+      expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
       expectNoMutationSideEffects();
     });
 
@@ -466,7 +553,7 @@ describe('/api/facility-visit-batches/[id]', () => {
         createRequest({
           ordered_schedule_ids: ['schedule_2', 'schedule_1', 'schedule_2', 'schedule_1'],
         }),
-        routeContext('batch_1'),
+        routeContext('  batch_1  '),
       );
 
       expect(response.status).toBe(200);

@@ -47,10 +47,7 @@ vi.mock('@/lib/pharmacy/barcode', () => ({
 
 import { POST } from './route';
 
-function createVerifyBarcodeRequest(
-  taskId: string,
-  body: { barcode: string; line_id: string },
-) {
+function createVerifyBarcodeRequest(taskId: string, body: unknown) {
   return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}/verify-barcode`, {
     method: 'POST',
     headers: {
@@ -58,6 +55,17 @@ function createVerifyBarcodeRequest(
       'x-org-id': 'org_1',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest(taskId: string) {
+  return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}/verify-barcode`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"barcode":',
   });
 }
 
@@ -145,6 +153,48 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(response.status).toBe(403);
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank route params before body parsing, task lookup, or barcode parsing', async () => {
+    const response = (await POST(createMalformedJsonRequest(''), {
+      params: Promise.resolve({ id: ' \t ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤タスクIDが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before task or line lookup', async () => {
+    const response = (await POST(createVerifyBarcodeRequest('task_1', ['unexpected']), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON payloads before task, line, or barcode lookup', async () => {
+    const response = (await POST(createMalformedJsonRequest('task_1'), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindFirstMock).not.toHaveBeenCalled();
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 

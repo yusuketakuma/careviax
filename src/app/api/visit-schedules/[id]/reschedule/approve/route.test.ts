@@ -10,6 +10,7 @@ const {
   withOrgContextMock,
   dispatchNotificationEventMock,
   resolveOperationalTasksMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitScheduleOverrideFindFirstMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -45,13 +47,16 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { POST } from './route';
 
 function createRequest() {
-  return new NextRequest(
-    'http://localhost/api/visit-schedules/schedule_1/reschedule/approve',
-    { method: 'POST' },
-  );
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1/reschedule/approve', {
+    method: 'POST',
+  });
 }
 
 describe('/api/visit-schedules/[id]/reschedule/approve', () => {
@@ -111,6 +116,26 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank schedule ids before loading override requests', async () => {
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleOverrideFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('approves the override, resolves tasks, and dispatches a notification', async () => {
     const response = (await POST(createRequest(), {
       params: Promise.resolve({ id: 'schedule_1' }),
@@ -121,6 +146,10 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     expect(visitScheduleUpdateMock).toHaveBeenCalled();
     expect(resolveOperationalTasksMock).toHaveBeenCalledTimes(2);
     expect(dispatchNotificationEventMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_reschedule_approve', schedule_id: 'schedule_1' },
+    });
     expect(contactPartyFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
