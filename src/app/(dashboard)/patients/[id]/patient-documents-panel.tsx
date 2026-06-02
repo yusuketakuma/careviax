@@ -7,7 +7,7 @@ import { ja } from 'date-fns/locale';
 import { FileDown, FileQuestion } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -53,7 +53,7 @@ export function PatientDocumentsPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">文書</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">文書</h2>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
@@ -85,7 +85,7 @@ export function PatientDocumentsPanel({
   );
 }
 
-function FirstVisitDocumentsPanel({
+export function FirstVisitDocumentsPanel({
   cases,
   documents,
 }: {
@@ -95,7 +95,7 @@ function FirstVisitDocumentsPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">初回訪問文書・交付記録</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">初回訪問文書・交付記録</h2>
       </CardHeader>
       <CardContent>
         {documents.length === 0 ? (

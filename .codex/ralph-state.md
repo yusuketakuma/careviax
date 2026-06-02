@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-182952
+
+- current task: improve patient documents panel semantic headings and focused coverage
+- files inspected: `git status --short`, `git log --oneline -12`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`, and focused patient document UI/test references
+- files changed: `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient documents error card and first-visit document group used decorative `CardTitle` wrappers. This weakened heading navigation for document and delivery-record review in the patient detail documents tab
+- security risks found: no patient documents API path, org header, query key, fetch behavior, document URL rendering, emergency contact rendering, external share content, management plan content, auth, authorization, or patient data handling changed
+- performance issues found: no query behavior, loading/error branching, document mapping, contact mapping, date formatting, or render-loop behavior changed. The slice only changes heading markup, exports the first-visit document panel for focused testing, and adds a rendering assertion
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`
+- validation results: Prettier completed successfully; focused patient documents Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. External share, contacts, care team, communications, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient documents heading group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-182713
 
 - current task: post-management-plan-panel runtime/browser preflight audit
