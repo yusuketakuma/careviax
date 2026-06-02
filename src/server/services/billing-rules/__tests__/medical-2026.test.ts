@@ -19,8 +19,8 @@ describe('MEDICAL_RULES_2026', () => {
     expect(new Set(codes).size).toBe(codes.length);
   });
 
-  it('33ルールが定義されていること', () => {
-    expect(MEDICAL_RULES_2026).toHaveLength(33);
+  it('35ルールが定義されていること', () => {
+    expect(MEDICAL_RULES_2026).toHaveLength(35);
   });
 
   it('全ルールの source_note が令和8年度を含むこと', () => {
@@ -42,6 +42,36 @@ describe('MEDICAL_RULES_2026', () => {
     for (const key of abolishedKeys) {
       expect(ssotKeys).not.toContain(key);
     }
+  });
+});
+
+describe('MEDICAL_RULES_2026 — 第5節 その他', () => {
+  const ruleByKey = (key: string) => MEDICAL_RULES_2026.find((r) => r.ssot_key === key);
+
+  it('調剤ベースアップ評価料 4点と2027年6月以降の予定増点を保持する', () => {
+    const rule = ruleByKey('medical.dispensing_base_up_evaluation');
+    expect(rule).toBeDefined();
+    expect(rule!.code).toBe('MED_DISPENSING_BASE_UP_EVALUATION');
+    expect(rule!.amount).toBe(4);
+    expect(rule!.conditions.per_prescription_acceptance).toBe(true);
+    expect(rule!.conditions.facility_standard_required).toBe('dispensing_base_up_evaluation');
+    expect(rule!.conditions.scheduled_point_increase).toEqual({
+      effective_from: '2027-06-01',
+      amount: 8,
+    });
+  });
+
+  it('調剤物価対応料 1点と3月に1回の頻度制限を保持する', () => {
+    const rule = ruleByKey('medical.dispensing_price_response');
+    expect(rule).toBeDefined();
+    expect(rule!.code).toBe('MED_DISPENSING_PRICE_RESPONSE');
+    expect(rule!.amount).toBe(1);
+    expect(rule!.conditions.per_prescription_acceptance).toBe(true);
+    expect(rule!.conditions.frequency_limit).toBe('quarterly_once');
+    expect(rule!.conditions.scheduled_point_increase).toEqual({
+      effective_from: '2027-06-01',
+      amount: 2,
+    });
   });
 });
 

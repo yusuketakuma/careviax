@@ -21,6 +21,15 @@ export type BillingRuleConditions = {
   weekly_pharmacist_cap?: number;
   /** 算定頻度制限 */
   frequency_limit?: 'monthly_once' | 'quarterly_once' | 'biannual_once';
+  /** 処方箋受付ごとに算定する項目 */
+  per_prescription_acceptance?: boolean;
+  /** 同一患者・処方箋受付等に依存しない薬局単位の受付料 */
+  pharmacy_acceptance_fee?: boolean;
+  /** 同一改定内の予定点数変更 */
+  scheduled_point_increase?: {
+    effective_from: string;
+    amount: number;
+  };
   /** 入院1回につき1回のみ */
   once_per_admission?: boolean;
   /** 患者につき初回のみ (在宅移行初期管理料等) */

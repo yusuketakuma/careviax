@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-175604
+
+- current task: register 2026 dispensing fee Section 5 items in billing rule SSOT
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/seeder.ts`, `src/server/services/billing-rules/seeder.test.ts`, `src/server/services/billing-rules/revisions/medical/official-2026.ts`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-rules/__tests__/medical-2026.test.ts`, and focused billing rule references
+- files changed: `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/revisions/medical/official-2026.ts`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-rules/__tests__/medical-2026.test.ts`, `.codex/ralph-state.md`
+- bugs found: after the first 2026 dispensing-fee support slice, the new Section 5 items were available in pharmacy-site config but were still absent from `MEDICAL_RULES_2026`, so the billing rule seeder could not register them as system SSOT rules
+- security risks found: no auth, authorization, tenant boundary, DB schema, API mutation, external request, secret, audit-log, or export behavior changed. The slice only adds rule metadata and tests
+- performance issues found: no billing-evidence generation loop, query, mutation, runtime context, seeder algorithm, or deletion scope changed. Two manual generic rules add constant-size seeding work only
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write src/server/services/billing-rules/types.ts src/server/services/billing-rules/revisions/medical/official-2026.ts src/server/services/billing-rules/revisions/medical/2026.ts src/server/services/billing-rules/__tests__/medical-2026.test.ts`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/billing-rules/__tests__/official-medical-2026.test.ts src/server/services/billing-rules/__tests__/medical-2026.test.ts src/server/services/billing-rules/seeder.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/server/services/billing-rules/types.ts src/server/services/billing-rules/revisions/medical/official-2026.ts src/server/services/billing-rules/revisions/medical/2026.ts src/server/services/billing-rules/__tests__/medical-2026.test.ts --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- ...`
+- validation results: Prettier completed successfully; focused billing-rule Vitest passed with 3 files / 26 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: automatic prescription-acceptance claim generation for these Section 5 rules remains outside the current home-visit billing candidate generator. Broader UI/refactor runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available
+- next action: commit this Section 5 billing-rule SSOT group, then retry runtime preflight and continue the broader UI/refactor loop if services are still unavailable
+
 ### 20260602-175302
 
 - current task: research latest official 2026 dispensing fee revision notices and implement missing support
