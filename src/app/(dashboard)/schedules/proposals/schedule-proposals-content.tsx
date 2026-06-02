@@ -270,8 +270,6 @@ function ProposalRankingCard({
   rank: number;
   activeProposalId: string;
 }) {
-  const proposalReasons = splitProposalReason(candidate.proposal_reason ?? '');
-
   return (
     <div
       className={cn(
@@ -302,18 +300,53 @@ function ProposalRankingCard({
           <Badge variant="outline">期限 {formatDateLabel(candidate.visit_deadline_date)}</Badge>
         </div>
       </div>
-      {proposalReasons.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {proposalReasons.map((reason) => (
-            <span
-              key={`${candidate.id}-${reason}`}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
-            >
-              {reason}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <ProposalReasonChips proposal={candidate} className="mt-3" />
+    </div>
+  );
+}
+
+function ProposalReasonChips({ proposal, className }: { proposal: Proposal; className?: string }) {
+  const proposalReasons = splitProposalReason(proposal.proposal_reason ?? '');
+
+  if (proposalReasons.length === 0) return null;
+
+  return (
+    <div className={cn('flex flex-wrap gap-2', className)}>
+      {proposalReasons.map((reason) => (
+        <span
+          key={`${proposal.id}-${reason}`}
+          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+        >
+          {reason}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
+  return (
+    <div className="space-y-2 rounded-2xl bg-muted/30 p-4 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">担当拠点</span>
+        <span className="font-medium text-foreground">{proposal.site?.name ?? '未設定'}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">期限</span>
+        <span className="font-medium text-foreground">
+          {formatDateLabel(proposal.visit_deadline_date)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">服薬最終日</span>
+        <span className="font-medium text-foreground">
+          {formatDateLabel(proposal.medication_end_date)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">ルート順</span>
+        <span className="font-medium text-foreground">{proposal.route_order ?? '未設定'}</span>
+      </div>
     </div>
   );
 }
@@ -1503,16 +1536,7 @@ export function ScheduleProposalsContent({
                     <div className="space-y-3">
                       <ProposalHumanDecisionFlow proposal={proposal} compact />
 
-                      <div className="flex flex-wrap gap-2">
-                        {splitProposalReason(proposal.proposal_reason ?? '').map((reason) => (
-                          <span
-                            key={reason}
-                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
-                          >
-                            {reason}
-                          </span>
-                        ))}
-                      </div>
+                      <ProposalReasonChips proposal={proposal} />
                       <p className="text-sm text-muted-foreground">{addressOfPatient(proposal)}</p>
                       {proposal.escalation_reason ? (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -1540,32 +1564,7 @@ export function ScheduleProposalsContent({
                         </p>
                       ) : null}
                     </div>
-                    <div className="space-y-2 rounded-2xl bg-muted/30 p-4 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">担当拠点</span>
-                        <span className="font-medium text-foreground">
-                          {proposal.site?.name ?? '未設定'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">期限</span>
-                        <span className="font-medium text-foreground">
-                          {formatDateLabel(proposal.visit_deadline_date)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">服薬最終日</span>
-                        <span className="font-medium text-foreground">
-                          {formatDateLabel(proposal.medication_end_date)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">ルート順</span>
-                        <span className="font-medium text-foreground">
-                          {proposal.route_order ?? '未設定'}
-                        </span>
-                      </div>
-                    </div>
+                    <ProposalOperationalFacts proposal={proposal} />
                   </div>
                 </CardContent>
               </Card>
