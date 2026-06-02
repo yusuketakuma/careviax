@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +13,8 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 type DrugAlertRule = {
@@ -163,202 +164,192 @@ export default function AlertRulesPage() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{form.id ? 'ルールを編集' : 'ルールを登録'}</CardTitle>
-            <CardDescription>
-              空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="alert_type">アラート種別</Label>
-              <select
-                id="alert_type"
-                value={form.alert_type}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, alert_type: event.target.value }))
-                }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              >
-                {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <PageSection
+          title={form.id ? 'ルールを編集' : 'ルールを登録'}
+          description="空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。"
+          contentClassName="space-y-4"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="alert_type">アラート種別</Label>
+            <select
+              id="alert_type"
+              value={form.alert_type}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, alert_type: event.target.value }))
+              }
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            >
+              {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="severity">重要度</Label>
-              <select
-                id="severity"
-                value={form.severity}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    severity: event.target.value as 'critical' | 'warning' | 'info',
-                  }))
-                }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              >
-                <option value="critical">critical</option>
-                <option value="warning">warning</option>
-                <option value="info">info</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="severity">重要度</Label>
+            <select
+              id="severity"
+              value={form.severity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  severity: event.target.value as 'critical' | 'warning' | 'info',
+                }))
+              }
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            >
+              <option value="critical">critical</option>
+              <option value="warning">warning</option>
+              <option value="info">info</option>
+            </select>
+          </div>
 
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">有効化</p>
-                <p className="text-xs text-muted-foreground">
-                  OFF にするとこのルールは実行対象から外れます
-                </p>
-              </div>
-              <Switch
-                checked={form.is_active}
-                onCheckedChange={(checked) =>
-                  setForm((current) => ({ ...current, is_active: checked }))
-                }
-              />
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+            <div>
+              <Label htmlFor="alert-rule-active" className="text-sm font-medium">
+                有効化
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                OFF にするとこのルールは実行対象から外れます
+              </p>
             </div>
+            <Switch
+              id="alert-rule-active"
+              checked={form.is_active}
+              onCheckedChange={(checked) =>
+                setForm((current) => ({ ...current, is_active: checked }))
+              }
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="message">表示メッセージ</Label>
-              <Input
-                id="message"
-                value={form.message}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, message: event.target.value }))
-                }
-                placeholder="例: 併用禁忌候補を再確認してください"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="message">表示メッセージ</Label>
+            <Input
+              id="message"
+              value={form.message}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, message: event.target.value }))
+              }
+              placeholder="例: 併用禁忌候補を再確認してください"
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="condition">条件(JSON)</Label>
-              <Textarea
-                id="condition"
-                rows={8}
-                className="font-mono text-xs"
-                value={form.conditionText}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, conditionText: event.target.value }))
-                }
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="condition">条件(JSON)</Label>
+            <Textarea
+              id="condition"
+              rows={8}
+              className="font-mono text-xs"
+              value={form.conditionText}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, conditionText: event.target.value }))
+              }
+            />
+          </div>
 
-            <div className="flex gap-2">
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
-              </Button>
-              {form.id ? (
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    setForm({
-                      id: '',
-                      alert_type: 'interaction',
-                      severity: 'warning',
-                      is_active: true,
-                      message: '',
-                      conditionText: '{}',
-                    })
-                  }
-                >
-                  キャンセル
-                </Button>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">テスト実行</CardTitle>
-              <CardDescription>
-                既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-end gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="test-cycle-id">サイクル ID</Label>
-                <Input
-                  id="test-cycle-id"
-                  value={testCycleId}
-                  onChange={(event) => setTestCycleId(event.target.value)}
-                  placeholder="cycle_xxx"
-                />
-              </div>
+          <ActionRail align="start">
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
+            </Button>
+            {form.id ? (
               <Button
                 variant="outline"
-                onClick={() => testMutation.mutate()}
-                disabled={!testCycleId || testMutation.isPending}
+                onClick={() =>
+                  setForm({
+                    id: '',
+                    alert_type: 'interaction',
+                    severity: 'warning',
+                    is_active: true,
+                    message: '',
+                    conditionText: '{}',
+                  })
+                }
               >
-                {testMutation.isPending ? '実行中...' : 'テスト実行'}
+                キャンセル
               </Button>
-            </CardContent>
-          </Card>
+            ) : null}
+          </ActionRail>
+        </PageSection>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">登録済みルール</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {rules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  まだ処方安全アラートルールはありません。
-                </p>
-              ) : (
-                rules.map((rule) => (
-                  <div key={rule.id} className="rounded-lg border border-border/60 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-foreground">
-                          {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
-                        </p>
-                        <Badge variant={rule.is_active ? 'default' : 'outline'}>
-                          {rule.is_active ? '有効' : '停止'}
-                        </Badge>
-                        <Badge variant="outline">{rule.severity}</Badge>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            setForm({
-                              id: rule.id,
-                              alert_type: rule.alert_type,
-                              severity: rule.severity,
-                              is_active: rule.is_active,
-                              message: rule.message,
-                              conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
-                            })
-                          }
-                        >
-                          編集
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => deleteMutation.mutate(rule.id)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          削除
-                        </Button>
-                      </div>
+        <div className="space-y-6">
+          <PageSection
+            title="テスト実行"
+            description="既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。"
+            contentClassName="flex flex-wrap items-end gap-3"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="test-cycle-id">サイクル ID</Label>
+              <Input
+                id="test-cycle-id"
+                value={testCycleId}
+                onChange={(event) => setTestCycleId(event.target.value)}
+                placeholder="cycle_xxx"
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => testMutation.mutate()}
+              disabled={!testCycleId || testMutation.isPending}
+            >
+              {testMutation.isPending ? '実行中...' : 'テスト実行'}
+            </Button>
+          </PageSection>
+
+          <PageSection title="登録済みルール" contentClassName="space-y-3">
+            {rules.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                まだ処方安全アラートルールはありません。
+              </p>
+            ) : (
+              rules.map((rule) => (
+                <div key={rule.id} className="rounded-lg border border-border/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground">
+                        {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
+                      </p>
+                      <Badge variant={rule.is_active ? 'default' : 'outline'}>
+                        {rule.is_active ? '有効' : '停止'}
+                      </Badge>
+                      <Badge variant="outline">{rule.severity}</Badge>
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
-                    <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
-                      {JSON.stringify(rule.condition ?? {}, null, 2)}
-                    </pre>
+                    <ActionRail>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setForm({
+                            id: rule.id,
+                            alert_type: rule.alert_type,
+                            severity: rule.severity,
+                            is_active: rule.is_active,
+                            message: rule.message,
+                            conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
+                          })
+                        }
+                      >
+                        編集
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteMutation.mutate(rule.id)}
+                        disabled={deleteMutation.isPending}
+                      >
+                        削除
+                      </Button>
+                    </ActionRail>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                  <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
+                  <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
+                    {JSON.stringify(rule.condition ?? {}, null, 2)}
+                  </pre>
+                </div>
+              ))
+            )}
+          </PageSection>
         </div>
       </div>
     </PageScaffold>

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173500
+
+- current task: organize admin alert-rule management sections without changing rule mutations
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/admin/alert-rules/page.tsx`, and code-mapper candidate findings
+- files changed: `src/app/(dashboard)/admin/alert-rules/page.tsx`, `.codex/ralph-state.md`
+- bugs found: alert-rule form, test execution, and registered-rule list were separate raw cards under a page grid, and action rows used ad hoc flex wrappers. The active switch also lacked a direct label association
+- security risks found: no drug-alert-rule API path, save/delete/test mutation payload, org header, auth, authorization, condition JSON parsing, toast, query invalidation, or CDS check behavior changed. Delete remains the existing explicit button action with the same mutation
+- performance issues found: no query, mutation, cache invalidation, JSON formatting, or list rendering behavior changed. The slice only changes local section/action layout and switch labelling
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/alert-rules/page.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/alert-rules/page.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/alert-rules/page.tsx'`; `rg -n "alert-rules" src/app src/components -g '*test*.tsx'`
+- validation results: Prettier completed successfully; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed; focused alert-rules test search found no existing test file
+- remaining work: runtime/browser proof remains blocked by missing local app/db listeners. A focused admin alert-rules render/mutation test would further reduce regression risk but was not added in this layout-only slice
+- next action: commit this admin alert-rules group, then run a final status and validation/preflight audit for remaining blockers
+
 ### 20260602-173000
 
 - current task: refactor prescription workspace filter and shortcut rails without changing queue behavior
