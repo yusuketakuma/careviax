@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-175912
+
+- current task: improve patient workflow preview semantic heading
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient workflow preview card still used decorative `CardTitle` wrappers for the outer visit/report/communication preview group in loading, error, and ready states. The internal sections were already semantic, but the outer safety workflow group was not a real heading
+- security risks found: no workflow-preview API path, org header, patient edit/consent/MCS links, report target rendering, communication priority data, auth, authorization, or patient data handling changed
+- performance issues found: no query key, fetch function, loading/error branching, report target mapping, communication list rendering, or render-loop behavior changed. The slice only changes heading markup and focused test coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient workflow preview Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, workflow sections, schedule proposal detail surfaces, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient workflow preview heading group, then continue the next high-value static UI/refactor slice or retry runtime proof when services are available
+
 ### 20260602-175729
 
 - current task: post-2026-dispensing-fee runtime/browser preflight audit

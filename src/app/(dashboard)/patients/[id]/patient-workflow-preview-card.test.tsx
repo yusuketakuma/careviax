@@ -113,6 +113,9 @@ describe('PatientWorkflowPreviewCard', () => {
 
     render(<PatientWorkflowPreviewCard patientId="patient_1" />);
 
+    expect(
+      screen.getByRole('heading', { level: 2, name: '訪問・報告・連携プレビュー' }).tagName,
+    ).toBe('H2');
     expect(screen.getByRole('heading', { name: '訪問準備プレビュー' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '報告先マトリクス' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '連携優先順位プレビュー' })).toBeTruthy();

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -52,7 +52,9 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     return (
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="text-base">訪問・報告・連携プレビュー</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">
+            訪問・報告・連携プレビュー
+          </h2>
         </CardHeader>
         <CardContent>
           <Loading label="ワークフロープレビューを読み込み中..." />
@@ -65,7 +67,9 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     return (
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="text-base">訪問・報告・連携プレビュー</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">
+            訪問・報告・連携プレビュー
+          </h2>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
@@ -84,7 +88,9 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     <Card className="lg:col-span-2">
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="text-base">訪問・報告・連携プレビュー</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">
+            訪問・報告・連携プレビュー
+          </h2>
           <ActionRail>
             <Link
               href={`/patients/${patientId}/edit`}
