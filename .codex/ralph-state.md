@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-190620
+
+- current task: improve patient detail tabs sidebar semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx`, `src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx`, and adjacent patient-detail panel tests
+- files changed: `src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx`, `src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient detail desktop sidebar still used decorative `CardTitle` wrappers for the patient hub and detail section groups. This weakened heading navigation compared with the PH-OS UI/UX SSOT requirement that major groups be exposed as real heading elements
+- security risks found: no patient overview fetch path, org header, archive/restore mutation, query invalidation, tab routing, prescription intake link, auth, authorization, tenant boundary, or patient data handling changed
+- performance issues found: no query function, mutation function, child panel loading gate, tab state update, routing behavior, or render-loop behavior changed. The slice only changes heading markup and focused render coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx' 'src/app/(dashboard)/patients/[id]/patient-detail-tabs.test.tsx'`
+- validation results: Prettier completed successfully; focused patient detail tabs Vitest passed with 1 file / 2 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Cases, medications, prescriptions, MCS, master/insurance/labs detail surfaces, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient detail tabs heading group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-190130
 
 - current task: post-external-share-content runtime/browser preflight audit

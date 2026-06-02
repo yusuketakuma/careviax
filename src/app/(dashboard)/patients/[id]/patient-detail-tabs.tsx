@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays, differenceInYears, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -383,7 +383,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           <aside className="hidden space-y-4 md:sticky md:top-6 md:block">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">患者ハブ</CardTitle>
+                <h2 className="font-heading text-base leading-snug font-medium">患者ハブ</h2>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-2">
@@ -473,7 +473,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">詳細セクション</CardTitle>
+                <h2 className="font-heading text-base leading-snug font-medium">詳細セクション</h2>
               </CardHeader>
               <CardContent className="space-y-1.5">
                 {PATIENT_DETAIL_TABS.map((tab) => {
