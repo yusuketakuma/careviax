@@ -44,6 +44,8 @@ import {
 } from '@/components/ui/dialog';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { PresenceAvatars } from '@/components/features/collaboration/presence-avatars';
 import { useCollaborativeForm } from '@/lib/hooks/use-collaborative-form';
@@ -98,6 +100,54 @@ function InquiryBlockingAlert({
         </p>
       )}
     </div>
+  );
+}
+
+function OriginalCollectionCheckSection({
+  check,
+  onOpenPatientPrescriptions,
+}: {
+  check: DispenseTaskDetail['original_collection_check'];
+  onOpenPatientPrescriptions: () => void;
+}) {
+  if (!check.required) return null;
+
+  return (
+    <PageSection
+      title="処方せん原本の回収チェック"
+      tone={check.collected ? 'subtle' : 'warning'}
+      actions={
+        <Badge variant={check.collected ? 'outline' : 'secondary'}>
+          {check.collected ? '回収済み' : '要確認'}
+        </Badge>
+      }
+      contentClassName="space-y-2 text-sm"
+    >
+      <div className="flex items-start gap-2">
+        {check.collected ? (
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+        ) : (
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+        )}
+        <div className="space-y-2">
+          <p className="text-muted-foreground">
+            FAX受付のため、調剤は進められますが、訪問時回収または後日郵送到着後に原本回収の記録が必須です。
+          </p>
+          {check.collected ? (
+            <p className="text-emerald-700">原本回収済み: {check.collected_at ?? '記録あり'}</p>
+          ) : (
+            <p className="text-amber-800">
+              未回収です。患者詳細の処方履歴から原本回収を記録してください。
+            </p>
+          )}
+        </div>
+      </div>
+      <ActionRail align="start">
+        <Button type="button" variant="outline" size="sm" onClick={onOpenPatientPrescriptions}>
+          原本回収を確認
+        </Button>
+      </ActionRail>
+    </PageSection>
   );
 }
 
@@ -304,7 +354,7 @@ function DispensingInformationPanel({
   return (
     <Card className="border-sky-200 bg-sky-50/30">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">調剤前確認</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">調剤前確認</h2>
         <p className="text-xs leading-5 text-muted-foreground">
           QR由来情報、前回処方、服用日付、処方変更を先に確認し、下の調剤実績入力へ進みます。
         </p>
@@ -835,15 +885,21 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     return (
       <div className="space-y-6">
         {/* Top toolbar */}
-        <div className="flex items-center gap-2">
+        <ActionRail align="between">
           <div className="flex-1">
             <PreviousStageSummary cycleId={task.cycle.id} />
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="ステータス遷移履歴を開く"
+            onClick={() => setHistoryOpen(true)}
+          >
             <History className="mr-1.5 size-3.5" aria-hidden="true" />
             履歴
           </Button>
-        </div>
+        </ActionRail>
 
         <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
           <SheetContent>
@@ -858,72 +914,31 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         </Sheet>
 
         {/* Patient header */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <CardTitle className="text-base">{patient.name} 様</CardTitle>
-              <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
-                {priorityLabel[task.priority] ?? task.priority}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              処方医: {intake.prescriber_name ?? '—'} / {intake.prescriber_institution ?? '—'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              調剤拠点: {task.site?.name ?? '未設定'} / 訪問先: {task.facility_label ?? '自宅訪問'}
-            </p>
-          </CardHeader>
-        </Card>
+        <PageSection
+          title={`${patient.name} 様`}
+          description={`処方医: ${intake.prescriber_name ?? '—'} / ${
+            intake.prescriber_institution ?? '—'
+          }`}
+          actions={
+            <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
+              {priorityLabel[task.priority] ?? task.priority}
+            </Badge>
+          }
+          contentClassName="text-xs text-muted-foreground"
+        >
+          調剤拠点: {task.site?.name ?? '未設定'} / 訪問先: {task.facility_label ?? '自宅訪問'}
+        </PageSection>
+
+        <OriginalCollectionCheckSection
+          check={originalCollectionCheck}
+          onOpenPatientPrescriptions={() => router.push(`/patients/${patient.id}/prescriptions`)}
+        />
 
         <DispensingInformationPanel
           intake={intake}
           previousIntake={previousIntake}
           prefill={task.prefill}
         />
-
-        {originalCollectionCheck.required && (
-          <Card
-            className={
-              originalCollectionCheck.collected ? 'border-emerald-200' : 'border-amber-300'
-            }
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                {originalCollectionCheck.collected ? (
-                  <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
-                ) : (
-                  <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
-                )}
-                <CardTitle className="text-sm">処方せん原本の回収チェック</CardTitle>
-                <Badge variant={originalCollectionCheck.collected ? 'outline' : 'secondary'}>
-                  {originalCollectionCheck.collected ? '回収済み' : '要確認'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p className="text-muted-foreground">
-                FAX受付のため、調剤は進められますが、訪問時回収または後日郵送到着後に原本回収の記録が必須です。
-              </p>
-              {originalCollectionCheck.collected ? (
-                <p className="text-emerald-700">
-                  原本回収済み: {originalCollectionCheck.collected_at ?? '記録あり'}
-                </p>
-              ) : (
-                <p className="text-amber-800">
-                  未回収です。患者詳細の処方履歴から原本回収を記録してください。
-                </p>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => router.push(`/patients/${patient.id}/prescriptions`)}
-              >
-                原本回収を確認
-              </Button>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Auto-prefill info banner */}
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -962,8 +977,10 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       />
                     )}
                     <div className="flex-1">
-                      <CardTitle
-                        className={`text-sm ${isRemoved ? 'text-muted-foreground line-through' : ''}`}
+                      <h3
+                        className={`font-heading text-sm leading-snug font-medium ${
+                          isRemoved ? 'text-muted-foreground line-through' : ''
+                        }`}
                       >
                         {line.lineNumber}. {line.drugName}
                         {line.changeMarker && (
@@ -988,7 +1005,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                                   : '用法変更'}
                           </Badge>
                         )}
-                      </CardTitle>
+                      </h3>
                       {line.changeDetail?.previous && (
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           前回: {line.changeDetail.previous}
@@ -1019,19 +1036,35 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                     <Separator />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
-                        <Label className="text-xs">実薬剤名</Label>
+                        <p id={`prefill-line-context-${line.lineId}`} className="sr-only">
+                          {line.drugName} の調剤実績入力
+                        </p>
+                        <Label
+                          htmlFor={`prefill-actual-drug-name-${line.lineId}`}
+                          className="text-xs"
+                        >
+                          実薬剤名
+                        </Label>
                         <Input
+                          id={`prefill-actual-drug-name-${line.lineId}`}
                           value={edited.actualDrugName ?? line.actualDrugName}
                           onChange={(e) =>
                             updateEditedLine(line.lineId, { actualDrugName: e.target.value })
                           }
+                          aria-describedby={`prefill-line-context-${line.lineId}`}
                           className="h-8 text-sm"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">数量</Label>
+                        <Label
+                          htmlFor={`prefill-actual-quantity-${line.lineId}`}
+                          className="text-xs"
+                        >
+                          数量
+                        </Label>
                         <div className="flex items-center gap-2">
                           <Input
+                            id={`prefill-actual-quantity-${line.lineId}`}
                             type="number"
                             step="0.1"
                             value={edited.actualQuantity ?? line.actualQuantity ?? ''}
@@ -1040,20 +1073,26 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                                 actualQuantity: parseFloat(e.target.value),
                               })
                             }
+                            aria-describedby={`prefill-line-context-${line.lineId}`}
                             className="h-8 w-24 text-sm"
                           />
                           <Input
+                            id={`prefill-actual-unit-${line.lineId}`}
                             value={edited.actualUnit ?? line.actualUnit ?? ''}
                             onChange={(e) =>
                               updateEditedLine(line.lineId, { actualUnit: e.target.value })
                             }
+                            aria-label={`${line.drugName} の単位`}
+                            aria-describedby={`prefill-line-context-${line.lineId}`}
                             className="h-8 w-20 text-sm"
                             placeholder="単位"
                           />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">持参区分</Label>
+                        <Label htmlFor={`prefill-carry-type-${line.lineId}`} className="text-xs">
+                          持参区分
+                        </Label>
                         <Select
                           value={edited.carryType ?? line.carryType}
                           onValueChange={(v) =>
@@ -1062,7 +1101,11 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                             })
                           }
                         >
-                          <SelectTrigger className="h-8 text-sm">
+                          <SelectTrigger
+                            id={`prefill-carry-type-${line.lineId}`}
+                            className="h-8 text-sm"
+                            aria-describedby={`prefill-line-context-${line.lineId}`}
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1247,6 +1290,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
             loading={prefillMutation.isPending}
             loadingLabel="登録中..."
             disabled={!allChecked || !safetyAck || !cdsCheckReady}
+            aria-label="自動生成された調剤内容を承認して登録"
             onClick={() => prefillMutation.mutate(prefillLines)}
           >
             承認
@@ -1263,28 +1307,38 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     >
       <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
 
-      <div className="flex items-center gap-2">
+      <ActionRail align="between">
         <div className="flex-1">
           <PreviousStageSummary cycleId={task.cycle.id} />
         </div>
-        <PresenceAvatars entityType="dispense_task" entityId={taskId} />
-        {yjsConnected && (
-          <span
-            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
-            title="共同編集接続中"
-          >
+        <ActionRail>
+          <PresenceAvatars entityType="dispense_task" entityId={taskId} />
+          {yjsConnected && (
             <span
-              className="inline-block size-1.5 rounded-full bg-emerald-500"
-              aria-hidden="true"
-            />
-            同期中
-          </span>
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
-          <History className="mr-1.5 size-3.5" aria-hidden="true" />
-          履歴
-        </Button>
-      </div>
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+              title="共同編集接続中"
+            >
+              <span
+                className="inline-block size-1.5 rounded-full bg-emerald-500"
+                aria-hidden="true"
+              />
+              同期中
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="ステータス遷移履歴を開く"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History className="mr-1.5 size-3.5" aria-hidden="true" />
+            履歴
+          </Button>
+        </ActionRail>
+      </ActionRail>
 
       <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
         <SheetContent>
@@ -1299,23 +1353,23 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       </Sheet>
 
       {/* Task header */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="text-base">{patient.name} 様</CardTitle>
-            <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
-              {priorityLabel[task.priority] ?? task.priority}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            処方医: {intake.prescriber_name ?? '—'} / {intake.prescriber_institution ?? '—'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            調剤拠点: {task.site?.name ?? '未設定'} / 訪問先: {task.facility_label ?? '自宅訪問'}
-          </p>
-        </CardHeader>
+      <PageSection
+        title={`${patient.name} 様`}
+        description={`処方医: ${intake.prescriber_name ?? '—'} / ${
+          intake.prescriber_institution ?? '—'
+        }`}
+        actions={
+          <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
+            {priorityLabel[task.priority] ?? task.priority}
+          </Badge>
+        }
+        contentClassName="space-y-3 text-xs text-muted-foreground"
+      >
+        <p>
+          調剤拠点: {task.site?.name ?? '未設定'} / 訪問先: {task.facility_label ?? '自宅訪問'}
+        </p>
         {(cycleLevelInquiries.length > 0 || hasLineLevelBlock) && (
-          <CardContent className="pt-0">
+          <div>
             {cycleLevelInquiries.length > 0 ? (
               <InquiryBlockingAlert
                 message="疑義照会中のため、この処方は調剤開始できません。"
@@ -1333,9 +1387,14 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                 reason="未照会の明細だけ先に調剤登録できます。"
               />
             )}
-          </CardContent>
+          </div>
         )}
-      </Card>
+      </PageSection>
+
+      <OriginalCollectionCheckSection
+        check={originalCollectionCheck}
+        onOpenPatientPrescriptions={() => router.push(`/patients/${patient.id}/prescriptions`)}
+      />
 
       <DispensingInformationPanel
         intake={intake}
@@ -1357,14 +1416,14 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           return (
             <Card key={field.id}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">
+                <h3 className="font-heading text-sm leading-snug font-medium">
                   {index + 1}. {originalLine?.drug_name}
                   {originalLine?.dosage_form && (
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
                       {originalLine.dosage_form}
                     </span>
                   )}
-                </CardTitle>
+                </h3>
                 <p className="text-xs text-muted-foreground">
                   処方: {originalLine?.dose} / {originalLine?.frequency} / {originalLine?.days}日分
                   {originalLine?.quantity != null &&
@@ -1402,6 +1461,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                             }
                             size="sm"
                             className="h-7 text-[11px]"
+                            aria-label={`${candidate.drug_name} を実薬剤として適用`}
                             onClick={() => applyStockCandidate(index, candidate)}
                             disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
                           >
@@ -1593,10 +1653,10 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
       <Card className="border-amber-300 bg-amber-50/60">
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm text-amber-950">
+          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-amber-950">
             <AlertTriangle className="size-4" aria-hidden="true" />
             調剤完了前の安全確認
-          </CardTitle>
+          </h2>
         </CardHeader>
         <CardContent className="space-y-3">
           <CdsAlertPanel

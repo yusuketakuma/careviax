@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-171500
+
+- current task: organize dispensing task safety header and preserve prescription original collection visibility across dispensing modes
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and frontend/accessibility/medical-safety subagent findings
+- files changed: `src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx`, `.codex/ralph-state.md`
+- bugs found: the FAX prescription original collection warning was only rendered in the auto-prefill branch, so manual dispensing could hide an operationally required original-prescription collection reminder. The warning also appeared below the larger dispensing information panel, reducing immediate visibility for a same-day safety item
+- security risks found: no API, auth, authorization, patient scoping, prescription update, audit write, export, or PHI logging behavior changed. The existing patient-prescription navigation target and server-side access controls were preserved
+- performance issues found: no query, mutation, realtime subscription, form calculation, or network behavior changed. The slice only replaces local layout wrappers and adds semantic labels/headings
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/dispense-tasks/[id]/route.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx'`
+- validation results: Prettier completed successfully; focused dispense-task API Vitest passed with 1 file / 8 tests; targeted ESLint passed with zero warnings; TypeScript passed without output after using the existing `drugName` prefill field for accessible descriptions; whitespace diff check passed
+- remaining work: no focused `DispenseForm` UI regression test currently exists, so a future test should lock the prefill-to-manual original collection warning visibility. Browser proof remains blocked by missing local app/db listeners on 3012/5433, and broader dense surfaces still need ongoing UI/refactor passes
+- next action: commit this dispensing safety UI group, then continue the Ralph loop with another high-value clutter/refactor slice
+
 ### 20260602-170500
 
 - current task: organize conference note view controls with shared section and action primitives
