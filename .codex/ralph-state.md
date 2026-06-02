@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173633
+
+- current task: improve visit record detail semantic headings
+- files inspected: `git status --short`, `git log --oneline -10`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, and focused visit record detail tests
+- files changed: `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `.codex/ralph-state.md`
+- bugs found: the visit record detail page used decorative `CardTitle` wrappers for SOAP sections, the post-visit workflow, receipt, location, attachments, and residual medication sections. These are read-only clinical review groups and should be semantic headings for scanning and assistive navigation
+- security risks found: no visit-record API path, PDF route, handoff route, org header, workflow action href, file download link, query key, mutation, auth, authorization, or record data handling changed
+- performance issues found: no query, mutation, workflow action derivation, readiness calculation, attachment rendering, residual medication table, geo rendering, or render-loop behavior changed. The slice only changes heading markup and removes an unused card title import
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/visits/[id]/visit-record-detail.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/visit-records/[id]/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/handoff/route.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/visits/[id]/visit-record-detail.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/visits/[id]/visit-record-detail.tsx'`
+- validation results: Prettier completed successfully; focused visit record detail Vitest passed with 3 files / 24 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially patient detail panels, medication set edit/audit pages, prescription detail/QR draft pages, and admin master pages
+- next action: commit this visit record detail group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-173430
 
 - current task: post-schedule and visit record UI/refactor runtime preflight audit

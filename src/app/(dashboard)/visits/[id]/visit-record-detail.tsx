@@ -26,7 +26,7 @@ import {
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
 import type { VisitGeoLog } from '@/lib/visit-location';
@@ -168,10 +168,10 @@ function SoapSection({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
+        <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
           <Icon className={`size-4 ${colorClass}`} aria-hidden="true" />
           {label}
-        </CardTitle>
+        </h3>
       </CardHeader>
       <CardContent>
         {content ? (
@@ -339,7 +339,7 @@ function PostVisitWorkflowPanel({
   return (
     <Card>
       <CardHeader className="space-y-1 pb-3">
-        <CardTitle className="text-base">訪問後ワークフロー</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">訪問後ワークフロー</h2>
         <p className="text-sm leading-6 text-muted-foreground">
           訪問記録から、報告・算定・次回訪問を直接起こし、送付や算定確定は専用画面で確認します。
         </p>
@@ -910,10 +910,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       {/* Receipt record */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
+          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
             <User className="size-4 text-muted-foreground" aria-hidden="true" />
             受領記録
-          </CardTitle>
+          </h2>
         </CardHeader>
         <CardContent>
           {record.receipt_person_name ? (
@@ -949,10 +949,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       {record.visit_geo_log?.enabled && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
+            <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
               <MapPin className="size-4 text-muted-foreground" aria-hidden="true" />
               訪問位置情報
-            </CardTitle>
+            </h2>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2">
@@ -968,10 +968,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
+          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
             <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
             写真・添付
-          </CardTitle>
+          </h2>
         </CardHeader>
         <CardContent>
           {record.attachments.length > 0 ? (
@@ -1030,7 +1030,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       {residuals && residuals.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">残薬記録</CardTitle>
+            <h2 className="font-heading text-sm leading-snug font-medium">残薬記録</h2>
           </CardHeader>
           <CardContent>
             <div className="overflow-auto rounded-md border border-border">
