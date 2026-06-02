@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-184650
+
+- current task: post-2026-dispensing-revision runtime/browser preflight audit
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `git commit` output for `89ad18d`, and `pnpm medical-ui:e2e:preflight` output after the 2026 dispensing revision rule coverage commit
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, mutation, billing rule, prescription, export, or patient behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: worktree was clean before this audit entry; medical UI preflight passed environment/script/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL for `ph_os_e2e` on `localhost:5433`, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start the app with `pnpm --config.verify-deps-before-run=false dev:e2e:local`, then run `pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false medical-ui:e2e:targeted`
+- next action: commit this audit note, then continue any remaining requested billing/UI work once runtime services are available
+
 ### 20260602-184520
 
 - current task: investigate latest 2026 dispensing fee revision notices and implement missing billing SSOT items
