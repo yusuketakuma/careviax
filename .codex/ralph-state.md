@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173143
+
+- current task: improve schedule weekly optimizer semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`, and focused weekly optimizer tests
+- files changed: `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`, `.codex/ralph-state.md`
+- bugs found: the weekly optimizer used decorative `CardTitle` wrappers for the main pharmacist-by-day board and facility bulk-visit suggestion section. These are the two major decision groups in the optimizer and should be semantic headings for scanning and assistive navigation
+- security risks found: no visit schedule/proposal API path, org header, selected case, route reorder payload, create proposal payload, drag/drop logic, query state, auth, authorization, or schedule persistence behavior changed
+- performance issues found: no query, mutation, realtime subscription, route-order draft state, deferred search value, facility suggestion calculation, weekly board grouping, or render-loop behavior changed. The slice only changes headings and removes an unused card title import
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx'`
+- validation results: Prettier completed successfully; focused weekly optimizer Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially visit record/detail forms, patient detail panels, and medication set edit/audit pages
+- next action: commit this weekly optimizer heading group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-173008
 
 - current task: improve schedule proposal detail sheet semantic headings

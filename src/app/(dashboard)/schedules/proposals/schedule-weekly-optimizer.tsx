@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -962,7 +962,7 @@ export function ScheduleWeeklyOptimizer({
     <div className="space-y-6">
       <Card className="border-border/70 bg-card/95">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">週間最適化ビュー</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">週間最適化ビュー</h2>
           <CardDescription>
             薬剤師 × 日のボードで、未確定予定の再配置と空き枠からの提案生成を行います。
           </CardDescription>
@@ -1390,10 +1390,10 @@ export function ScheduleWeeklyOptimizer({
       {facilitySuggestions.length > 0 ? (
         <Card className="border-border/70 bg-card/95">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
               <Sparkles className="size-4 text-violet-600" />
               施設一括訪問の自動グループ化候補
-            </CardTitle>
+            </h2>
             <CardDescription>
               同一施設患者が週内で分散している候補を、同日に寄せる再提案へつなぎます。
             </CardDescription>
