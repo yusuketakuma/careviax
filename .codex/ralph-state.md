@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-182633
+
+- current task: improve management plan panel semantic heading and focused coverage
+- files inspected: `git status --short`, `git log --oneline -10`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`, and focused management-plan test references
+- files changed: `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`, `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the management plan panel used decorative `CardTitle` wrappers for the main plan group in both no-case and normal states. This weakened heading navigation for a safety-critical care-plan document surface
+- security risks found: no management plan API path, org header, save/approve/archive mutation, query invalidation, PDF link, print link, case selection, patient document loading, auth, authorization, or patient data handling changed
+- performance issues found: no query function, mutation function, case selection logic, plan rendering loop, dialog state, JSON parsing, or data transformation changed. The slice only changes heading markup and adds focused no-case rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`
+- validation results: Prettier completed successfully; initial focused Vitest exposed that `EmptyState` descriptions are surfaced via help popover instead of always-visible body text, so the assertion was corrected to the accessible help button; focused management-plan Vitest then passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this management plan panel heading group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-182408
 
 - current task: post-patient-activity-timeline runtime/browser preflight audit

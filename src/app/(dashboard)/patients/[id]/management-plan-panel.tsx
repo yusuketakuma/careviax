@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -447,7 +447,7 @@ export function ManagementPlanPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">管理計画書</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">管理計画書</h2>
         </CardHeader>
         <CardContent>
           <EmptyState
@@ -467,7 +467,7 @@ export function ManagementPlanPanel({
       <Card>
         <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="text-base">管理計画書</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">管理計画書</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {patientName} さんのケースごとに計画書を管理します。
             </p>
