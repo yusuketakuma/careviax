@@ -16,6 +16,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageSection } from '@/components/layout/page-section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -93,21 +94,28 @@ function severityClass(severity: string) {
 }
 
 function WorkflowSection({
+  title,
+  description,
   children,
   active = false,
   testId,
 }: {
+  title: string;
+  description?: string;
   children: React.ReactNode;
   active?: boolean;
   testId?: string;
 }) {
   return (
-    <section
+    <PageSection
+      title={title}
+      description={description}
+      tone="subtle"
       data-testid={testId}
-      className={cn('space-y-4 scroll-mt-28', active ? 'rounded-2xl ring-2 ring-primary/25' : null)}
+      className={cn('scroll-mt-28', active ? 'ring-2 ring-primary/25' : null)}
     >
       {children}
-    </section>
+    </PageSection>
   );
 }
 
@@ -204,13 +212,11 @@ export function WorkflowDashboardView({
         </Alert>
       ) : null}
 
-      <WorkflowSection testId="workflow-main-route">
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold text-foreground">主業務フロー</h2>
-          <p className="text-sm text-muted-foreground">
-            処方登録から報告書までの本流を先に確認し、そのうえで下段の滞留や例外を工程単位で追えるようにしています。
-          </p>
-        </div>
+      <WorkflowSection
+        title="主業務フロー"
+        description="処方登録から報告書までの本流を先に確認し、そのうえで下段の滞留や例外を工程単位で追えるようにしています。"
+        testId="workflow-main-route"
+      >
         <MainWorkflowRoute
           eyebrow="処方から報告まで"
           summary="主業務は 8 工程を固定順で表示し、今どの工程を確認しているかを画面上部で揃えています。"
@@ -220,18 +226,20 @@ export function WorkflowDashboardView({
         />
       </WorkflowSection>
 
-      <WorkflowSection testId="workflow-integration-checks">
+      <WorkflowSection
+        title="工程連携マップ"
+        description="工程間の引き継ぎと滞留しやすい接続点を横断して確認します。"
+        testId="workflow-integration-checks"
+      >
         <WorkflowIntegrationMap />
       </WorkflowSection>
 
-      <WorkflowSection active={initialFocus === 'control_center'} testId="workflow-control-center">
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold text-foreground">コントロールセンター</h2>
-          <p className="text-sm text-muted-foreground">
-            まず例外、ルート変更、役割別 inbox
-            をまとめて確認し、当日対応の入口をここに集約しています。
-          </p>
-        </div>
+      <WorkflowSection
+        title="コントロールセンター"
+        description="まず例外、ルート変更、役割別 inbox をまとめて確認し、当日対応の入口をここに集約しています。"
+        active={initialFocus === 'control_center'}
+        testId="workflow-control-center"
+      >
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           <Card>
             <CardContent className="space-y-4 p-4 sm:p-5">
@@ -360,8 +368,12 @@ export function WorkflowDashboardView({
         </div>
       </WorkflowSection>
 
-      <WorkflowSection active={initialFocus === 'communication'} testId="workflow-communication">
-        <h2 className="mb-3 text-base font-semibold text-foreground">連絡キュー</h2>
+      <WorkflowSection
+        title="連絡キュー"
+        description="未処理、期限超過、送達失敗、共有期限をまとめて確認し、必要な連絡処理へ進みます。"
+        active={initialFocus === 'communication'}
+        testId="workflow-communication"
+      >
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard
             icon={BellRing}
@@ -877,8 +889,12 @@ export function WorkflowDashboardView({
         />
       </section>
 
-      <WorkflowSection active={initialFocus === 'workbench'} testId="workflow-workbench">
-        <h2 className="mb-3 text-base font-semibold text-foreground">統合ワークベンチ</h2>
+      <WorkflowSection
+        title="統合ワークベンチ"
+        description="未処理の業務項目を横断して確認し、各実務画面へ直接移動します。"
+        active={initialFocus === 'workbench'}
+        testId="workflow-workbench"
+      >
         {(workflow?.unified_workbench.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未処理の項目はありません</p>
         ) : (
@@ -957,8 +973,12 @@ export function WorkflowDashboardView({
         )}
       </section>
 
-      <WorkflowSection active={initialFocus === 'exceptions'} testId="workflow-exceptions">
-        <h2 className="mb-3 text-base font-semibold text-foreground">例外コマンドセンター</h2>
+      <WorkflowSection
+        title="例外コマンドセンター"
+        description="重大例外を優先して確認し、担当画面で是正します。"
+        active={initialFocus === 'exceptions'}
+        testId="workflow-exceptions"
+      >
         {(workflow?.exception_command_center.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">重大例外はありません</p>
         ) : (

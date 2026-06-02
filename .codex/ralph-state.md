@@ -10186,6 +10186,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority surfaces include workflow dashboard, visits, deeper drug-master/formulary extraction, and browser proof for dense prescription workspace breakpoints
 - next action: run post-append whitespace/status checks, commit this slice, then continue with workflow dashboard or visits
 
+### 20260602-154755
+
+- current task: make workflow dashboard focus sections use shared PageSection boundaries
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`, `src/app/(dashboard)/workflow/workflow-query-state.test.ts`, shared `PageSection`
+- files changed: `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `.codex/ralph-state.md`
+- bugs found: no workflow API or mutation bug was targeted. The workflow dashboard's focusable `WorkflowSection` wrapper used raw sections with title markup duplicated in children, so major focus areas did not share the same border/background/heading contract as other cleaned-up pages
+- security risks found: no communication, inquiry, refill, route, exception, or PHI data behavior changed. Existing `data-testid` focus targets and mutation callbacks were preserved
+- performance issues found: no data fetching or rendering loop changed. The refactor only moves section boundary and heading rendering into the shared `PageSection`
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/workflow/workflow-query-state.test.ts' src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 3 files / 5 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include visits list/detail, deeper workflow raw sections, deeper drug-master/formulary extraction, and browser proof for changed routes
+- next action: run post-append whitespace/status checks, commit this slice, then continue with visits or browser verification of the accumulated UI slices
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
