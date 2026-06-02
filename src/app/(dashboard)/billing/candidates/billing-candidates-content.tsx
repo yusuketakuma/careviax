@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
@@ -699,7 +699,7 @@ export function BillingCandidatesContent({
       <div className="grid gap-3 md:grid-cols-4">
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">締め準備</CardTitle>
+            <h3 className="text-xs font-medium text-muted-foreground">締め準備</h3>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{closeReady}</p>
@@ -708,9 +708,7 @@ export function BillingCandidatesContent({
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              レビュー待ち / 根拠不足
-            </CardTitle>
+            <h3 className="text-xs font-medium text-muted-foreground">レビュー待ち / 根拠不足</h3>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{closeBlocked}</p>
@@ -719,7 +717,7 @@ export function BillingCandidatesContent({
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">締め済み</CardTitle>
+            <h3 className="text-xs font-medium text-muted-foreground">締め済み</h3>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">
@@ -730,9 +728,7 @@ export function BillingCandidatesContent({
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              レビュー済み
-            </CardTitle>
+            <h3 className="text-xs font-medium text-muted-foreground">レビュー済み</h3>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{summary?.reviewed ?? 0}</p>

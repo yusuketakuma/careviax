@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-172723
+
+- current task: improve billing candidates KPI semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, and focused billing-candidates tests
+- files changed: `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `.codex/ralph-state.md`
+- bugs found: billing candidate KPI cards still used decorative `CardTitle` wrappers for the close-ready, blocked, exported, and reviewed counts. These are subgroup headings inside the already-organized monthly candidate section
+- security risks found: no billing candidate API, close/export route, org header, patient filter, month navigation, generation/close/export mutation, CSV download, auth, authorization, or payload behavior changed
+- performance issues found: no query, infinite pagination, summary calculation, candidate filtering, mutation invalidation, or table rendering behavior changed. The slice only changes KPI headings and removes an unused card title import
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/billing-candidates/route.test.ts src/app/api/billing-candidates/close/route.test.ts src/app/api/billing-candidates/export/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx'`
+- validation results: Prettier completed successfully; focused billing candidate Vitest passed with 3 files / 44 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense surfaces remain, especially schedule proposals, visit record/detail forms, patient detail panels, and medication set edit/audit pages
+- next action: commit this billing candidates KPI group, then continue with a high-value dense operational surface
+
 ### 20260602-172533
 
 - current task: organize settings location and session tabs without changing device/session behavior
