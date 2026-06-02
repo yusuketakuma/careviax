@@ -5,17 +5,19 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, ClipboardCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { PatientReadinessSnapshot } from './patient-detail.types';
+
+function ReadinessHeading() {
+  return (
+    <h2 className="font-heading text-base leading-snug font-medium">
+      患者情報・訪問開始 readiness
+    </h2>
+  );
+}
 
 export function PatientReadinessCard({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
@@ -37,7 +39,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+          <ReadinessHeading />
         </CardHeader>
         <CardContent>
           <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
@@ -50,7 +52,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+          <ReadinessHeading />
         </CardHeader>
         <CardContent>
           <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
@@ -63,7 +65,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+          <ReadinessHeading />
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">{readinessQuery.error.message}</p>
@@ -77,7 +79,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+          <ReadinessHeading />
           <CardDescription>患者情報と初回訪問前の前提条件を確認します。</CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,7 +100,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+            <ReadinessHeading />
             <CardDescription className="mt-1">
               訪問時、報告書、他職種連携に必要な患者情報と前提条件を確認できます。
             </CardDescription>
