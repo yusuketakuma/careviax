@@ -215,6 +215,28 @@ describe('ScheduleDayView', () => {
     ).toBeTruthy();
   });
 
+  it('groups the weekly schedule controls and exposes the selected day state', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      connected: true,
+    });
+
+    render(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    expect(screen.getByRole('heading', { name: '週次訪問の進捗' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '翌週' })).toBeTruthy();
+
+    const selectedDayButton = screen.getByRole('button', {
+      name: /2026年4月9日\(木\) 候補0件 確定0件/,
+    });
+    expect(selectedDayButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('drops malformed fresh visit brief cache rows instead of rendering them', async () => {
     visitBriefCacheToArrayMock.mockResolvedValue([
       {

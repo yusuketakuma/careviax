@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-162000
+
+- current task: reduce clutter in the schedules day-view top workflow area and lock the accessibility behavior with focused tests
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md` from the active UI/UX plan context, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md` from the active Next.js context, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/components/layout/page-section.tsx`, schedule test file list, and the accessibility reviewer subagent report for day-view
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the schedules day-view top area had an unlabeled metric `section`, a separate explanatory card, and a separate weekly date-switching card, making the initial screen read as several unrelated blocks. Day buttons indicated the selected date visually but did not expose selection state to assistive technology
+- security risks found: no auth, authorization, PHI logging, data mutation, or API boundary changes were made. The UI change reduces patient-schedule confusion risk by making the week status, route rules, and selected day controls explicit, but no direct security vulnerability was changed
+- performance issues found: no data-fetching, memoization, mutation, query, or render-loop behavior was changed. The refactor removes no expensive computation
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx' src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`
+- validation results: Prettier completed with no further changes after formatting; focused Vitest passed with 3 files / 8 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader schedules day-view clutter remains in the left candidate-generation/task rail and confirmed-schedule tab. DB-backed browser proof for `/schedules` is still pending because local e2e DB port `5433` was previously unavailable
+- next action: continue the schedules day-view UI/refactor plan with the left rail candidate-generation/task/related-management sections, then run the same focused validation pattern and browser proof once the local e2e DB is available
+
 ### 20260602-094155
 
 - current task: optimize user-level Codex CLI configuration for 0.136.0, refresh subagent internal prompts without changing agent structure, and fix GBrain MCP startup failure
