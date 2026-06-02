@@ -10121,6 +10121,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Subagents prioritized drug-master/formulary, schedule proposals, prescription workspace, audit logs, tasks, workflow dashboard, and visits as next high-value surfaces
 - next action: run post-append whitespace/status checks, commit this slice, then start the drug-master/formulary slice with medical/privacy review constraints
 
+### 20260602-153342
+
+- current task: organize drug master/formulary top controls with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, subagent UI/UX and implementation-planning findings, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, shared `PageSection`, `ActionRail`, and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no import/business-logic bug was targeted. The drug master/formulary top area had the count badge, import actions, source technical note, target site select, and stocked-only toggle split across header chrome and a generic card, making the operator's starting context harder to scan
+- security risks found: no import endpoint, mutation payload, CSV behavior, pharmacy site selection semantics, or medication safety queue logic changed. Technical source details remain behind a collapsed `details` block
+- performance issues found: no data fetching or table behavior changed. The refactor replaces repeated layout markup with shared components and adds only simple summary rendering from already-loaded values
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`
+- validation results: target Prettier passed and formatted the top-control JSX; focused Vitest passed with 4 files / 9 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Drug Master still has dense formulary operation, master update status, import history, and search/filter sections that can be separated in later slices
+- next action: run post-append whitespace/status checks, commit this slice, then continue with the next high-value dense surface or deeper drug-master subcomponent extraction
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

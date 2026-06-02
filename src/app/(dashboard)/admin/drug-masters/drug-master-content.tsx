@@ -8,7 +8,6 @@ import {
   Pill,
   AlertTriangle,
   Shield,
-  Database,
   Download,
   Upload,
   History,
@@ -26,10 +25,13 @@ import {
   getAdminDrugMasterShortcutLinks,
   getAdminFormularyShortcutLinks,
 } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
@@ -667,7 +669,10 @@ const IMPORT_SOURCE_LABEL: Record<DrugMasterImportLog['source'], string> = {
   manual_clinical: '手動臨床ルール',
 };
 
-const IMPORT_LOG_SOURCE_OPTIONS: Array<{ value: 'all' | DrugMasterImportLog['source']; label: string }> = [
+const IMPORT_LOG_SOURCE_OPTIONS: Array<{
+  value: 'all' | DrugMasterImportLog['source'];
+  label: string;
+}> = [
   { value: 'all', label: 'すべてのソース' },
   { value: 'ssk', label: IMPORT_SOURCE_LABEL.ssk },
   { value: 'mhlw_price', label: IMPORT_SOURCE_LABEL.mhlw_price },
@@ -677,7 +682,10 @@ const IMPORT_LOG_SOURCE_OPTIONS: Array<{ value: 'all' | DrugMasterImportLog['sou
   { value: 'manual_clinical', label: IMPORT_SOURCE_LABEL.manual_clinical },
 ];
 
-const IMPORT_LOG_STATUS_OPTIONS: Array<{ value: 'all' | DrugMasterImportLog['status']; label: string }> = [
+const IMPORT_LOG_STATUS_OPTIONS: Array<{
+  value: 'all' | DrugMasterImportLog['status'];
+  label: string;
+}> = [
   { value: 'all', label: 'すべての状態' },
   { value: 'failed', label: '失敗のみ' },
   { value: 'running', label: '実行中' },
@@ -765,10 +773,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [templateName, setTemplateName] = useState('');
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [importLogSourceFilter, setImportLogSourceFilter] =
-    useState<'all' | DrugMasterImportLog['source']>('all');
-  const [importLogStatusFilter, setImportLogStatusFilter] =
-    useState<'all' | DrugMasterImportLog['status']>('all');
+  const [importLogSourceFilter, setImportLogSourceFilter] = useState<
+    'all' | DrugMasterImportLog['source']
+  >('all');
+  const [importLogStatusFilter, setImportLogStatusFilter] = useState<
+    'all' | DrugMasterImportLog['status']
+  >('all');
   const [templatePreview, setTemplatePreview] = useState<FormularyTemplatePreviewResponse | null>(
     null,
   );
@@ -1193,7 +1203,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       is_stocked: boolean;
       preferred_generic_id?: string | null;
       reorder_point?: number | null;
-      follow_up_status?: 'active' | 'needs_review' | 'planned_switch' | 'monitoring' | 'resolved' | null;
+      follow_up_status?:
+        | 'active'
+        | 'needs_review'
+        | 'planned_switch'
+        | 'monitoring'
+        | 'resolved'
+        | null;
       follow_up_reason?: string | null;
       follow_up_due_date?: string | null;
     }) => {
@@ -1306,29 +1322,29 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const runBulkCsvMutation = async (dryRun: boolean) => {
-      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
-      const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          site_id: effectiveSelectedSiteId,
-          csv: bulkCsv,
-          dry_run: dryRun,
-        }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.message ?? '採用薬リストの一括登録に失敗しました');
-      }
-      return json as {
-        importedCount: number;
-        unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-        invalidRows: Array<{ rowNumber: number; reason: string }>;
-        preview?: BulkPreviewResponse['preview'];
-      };
+    if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+    const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-org-id': orgId,
+      },
+      body: JSON.stringify({
+        site_id: effectiveSelectedSiteId,
+        csv: bulkCsv,
+        dry_run: dryRun,
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.message ?? '採用薬リストの一括登録に失敗しました');
+    }
+    return json as {
+      importedCount: number;
+      unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+      invalidRows: Array<{ rowNumber: number; reason: string }>;
+      preview?: BulkPreviewResponse['preview'];
+    };
   };
 
   const bulkPreviewMutation = useMutation({
@@ -1464,7 +1480,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品テンプレートの作成に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : '採用品テンプレートの作成に失敗しました',
+      );
     },
   });
 
@@ -1508,7 +1526,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品テンプレートの適用に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : '採用品テンプレートの適用に失敗しました',
+      );
     },
   });
 
@@ -1530,7 +1550,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '採用品テンプレートの削除に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : '採用品テンプレートの削除に失敗しました',
+      );
     },
   });
 
@@ -1842,12 +1864,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     }
   };
   const staleSourceCount =
-    masterStatusData?.sources.filter((source) =>
-      ['stale', 'never'].includes(source.freshness),
-    ).length ?? 0;
+    masterStatusData?.sources.filter((source) => ['stale', 'never'].includes(source.freshness))
+      .length ?? 0;
   const agingSourceCount =
     masterStatusData?.sources.filter((source) => source.freshness === 'aging').length ?? 0;
-  const bulkPreviewStatusLabel = (status: BulkPreviewResponse['preview']['rows'][number]['status']) => {
+  const bulkPreviewStatusLabel = (
+    status: BulkPreviewResponse['preview']['rows'][number]['status'],
+  ) => {
     switch (status) {
       case 'create':
         return '新規採用';
@@ -1910,34 +1933,58 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           description={headerDescription}
           shortcuts={headerShortcuts}
         />
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {data?.totalCount !== undefined && (
-            <Badge variant="outline" className="gap-1">
-              <Database className="size-3" aria-hidden="true" />
-              {data.totalCount.toLocaleString()}件
-            </Badge>
-          )}
-          {IMPORT_ACTIONS.map((action) => (
-            <LoadingButton
-              key={action.key}
-              type="button"
-              size="sm"
-              loading={importMutation.isPending && importMutation.variables === action.key}
-              loadingLabel={action.loadingLabel}
-              onClick={() => importMutation.mutate(action.key)}
-              className="gap-1"
-            >
-              <Download className="size-3.5" aria-hidden="true" />
-              {action.label}
-            </LoadingButton>
-          ))}
-        </div>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center">
-            <div className="space-y-2">
+      <PageSection
+        title="更新と対象拠点"
+        description="マスター取込、採用品設定の拠点、表示対象を先に固定してから採用薬レビューへ進みます。"
+        tone="subtle"
+        actions={
+          <ActionRail>
+            {IMPORT_ACTIONS.map((action) => (
+              <LoadingButton
+                key={action.key}
+                type="button"
+                size="sm"
+                loading={importMutation.isPending && importMutation.variables === action.key}
+                loadingLabel={action.loadingLabel}
+                onClick={() => importMutation.mutate(action.key)}
+                className="gap-1"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                {action.label}
+              </LoadingButton>
+            ))}
+          </ActionRail>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
+          <div className="space-y-3">
+            <FilterSummaryBar
+              items={[
+                {
+                  label: '登録件数',
+                  value:
+                    data?.totalCount !== undefined
+                      ? `${data.totalCount.toLocaleString()}件`
+                      : '読込中',
+                },
+                {
+                  label: '対象拠点',
+                  value:
+                    sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択',
+                  tone: effectiveSelectedSiteId ? 'default' : 'warning',
+                },
+                {
+                  label: '表示対象',
+                  value: stockedOnly ? '採用品のみ' : '全件',
+                },
+                ...(activeImport && importMutation.isPending
+                  ? [{ label: '実行中', value: activeImport.label, tone: 'warning' as const }]
+                  : []),
+              ]}
+            />
+            <div className="space-y-2 rounded-xl border border-border/70 bg-background/70 px-3 py-3">
               <p className="text-sm text-muted-foreground">
                 HOTコードマスターおよびPMDA添付文書の連携が未設定の場合は、システム管理者に連絡してください。
                 PMDA添付文書の取得にはメディナビ/マイ医薬品集の登録が必要です。
@@ -1954,42 +2001,39 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 </p>
               </details>
             </div>
-            <label className="space-y-1">
-              <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                <Building2 className="size-3.5" aria-hidden="true" />
-                採用品設定の対象拠点
-              </span>
-              <select
-                value={effectiveSelectedSiteId}
-                onChange={(event) => {
-                  setSelectedSiteId(event.target.value);
-                  setPreferredGenericId(null);
-                }}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              >
-                <option value="">拠点を選択</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
-              <label className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={stockedOnly}
-                  onChange={(event) => setStockedOnly(event.target.checked)}
-                  className="size-4 rounded border-input"
-                />
-                採用品のみ表示
-              </label>
-            </label>
           </div>
-          {activeImport && importMutation.isPending && (
-            <p className="mt-2 text-xs text-muted-foreground">実行中: {activeImport.label}</p>
-          )}
-        </CardContent>
-      </Card>
+          <label className="space-y-1">
+            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Building2 className="size-3.5" aria-hidden="true" />
+              採用品設定の対象拠点
+            </span>
+            <select
+              value={effectiveSelectedSiteId}
+              onChange={(event) => {
+                setSelectedSiteId(event.target.value);
+                setPreferredGenericId(null);
+              }}
+              className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm sm:h-9"
+            >
+              <option value="">拠点を選択</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+            <label className="mt-2 flex min-h-[44px] items-center gap-1.5 text-xs text-muted-foreground sm:min-h-0">
+              <input
+                type="checkbox"
+                checked={stockedOnly}
+                onChange={(event) => setStockedOnly(event.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              採用品のみ表示
+            </label>
+          </label>
+        </div>
+      </PageSection>
 
       {variant === 'formulary' && (
         <Card>
@@ -2196,8 +2240,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   }
                 >
                   要確認{' '}
-                  {(frequentUnstockedMismatchCount + unusedStockedMismatchCount).toLocaleString()}
-                  件
+                  {(frequentUnstockedMismatchCount + unusedStockedMismatchCount).toLocaleString()}件
                 </Badge>
               </div>
               <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -2278,9 +2321,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           {stock.reorder_point != null && (
                             <span>発注点 {stock.reorder_point.toLocaleString()}</span>
                           )}
-                          <span>
-                            更新 {new Date(stock.updated_at).toLocaleDateString('ja-JP')}
-                          </span>
+                          <span>更新 {new Date(stock.updated_at).toLocaleDateString('ja-JP')}</span>
                         </span>
                       </button>
                     ))
@@ -2510,8 +2551,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           {masterChangeReport.price_impact.usage_window_days.toLocaleString()}日QR）
                         </p>
                         <p className="mt-1 text-2xl font-semibold tabular-nums">
-                          {masterChangeReport.price_impact.estimated_total_delta >= 0 ? '+' : ''}
-                          ¥
+                          {masterChangeReport.price_impact.estimated_total_delta >= 0 ? '+' : ''}¥
                           {masterChangeReport.price_impact.estimated_total_delta.toLocaleString(
                             'ja-JP',
                             {
@@ -2521,8 +2561,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         </p>
                       </div>
                       <Badge variant="outline" className="text-[10px]">
-                        QR {masterChangeReport.price_impact.scanned_draft_count.toLocaleString()}
-                        件
+                        QR {masterChangeReport.price_impact.scanned_draft_count.toLocaleString()}件
                       </Badge>
                     </div>
                     {masterChangeReport.price_impact.rows.length > 0 && (
@@ -2729,7 +2768,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               )}
               <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold text-foreground">施設別採用品テンプレート</h4>
+                  <h4 className="text-sm font-semibold text-foreground">
+                    施設別採用品テンプレート
+                  </h4>
                   <Badge variant="outline" className="text-[10px]">
                     {formularyTemplates.length.toLocaleString()}件
                   </Badge>
@@ -2871,9 +2912,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
             </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <label className="space-y-1">
-                <span className="text-xs font-medium text-muted-foreground">
-                  CSV一括登録
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">CSV一括登録</span>
                 <textarea
                   value={bulkCsv}
                   onChange={(event) => {
@@ -3034,7 +3073,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             {row.reason ? ` / ${row.reason}` : ''}
                           </p>
                         </div>
-                        <Badge variant={['invalid', 'unmatched'].includes(row.status) ? 'destructive' : 'outline'}>
+                        <Badge
+                          variant={
+                            ['invalid', 'unmatched'].includes(row.status)
+                              ? 'destructive'
+                              : 'outline'
+                          }
+                        >
                           {bulkPreviewStatusLabel(row.status)}
                         </Badge>
                       </div>
@@ -3215,7 +3260,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 aria-label="取込履歴ソース"
                 value={importLogSourceFilter}
                 onChange={(event) =>
-                  setImportLogSourceFilter(event.target.value as 'all' | DrugMasterImportLog['source'])
+                  setImportLogSourceFilter(
+                    event.target.value as 'all' | DrugMasterImportLog['source'],
+                  )
                 }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
@@ -3232,7 +3279,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 aria-label="取込履歴状態"
                 value={importLogStatusFilter}
                 onChange={(event) =>
-                  setImportLogStatusFilter(event.target.value as 'all' | DrugMasterImportLog['status'])
+                  setImportLogStatusFilter(
+                    event.target.value as 'all' | DrugMasterImportLog['status'],
+                  )
                 }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
@@ -3824,45 +3873,44 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   ) : (
                     <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
                       {stockHistory.slice(0, 5).map((item) => {
-                          const changes = readAuditObject(item.changes);
-                          return (
-                            <div
-                              key={item.id}
-                              className="rounded-md border border-border/60 bg-background px-3 py-2"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-medium text-foreground">
-                                  {stockHistoryActionLabel(item.action)}
-                                </p>
-                                <Badge variant="outline" className="text-[10px]">
-                                  {new Date(item.created_at).toLocaleDateString('ja-JP')}
-                                </Badge>
-                              </div>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                操作者: {item.actor_id}
+                        const changes = readAuditObject(item.changes);
+                        return (
+                          <div
+                            key={item.id}
+                            className="rounded-md border border-border/60 bg-background px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {stockHistoryActionLabel(item.action)}
                               </p>
-                              {Boolean(changes.row_number || changes.status) && (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  行 {String(changes.row_number ?? '—')} / 状態{' '}
-                                  {bulkPreviewStatusLabel(
-                                    String(
-                                      changes.status ?? '',
-                                    ) as BulkPreviewResponse['preview']['rows'][number]['status'],
-                                  )}
-                                </p>
-                              )}
-                              {Boolean(changes.summary) && (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  反映 {String(readAuditObject(changes.summary).processableRows ?? 0)}
-                                  件 / 未照合{' '}
-                                  {String(readAuditObject(changes.summary).unmatchedCount ?? 0)}件
-                                  / 無効{' '}
-                                  {String(readAuditObject(changes.summary).invalidCount ?? 0)}件
-                                </p>
-                              )}
+                              <Badge variant="outline" className="text-[10px]">
+                                {new Date(item.created_at).toLocaleDateString('ja-JP')}
+                              </Badge>
                             </div>
-                          );
-                        })}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              操作者: {item.actor_id}
+                            </p>
+                            {Boolean(changes.row_number || changes.status) && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                行 {String(changes.row_number ?? '—')} / 状態{' '}
+                                {bulkPreviewStatusLabel(
+                                  String(
+                                    changes.status ?? '',
+                                  ) as BulkPreviewResponse['preview']['rows'][number]['status'],
+                                )}
+                              </p>
+                            )}
+                            {Boolean(changes.summary) && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                反映 {String(readAuditObject(changes.summary).processableRows ?? 0)}
+                                件 / 未照合{' '}
+                                {String(readAuditObject(changes.summary).unmatchedCount ?? 0)}件 /
+                                無効 {String(readAuditObject(changes.summary).invalidCount ?? 0)}件
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
