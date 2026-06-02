@@ -10147,6 +10147,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Browser proof for admin audit export UI remains pending, and subagents still prioritize schedule proposals, prescription workspace, tasks, workflow dashboard, visits, and deeper drug-master subcomponent extraction
 - next action: run post-append whitespace/status checks, commit this slice, then continue with schedule proposals or tasks as the next dense operational surface
 
+### 20260602-154018
+
+- current task: organize task filters, execution summary, and responsive list with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/tasks/tasks-content.tsx`, `src/app/(dashboard)/tasks/tasks-content.test.tsx`, `src/app/(dashboard)/tasks/tasks-query-state.test.ts`, shared `PageSection`, `ActionRail`, and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/tasks/tasks-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no task API or mutation bug was targeted. The task page split filters, execution count, bulk completion, desktop table, and mobile card fallback into separate intro/card/naked layout blocks, making a single list workflow feel fragmented
+- security risks found: no task query params, task PATCH payloads, org headers, assignment filtering, or linked workflow routes changed. Bulk completion remains available only for selected non-completed/non-cancelled tasks
+- performance issues found: no data fetching or table behavior changed. The refactor adds only summary labels from existing state and removes repeated section intro/card wrappers
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/tasks/tasks-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-query-state.test.ts' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/tasks/tasks-content.tsx'`
+- validation results: target Prettier passed and formatted the tasks JSX; focused Vitest passed with 5 files / 7 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority dense surfaces include schedule proposals, prescription workspace, workflow dashboard, visits, and deeper drug-master/formulary subcomponent extraction
+- next action: run post-append whitespace/status checks, commit this slice, then continue with schedule proposals as the next high-impact operational surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

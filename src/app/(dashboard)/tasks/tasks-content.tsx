@@ -8,12 +8,14 @@ import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { CheckSquare, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Checkbox } from '@/components/ui/checkbox';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
 
 import {
@@ -27,7 +29,6 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
-import { SectionIntro } from '@/components/ui/section-intro';
 import type {
   TasksAssignedFilter,
   TasksPriorityFilter,
@@ -283,179 +284,199 @@ export function TasksContent({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
-      <SectionIntro
+      <PageSection
         title="絞り込み"
         description="状態、種別、優先度、自分担当を先に絞り込み、処理対象のタスクだけに集中できるようにします。"
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Filter className="size-4" aria-hidden="true" />
-            フィルタ
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="status-filter">状態</Label>
-              <Select
-                value={statusFilter}
-                onValueChange={(v) => {
-                  const nextValue = v ?? '';
-                  setStatusFilter(nextValue);
-                  replaceTaskUrl({ status: nextValue || null });
-                }}
-              >
-                <SelectTrigger id="status-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="type-filter">種別</Label>
-              <Select
-                value={taskTypeFilter}
-                onValueChange={(v) => {
-                  const nextValue = v ?? '';
-                  setTaskTypeFilter(nextValue);
-                  replaceTaskUrl({ task_type: nextValue || null });
-                }}
-              >
-                <SelectTrigger id="type-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TASK_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="priority-filter">優先度</Label>
-              <Select
-                value={priorityFilter}
-                onValueChange={(v) => {
-                  const nextValue = v ?? '';
-                  setPriorityFilter(nextValue);
-                  replaceTaskUrl({ priority: nextValue || null });
-                }}
-              >
-                <SelectTrigger id="priority-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end pb-0.5">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={assignedToMe}
-                  onCheckedChange={(v) => {
-                    const nextValue = !!v;
-                    setAssignedToMe(nextValue);
-                    replaceTaskUrl({ assigned: nextValue ? 'me' : null });
-                  }}
-                />
-                自分に割り当て
-              </label>
-            </div>
+        tone="subtle"
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="status-filter">状態</Label>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                const nextValue = v ?? '';
+                setStatusFilter(nextValue);
+                replaceTaskUrl({ status: nextValue || null });
+              }}
+            >
+              <SelectTrigger id="status-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+          <div className="space-y-1.5">
+            <Label htmlFor="type-filter">種別</Label>
+            <Select
+              value={taskTypeFilter}
+              onValueChange={(v) => {
+                const nextValue = v ?? '';
+                setTaskTypeFilter(nextValue);
+                replaceTaskUrl({ task_type: nextValue || null });
+              }}
+            >
+              <SelectTrigger id="type-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="priority-filter">優先度</Label>
+            <Select
+              value={priorityFilter}
+              onValueChange={(v) => {
+                const nextValue = v ?? '';
+                setPriorityFilter(nextValue);
+                replaceTaskUrl({ priority: nextValue || null });
+              }}
+            >
+              <SelectTrigger id="priority-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end pb-0.5">
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm sm:min-h-0">
+              <Checkbox
+                checked={assignedToMe}
+                onCheckedChange={(v) => {
+                  const nextValue = !!v;
+                  setAssignedToMe(nextValue);
+                  replaceTaskUrl({ assigned: nextValue ? 'me' : null });
+                }}
+              />
+              自分に割り当て
+            </label>
+          </div>
+        </div>
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="実行サマリー"
         description="現在の件数と一括完了アクションをまとめ、処理の着手前に全体量を把握します。"
-      />
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{tasks.length}件</p>
-        {completableTasks.length > 0 && (
-          <Button
-            size="sm"
-            onClick={() => bulkCompleteMutation.mutate(completableTasks.map((t) => t.id))}
-            disabled={bulkCompleteMutation.isPending}
-          >
-            <CheckSquare className="mr-1.5 size-3.5" aria-hidden="true" />
-            選択した{completableTasks.length}件を完了
-          </Button>
-        )}
-      </div>
+        tone="subtle"
+        actions={
+          completableTasks.length > 0 ? (
+            <ActionRail>
+              <Button
+                size="sm"
+                onClick={() => bulkCompleteMutation.mutate(completableTasks.map((t) => t.id))}
+                disabled={bulkCompleteMutation.isPending}
+              >
+                <CheckSquare className="mr-1.5 size-3.5" aria-hidden="true" />
+                選択した{completableTasks.length}件を完了
+              </Button>
+            </ActionRail>
+          ) : null
+        }
+      >
+        <FilterSummaryBar
+          items={[
+            { label: '表示件数', value: `${tasks.length}件` },
+            { label: '選択中', value: `${selectedTasks.length}件` },
+            { label: '完了可能', value: `${completableTasks.length}件` },
+            {
+              label: '状態',
+              value:
+                STATUS_OPTIONS.find((option) => option.value === statusFilter)?.label ?? 'すべて',
+            },
+            {
+              label: '種別',
+              value:
+                TASK_TYPE_OPTIONS.find((option) => option.value === taskTypeFilter)?.label ??
+                'すべて',
+            },
+            {
+              label: '優先度',
+              value:
+                PRIORITY_OPTIONS.find((option) => option.value === priorityFilter)?.label ??
+                'すべて',
+            },
+            ...(assignedToMe ? [{ label: '担当', value: '自分' }] : []),
+          ]}
+        />
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="タスク一覧"
         description="選択した条件に合うタスクを一覧し、各業務画面へ直接移動できます。"
-      />
-      <DataTable
-        columns={columns}
-        data={tasks}
-        isLoading={isLoading}
-        caption="タスク一覧"
-        enableRowSelection
-        onSelectionChange={setSelectedTasks}
-        getRowId={(row) => row.id}
-      />
+        tone="subtle"
+        contentClassName="space-y-4"
+      >
+        <DataTable
+          columns={columns}
+          data={tasks}
+          isLoading={isLoading}
+          caption="タスク一覧"
+          enableRowSelection
+          onSelectionChange={setSelectedTasks}
+          getRowId={(row) => row.id}
+        />
 
-      <SectionIntro
-        title="モバイル表示"
-        description="小さい画面では同じタスクをカード単位で確認し、移動先を見失わないようにします。"
-      />
-      <div className="sm:hidden space-y-3">
-        {tasks.map((task) => {
-          const cfg = STATUS_CONFIG[task.status];
-          const priCfg = PRIORITY_CONFIG[task.priority];
-          const { actionHref } = describeOperationalTask(task);
-          const due = task.sla_due_at ?? task.due_date;
-          const isOverdue = due && task.status !== 'completed' ? new Date(due) < new Date() : false;
-          return (
-            <div key={task.id} className="rounded-xl border border-border/70 p-4 space-y-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {priCfg && (
-                  <Badge variant="outline" className={`text-xs ${priCfg.className}`}>
-                    {priCfg.label}
-                  </Badge>
-                )}
-                {cfg && (
-                  <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-                    {cfg.label}
-                  </Badge>
-                )}
+        <div className="space-y-3 sm:hidden">
+          {tasks.map((task) => {
+            const cfg = STATUS_CONFIG[task.status];
+            const priCfg = PRIORITY_CONFIG[task.priority];
+            const { actionHref } = describeOperationalTask(task);
+            const due = task.sla_due_at ?? task.due_date;
+            const isOverdue =
+              due && task.status !== 'completed' ? new Date(due) < new Date() : false;
+            return (
+              <div key={task.id} className="space-y-2 rounded-xl border border-border/70 p-4">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {priCfg && (
+                    <Badge variant="outline" className={`text-xs ${priCfg.className}`}>
+                      {priCfg.label}
+                    </Badge>
+                  )}
+                  {cfg && (
+                    <Badge variant="outline" className={`text-xs ${cfg.className}`}>
+                      {cfg.label}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm font-medium">{task.title}</p>
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+                  >
+                    期限: {formatDate(due)}
+                  </span>
+                  <Link href={actionHref} className="text-xs text-primary hover:underline">
+                    確認する →
+                  </Link>
+                </div>
               </div>
-              <p className="text-sm font-medium">{task.title}</p>
-              <div className="flex items-center justify-between">
-                <span
-                  className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
-                >
-                  期限: {formatDate(due)}
-                </span>
-                <Link href={actionHref} className="text-xs text-primary hover:underline">
-                  確認する →
-                </Link>
-              </div>
-            </div>
-          );
-        })}
-        {!isLoading && tasks.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            該当するタスクはありません
-          </p>
-        )}
-      </div>
+            );
+          })}
+          {!isLoading && tasks.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              該当するタスクはありません
+            </p>
+          )}
+        </div>
+      </PageSection>
     </div>
   );
 }
