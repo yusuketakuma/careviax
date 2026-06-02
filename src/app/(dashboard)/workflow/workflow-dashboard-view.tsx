@@ -525,8 +525,10 @@ export function WorkflowDashboardView({
         )}
       </WorkflowSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">疑義照会ワークベンチ</h2>
+      <PageSection
+        title="疑義照会ワークベンチ"
+        description="照会中の処方変更と起票候補を確認し、変更確定または起票へ進めます。"
+      >
         {(workflow?.inquiry_workbench.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未処理の疑義照会はありません</p>
         ) : (
@@ -777,10 +779,12 @@ export function WorkflowDashboardView({
             })}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">患者リスク</h2>
+      <PageSection
+        title="患者リスク"
+        description="自己申告、課題、未完了タスクから優先介入が必要な患者を確認します。"
+      >
         {(workflow?.patient_risk_queue.items.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">優先介入が必要な患者はありません</p>
         ) : (
@@ -812,10 +816,12 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">運用レディネス</h2>
+      <PageSection
+        title="運用レディネス"
+        description="時間外体制、休日ギャップ、持参物ブロック、地域連携、請求予防をまとめて確認します。"
+      >
         <div className="grid gap-3 md:grid-cols-3">
           <MetricCard
             icon={Clock}
@@ -873,7 +879,7 @@ export function WorkflowDashboardView({
             </CardContent>
           </Card>
         </div>
-      </section>
+      </PageSection>
 
       <section>
         <HomeCareFeatureBoard
@@ -938,8 +944,10 @@ export function WorkflowDashboardView({
         )}
       </WorkflowSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">是正ガイダンス</h2>
+      <PageSection
+        title="是正ガイダンス"
+        description="訪問や連携を止める前提不足を確認し、担当画面で是正します。"
+      >
         {(workflow?.remediation_guidance.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">即時対応が必要な前提不足はありません</p>
         ) : (
@@ -971,7 +979,7 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
       <WorkflowSection
         title="例外コマンドセンター"

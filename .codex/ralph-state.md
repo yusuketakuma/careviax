@@ -10238,6 +10238,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining work includes deeper drug-master detail/safety queue extraction, schedule-proposal card cleanup, visit record form cleanup, workflow raw section cleanup, and browser proof after the local e2e DB is available
 - next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
 
+### 20260602-160018
+
+- current task: organize workflow dashboard intervention/readiness sections with shared PageSection boundaries
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`, `src/app/(dashboard)/workflow/workflow-query-state.test.ts`, shared `PageSection`
+- files changed: `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `.codex/ralph-state.md`
+- bugs found: no workflow API or mutation bug was targeted. The inquiry workbench, patient risk, operational readiness, and remediation guidance blocks still used raw sections with duplicated heading styling, so they did not share the same visible group boundary as the already-cleaned focus sections
+- security risks found: no inquiry resolution payload, issue creation, patient risk data, remediation action link, exception handling, or PHI rendering behavior changed
+- performance issues found: no query, list rendering, or mutation behavior changed. The refactor only moves section boundary and heading rendering into the shared presentational component
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/workflow/workflow-query-state.test.ts' src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 3 files / 5 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining workflow raw sections include outcome metrics, workload, facility visibility, intake linkage, self reports, cycle status, integration dashboard, operations queue, and refill-upcoming blocks. Browser proof remains blocked by local e2e DB unavailability
+- next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
