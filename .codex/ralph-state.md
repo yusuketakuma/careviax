@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-190955
+
+- current task: improve patient labs editor semantic heading coverage
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx`, `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`, and `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient labs create/edit editor used a paragraph for its editor title even though the surrounding card already has a semantic h2 and the editor is a nested information group. This made the form group harder to navigate by heading
+- security risks found: no labs API path, org header, create/update payload, query invalidation, auth, authorization, tenant boundary, lab data handling, or patient data handling changed
+- performance issues found: no query function, mutation function, form state update, payload builder, date formatting, link generation, or render-loop behavior changed. The slice only changes nested editor heading markup and focused render coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient labs Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Medications, prescriptions, MCS, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient labs heading group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-190850
 
 - current task: post-cases-tab runtime/browser preflight audit

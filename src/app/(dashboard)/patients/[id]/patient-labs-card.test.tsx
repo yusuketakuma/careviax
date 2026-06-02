@@ -42,7 +42,9 @@ describe('PatientLabsCard', () => {
 
     render(<PatientLabsCard patientId="patient_1" orgId="org_1" />);
 
+    expect(screen.getByRole('heading', { level: 2, name: '検査値' }).tagName).toBe('H2');
     fireEvent.click(screen.getByRole('button', { name: '検査値を追加' }));
+    expect(screen.getByRole('heading', { level: 3, name: 'new-lab' }).tagName).toBe('H3');
     fireEvent.change(screen.getByLabelText('測定日時'), {
       target: { value: '2026-04-10T09:30' },
     });
