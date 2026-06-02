@@ -32,6 +32,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { SET_METHOD_LABELS, SET_METHOD_OPTIONS } from '@/lib/prescription/set-methods';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 
 type PackagingSummary = {
   packaging_method_name: string | null;
@@ -98,10 +100,7 @@ const AUDIT_RESULT_LABELS: Record<string, string> = {
   rejected: '差戻し',
 };
 
-const AUDIT_RESULT_VARIANTS: Record<
-  string,
-  'default' | 'secondary' | 'outline' | 'destructive'
-> = {
+const AUDIT_RESULT_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   approved: 'default',
   partial_approved: 'secondary',
   rejected: 'destructive',
@@ -281,9 +280,10 @@ export function MedicationSetsContent() {
     return latestAudit == null || latestAudit.result !== 'approved';
   });
   const flaggedCases = cases.filter(
-    (careCase) => careCase.required_visit_support?.set_pilot_enabled === true
+    (careCase) => careCase.required_visit_support?.set_pilot_enabled === true,
   );
-  const packagingMethods = packagingMethodsQuery.data?.data.filter((method) => method.is_active) ?? [];
+  const packagingMethods =
+    packagingMethodsQuery.data?.data.filter((method) => method.is_active) ?? [];
   const eligibleCycles = cycles.filter((cycle) => {
     if (cycle.overall_status !== 'audited') return false;
     if (!flaggedCases.some((careCase) => careCase.id === cycle.case_id)) return false;
@@ -350,16 +350,9 @@ export function MedicationSetsContent() {
         header: '鑑査状態',
         cell: ({ row }) => {
           const latestAudit = row.original.audits[0];
-          if (!latestAudit)
-            return (
-              <Badge variant="outline">未鑑査</Badge>
-            );
+          if (!latestAudit) return <Badge variant="outline">未鑑査</Badge>;
           return (
-            <Badge
-              variant={
-                AUDIT_RESULT_VARIANTS[latestAudit.result] ?? 'outline'
-              }
-            >
+            <Badge variant={AUDIT_RESULT_VARIANTS[latestAudit.result] ?? 'outline'}>
               {AUDIT_RESULT_LABELS[latestAudit.result] ?? latestAudit.result}
             </Badge>
           );
@@ -368,8 +361,7 @@ export function MedicationSetsContent() {
       {
         accessorKey: 'created_at',
         header: '作成日',
-        cell: ({ row }) =>
-          format(parseISO(row.original.created_at), 'M/d', { locale: ja }),
+        cell: ({ row }) => format(parseISO(row.original.created_at), 'M/d', { locale: ja }),
       },
       {
         id: 'actions',
@@ -412,170 +404,160 @@ export function MedicationSetsContent() {
         },
       },
     ],
-    []
+    [],
   );
 
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">セット対象患者</p>
-              <p className="text-xs text-muted-foreground">
-                pilot 対象として明示したケースだけをセット計画の候補に出します。
-              </p>
-            </div>
-            <Badge variant="outline">{flaggedCases.length}件</Badge>
-          </div>
-          <div className="mt-3 space-y-2">
-            {cases.length === 0 ? (
-              <p className="text-sm text-muted-foreground">稼働中ケースがありません。</p>
-            ) : (
-              cases.map((careCase) => {
-                const flagged = careCase.required_visit_support?.set_pilot_enabled === true;
-                return (
-                  <div
-                    key={careCase.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {careCase.patient.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {careCase.patient.name_kana} / ケース {careCase.id}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={flagged ? 'default' : 'outline'}
-                      disabled={setTargetMutation.isPending}
-                      onClick={() =>
-                        setTargetMutation.mutate({
-                          caseId: careCase.id,
-                          requiredVisitSupport: {
-                            ...(careCase.required_visit_support ?? {}),
-                            set_pilot_enabled: !flagged,
-                          },
-                        })
-                      }
-                    >
-                      {flagged ? '対象中' : '対象化'}
-                    </Button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
-          <p className="text-sm font-medium text-foreground">計画候補</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            鑑査済みで未計画のサイクルだけを表示しています。
-          </p>
-          <div className="mt-3 space-y-2">
-            {eligibleCycles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                候補サイクルはありません。セット対象フラグと鑑査済みサイクルを確認してください。
-              </p>
-            ) : (
-              eligibleCycles.map((cycle) => {
-                const careCase = flaggedCases.find((item) => item.id === cycle.case_id) ?? null;
-                return (
-                  <div
-                    key={cycle.id}
-                    className="rounded-lg border border-border/60 bg-background px-3 py-2"
-                  >
-                    <p className="text-sm font-medium text-foreground">
-                      {careCase?.patient.name ?? cycle.patient_id}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      cycle {cycle.id} / {cycle.overall_status}
-                    </p>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          disabled={eligibleCycles.length === 0}
-          onClick={() => {
-            if (eligibleCycles.length === 0) return;
-            setCreateForm({
-              cycle_id: eligibleCycles[0]?.id ?? '',
-              target_period_start: '',
-              target_period_end: '',
-              set_method: 'facility_calendar',
-              packaging_method_id: '',
-              notes: '',
-            });
-            setShowCreateDialog(true);
-          }}
+        <PageSection
+          title="セット対象患者"
+          description="pilot 対象として明示したケースだけをセット計画の候補に出します。"
+          actions={<Badge variant="outline">{flaggedCases.length}件</Badge>}
+          contentClassName="space-y-2"
+          tone="subtle"
         >
-          <Plus className="mr-2 size-4" aria-hidden="true" />
-          セットプラン作成
-        </Button>
-      </div>
-
-      <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">鑑査待ち一覧</p>
-            <p className="text-xs text-muted-foreground">
-              患者 / 対象期間 / 時間帯グリッド確認へ直接進めます。
-            </p>
-          </div>
-          <Badge variant="outline">{pendingAuditPlans.length}件</Badge>
-        </div>
-        <div className="mt-3 space-y-2">
-          {pendingAuditPlans.length === 0 ? (
-            <p className="text-sm text-muted-foreground">鑑査待ちのセット計画はありません。</p>
+          {cases.length === 0 ? (
+            <p className="text-sm text-muted-foreground">稼働中ケースがありません。</p>
           ) : (
-            pendingAuditPlans.map((plan) => (
-              <div
-                key={plan.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+            cases.map((careCase) => {
+              const flagged = careCase.required_visit_support?.set_pilot_enabled === true;
+              return (
+                <div
+                  key={careCase.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{careCase.patient.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {careCase.patient.name_kana} / ケース {careCase.id}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={flagged ? 'default' : 'outline'}
+                    disabled={setTargetMutation.isPending}
+                    onClick={() =>
+                      setTargetMutation.mutate({
+                        caseId: careCase.id,
+                        requiredVisitSupport: {
+                          ...(careCase.required_visit_support ?? {}),
+                          set_pilot_enabled: !flagged,
+                        },
+                      })
+                    }
+                  >
+                    {flagged ? '対象中' : '対象化'}
+                  </Button>
+                </div>
+              );
+            })
+          )}
+        </PageSection>
+
+        <PageSection
+          title="計画候補"
+          description="鑑査済みで未計画のサイクルだけを表示しています。"
+          actions={
+            <ActionRail>
+              <Badge variant="outline">{eligibleCycles.length}件</Badge>
+              <Button
+                disabled={eligibleCycles.length === 0}
+                onClick={() => {
+                  if (eligibleCycles.length === 0) return;
+                  setCreateForm({
+                    cycle_id: eligibleCycles[0]?.id ?? '',
+                    target_period_start: '',
+                    target_period_end: '',
+                    set_method: 'facility_calendar',
+                    packaging_method_id: '',
+                    notes: '',
+                  });
+                  setShowCreateDialog(true);
+                }}
               >
-                <div className="min-w-0">
+                <Plus className="mr-2 size-4" aria-hidden="true" />
+                セットプラン作成
+              </Button>
+            </ActionRail>
+          }
+          contentClassName="space-y-2"
+          tone="subtle"
+        >
+          {eligibleCycles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              候補サイクルはありません。セット対象フラグと鑑査済みサイクルを確認してください。
+            </p>
+          ) : (
+            eligibleCycles.map((cycle) => {
+              const careCase = flaggedCases.find((item) => item.id === cycle.case_id) ?? null;
+              return (
+                <div
+                  key={cycle.id}
+                  className="rounded-lg border border-border/60 bg-background px-3 py-2"
+                >
                   <p className="text-sm font-medium text-foreground">
-                    {plan.cycle.case_.patient.name}
+                    {careCase?.patient.name ?? cycle.patient_id}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {format(parseISO(plan.target_period_start), 'M/d', { locale: ja })}
-                    {' — '}
-                    {format(parseISO(plan.target_period_end), 'M/d', { locale: ja })}
-                    {' / '}
-                    {SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ?? plan.set_method}
-                    {plan.packaging_summary_snapshot?.packaging_method_name
-                      ? ` / ${plan.packaging_summary_snapshot.packaging_method_name}`
-                      : ''}
+                    cycle {cycle.id} / {cycle.overall_status}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/medication-sets/${plan.id}/edit`}
-                    className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-                  >
-                    セット編集
-                  </Link>
-                  <Link
-                    href={`/medication-sets/audit/${plan.id}`}
-                    className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-                  >
-                    グリッド鑑査
-                  </Link>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
-        </div>
+        </PageSection>
       </div>
+
+      <PageSection
+        title="鑑査待ち一覧"
+        description="患者 / 対象期間 / 時間帯グリッド確認へ直接進めます。"
+        actions={<Badge variant="outline">{pendingAuditPlans.length}件</Badge>}
+        contentClassName="space-y-2"
+        tone="subtle"
+      >
+        {pendingAuditPlans.length === 0 ? (
+          <p className="text-sm text-muted-foreground">鑑査待ちのセット計画はありません。</p>
+        ) : (
+          pendingAuditPlans.map((plan) => (
+            <div
+              key={plan.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {plan.cycle.case_.patient.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {format(parseISO(plan.target_period_start), 'M/d', { locale: ja })}
+                  {' — '}
+                  {format(parseISO(plan.target_period_end), 'M/d', { locale: ja })}
+                  {' / '}
+                  {SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ??
+                    plan.set_method}
+                  {plan.packaging_summary_snapshot?.packaging_method_name
+                    ? ` / ${plan.packaging_summary_snapshot.packaging_method_name}`
+                    : ''}
+                </p>
+              </div>
+              <ActionRail align="start">
+                <Link
+                  href={`/medication-sets/${plan.id}/edit`}
+                  className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+                >
+                  セット編集
+                </Link>
+                <Link
+                  href={`/medication-sets/audit/${plan.id}`}
+                  className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+                >
+                  グリッド鑑査
+                </Link>
+              </ActionRail>
+            </div>
+          ))
+        )}
+      </PageSection>
 
       <DataTable
         columns={columns}
@@ -649,9 +631,7 @@ export function MedicationSetsContent() {
               <Label htmlFor="set_method">セット方式</Label>
               <Select
                 value={createForm.set_method}
-                onValueChange={(v) =>
-                  v && setCreateForm((f) => ({ ...f, set_method: v }))
-                }
+                onValueChange={(v) => v && setCreateForm((f) => ({ ...f, set_method: v }))}
               >
                 <SelectTrigger id="set_method">
                   <SelectValue />
@@ -695,9 +675,7 @@ export function MedicationSetsContent() {
               <Textarea
                 id="notes"
                 value={createForm.notes}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, notes: e.target.value }))
-                }
+                onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
                 rows={3}
                 placeholder="セット時の注意事項を入力"
               />
@@ -731,9 +709,7 @@ export function MedicationSetsContent() {
               <Label htmlFor="audit_result">鑑査結果</Label>
               <Select
                 value={auditForm.result}
-                onValueChange={(v) =>
-                  v && setAuditForm((f) => ({ ...f, result: v }))
-                }
+                onValueChange={(v) => v && setAuditForm((f) => ({ ...f, result: v }))}
               >
                 <SelectTrigger id="audit_result">
                   <SelectValue />
@@ -745,8 +721,7 @@ export function MedicationSetsContent() {
                 </SelectContent>
               </Select>
             </div>
-            {(auditForm.result === 'rejected' ||
-              auditForm.result === 'partial_approved') && (
+            {(auditForm.result === 'rejected' || auditForm.result === 'partial_approved') && (
               <div className="space-y-1">
                 <Label htmlFor="reject_reason">差戻し理由</Label>
                 <Textarea

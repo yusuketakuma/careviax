@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-164950
+
+- current task: organize medication set planning and audit queue panels with shared layout primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/medication-sets/medication-sets-content.tsx`, `src/app/(dashboard)/medication-sets/medication-sets-content.test.tsx`, and the code-mapper subagent recommendation for medication set clutter
+- files changed: `src/app/(dashboard)/medication-sets/medication-sets-content.tsx`, `.codex/ralph-state.md`
+- bugs found: medication set planning had target patients, eligible cycles, set-plan creation, and pending audit queue as hand-built bordered panels and a separate right-aligned create button, which split one planning workflow into visually disconnected controls
+- security risks found: no API, auth, authorization, patient scoping, mutation payload, DB, audit, or PHI logging behavior changed. Existing target-toggle, create-dialog, edit, and grid-audit destinations were preserved
+- performance issues found: no query, realtime subscription, mutation, table, memo, or date formatting behavior changed. The slice removes layout duplication through shared primitives only
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/medication-sets/medication-sets-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/medication-sets/medication-sets-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/medication-sets/medication-sets-content.tsx' 'src/app/(dashboard)/medication-sets/medication-sets-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/medication-sets/medication-sets-content.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 5 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: code-mapper still identified `external`, `conferences`, and `patient-workflow-preview-card` as remaining cluttered surfaces. Browser proof remains blocked by local app/db availability
+- next action: inspect `external/external-viewer-content.tsx` or `patient-workflow-preview-card.tsx` for a focused privacy/safety UI grouping slice
+
 ### 20260602-164500
 
 - current task: organize billing candidates pre-table workflow controls and validation summary
