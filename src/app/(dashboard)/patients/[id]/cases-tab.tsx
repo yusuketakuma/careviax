@@ -7,10 +7,11 @@ import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { ActionRail } from '@/components/ui/action-rail';
 import {
   Select,
   SelectContent,
@@ -222,12 +223,12 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <ActionRail>
         <Button size="sm" onClick={handleCreateCase} disabled={isCreating}>
           <Plus className="mr-1 size-4" aria-hidden="true" />
           {isCreating ? '作成中...' : 'ケース追加'}
         </Button>
-      </div>
+      </ActionRail>
 
       {patient.cases.length === 0 ? (
         <EmptyState
@@ -258,9 +259,9 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
             <Card key={c.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">
+                  <h2 className="font-heading text-base leading-snug font-medium">
                     ケース #{c.id.slice(-6).toUpperCase()}
-                  </CardTitle>
+                  </h2>
                   <Badge variant={caseStatusVariant[status] ?? 'outline'}>
                     {caseStatusLabel[status] ?? status}
                   </Badge>
@@ -315,16 +316,18 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                 )}
 
                 <div className="rounded-md border border-border/70 bg-muted/20 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">ケース情報</p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSaveCase(c.id, draft)}
-                      disabled={savingCaseId === c.id}
-                    >
-                      {savingCaseId === c.id ? '保存中...' : 'ケース情報を保存'}
-                    </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-foreground">ケース情報</h3>
+                    <ActionRail>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSaveCase(c.id, draft)}
+                        disabled={savingCaseId === c.id}
+                      >
+                        {savingCaseId === c.id ? '保存中...' : 'ケース情報を保存'}
+                      </Button>
+                    </ActionRail>
                   </div>
 
                   <div className="mt-4 grid gap-4 md:grid-cols-2">

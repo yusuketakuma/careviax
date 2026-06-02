@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-190820
+
+- current task: improve cases tab semantic headings and action grouping
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/cases-tab.tsx`, and focused patient detail tab references
+- files changed: `src/app/(dashboard)/patients/[id]/cases-tab.tsx`, `src/app/(dashboard)/patients/[id]/cases-tab.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the cases tab used a decorative `CardTitle` for each case card, a paragraph for the case information subsection title, and hand-built action rows for case creation and saving. This weakened heading navigation and diverged from the shared PH-OS action grouping pattern already used by adjacent patient detail panels
+- security risks found: no cases API path, org header, case create payload, case update payload, status transition payload, query invalidation, auth, authorization, tenant boundary, or patient/case data handling changed
+- performance issues found: no query function, mutation function, case draft state update, intake row calculation, status transition logic, or render-loop behavior changed. The slice only changes heading markup, shared action layout, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx'`
+- validation results: Prettier completed successfully; focused cases tab Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Medications, prescriptions, MCS, master/insurance/labs detail surfaces, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this cases tab heading/action group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-190710
 
 - current task: post-patient-detail-tabs runtime/browser preflight audit
