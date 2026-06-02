@@ -10251,6 +10251,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining workflow raw sections include outcome metrics, workload, facility visibility, intake linkage, self reports, cycle status, integration dashboard, operations queue, and refill-upcoming blocks. Browser proof remains blocked by local e2e DB unavailability
 - next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
 
+### 20260602-160141
+
+- current task: align visit record workflow section wrapper with shared PageSection
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, visit-record test search results, shared `PageSection`
+- files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/ralph-state.md`
+- bugs found: no visit-record form validation, save, offline sync, geo logging, CDS alert, attachment, or residual-medication behavior bug was targeted. The local `VisitRecordWorkflowSection` duplicated the same group boundary contract that now exists in the shared `PageSection`
+- security risks found: no patient/visit data handling, offline encryption, location capture, attachment validation, form payload, or sync queue behavior changed
+- performance issues found: no form state, watch, query, mutation, or render loop behavior changed. The refactor only delegates section shell rendering to the shared component
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx'`; `rg -n "visit-record-form|VisitRecordForm|訪問前確認|入力状況|訪問結果" 'src/app/(dashboard)' 'src/components' --glob '*.{test,spec}.{ts,tsx}'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx'`
+- validation results: no dedicated visit-record-form test was found by targeted test search; target Prettier passed; PageSection Vitest passed with 1 file / 2 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Visit record browser proof remains pending because dashboard routes need the local e2e DB. Remaining code-level surfaces include deeper workflow raw sections, schedule-proposal cards, and deeper drug-master safety/detail sections
+- next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

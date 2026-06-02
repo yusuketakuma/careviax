@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSection } from '@/components/layout/page-section';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { SoapStepWizard } from '@/components/features/visits/soap-step-wizard';
@@ -212,13 +213,9 @@ function VisitRecordWorkflowSection({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border border-border/70 bg-card p-3 shadow-sm sm:p-4 xl:p-5">
-      <div className="space-y-1">
-        <h2 className="text-sm font-semibold text-foreground sm:text-base">{title}</h2>
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-      </div>
-      <div className="space-y-3 sm:space-y-4">{children}</div>
-    </section>
+    <PageSection title={title} description={description} contentClassName="space-y-3 sm:space-y-4">
+      {children}
+    </PageSection>
   );
 }
 
