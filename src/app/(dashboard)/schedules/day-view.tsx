@@ -78,6 +78,7 @@ import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile'
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { ScheduleMetricCard } from './schedule-metric-card';
 import { applyVisitScheduleRouteUpdates } from './visit-route-client';
 import { useRouteOrderDraft } from './route-order-draft';
@@ -2326,447 +2327,312 @@ export function ScheduleDayView({
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Card id="planner">
-            <CardHeader>
-              <CardTitle className="text-base">訪問候補を生成</CardTitle>
-              <CardDescription>システムが候補を提案し、承認後に患者へ架電します</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <PageSection
+            id="planner"
+            title="訪問候補を生成"
+            description="システムが候補を提案し、承認後に患者へ架電します"
+            contentClassName="space-y-4"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="planner-case">対象ケース</Label>
+              <Select
+                value={resolvedPlannerCaseId}
+                onValueChange={(value) => {
+                  setPlannerCandidateCountManual(false);
+                  setPlannerForm((current) => ({
+                    ...current,
+                    case_id: value ?? current.case_id,
+                  }));
+                }}
+              >
+                <SelectTrigger id="planner-case" className="w-full">
+                  <SelectValue placeholder={casesLoading ? '読み込み中...' : 'ケースを選択'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cases.map((careCase) => (
+                    <SelectItem key={careCase.id} value={careCase.id}>
+                      {careCase.patient.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedCase && (
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{selectedCase.patient.name}</p>
+                  <p>{selectedCase.patient.residences[0]?.address ?? '住所未登録'}</p>
+                  <p className="mt-1">
+                    担当薬剤師: {selectedCase.primary_pharmacist_name ?? '未設定'}
+                  </p>
+                </div>
+              )}
+              {billingCadence && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-950">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium">算定 cadence</p>
+                      <p className="mt-1 text-emerald-900/80">{billingCadence.reason}</p>
+                    </div>
+                    {billingCadence.next_billable_date && (
+                      <ActionRail align="start">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setPlannerForm((current) => ({
+                              ...current,
+                              start_date: billingCadence.next_billable_date ?? current.start_date,
+                            }))
+                          }
+                        >
+                          次回算定可能日に設定
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPlannerCandidateCountManual(false);
+                            setPlannerForm((current) => ({
+                              ...current,
+                              start_date: billingCadence.next_billable_date ?? current.start_date,
+                              visit_type:
+                                billingPreviewData?.recommended_visit_type ?? current.visit_type,
+                              priority:
+                                billingPreviewData?.recommended_priority ?? current.priority,
+                              candidate_count: String(
+                                billingPreviewData?.suggested_schedule_slot_count ??
+                                  Number(current.candidate_count),
+                              ),
+                            }));
+                          }}
+                        >
+                          推奨値を適用
+                        </Button>
+                      </ActionRail>
+                    )}
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <p>
+                      月内算定: {billingCadence.current_month_count} / {billingCadence.monthly_cap}
+                    </p>
+                    <p>残回数: {billingCadence.remaining_month_count}</p>
+                    <p>
+                      週内算定: {billingCadence.current_week_count}
+                      {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
+                    </p>
+                    <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
+                    <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
+                    <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
+                    <p>
+                      推奨設定:{' '}
+                      {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
+                      {
+                        PRIORITY_LABELS[
+                          billingPreviewData?.recommended_priority ?? plannerForm.priority
+                        ]
+                      }
+                    </p>
+                    <p>
+                      推奨枠数:{' '}
+                      {billingPreviewData?.suggested_schedule_slot_count ??
+                        Number(effectivePlannerCandidateCount)}
+                      件
+                    </p>
+                  </div>
+                  {billingCadence.scheduled_dates_current_month.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {billingCadence.scheduled_dates_current_month.map((dateKey) => (
+                        <span
+                          key={dateKey}
+                          className="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-emerald-900"
+                        >
+                          算定済 {dateKey.slice(5)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {billingAlerts.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {billingAlerts.map((alert) => (
+                        <p
+                          key={`${alert.type}-${alert.message}`}
+                          className={
+                            alert.severity === 'error'
+                              ? 'text-red-700'
+                              : alert.severity === 'warning'
+                                ? 'text-amber-800'
+                                : 'text-emerald-900'
+                          }
+                        >
+                          {alert.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {billingPreviewWarnings.length > 0 && (
+                    <div className="mt-2 space-y-1 text-amber-900">
+                      {billingPreviewWarnings.map((warning) => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
               <div className="space-y-1.5">
-                <Label htmlFor="planner-case">対象ケース</Label>
+                <Label htmlFor="planner-visit-type">訪問種別</Label>
                 <Select
-                  value={resolvedPlannerCaseId}
-                  onValueChange={(value) => {
-                    setPlannerCandidateCountManual(false);
+                  value={plannerForm.visit_type}
+                  onValueChange={(value) =>
                     setPlannerForm((current) => ({
                       ...current,
-                      case_id: value ?? current.case_id,
-                    }));
-                  }}
+                      visit_type: (value as VisitType | null) ?? current.visit_type,
+                    }))
+                  }
                 >
-                  <SelectTrigger id="planner-case" className="w-full">
-                    <SelectValue placeholder={casesLoading ? '読み込み中...' : 'ケースを選択'} />
+                  <SelectTrigger id="planner-visit-type" className="w-full">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {cases.map((careCase) => (
-                      <SelectItem key={careCase.id} value={careCase.id}>
-                        {careCase.patient.name}
+                    {Object.entries(VISIT_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedCase && (
-                  <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">{selectedCase.patient.name}</p>
-                    <p>{selectedCase.patient.residences[0]?.address ?? '住所未登録'}</p>
-                    <p className="mt-1">
-                      担当薬剤師: {selectedCase.primary_pharmacist_name ?? '未設定'}
-                    </p>
-                  </div>
-                )}
-                {billingCadence && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-950">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-medium">算定 cadence</p>
-                        <p className="mt-1 text-emerald-900/80">{billingCadence.reason}</p>
-                      </div>
-                      {billingCadence.next_billable_date && (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setPlannerForm((current) => ({
-                                ...current,
-                                start_date: billingCadence.next_billable_date ?? current.start_date,
-                              }))
-                            }
-                          >
-                            次回算定可能日に設定
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setPlannerCandidateCountManual(false);
-                              setPlannerForm((current) => ({
-                                ...current,
-                                start_date: billingCadence.next_billable_date ?? current.start_date,
-                                visit_type:
-                                  billingPreviewData?.recommended_visit_type ?? current.visit_type,
-                                priority:
-                                  billingPreviewData?.recommended_priority ?? current.priority,
-                                candidate_count: String(
-                                  billingPreviewData?.suggested_schedule_slot_count ??
-                                    Number(current.candidate_count),
-                                ),
-                              }));
-                            }}
-                          >
-                            推奨値を適用
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <p>
-                        月内算定: {billingCadence.current_month_count} /{' '}
-                        {billingCadence.monthly_cap}
-                      </p>
-                      <p>残回数: {billingCadence.remaining_month_count}</p>
-                      <p>
-                        週内算定: {billingCadence.current_week_count}
-                        {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
-                      </p>
-                      <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
-                      <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
-                      <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
-                      <p>
-                        推奨設定:{' '}
-                        {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
-                        {
-                          PRIORITY_LABELS[
-                            billingPreviewData?.recommended_priority ?? plannerForm.priority
-                          ]
-                        }
-                      </p>
-                      <p>
-                        推奨枠数:{' '}
-                        {billingPreviewData?.suggested_schedule_slot_count ??
-                          Number(effectivePlannerCandidateCount)}
-                        件
-                      </p>
-                    </div>
-                    {billingCadence.scheduled_dates_current_month.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {billingCadence.scheduled_dates_current_month.map((dateKey) => (
-                          <span
-                            key={dateKey}
-                            className="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-emerald-900"
-                          >
-                            算定済 {dateKey.slice(5)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {billingAlerts.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        {billingAlerts.map((alert) => (
-                          <p
-                            key={`${alert.type}-${alert.message}`}
-                            className={
-                              alert.severity === 'error'
-                                ? 'text-red-700'
-                                : alert.severity === 'warning'
-                                  ? 'text-amber-800'
-                                  : 'text-emerald-900'
-                            }
-                          >
-                            {alert.message}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    {billingPreviewWarnings.length > 0 && (
-                      <div className="mt-2 space-y-1 text-amber-900">
-                        {billingPreviewWarnings.map((warning) => (
-                          <p key={warning}>{warning}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-visit-type">訪問種別</Label>
-                  <Select
-                    value={plannerForm.visit_type}
-                    onValueChange={(value) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        visit_type: (value as VisitType | null) ?? current.visit_type,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="planner-visit-type" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(VISIT_TYPE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-priority">優先度</Label>
-                  <Select
-                    value={plannerForm.priority}
-                    onValueChange={(value) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        priority: (value as VisitPriority | null) ?? current.priority,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="planner-priority" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-priority">優先度</Label>
+                <Select
+                  value={plannerForm.priority}
+                  onValueChange={(value) =>
+                    setPlannerForm((current) => ({
+                      ...current,
+                      priority: (value as VisitPriority | null) ?? current.priority,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="planner-priority" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-start-date">訪問起点日</Label>
-                  <Input
-                    id="planner-start-date"
-                    type="date"
-                    value={plannerForm.start_date}
-                    onChange={(event) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        start_date: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-candidate-count">候補数</Label>
-                  <Select
-                    value={effectivePlannerCandidateCount}
-                    onValueChange={(value) => {
-                      setPlannerCandidateCountManual(true);
-                      setPlannerForm((current) => ({
-                        ...current,
-                        candidate_count: value ?? current.candidate_count,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger id="planner-candidate-count" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2">2件</SelectItem>
-                      <SelectItem value="3">3件</SelectItem>
-                      <SelectItem value="4">4件</SelectItem>
-                      <SelectItem value="5">5件</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-start-date">訪問起点日</Label>
+                <Input
+                  id="planner-start-date"
+                  type="date"
+                  value={plannerForm.start_date}
+                  onChange={(event) =>
+                    setPlannerForm((current) => ({
+                      ...current,
+                      start_date: event.target.value,
+                    }))
+                  }
+                />
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-time-from">希望開始時刻</Label>
-                  <Input
-                    id="planner-time-from"
-                    type="time"
-                    value={plannerForm.preferred_time_from}
-                    onChange={(event) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        preferred_time_from: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="planner-time-to">希望終了時刻</Label>
-                  <Input
-                    id="planner-time-to"
-                    type="time"
-                    value={plannerForm.preferred_time_to}
-                    onChange={(event) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        preferred_time_to: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-candidate-count">候補数</Label>
+                <Select
+                  value={effectivePlannerCandidateCount}
+                  onValueChange={(value) => {
+                    setPlannerCandidateCountManual(true);
+                    setPlannerForm((current) => ({
+                      ...current,
+                      candidate_count: value ?? current.candidate_count,
+                    }));
+                  }}
+                >
+                  <SelectTrigger id="planner-candidate-count" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2件</SelectItem>
+                    <SelectItem value="3">3件</SelectItem>
+                    <SelectItem value="4">4件</SelectItem>
+                    <SelectItem value="5">5件</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
 
-              <Button
-                className="w-full"
-                onClick={() => generateMutation.mutate()}
-                disabled={!resolvedPlannerCaseId || generateMutation.isPending}
-              >
-                {generateMutation.isPending ? '候補生成中...' : '訪問候補を生成'}
-              </Button>
-
-              <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-                ルート候補は患者住所と既存訪問の順番から算出します。担当薬剤師に勤務枠が
-                ない場合のみ、別薬剤師へ自動エスカレーションします。
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-time-from">希望開始時刻</Label>
+                <Input
+                  id="planner-time-from"
+                  type="time"
+                  value={plannerForm.preferred_time_from}
+                  onChange={(event) =>
+                    setPlannerForm((current) => ({
+                      ...current,
+                      preferred_time_from: event.target.value,
+                    }))
+                  }
+                />
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-time-to">希望終了時刻</Label>
+                <Input
+                  id="planner-time-to"
+                  type="time"
+                  value={plannerForm.preferred_time_to}
+                  onChange={(event) =>
+                    setPlannerForm((current) => ({
+                      ...current,
+                      preferred_time_to: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">運用タスク</CardTitle>
-              <CardDescription>
-                スケジュールに影響する未完了タスクを優先順で表示します
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {callbackTasksLoading ? (
-                <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                  再架電タスクを読み込んでいます...
+            <Button
+              className="w-full"
+              onClick={() => generateMutation.mutate()}
+              disabled={!resolvedPlannerCaseId || generateMutation.isPending}
+            >
+              {generateMutation.isPending ? '候補生成中...' : '訪問候補を生成'}
+            </Button>
+
+            <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+              ルート候補は患者住所と既存訪問の順番から算出します。担当薬剤師に勤務枠が
+              ない場合のみ、別薬剤師へ自動エスカレーションします。
+            </div>
+          </PageSection>
+
+          <PageSection
+            title="運用タスク"
+            description="スケジュールに影響する未完了タスクを優先順で表示します"
+            contentClassName="space-y-3"
+          >
+            {callbackTasksLoading ? (
+              <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                再架電タスクを読み込んでいます...
+              </div>
+            ) : callbackTasks.length > 0 ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-900">
+                  架電結果の再記録や折返し対応が必要な候補です。
                 </div>
-              ) : callbackTasks.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-900">
-                    架電結果の再記録や折返し対応が必要な候補です。
-                  </div>
-                  {callbackTasks.map((task) => {
-                    const relatedProposal = task.related_entity_id
-                      ? (proposalById.get(task.related_entity_id) ?? null)
-                      : null;
-
-                    return (
-                      <div
-                        key={task.id}
-                        className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-medium text-foreground">{task.title}</p>
-                              <Badge variant="outline">
-                                {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
-                              </Badge>
-                              <Badge variant="outline" className={taskPriorityClass(task.priority)}>
-                                {task.priority}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              期限 {formatTaskDueLabel(task)}
-                              {task.assigned_to
-                                ? ` / 担当 ${pharmacistNameById.get(task.assigned_to) ?? '未登録'}`
-                                : ''}
-                            </p>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={
-                              task.status === 'in_progress'
-                                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                : 'border-amber-200 bg-amber-50 text-amber-700'
-                            }
-                          >
-                            {task.status === 'in_progress' ? '対応中' : '未着手'}
-                          </Badge>
-                        </div>
-
-                        {(relatedProposal || task.description) && (
-                          <div className="space-y-1 text-xs text-muted-foreground">
-                            {relatedProposal ? (
-                              <p>
-                                {relatedProposal.case_.patient.name} /{' '}
-                                {format(parseISO(relatedProposal.proposed_date), 'M/d', {
-                                  locale: ja,
-                                })}{' '}
-                                {timeLabel(
-                                  relatedProposal.time_window_start,
-                                  relatedProposal.time_window_end,
-                                )}
-                              </p>
-                            ) : (
-                              <p>対象候補は現在の表示週外です。</p>
-                            )}
-                            {task.description && <p className="leading-5">{task.description}</p>}
-                          </div>
-                        )}
-
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {relatedProposal && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedDate(toDateKey(relatedProposal.proposed_date));
-                                openContactLogDialog(relatedProposal);
-                                if (task.status === 'pending') {
-                                  callbackTaskMutation.mutate({
-                                    id: task.id,
-                                    status: 'in_progress',
-                                  });
-                                }
-                              }}
-                              disabled={callbackTaskMutation.isPending}
-                            >
-                              架電結果を記録
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              callbackTaskMutation.mutate({
-                                id: task.id,
-                                status: 'in_progress',
-                              })
-                            }
-                            disabled={
-                              callbackTaskMutation.isPending || task.status === 'in_progress'
-                            }
-                          >
-                            対応中にする
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              callbackTaskMutation.mutate({
-                                id: task.id,
-                                status: 'completed',
-                              })
-                            }
-                            disabled={callbackTaskMutation.isPending}
-                          >
-                            完了
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {tasksLoading ? (
-                <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                  運用タスクを読み込んでいます...
-                </div>
-              ) : schedulingTasks.length === 0 ? (
-                callbackTasks.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                    スケジュール関連の未完了タスクはありません
-                  </div>
-                ) : null
-              ) : (
-                schedulingTasks.map((task) => {
-                  const relatedSchedule =
-                    task.related_entity_type === 'visit_schedule' && task.related_entity_id
-                      ? (scheduleById.get(task.related_entity_id) ?? null)
-                      : null;
-                  const canApproveOverride =
-                    task.task_type === 'visit_schedule_override_approval' && task.related_entity_id;
-                  const canOpenPreparation =
-                    task.task_type === 'visit_preparation' && relatedSchedule;
+                {callbackTasks.map((task) => {
+                  const relatedProposal = task.related_entity_id
+                    ? (proposalById.get(task.related_entity_id) ?? null)
+                    : null;
 
                   return (
                     <div
@@ -2791,84 +2657,216 @@ export function ScheduleDayView({
                               : ''}
                           </p>
                         </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            task.status === 'in_progress'
+                              ? 'border-sky-200 bg-sky-50 text-sky-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                          }
+                        >
+                          {task.status === 'in_progress' ? '対応中' : '未着手'}
+                        </Badge>
                       </div>
 
-                      {(relatedSchedule || task.description) && (
+                      {(relatedProposal || task.description) && (
                         <div className="space-y-1 text-xs text-muted-foreground">
-                          {relatedSchedule && (
+                          {relatedProposal ? (
                             <p>
-                              {relatedSchedule.case_.patient.name} /{' '}
-                              {format(parseISO(relatedSchedule.scheduled_date), 'M/d', {
+                              {relatedProposal.case_.patient.name} /{' '}
+                              {format(parseISO(relatedProposal.proposed_date), 'M/d', {
                                 locale: ja,
                               })}{' '}
                               {timeLabel(
-                                relatedSchedule.time_window_start,
-                                relatedSchedule.time_window_end,
+                                relatedProposal.time_window_start,
+                                relatedProposal.time_window_end,
                               )}
                             </p>
+                          ) : (
+                            <p>対象候補は現在の表示週外です。</p>
                           )}
                           {task.description && <p className="leading-5">{task.description}</p>}
                         </div>
                       )}
 
-                      {(canApproveOverride || canOpenPreparation) && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {canOpenPreparation && relatedSchedule && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openPreparationDialog(relatedSchedule)}
-                            >
-                              準備チェック
-                            </Button>
-                          )}
-                          {canApproveOverride && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const scheduleId = task.related_entity_id;
-                                if (!scheduleId) return;
-                                rescheduleApprovalMutation.mutate(scheduleId);
-                              }}
-                              disabled={rescheduleApprovalMutation.isPending}
-                            >
-                              変更承認
-                            </Button>
-                          )}
-                        </div>
-                      )}
+                      <ActionRail align="start" className="pt-1">
+                        {relatedProposal && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedDate(toDateKey(relatedProposal.proposed_date));
+                              openContactLogDialog(relatedProposal);
+                              if (task.status === 'pending') {
+                                callbackTaskMutation.mutate({
+                                  id: task.id,
+                                  status: 'in_progress',
+                                });
+                              }
+                            }}
+                            disabled={callbackTaskMutation.isPending}
+                          >
+                            架電結果を記録
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            callbackTaskMutation.mutate({
+                              id: task.id,
+                              status: 'in_progress',
+                            })
+                          }
+                          disabled={callbackTaskMutation.isPending || task.status === 'in_progress'}
+                        >
+                          対応中にする
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            callbackTaskMutation.mutate({
+                              id: task.id,
+                              status: 'completed',
+                            })
+                          }
+                          disabled={callbackTaskMutation.isPending}
+                        >
+                          完了
+                        </Button>
+                      </ActionRail>
                     </div>
                   );
-                })
-              )}
-            </CardContent>
-          </Card>
+                })}
+              </div>
+            ) : null}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">関連管理</CardTitle>
-              <CardDescription>ケース担当・シフト・休日設定は管理画面で更新します</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link
-                href="/admin/shifts"
-                className="flex items-center justify-between rounded-xl border px-3 py-3 transition hover:bg-muted/30"
-              >
-                <div>
-                  <p className="font-medium text-foreground">薬剤師・シフト管理</p>
-                  <p className="text-xs text-muted-foreground">
-                    薬剤師登録、休日登録、月間シフト編集
-                  </p>
+            {tasksLoading ? (
+              <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                運用タスクを読み込んでいます...
+              </div>
+            ) : schedulingTasks.length === 0 ? (
+              callbackTasks.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                  スケジュール関連の未完了タスクはありません
                 </div>
-                <Route className="size-4 text-muted-foreground" />
-              </Link>
+              ) : null
+            ) : (
+              schedulingTasks.map((task) => {
+                const relatedSchedule =
+                  task.related_entity_type === 'visit_schedule' && task.related_entity_id
+                    ? (scheduleById.get(task.related_entity_id) ?? null)
+                    : null;
+                const canApproveOverride =
+                  task.task_type === 'visit_schedule_override_approval' && relatedSchedule;
+                const canOpenPreparation =
+                  task.task_type === 'visit_preparation' && relatedSchedule;
+
+                return (
+                  <div
+                    key={task.id}
+                    className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{task.title}</p>
+                          <Badge variant="outline">
+                            {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
+                          </Badge>
+                          <Badge variant="outline" className={taskPriorityClass(task.priority)}>
+                            {task.priority}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          期限 {formatTaskDueLabel(task)}
+                          {task.assigned_to
+                            ? ` / 担当 ${pharmacistNameById.get(task.assigned_to) ?? '未登録'}`
+                            : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    {(relatedSchedule || task.description) && (
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {relatedSchedule && (
+                          <p>
+                            {relatedSchedule.case_.patient.name} /{' '}
+                            {format(parseISO(relatedSchedule.scheduled_date), 'M/d', {
+                              locale: ja,
+                            })}{' '}
+                            {timeLabel(
+                              relatedSchedule.time_window_start,
+                              relatedSchedule.time_window_end,
+                            )}
+                          </p>
+                        )}
+                        {task.description && <p className="leading-5">{task.description}</p>}
+                      </div>
+                    )}
+
+                    {task.task_type === 'visit_schedule_override_approval' &&
+                      task.related_entity_id &&
+                      !relatedSchedule && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          対象予定をこの週の予定一覧で確認してから変更承認してください。
+                        </div>
+                      )}
+
+                    {(canApproveOverride || canOpenPreparation) && (
+                      <ActionRail align="start" className="pt-1">
+                        {canOpenPreparation && relatedSchedule && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openPreparationDialog(relatedSchedule)}
+                          >
+                            準備チェック
+                          </Button>
+                        )}
+                        {canApproveOverride && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const scheduleId = task.related_entity_id;
+                              if (!scheduleId) return;
+                              rescheduleApprovalMutation.mutate(scheduleId);
+                            }}
+                            disabled={rescheduleApprovalMutation.isPending}
+                          >
+                            変更承認
+                          </Button>
+                        )}
+                      </ActionRail>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </PageSection>
+
+          <PageSection
+            title="関連管理"
+            description="ケース担当・シフト・休日設定は管理画面で更新します"
+            contentClassName="space-y-3"
+          >
+            <Link
+              href="/admin/shifts"
+              className="flex items-center justify-between rounded-xl border px-3 py-3 transition hover:bg-muted/30"
+            >
+              <div>
+                <p className="font-medium text-foreground">薬剤師・シフト管理</p>
+                <p className="text-xs text-muted-foreground">
+                  薬剤師登録、休日登録、月間シフト編集
+                </p>
+              </div>
+              <Route className="size-4 text-muted-foreground" />
+            </Link>
+            {selectedCase ? (
               <Link
-                href={`/patients/${selectedCase?.patient.id ?? ''}`}
-                className={[
-                  'flex items-center justify-between rounded-xl border px-3 py-3 transition',
-                  selectedCase ? 'hover:bg-muted/30' : 'pointer-events-none opacity-50',
-                ].join(' ')}
+                href={`/patients/${selectedCase.patient.id}`}
+                className="flex items-center justify-between rounded-xl border px-3 py-3 transition hover:bg-muted/30"
               >
                 <div>
                   <p className="font-medium text-foreground">担当薬剤師の割当</p>
@@ -2878,8 +2876,21 @@ export function ScheduleDayView({
                 </div>
                 <Shuffle className="size-4 text-muted-foreground" />
               </Link>
-            </CardContent>
-          </Card>
+            ) : (
+              <div
+                aria-disabled="true"
+                className="flex items-center justify-between rounded-xl border px-3 py-3 opacity-60"
+              >
+                <div>
+                  <p className="font-medium text-foreground">担当薬剤師の割当</p>
+                  <p className="text-xs text-muted-foreground">
+                    対象ケースを選択すると患者ケースへ移動できます
+                  </p>
+                </div>
+                <Shuffle className="size-4 text-muted-foreground" />
+              </div>
+            )}
+          </PageSection>
         </div>
 
         <Tabs defaultValue={initialTab}>

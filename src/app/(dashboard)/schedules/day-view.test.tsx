@@ -156,6 +156,25 @@ function buildProposal(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildScheduleTask(overrides?: Record<string, unknown>) {
+  return {
+    id: 'task_1',
+    task_type: 'visit_schedule_override_approval',
+    title: '変更承認が必要です',
+    description: null,
+    status: 'pending',
+    priority: 'high',
+    assigned_to: null,
+    due_date: '2026-04-09',
+    sla_due_at: null,
+    related_entity_type: 'visit_schedule',
+    related_entity_id: 'schedule_outside_week',
+    metadata: null,
+    created_at: '2026-04-09T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
 describe('ScheduleDayView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -228,6 +247,9 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '週次訪問の進捗' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '訪問候補を生成' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '運用タスク' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '関連管理' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '翌週' })).toBeTruthy();
 
@@ -235,6 +257,34 @@ describe('ScheduleDayView', () => {
       name: /2026年4月9日\(木\) 候補0件 確定0件/,
     });
     expect(selectedDayButton.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('link', { name: /担当薬剤師の割当/ })).toBeNull();
+    expect(screen.getByText('対象ケースを選択すると患者ケースへ移動できます')).toBeTruthy();
+  });
+
+  it('requires visible schedule context before showing override approval actions', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'tasks' && queryKey[1] === 'schedule-board') {
+        return {
+          data: { data: [buildScheduleTask()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    expect(screen.getByText('変更承認が必要です')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '変更承認' })).toBeNull();
+    expect(
+      screen.getByText('対象予定をこの週の予定一覧で確認してから変更承認してください。'),
+    ).toBeTruthy();
   });
 
   it('drops malformed fresh visit brief cache rows instead of rendering them', async () => {

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-162430
+
+- current task: organize the schedules day-view left rail and remove context-free safety actions
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and the medical safety reviewer subagent report for the day-view left rail
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the left rail mixed candidate generation, billing cadence, operational tasks, and related admin links as dense standalone cards. The pharmacist assignment destination remained a `Link` with an empty patient path when no case was selected. Override-approval tasks could show a mutation button from `related_entity_id` alone even when the matching schedule was not visible in the current week context
+- security risks found: no API, auth, tenant, or PHI logging behavior changed. The pharmacist assignment link now renders as disabled non-link content when no case is selected, reducing accidental patient navigation. Schedule override approval now requires the related schedule to be present in the visible week data before the approval button is rendered, reducing patient/date context confusion risk
+- performance issues found: no data fetching, query shape, memoization, or mutation behavior changed. The refactor reuses existing `PageSection` and `ActionRail` primitives without adding render-heavy logic
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx src/components/ui/action-rail.tsx src/components/ui/action-rail.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`
+- validation results: Prettier completed with no further changes after formatting; focused Vitest passed with 4 files / 10 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: schedules day-view confirmed-schedule tab remains dense, especially facility filters, route map/gantt, loading/empty states, and patient-card action clusters. Browser proof for `/schedules` remains pending until local e2e DB port `5433` is available
+- next action: continue with the confirmed-schedule tab accessibility/UI slice, then retry DB-backed browser proof when the local e2e DB is listening
+
 ### 20260602-162000
 
 - current task: reduce clutter in the schedules day-view top workflow area and lock the accessibility behavior with focused tests
