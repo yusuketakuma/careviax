@@ -39,6 +39,8 @@ export {
   GENERIC_DISPENSING_POINTS_2026,
   COOPERATION_ENHANCEMENT_POINTS_2026,
   MEDICAL_DX_PROMOTION_POINTS_2026,
+  DISPENSING_BASE_UP_EVALUATION_POINTS_2026,
+  DISPENSING_PRICE_RESPONSE_POINTS_2026,
   MEDICAL_2024_OFFICIAL_RULE_POINTS,
   MEDICAL_2024_OFFICIAL_SITE_CONFIG_POINTS,
   MEDICAL_2024_OFFICIAL_SOURCES,
@@ -87,12 +89,14 @@ export function resolveRevisionEntryForDate(
   const runtimeEnabled = revisions
     .filter((entry) => isRevisionRuntimeEnabled(entry.revision, options.includeDraft))
     .sort(
-      (left, right) => right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
+      (left, right) =>
+        right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
     );
   const applicable = runtimeEnabled
     .filter((entry) => isRevisionEffectiveForDate(entry.revision, asOfDate))
     .sort(
-      (left, right) => right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
+      (left, right) =>
+        right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
     );
 
   if (applicable.length > 0) {
@@ -124,10 +128,7 @@ export const CARE_REVISIONS: RevisionEntry[] = [
 ];
 
 /** 全改定を統合した配列 (seeder に渡す用) */
-export const ALL_REVISIONS: RevisionEntry[] = [
-  ...MEDICAL_REVISIONS,
-  ...CARE_REVISIONS,
-];
+export const ALL_REVISIONS: RevisionEntry[] = [...MEDICAL_REVISIONS, ...CARE_REVISIONS];
 
 export function resolveBillingRulesForDate(args: {
   payerBasis: 'medical' | 'care';

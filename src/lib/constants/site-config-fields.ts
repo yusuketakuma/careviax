@@ -121,6 +121,7 @@ const MEDICAL_CONFIG_FIELDS_2026: readonly ConfigSelectField[] = [
       ['level_2', '加算2 (59点)'],
       ['level_3', '加算3 (67点)'],
       ['level_4', '加算4 (37点)'],
+      ['level_5', '加算5 (59点)'],
     ],
   },
   {
@@ -147,6 +148,11 @@ const MEDICAL_CONFIG_FIELDS_2026: readonly ConfigSelectField[] = [
 const MEDICAL_BOOL_FIELDS_2026: readonly ConfigBoolField[] = [
   { key: 'cooperation_enhancement', label: '連携強化加算 (5点)' },
   { key: 'medical_dx_promotion', label: '医療DX推進体制整備加算 (8点)' },
+  {
+    key: 'dispensing_base_up_evaluation',
+    label: '調剤ベースアップ評価料 (4点 / 2027年6月以降 8点)',
+  },
+  { key: 'dispensing_price_response', label: '調剤物価対応料 (1点 / 3月に1回・2027年6月以降 2点)' },
   { key: 'narcotic_dealer_license', label: '麻薬小売業者の免許' },
   { key: 'high_care_medical_device_license', label: '高度管理医療機器販売業の許可' },
 ] as const;

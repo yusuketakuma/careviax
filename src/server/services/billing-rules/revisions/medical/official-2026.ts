@@ -1,6 +1,9 @@
 export const MEDICAL_2026_OFFICIAL_SOURCES = {
   summaryPage: 'https://www.mhlw.go.jp/stf/newpage_67729.html',
   feeTablePdf: 'https://www.mhlw.go.jp/content/12400000/001665294.pdf',
+  implementationNoticePdf: 'https://www.mhlw.go.jp/content/12400000/001697755.pdf',
+  inquiryInterpretation7Pdf: 'https://www.mhlw.go.jp/content/12400000/001706317.pdf',
+  correctionNotice0529Pdf: 'https://www.mhlw.go.jp/content/12400000/001705942.pdf',
 } as const;
 
 export const MEDICAL_2026_OFFICIAL_SITE_CONFIG_POINTS = {
@@ -18,6 +21,7 @@ export const MEDICAL_2026_OFFICIAL_SITE_CONFIG_POINTS = {
     level_2: 59,
     level_3: 67,
     level_4: 37,
+    level_5: 59,
   },
   genericDispensing: {
     level_1: 21,
@@ -36,6 +40,14 @@ export const MEDICAL_2026_OFFICIAL_SITE_CONFIG_POINTS = {
   },
   cooperationEnhancement: 5,
   medicalDxPromotion: 8,
+  dispensingBaseUpEvaluation: {
+    until20270531: 4,
+    from20270601: 8,
+  },
+  dispensingPriceResponse: {
+    until20270531: 1,
+    from20270601: 2,
+  },
 } as const;
 
 export const MEDICAL_2026_OFFICIAL_RULE_POINTS = {

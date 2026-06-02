@@ -29,13 +29,15 @@ export type RegionalSupportLevel2026 =
   | 'level_1' // 27点
   | 'level_2' // 59点
   | 'level_3' // 67点
-  | 'level_4'; // 37点
+  | 'level_4' // 37点
+  | 'level_5'; // 59点
 
 export const REGIONAL_SUPPORT_POINTS_2026: Record<RegionalSupportLevel2026, number> = {
   level_1: 27,
   level_2: 59,
   level_3: 67,
   level_4: 37,
+  level_5: 59,
 };
 
 // ── 後発医薬品調剤体制加算 (処方箋受付1回) ──
@@ -74,9 +76,17 @@ export const HOME_COMPREHENSIVE_POINTS_2026: Record<
   },
 };
 
-// ── 連携強化加算・医療DX推進体制整備加算 ──
+// ── 連携強化加算・医療DX推進体制整備加算・その他 ──
 export const COOPERATION_ENHANCEMENT_POINTS_2026 = 5;
 export const MEDICAL_DX_PROMOTION_POINTS_2026 = 8;
+export const DISPENSING_BASE_UP_EVALUATION_POINTS_2026 = {
+  until20270531: 4,
+  from20270601: 8,
+} as const;
+export const DISPENSING_PRICE_RESPONSE_POINTS_2026 = {
+  until20270531: 1,
+  from20270601: 2,
+} as const;
 
 // ── 薬局情報 config 型 (PharmacySiteInsuranceConfig.config に格納) ──
 export type MedicalSiteConfig2026 = {
@@ -88,6 +98,8 @@ export type MedicalSiteConfig2026 = {
   generic_dispensing_level?: GenericDispensingLevel2026;
   cooperation_enhancement?: boolean; // 連携強化加算
   medical_dx_promotion?: boolean; // 医療DX推進体制整備加算
+  dispensing_base_up_evaluation?: boolean; // 調剤ベースアップ評価料
+  dispensing_price_response?: boolean; // 調剤物価対応料
 
   // 在宅関連体制加算 (訪問1回) — 2026改定: 加算2がイ/ロに分割
   home_comprehensive_level?: HomeComprehensiveLevel2026;
