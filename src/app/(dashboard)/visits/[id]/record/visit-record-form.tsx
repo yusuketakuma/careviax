@@ -44,8 +44,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { SoapStepWizard } from '@/components/features/visits/soap-step-wizard';
@@ -1257,10 +1258,10 @@ export function VisitRecordForm({
             {carryItemsWarning && (
               <Card className="border-rose-200 bg-rose-50">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-rose-900">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-rose-900">
                     <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                     {carryItemsWarning.title}
-                  </CardTitle>
+                  </h3>
                 </CardHeader>
                 <CardContent className="text-sm text-rose-900">
                   {carryItemsWarning.description}
@@ -1271,7 +1272,9 @@ export function VisitRecordForm({
             {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
               <Card className="border-amber-200 bg-amber-50/40">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm text-amber-950">訪問時チェック</CardTitle>
+                  <h3 className="font-heading text-sm leading-snug font-medium text-amber-950">
+                    訪問時チェック
+                  </h3>
                 </CardHeader>
                 <CardContent>
                   <CdsAlertPanel
@@ -1286,10 +1289,10 @@ export function VisitRecordForm({
             {(locationTrackingEnabled || visitGeoLog) && (
               <Card className="border-sky-200 bg-sky-50/40">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-sm text-sky-950">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-sky-950">
                     <MapPin className="h-4 w-4 text-sky-700" aria-hidden="true" />
                     訪問位置情報
-                  </CardTitle>
+                  </h3>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <p className="text-muted-foreground">
@@ -1524,7 +1527,7 @@ export function VisitRecordForm({
                   <div className="space-y-4">
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                           <span className="inline-flex items-center gap-2">
                             <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S —
                             主観情報（患者の訴え）
@@ -1539,7 +1542,7 @@ export function VisitRecordForm({
                             isSupported={voiceRecognition.isSupported}
                             onToggle={voiceRecognition.toggleListening}
                           />
-                        </CardTitle>
+                        </h3>
                       </CardHeader>
                       <CardContent>
                         <Textarea
@@ -1554,7 +1557,7 @@ export function VisitRecordForm({
 
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                           <span className="inline-flex items-center gap-2">
                             <Eye className="size-4 text-green-500" aria-hidden="true" />O —
                             客観情報（観察・計測）
@@ -1569,7 +1572,7 @@ export function VisitRecordForm({
                             isSupported={voiceRecognition.isSupported}
                             onToggle={voiceRecognition.toggleListening}
                           />
-                        </CardTitle>
+                        </h3>
                       </CardHeader>
                       <CardContent>
                         <Textarea
@@ -1587,7 +1590,7 @@ export function VisitRecordForm({
                   <div className="space-y-4">
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                           <span className="inline-flex items-center gap-2">
                             <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
                             薬学的評価
@@ -1602,7 +1605,7 @@ export function VisitRecordForm({
                             isSupported={voiceRecognition.isSupported}
                             onToggle={voiceRecognition.toggleListening}
                           />
-                        </CardTitle>
+                        </h3>
                       </CardHeader>
                       <CardContent>
                         <Textarea
@@ -1617,7 +1620,7 @@ export function VisitRecordForm({
 
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
                           <span className="inline-flex items-center gap-2">
                             <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />P
                             — 計画・介入
@@ -1632,7 +1635,7 @@ export function VisitRecordForm({
                             isSupported={voiceRecognition.isSupported}
                             onToggle={voiceRecognition.toggleListening}
                           />
-                        </CardTitle>
+                        </h3>
                       </CardHeader>
                       <CardContent>
                         <Textarea
@@ -1658,10 +1661,10 @@ export function VisitRecordForm({
               {/* Receipt record */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                     <User className="size-4 text-muted-foreground" aria-hidden="true" />
                     受領記録
-                  </CardTitle>
+                  </h3>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1716,10 +1719,10 @@ export function VisitRecordForm({
               {/* Next visit suggestion */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                     <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
                     次回訪問提案
-                  </CardTitle>
+                  </h3>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="space-y-1.5">
@@ -1751,16 +1754,16 @@ export function VisitRecordForm({
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                     <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
                     写真・添付
-                  </CardTitle>
+                  </h3>
                 </CardHeader>
                 <CardContent>{attachmentsField}</CardContent>
               </Card>
 
               {/* Submit */}
-              <div className="flex justify-end gap-2 pt-2">
+              <ActionRail className="pt-2">
                 <Button type="button" variant="outline" onClick={() => router.back()}>
                   キャンセル
                 </Button>
@@ -1771,7 +1774,7 @@ export function VisitRecordForm({
                 >
                   保存
                 </LoadingButton>
-              </div>
+              </ActionRail>
             </VisitRecordWorkflowSection>
           ) : null}
         </div>

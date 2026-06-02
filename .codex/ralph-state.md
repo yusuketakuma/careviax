@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173338
+
+- current task: improve visit record form semantic headings and submit action grouping
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/ui/action-rail.tsx`, and focused visit record tests
+- files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/ralph-state.md`
+- bugs found: the visit record form still used decorative `CardTitle` wrappers inside the existing workflow sections for carry-item warnings, CDS visit checks, location information, SOAP S/O/A/P fields, receipt, next-visit suggestion, and attachments. The final save/cancel row also used a hand-built flex wrapper
+- security risks found: no visit-record API path, org header, validation schema, offline sync, conflict registration, receipt fields, SOAP field registration, voice input toggle behavior, residual medication form, attachment field, submit payload, auth, authorization, or route behavior changed
+- performance issues found: no query, mutation, autosync setup, offline store, SOAP draft, speech recognition, field watch, readiness calculation, or render-loop behavior changed. The slice only changes inner card headings and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/route.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx'`
+- validation results: Prettier completed successfully; focused visit record API Vitest passed with 2 files / 30 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially visit detail, patient detail panels, medication set edit/audit pages, and prescription detail/QR draft pages
+- next action: commit this visit record form group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-173143
 
 - current task: improve schedule weekly optimizer semantic headings
