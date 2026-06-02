@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -359,7 +359,9 @@ export function PatientActivityTimeline({
         <CardHeader className="space-y-4 border-b border-border/70">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-base">患者アクションタイムライン</CardTitle>
+              <h2 className="font-heading text-base leading-snug font-medium">
+                患者アクションタイムライン
+              </h2>
               <CardDescription>
                 訪問、処方、調剤、文書、共有連絡など、薬局側の患者対応を最新順で追えます。
               </CardDescription>
@@ -457,7 +459,7 @@ export function PatientActivityTimeline({
       <div className="space-y-4">
         <Card className="border border-border/70">
           <CardHeader>
-            <CardTitle className="text-base">履歴サマリー</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">履歴サマリー</h2>
             <CardDescription>
               最新アクションと種別別の件数を患者別に集約しています。
             </CardDescription>
@@ -494,7 +496,7 @@ export function PatientActivityTimeline({
 
         <Card className="border border-border/70">
           <CardHeader>
-            <CardTitle className="text-base">患者からの更新</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">患者からの更新</h2>
             <CardDescription>
               自己申告など患者起点の更新を補助情報として並べています。
             </CardDescription>

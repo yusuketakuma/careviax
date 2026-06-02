@@ -86,6 +86,9 @@ describe('PatientActivityTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
     render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
+    for (const heading of ['患者アクションタイムライン', '履歴サマリー', '患者からの更新']) {
+      expect(screen.getByRole('heading', { level: 2, name: heading }).tagName).toBe('H2');
+    }
     expect(screen.getByText('2026年4月3日')).toBeTruthy();
     expect(screen.getByText('2026年4月2日')).toBeTruthy();
     expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-182330
+
+- current task: improve patient activity timeline semantic section headings
+- files inspected: `git status --short`, `git log --oneline -12`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`, and focused patient detail UI scans
+- files changed: `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient activity timeline, history summary, and patient-originated update cards used decorative `CardTitle` wrappers for major patient-detail groups. This weakened heading navigation in a dense clinical timeline surface
+- security risks found: no patient timeline data fetch, links, filtering state, patient self-report content handling, auth, authorization, API, DB, mutation, or privacy behavior changed
+- performance issues found: no filtering, grouping, deferred search, rendering loops, or memo-sensitive data transformation changed. The slice only changes heading markup and focused rendering assertions
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`
+- validation results: Prettier completed successfully; focused activity timeline Vitest passed with 1 file / 4 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient activity timeline heading group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-182047
 
 - current task: post-2026-dispensing facility-standard candidate gate runtime/browser preflight audit
