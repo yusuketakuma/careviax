@@ -161,7 +161,7 @@ function InsuranceEditor({
 }) {
   return (
     <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
-      <p className="text-sm font-medium text-foreground">{title}</p>
+      <h3 className="text-sm font-medium text-foreground">{title}</h3>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5">

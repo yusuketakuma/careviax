@@ -49,7 +49,9 @@ describe('PatientInsuranceCard', () => {
 
     render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
 
+    expect(screen.getByRole('heading', { level: 2, name: '保険詳細' }).tagName).toBe('H2');
     fireEvent.click(screen.getByRole('button', { name: '保険追加' }));
+    expect(screen.getByRole('heading', { level: 3, name: 'new-insurance' }).tagName).toBe('H3');
     fireEvent.change(screen.getByLabelText('番号'), {
       target: { value: '1234567' },
     });

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-192130
+
+- current task: improve patient insurance editor semantic heading
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`, and `src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the insurance create/edit editor used a paragraph for its nested editor title even though the card already has a semantic h2 and the editor is a bordered nested information group. This made insurance form navigation less consistent with adjacent patient detail editors
+- security risks found: no insurance API path, org header, create/update/delete payload, active/deactivate behavior, query invalidation, auth, authorization, tenant boundary, insurance data handling, or patient data handling changed
+- performance issues found: no query function, mutation function, form state update, payload builder, draft merge, or render-loop behavior changed. The slice only changes nested editor heading markup and focused render coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient insurance Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. DB-backed browser proof remains incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable. Further clutter reduction may need rendered-page review once runtime is available
+- next action: commit this patient insurance editor heading group, then retry runtime preflight and inspect any remaining static pseudo-heading/action-row candidates
+
 ### 20260602-191940
 
 - current task: post-medications-content runtime/browser preflight audit
