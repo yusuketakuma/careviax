@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-164000
+
+- current task: reduce top-level clutter in the billing dashboard without touching billing data behavior
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/billing/billing-dashboard-content.tsx`, dashboard TSX density grep output, and the code-mapper subagent report for remaining cluttered UI surfaces
+- files changed: `src/app/(dashboard)/billing/billing-dashboard-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the billing dashboard top action strip and major KPI grid used separate `SectionIntro` plus `Card`/raw grid structures, causing closely related monthly close context, action, and key indicators to read as separate visual groups
+- security risks found: no billing API, auth, authorization, tenant scoping, export behavior, DB, PHI logging, or mutation behavior changed
+- performance issues found: no query, fetch, memo, table, or analytics behavior changed. The slice reuses shared layout primitives only
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/billing/billing-dashboard-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/billing/billing-dashboard-content.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/billing/billing-dashboard-content.tsx'`
+- validation results: Prettier completed with no changes after formatting; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed. No focused component test exists for `billing-dashboard-content.tsx`
+- remaining work: code-mapper identified `billing/candidates`, `medication-sets`, `external`, `conferences`, and `patient-workflow-preview-card` as remaining cluttered surfaces. Browser proof remains blocked by local app/db availability
+- next action: follow the code-mapper recommendation and inspect `billing/candidates/billing-candidates-content.tsx` for a low-risk PageSection/ActionRail/FilterSummaryBar slice
+
 ### 20260602-163500
 
 - current task: verify whether DB-backed medical UI browser proof can run after schedule and route UI refactors

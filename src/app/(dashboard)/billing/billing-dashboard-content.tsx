@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SectionIntro } from '@/components/ui/section-intro';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 
 type BillingStats = {
   not_claimable: number;
@@ -96,77 +98,80 @@ export function BillingDashboardContent() {
 
   return (
     <div className="space-y-6">
-      <SectionIntro
+      <PageSection
         title="月次締めの入口"
         description="まず今月候補、締めブロック、レビュー待ちを確認し、候補一覧へ進むための導入グループです。"
-      />
-      <Card data-testid="billing-action-strip">
-        <CardContent className="space-y-4 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-3 text-sm text-blue-900">
-              <Info className="mt-0.5 size-4 shrink-0 text-blue-700" aria-hidden="true" />
-              <div>
-                <p className="font-medium">月次締めの判断を先に行う</p>
-                <p className="mt-0.5 text-blue-800">
-                  まずレビュー待ちと締めブロックを確認し、その後に候補一覧で確定・除外・CSV出力へ進みます。
-                </p>
-              </div>
-            </div>
+        actions={
+          <ActionRail>
             <Link
               href="/billing/candidates"
               className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-10 sm:min-h-0"
             >
               候補一覧を開く
             </Link>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-              <p className="text-xs text-muted-foreground">今月候補</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
-                {stats?.current_month_candidates ?? 0}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {Object.entries(stats?.current_month_revision_breakdown ?? {}).map(
-                  ([revision, count]) => (
-                    <Badge key={revision} variant="outline">
-                      {revision}: {count}
-                    </Badge>
-                  ),
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-              <p className="text-xs text-rose-700">締めブロック</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-700">
-                {stats?.current_month_close_blocked ?? 0}
-              </p>
-              <p className="mt-2 text-xs text-rose-700">
-                site設定不足 {stats?.current_month_site_config_issues?.missing ?? 0} / 改定不一致{' '}
-                {stats?.current_month_site_config_issues?.revision_mismatch ?? 0}
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-xs text-amber-700">レビュー待ち</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">
-                {stats?.review_required_candidates ?? 0}
-              </p>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="text-xs text-emerald-700">締め準備</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
-                {stats?.current_month_close_ready ?? 0}
+          </ActionRail>
+        }
+        contentClassName="space-y-4"
+        data-testid="billing-action-strip"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3 text-sm text-blue-900">
+            <Info className="mt-0.5 size-4 shrink-0 text-blue-700" aria-hidden="true" />
+            <div>
+              <p className="font-medium">月次締めの判断を先に行う</p>
+              <p className="mt-0.5 text-blue-800">
+                まずレビュー待ちと締めブロックを確認し、その後に候補一覧で確定・除外・CSV出力へ進みます。
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <SectionIntro
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+            <p className="text-xs text-muted-foreground">今月候補</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+              {stats?.current_month_candidates ?? 0}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {Object.entries(stats?.current_month_revision_breakdown ?? {}).map(
+                ([revision, count]) => (
+                  <Badge key={revision} variant="outline">
+                    {revision}: {count}
+                  </Badge>
+                ),
+              )}
+            </div>
+          </div>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <p className="text-xs text-rose-700">締めブロック</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-700">
+              {stats?.current_month_close_blocked ?? 0}
+            </p>
+            <p className="mt-2 text-xs text-rose-700">
+              site設定不足 {stats?.current_month_site_config_issues?.missing ?? 0} / 改定不一致{' '}
+              {stats?.current_month_site_config_issues?.revision_mismatch ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs text-amber-700">レビュー待ち</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">
+              {stats?.review_required_candidates ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs text-emerald-700">締め準備</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
+              {stats?.current_month_close_ready ?? 0}
+            </p>
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection
         title="主要指標"
         description="締め済み、根拠、レビュー待ち、訪問前ブロックなど、今すぐ判断に使う指標をまとめています。"
-      />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        contentClassName="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
         <Card size="sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -296,7 +301,7 @@ export function BillingDashboardContent() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
       <SectionIntro
         title="分析"
