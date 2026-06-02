@@ -21,6 +21,9 @@ import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -665,15 +668,11 @@ export function BillingCandidatesContent({
   return (
     <div className="space-y-4">
       {isVisitRecordContext ? (
-        <section className="rounded-lg border border-border/70 bg-card p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-foreground">訪問記録から確認中</h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                対象患者と訪問月で請求候補を絞り込み、訪問後ワークフローから算定根拠を確認しています。
-              </p>
-            </div>
-            {visitRecordBackHref ? (
+        <PageSection
+          title="訪問記録から確認中"
+          description="対象患者と訪問月で請求候補を絞り込み、訪問後ワークフローから算定根拠を確認しています。"
+          actions={
+            visitRecordBackHref ? (
               <Link
                 href={visitRecordBackHref}
                 className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
@@ -681,9 +680,10 @@ export function BillingCandidatesContent({
                 <ArrowLeft className="size-3.5" aria-hidden="true" />
                 訪問記録へ戻る
               </Link>
-            ) : null}
-          </div>
-        </section>
+            ) : null
+          }
+          tone="subtle"
+        />
       ) : null}
 
       {patientIdFilter ? (
@@ -754,31 +754,35 @@ export function BillingCandidatesContent({
         </div>
       ) : null}
 
-      {/* Month navigation */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
-            aria-label="前月"
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <span className="min-w-[120px] text-center text-base font-semibold text-foreground">
-            {billingMonthLabel}
-          </span>
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-            aria-label="翌月"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-2">
+      <PageSection
+        title="月次操作"
+        description="対象月を切り替え、候補生成、月次締め、CSV出力を実行します。"
+        actions={
+          <ActionRail>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+              aria-label="前月"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-[120px] text-center text-base font-semibold text-foreground">
+              {billingMonthLabel}
+            </span>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+              aria-label="翌月"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </ActionRail>
+        }
+        contentClassName="space-y-3"
+      >
+        <ActionRail align="start">
           <Button
             size="sm"
             variant="outline"
@@ -807,21 +811,20 @@ export function BillingCandidatesContent({
             <Download className="mr-1.5 size-3.5" aria-hidden="true" />
             {isExporting ? '出力中...' : 'CSV出力'}
           </Button>
-        </div>
-      </div>
+        </ActionRail>
 
-      {/* Validation summary */}
-      <div className="flex items-center gap-4 text-sm">
-        <span className="flex items-center gap-1 text-green-700">
-          <CheckCircle2 className="size-4" aria-hidden="true" /> OK: {okCount}件
-        </span>
-        <span className="flex items-center gap-1 text-red-700">
-          <XCircle className="size-4" aria-hidden="true" /> NG: {ngCount}件
-        </span>
-        <span className="flex items-center gap-1 text-yellow-700">
-          <AlertTriangle className="size-4" aria-hidden="true" /> 要確認: {warningCount}件
-        </span>
-      </div>
+        <FilterSummaryBar
+          items={[
+            { label: 'OK', value: `${okCount}件` },
+            { label: 'NG', value: `${ngCount}件`, tone: ngCount > 0 ? 'danger' : 'default' },
+            {
+              label: '要確認',
+              value: `${warningCount}件`,
+              tone: warningCount > 0 ? 'warning' : 'default',
+            },
+          ]}
+        />
+      </PageSection>
 
       {/* Candidates table */}
       <DataTable

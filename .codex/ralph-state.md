@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-164500
+
+- current task: organize billing candidates pre-table workflow controls and validation summary
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, existing focused test grep output, and the code-mapper subagent report that prioritized billing candidates
+- files changed: `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `.codex/ralph-state.md`
+- bugs found: billing candidates had visit-record context, month navigation, generate/close/export actions, and OK/NG/review summary as separate hand-built blocks before the table, making the pre-table decision flow visually fragmented
+- security risks found: no billing API, auth, authorization, tenant scoping, export URL, CSV download behavior, DB, PHI logging, or mutation conditions changed. Existing disabled conditions for monthly close/export/generation were preserved
+- performance issues found: no query, pagination, table, fetch, export, mutation, or memo behavior changed. The slice only reuses shared layout primitives
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx src/components/ui/filter-summary-bar.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx'`
+- validation results: Prettier completed with no changes after formatting; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed. No focused component test exists for `billing-candidates-content.tsx`
+- remaining work: code-mapper still identified `medication-sets`, `external`, `conferences`, and `patient-workflow-preview-card` as remaining cluttered surfaces. Browser proof remains blocked by local app/db availability
+- next action: continue with another code-mapper candidate, likely `medication-sets-content.tsx` because it is pharmacy-safety relevant and has a bounded PageSection/ActionRail refactor path
+
 ### 20260602-164000
 
 - current task: reduce top-level clutter in the billing dashboard without touching billing data behavior
