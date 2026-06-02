@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173008
+
+- current task: improve schedule proposal detail sheet semantic headings
+- files inspected: `git status --short`, `git log --oneline -12`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, and focused schedule proposal tests
+- files changed: `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the schedule proposal detail sheet used decorative `CardTitle` wrappers for the patient summary, candidate ranking, same-day schedule, patient contact workflow, and reproposal workflow. These are major decision groups inside the right-side detail sheet and should be navigable as semantic headings
+- security risks found: no visit-schedule-proposals API path, org header, query state, approve/contact/confirm/reproposal mutation payload, route reorder payload, patient filter, URL replacement, auth, authorization, or schedule persistence behavior changed
+- performance issues found: no query, mutation, cache invalidation, ranking calculation, route-preview draft state, contact form state, reproposal state, or list rendering behavior changed. The slice only changes detail sheet heading markup and removes an unused card title import
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`
+- validation results: Prettier completed successfully; focused schedule proposal Vitest passed with 2 files / 7 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially schedule weekly optimizer, visit record/detail forms, patient detail panels, and medication set edit/audit pages
+- next action: commit this schedule proposal detail-heading group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-172757
 
 - current task: post-settings and billing UI/refactor runtime preflight audit

@@ -27,7 +27,7 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
@@ -1598,7 +1598,9 @@ export function ScheduleProposalsContent({
             <div className="mt-6 space-y-6">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{detail.case_.patient.name}</CardTitle>
+                  <h2 className="font-heading text-base leading-snug font-medium">
+                    {detail.case_.patient.name}
+                  </h2>
                   <CardDescription>
                     {formatDateLabel(detail.proposed_date)}{' '}
                     {timeLabel(detail.time_window_start, detail.time_window_end)} /{' '}
@@ -1698,7 +1700,9 @@ export function ScheduleProposalsContent({
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">候補ランキング</CardTitle>
+                  <h3 className="font-heading text-base leading-snug font-medium">
+                    候補ランキング
+                  </h3>
                   <CardDescription>同一生成バッチの候補を比較します。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1784,7 +1788,9 @@ export function ScheduleProposalsContent({
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">同日スケジュール</CardTitle>
+                  <h3 className="font-heading text-base leading-snug font-medium">
+                    同日スケジュール
+                  </h3>
                   <CardDescription>同じ薬剤師の当日予定との並びを確認します。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1814,10 +1820,10 @@ export function ScheduleProposalsContent({
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <h3 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
                     <PhoneCall className="size-4 text-amber-600" />
                     患者連絡ワークフロー
-                  </CardTitle>
+                  </h3>
                   <CardDescription>
                     連絡方法と結果を記録し、確認済みならそのまま確定できます。
                   </CardDescription>
@@ -1975,10 +1981,10 @@ export function ScheduleProposalsContent({
 
               <Card id="schedule-proposal-reproposal">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <h3 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
                     <RefreshCw className="size-4 text-indigo-600" />
                     変更希望時の再提案
-                  </CardTitle>
+                  </h3>
                   <CardDescription>
                     変更希望を記録したうえで、新しい時間条件で候補を再生成します。
                   </CardDescription>
