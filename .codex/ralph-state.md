@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173815
+
+- current task: improve patient visits panel semantic headings and action grouping
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient visits panel used decorative `CardTitle` wrappers for the error state, upcoming visits, and visit records section. The visit-record PDF/print actions were also a hand-built flex group in the section header
+- security risks found: no patient visits API path, org header, visit-record PDF URL, print URL, schedule board link, visit record link, date filter state, auth, authorization, or data handling changed
+- performance issues found: no query key, query function, initial data behavior, date filter fetch, visit schedule rendering, visit record rendering, or render-loop behavior changed. The slice only changes headings and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx'`
+- validation results: Prettier completed successfully; focused patient visits panel Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially other patient detail panels, medication set edit/audit pages, prescription detail/QR draft pages, and admin master pages
+- next action: commit this patient visits panel group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-173633
 
 - current task: improve visit record detail semantic headings

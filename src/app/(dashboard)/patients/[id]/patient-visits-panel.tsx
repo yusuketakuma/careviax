@@ -8,7 +8,8 @@ import { ja } from 'date-fns/locale';
 import { ArrowRight, FileDown, Printer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
@@ -80,7 +81,9 @@ export function PatientVisitsPanel({
       ? {}
       : { initialData: { data: visitsQuery.data.visit_records } }),
     queryFn: async () => {
-      const data = await fetchPatientVisitRecordsWindow<PatientVisitsSnapshot['visit_records'][number]>({
+      const data = await fetchPatientVisitRecordsWindow<
+        PatientVisitsSnapshot['visit_records'][number]
+      >({
         orgId,
         patientId,
         dateFrom: dateFrom || undefined,
@@ -102,7 +105,7 @@ export function PatientVisitsPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">訪問</h2>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
@@ -146,7 +149,7 @@ export function PatientVisitsPanel({
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">直近の訪問予定</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">直近の訪問予定</h2>
           </CardHeader>
           <CardContent className="space-y-3">
             {monthlyCountBadges.length > 0 ? (
@@ -241,8 +244,8 @@ export function PatientVisitsPanel({
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle className="text-base">訪問記録</CardTitle>
-              <div className="flex flex-wrap gap-2">
+              <h2 className="font-heading text-base leading-snug font-medium">訪問記録</h2>
+              <ActionRail>
                 <Link
                   href={exportHref}
                   target="_blank"
@@ -260,7 +263,7 @@ export function PatientVisitsPanel({
                   <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                   印刷
                 </Link>
-              </div>
+              </ActionRail>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">

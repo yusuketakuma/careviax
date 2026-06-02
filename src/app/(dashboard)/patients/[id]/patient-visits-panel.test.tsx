@@ -103,9 +103,9 @@ describe('PatientVisitsPanel', () => {
       />,
     );
 
-    expect(screen.getAllByRole('link', { name: '2026年4月10日(金)' })[0]?.getAttribute('href')).toBe(
-      '/schedules?date=2026-04-10&tab=confirmed&schedule=schedule_1#schedule-schedule_1',
-    );
+    expect(
+      screen.getAllByRole('link', { name: '2026年4月10日(金)' })[0]?.getAttribute('href'),
+    ).toBe('/schedules?date=2026-04-10&tab=confirmed&schedule=schedule_1#schedule-schedule_1');
     expect(screen.getAllByRole('link', { name: '記録詳細' })[0]?.getAttribute('href')).toBe(
       '/visits/record_1',
     );
