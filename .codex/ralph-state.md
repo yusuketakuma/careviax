@@ -10173,6 +10173,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority surfaces include prescription workspace, workflow dashboard, visits, and deeper drug-master/formulary or schedule-proposal card extraction. Browser proof for the changed schedule proposal route remains pending
 - next action: run post-append whitespace/status checks, commit this slice, then continue with prescription workspace or workflow dashboard
 
+### 20260602-154549
+
+- current task: organize prescription workspace top chrome with shared summary/action primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`, `src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`, shared `ActionRail` and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `.codex/ralph-state.md`
+- bugs found: no prescription intake API or queue-selection bug was targeted. The workspace top bar mixed title, loaded count, warning badges, and three navigation actions in one compact row, which wrapped poorly and made status vs action scanning harder
+- security risks found: no prescription query params, realtime invalidation, keyboard selection behavior, linked routes, or patient/prescription detail rendering changed
+- performance issues found: no polling, query, pagination, or row rendering behavior changed. The refactor only reuses shared presentational primitives for the top summary and action rail
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' 'src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx' src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' 'src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx' src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx'`
+- validation results: target Prettier passed unchanged after the unused import removal; focused Vitest passed with 4 files / 7 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority surfaces include workflow dashboard, visits, deeper drug-master/formulary extraction, and browser proof for dense prescription workspace breakpoints
+- next action: run post-append whitespace/status checks, commit this slice, then continue with workflow dashboard or visits
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

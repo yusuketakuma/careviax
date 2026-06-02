@@ -2,10 +2,11 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { FilePlus, AlertTriangle, FileText, Keyboard } from 'lucide-react';
+import { FilePlus, FileText, Keyboard } from 'lucide-react';
 import Link from 'next/link';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import {
@@ -161,47 +162,49 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
 
   return (
     <div className={cn('flex h-[calc(100vh-64px)] flex-col overflow-hidden', className)}>
-      {/* ━━ ステータスバー (レセコン上部) ━━ */}
-      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-1.5">
-        {/* タイトル */}
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-2 lg:flex-row lg:items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <FileText className="size-4 text-primary" aria-hidden="true" />
           <span className="text-sm font-semibold text-foreground">処方受付</span>
         </div>
 
-        <div className="mx-1 h-4 w-px bg-border" />
-
-        {/* 件数サマリ */}
-        <span className="text-[11px] tabular-nums text-muted-foreground">
-          {loadedItems.length}/{totalMatchingCount}件
-        </span>
-
-        {inquiryCount > 0 && (
-          <Badge variant="destructive" className="h-5 gap-0.5 px-1.5 text-[10px]">
-            <AlertTriangle className="size-2.5" aria-hidden="true" />
-            疑義{inquiryCount}
-          </Badge>
-        )}
-        {readyCount > 0 && (
-          <Badge variant="default" className="h-5 gap-0.5 px-1.5 text-[10px] bg-green-600">
-            調剤待{readyCount}
-          </Badge>
-        )}
-
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button variant="default" size="sm" className="h-7 gap-1 px-2.5 text-xs" asChild>
-            <Link href="/prescriptions/new">
-              <FilePlus className="size-3.5" aria-hidden="true" />
-              新規受付
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" asChild>
-            <Link href="/prescriptions/qr-drafts">QR下書き</Link>
-          </Button>
-          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" asChild>
-            <Link href="/dispensing">調剤キュー</Link>
-          </Button>
-        </div>
+        <FilterSummaryBar
+          className="min-w-0 flex-1 border-border/60 bg-background/70 py-2 lg:py-1.5"
+          items={[
+            { label: '読込', value: `${loadedItems.length}/${totalMatchingCount}件` },
+            {
+              label: '疑義',
+              value: `${inquiryCount}件`,
+              tone: inquiryCount > 0 ? 'danger' : 'default',
+            },
+            {
+              label: '調剤待',
+              value: `${readyCount}件`,
+              tone: readyCount > 0 ? 'warning' : 'default',
+            },
+          ]}
+          actions={
+            <ActionRail>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-10 gap-1 px-2.5 text-xs sm:h-7"
+                asChild
+              >
+                <Link href="/prescriptions/new">
+                  <FilePlus className="size-3.5" aria-hidden="true" />
+                  新規受付
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-10 px-2 text-xs sm:h-7" asChild>
+                <Link href="/prescriptions/qr-drafts">QR下書き</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-10 px-2 text-xs sm:h-7" asChild>
+                <Link href="/dispensing">調剤キュー</Link>
+              </Button>
+            </ActionRail>
+          }
+        />
       </div>
 
       {/* ━━ フィルタバー ━━ */}
