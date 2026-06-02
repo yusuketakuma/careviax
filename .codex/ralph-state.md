@@ -10212,6 +10212,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining work includes browser proof for accumulated UI slices, visit detail cleanup, deeper drug-master/formulary extraction, schedule-proposal card extraction, and remaining raw workflow/detail sections
 - next action: run post-append whitespace/status checks, commit this slice, then run browser/dev-server proof for the main changed routes if feasible
 
+### 20260602-155235
+
+- current task: attempt browser/dev-server proof for accumulated UI slices
+- files inspected: `git status --short`, `package.json` scripts, dev-server startup logs, agent-browser login/root snapshot, Playwright route-mocked formulary failure context, server logs
+- files changed: `.codex/ralph-state.md`
+- bugs found: no UI regression was proven. Browser proof for dashboard routes is currently blocked by local e2e database unavailability: dashboard layout auth resolution calls `prisma.user.findUnique()` and fails with `PrismaClientKnownRequestError` code `ECONNREFUSED`
+- security risks found: no code security change. The failed proof did not reach formulary/dashboard UI because server-side auth user resolution failed before route content rendered
+- performance issues found: no code performance change
+- validation commands: `pnpm --config.verify-deps-before-run=false dev:e2e:local`; `agent-browser open http://localhost:3012 && agent-browser wait --load networkidle && agent-browser eval 'document.querySelector("[data-nextjs-dialog], .vite-error-overlay, #webpack-dev-server-client-overlay") ? "ERROR_OVERLAY" : "OK"' && agent-browser eval 'document.body.innerText.trim().length > 0 ? "HAS_CONTENT" : "BLANK"' && agent-browser snapshot -i`; `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm --config.verify-deps-before-run=false exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --grep "formulary route-mocked"`; `agent-browser close`; `lsof -iTCP:3012 -sTCP:LISTEN -n -P`; `kill 2672 2684 2696 || true`
+- validation results: dev server started on `http://localhost:3012`; root route redirected to login and browser verification returned `OK` for no framework overlay plus `HAS_CONTENT`; route-mocked formulary browser smoke failed before UI assertions because `/admin/formulary` rendered the app server error page from local DB `ECONNREFUSED`; browser was closed and dev server processes were stopped
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Browser proof for dashboard routes must be rerun after local e2e Postgres on port 5433 is available or another DB-backed test environment is provided
+- next action: run post-append whitespace/status checks, commit this verification record, then continue with code-level UI/refactor slices or restore DB-backed browser proof when environment allows
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
