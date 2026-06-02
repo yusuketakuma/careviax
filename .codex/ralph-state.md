@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-192205
+
+- current task: post-patient-insurance-editor runtime/browser preflight audit
+- files inspected: `git status --short`, commit output for `48a74d2`, `.codex/ralph-state.md`, and `pnpm medical-ui:e2e:preflight` output after the patient insurance editor heading group
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, mutation, insurance data, patient overview, billing mapping, prescription, export, or patient behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `git commit -m "refactor: improve patient insurance editor heading"`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: patient insurance editor heading group committed as `48a74d2`; medical UI preflight passed environment/script/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL for `ph_os_e2e` on `localhost:5433`, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start the app with `pnpm --config.verify-deps-before-run=false dev:e2e:local`, then run `pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false medical-ui:e2e:targeted`. Broader UI/refactor work remains active, now primarily runtime/browser proof and any rendered clutter found after the app is available
+- next action: commit this audit note, then inspect any remaining static pseudo-heading/action-row candidates or run full browser proof once local runtime is available
+
 ### 20260602-192130
 
 - current task: improve patient insurance editor semantic heading
