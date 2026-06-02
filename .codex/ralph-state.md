@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-190055
+
+- current task: improve external share content semantic headings and share action grouping
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`, `src/app/(dashboard)/patients/[id]/share/page.tsx`, `src/components/ui/action-rail.tsx`, and focused external-share references
+- files changed: `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`, `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the external share surface used decorative `CardTitle` wrappers for share setup, share history/context, and generated result groups, and the primary share-generation action was a full-width button not aligned with the shared patient-detail action grouping. This weakened heading navigation and diverged from the current PH-OS semantic grouping pattern
+- security risks found: no external-access API path, org header, share scope payload, OTP generation/copy behavior, clipboard behavior, generated token URL, auth, authorization, or patient data handling changed
+- performance issues found: no query function, mutation function, state update logic, scope toggling, copy handlers, or render-loop behavior changed. The slice only changes heading markup, shared action layout, Prettier formatting, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`
+- validation results: Prettier completed successfully; focused external share Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Patient detail tabs, medications/prescriptions/detail surfaces, MCS content, cases tab, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this external share heading/action group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-185900
 
 - current task: post-patient-communications runtime/browser preflight audit

@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Copy, Link2, Clock, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -105,7 +106,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           granted_to_name: grantedToName,
           granted_to_contact: grantedToContact || null,
           scope: Object.fromEntries(
-            SCOPE_ITEMS.map((item) => [item.key, selectedScope.has(item.key)])
+            SCOPE_ITEMS.map((item) => [item.key, selectedScope.has(item.key)]),
           ),
           expires_hours: parseInt(expiryHours, 10),
         }),
@@ -151,20 +152,26 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
 
   function handleCopyUrl() {
     if (!generated?.shareUrl) return;
-    navigator.clipboard.writeText(generated.shareUrl).then(() => {
-      toast.success('URLをコピーしました');
-    }).catch(() => {
-      toast.error('コピーに失敗しました');
-    });
+    navigator.clipboard
+      .writeText(generated.shareUrl)
+      .then(() => {
+        toast.success('URLをコピーしました');
+      })
+      .catch(() => {
+        toast.error('コピーに失敗しました');
+      });
   }
 
   function handleCopyOtp() {
     if (!generated?.otp) return;
-    navigator.clipboard.writeText(generated.otp).then(() => {
-      toast.success('OTPをコピーしました');
-    }).catch(() => {
-      toast.error('コピーに失敗しました');
-    });
+    navigator.clipboard
+      .writeText(generated.otp)
+      .then(() => {
+        toast.success('OTPをコピーしました');
+      })
+      .catch(() => {
+        toast.error('コピーに失敗しました');
+      });
   }
 
   function handleGenerate() {
@@ -194,7 +201,8 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         <div>
           <p className="font-medium">個人情報の外部共有には十分注意してください</p>
           <p className="mt-0.5 text-orange-700">
-            発行されたリンクは有効期限内に限り閲覧可能です。共有先連絡先に電話番号を入れると OTP を SMS 送信し、それ以外は別経路で手動共有します。
+            発行されたリンクは有効期限内に限り閲覧可能です。共有先連絡先に電話番号を入れると OTP を
+            SMS 送信し、それ以外は別経路で手動共有します。
           </p>
         </div>
       </div>
@@ -203,7 +211,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       {!generated && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">共有設定</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">共有設定</h2>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
@@ -244,10 +252,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
 
             <div className="space-y-1.5">
               <Label htmlFor="expiry">有効期限</Label>
-              <Select
-                value={expiryHours}
-                onValueChange={(v) => setExpiryHours(v ?? '72')}
-              >
+              <Select value={expiryHours} onValueChange={(v) => setExpiryHours(v ?? '72')}>
                 <SelectTrigger id="expiry">
                   <SelectValue />
                 </SelectTrigger>
@@ -261,28 +266,31 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
               </Select>
             </div>
 
-            <Button
-              className="w-full"
-              onClick={handleGenerate}
-              disabled={generateMutation.isPending}
-            >
-              <Link2 className="mr-1.5 size-4" aria-hidden="true" />
-              {generateMutation.isPending ? '生成中...' : '共有リンクを発行'}
-            </Button>
+            <ActionRail>
+              <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
+                <Link2 className="mr-1.5 size-4" aria-hidden="true" />
+                {generateMutation.isPending ? '生成中...' : '共有リンクを発行'}
+              </Button>
+            </ActionRail>
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">共有済みリンクと連絡文脈</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">
+            共有済みリンクと連絡文脈
+          </h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <p className="text-sm font-medium text-foreground">最近の共有先</p>
             {recentShares.length > 0 ? (
               recentShares.slice(0, 3).map((share) => (
-                <div key={share.id} className="rounded-lg border border-border/70 px-3 py-2 text-sm">
+                <div
+                  key={share.id}
+                  className="rounded-lg border border-border/70 px-3 py-2 text-sm"
+                >
                   <p className="font-medium text-foreground">{share.granted_to_name}</p>
                   <p className="text-xs text-muted-foreground">
                     有効期限 {new Date(share.expires_at).toLocaleString('ja-JP')}
@@ -298,7 +306,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
             <p className="text-sm font-medium text-foreground">直近の自己申告・連絡メモ</p>
             {recentSelfReports.length > 0 ? (
               recentSelfReports.slice(0, 3).map((report) => (
-                <div key={report.id} className="rounded-lg border border-border/70 px-3 py-2 text-sm">
+                <div
+                  key={report.id}
+                  className="rounded-lg border border-border/70 px-3 py-2 text-sm"
+                >
                   <p className="font-medium text-foreground">{report.subject}</p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(report.created_at).toLocaleString('ja-JP')} / {report.status}
@@ -316,10 +327,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       {generated && (
         <Card className="border-green-200">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-green-800">
+            <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-green-800">
               <CheckCircle2 className="size-5" aria-hidden="true" />
               共有リンクを発行しました
-            </CardTitle>
+            </h2>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
@@ -331,7 +342,12 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   className="font-mono text-xs"
                   aria-label="共有URL"
                 />
-                <Button size="icon" variant="outline" onClick={handleCopyUrl} aria-label="URLをコピー">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleCopyUrl}
+                  aria-label="URLをコピー"
+                >
                   <Copy className="size-4" />
                 </Button>
               </div>
@@ -346,7 +362,12 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   className="font-mono text-xl tracking-widest text-center"
                   aria-label="OTP"
                 />
-                <Button size="icon" variant="outline" onClick={handleCopyOtp} aria-label="OTPをコピー">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleCopyOtp}
+                  aria-label="OTPをコピー"
+                >
                   <Copy className="size-4" />
                 </Button>
               </div>
@@ -360,7 +381,8 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
             {generated.otpDelivery === 'sms' ? (
               <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                 <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                OTP を {generated.otpDeliveryDestination ?? '共有先連絡先'} に SMS 送信しました。必要に応じて下の控え用 OTP を確認してください。
+                OTP を {generated.otpDeliveryDestination ?? '共有先連絡先'} に SMS
+                送信しました。必要に応じて下の控え用 OTP を確認してください。
               </div>
             ) : (
               <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
