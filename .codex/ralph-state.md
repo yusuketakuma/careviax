@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-175500
+
+- current task: post-refactor status and medical UI preflight audit
+- files inspected: `git status --short`, `git log --oneline -6`, `.codex/ralph-state.md`, and `pnpm medical-ui:e2e:preflight` output
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, or mutation behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `git log --oneline -6`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: worktree was clean before this audit entry; recent grouped commits were present through `122db84`; medical UI preflight passed script/package/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL on `localhost:5433`, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start app on `localhost:3012`, then run targeted medical UI Playwright/axe specs. More UI/refactor work remains on dense surfaces such as settings, QR scan, schedule proposal workspaces, and patient detail panels
+- next action: commit this audit note, then continue a future loop with the next high-value UI/refactor surface once runtime state is available or another static slice is selected
+
 ### 20260602-175000
 
 - current task: organize referral intake form sections and harden referral date validation
