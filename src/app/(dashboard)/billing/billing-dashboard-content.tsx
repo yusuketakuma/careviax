@@ -3,10 +3,9 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Info, FileX } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { SectionIntro } from '@/components/ui/section-intro';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 
@@ -174,10 +173,10 @@ export function BillingDashboardContent() {
       >
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <CheckCircle2 className="size-4" aria-hidden="true" />
               締め済み
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">月次締め済み候補</CardDescription>
           </CardHeader>
           <CardContent>
@@ -193,10 +192,10 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <Info className="size-4" aria-hidden="true" />
               今月の根拠
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">claimable / unclaimable の内訳</CardDescription>
           </CardHeader>
           <CardContent>
@@ -216,10 +215,10 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <FileX className="size-4" aria-hidden="true" />
               レビュー待ち
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">手当てが必要な請求候補</CardDescription>
           </CardHeader>
           <CardContent>
@@ -239,10 +238,10 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <AlertTriangle className="size-4" aria-hidden="true" />
               訪問前ブロック
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">同意・計画書未整備の予定</CardDescription>
           </CardHeader>
           <CardContent>
@@ -262,10 +261,10 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <FileX className="size-4" aria-hidden="true" />
               報告ドラフト滞留
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">送達待ち・下書きの報告書</CardDescription>
           </CardHeader>
           <CardContent>
@@ -285,10 +284,10 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-muted-foreground">
               <FileX className="size-4" aria-hidden="true" />
               開タスク
-            </CardTitle>
+            </h3>
             <CardDescription className="text-xs">請求根拠レビュー待ち</CardDescription>
           </CardHeader>
           <CardContent>
@@ -303,14 +302,14 @@ export function BillingDashboardContent() {
         </Card>
       </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="分析"
         description="月次の成立率、締め進捗、主要請求コードを見て、今月の請求状態を俯瞰します。"
-      />
-      <div className="grid gap-4 xl:grid-cols-3">
+        contentClassName="grid gap-4 xl:grid-cols-3"
+      >
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="text-sm">今月の算定成立率</CardTitle>
+            <h3 className="font-heading text-sm leading-snug font-medium">今月の算定成立率</h3>
             <CardDescription className="text-xs">
               claimable evidence / 全 billing evidence
             </CardDescription>
@@ -336,7 +335,7 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="text-sm">今月の締め進捗</CardTitle>
+            <h3 className="font-heading text-sm leading-snug font-medium">今月の締め進捗</h3>
             <CardDescription className="text-xs">
               reviewed/excluded/exported を含む close rate
             </CardDescription>
@@ -359,7 +358,7 @@ export function BillingDashboardContent() {
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="text-sm">主要請求コード</CardTitle>
+            <h3 className="font-heading text-sm leading-snug font-medium">主要請求コード</h3>
             <CardDescription className="text-xs">
               直近6か月で確定または締め済みの上位コード
             </CardDescription>
@@ -391,16 +390,16 @@ export function BillingDashboardContent() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="月次推移と主要ブロッカー"
         description="最近の推移と、算定不可の主因を並べて確認する補助グループです。"
-      />
-      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        contentClassName="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]"
+      >
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">月次推移</CardTitle>
+            <h3 className="font-heading text-base leading-snug font-medium">月次推移</h3>
             <CardDescription>
               直近6か月の候補生成、レビュー滞留、締め済みを並べて確認します。
             </CardDescription>
@@ -453,7 +452,7 @@ export function BillingDashboardContent() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">主要ブロッカー</CardTitle>
+            <h3 className="font-heading text-base leading-snug font-medium">主要ブロッカー</h3>
             <CardDescription>算定不可の主因を上位から表示します。</CardDescription>
           </CardHeader>
           <CardContent>
@@ -480,33 +479,26 @@ export function BillingDashboardContent() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="実行ワークベンチ"
         description="最終的な確定、除外、締め、CSV 出力へ進むアクションをここでまとめます。"
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">月次締めワークベンチ</CardTitle>
-          <CardDescription>
-            レビュー待ちの解消、月次締め、CSV 出力は候補一覧から処理します。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm md:flex-row md:items-center md:justify-between">
-          <p className="text-muted-foreground">
-            未レビュー {stats?.review_required_candidates ?? 0} 件 / 締め準備{' '}
-            {stats?.current_month_close_ready ?? 0} 件 / 締め済み {stats?.exported_candidates ?? 0}{' '}
-            件
-          </p>
+        actions={
           <Link
             href="/billing/candidates"
-            className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:min-h-0"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:min-h-0"
           >
             候補一覧を開く
           </Link>
-        </CardContent>
-      </Card>
+        }
+        contentClassName="text-sm"
+      >
+        <p className="text-muted-foreground">
+          未レビュー {stats?.review_required_candidates ?? 0} 件 / 締め準備{' '}
+          {stats?.current_month_close_ready ?? 0} 件 / 締め済み {stats?.exported_candidates ?? 0} 件
+        </p>
+      </PageSection>
     </div>
   );
 }
