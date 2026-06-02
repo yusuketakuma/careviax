@@ -2,7 +2,7 @@
 
 import { differenceInYears, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   adlLabels,
   careLevelLabels,
@@ -53,7 +53,10 @@ const genderLabels: Record<string, string> = {
   other: 'その他',
 };
 
-function formatResidenceAddress(address: string | null | undefined, unitName: string | null | undefined) {
+function formatResidenceAddress(
+  address: string | null | undefined,
+  unitName: string | null | undefined,
+) {
   if (!address) return '—';
   if (!unitName) return address;
 
@@ -66,9 +69,7 @@ function formatResidenceAddress(address: string | null | undefined, unitName: st
     normalizedAddress.endsWith(normalizedUnit) ||
     (unitStem && normalizedAddress.endsWith(unitStem))
   ) {
-    return normalizedAddress.includes(` ${unitName}`)
-      ? normalizedAddress
-      : normalizedAddress;
+    return normalizedAddress.includes(` ${unitName}`) ? normalizedAddress : normalizedAddress;
   }
 
   return `${normalizedAddress} ${normalizedUnit}`;
@@ -86,7 +87,10 @@ function DetailBlock({
       <p className="text-xs font-semibold tracking-wide text-muted-foreground">{title}</p>
       <dl className="space-y-2 text-sm">
         {rows.map((row) => (
-          <div key={`${title}-${row.label}`} className="grid gap-1 sm:grid-cols-[140px_minmax(0,1fr)]">
+          <div
+            key={`${title}-${row.label}`}
+            className="grid gap-1 sm:grid-cols-[140px_minmax(0,1fr)]"
+          >
             <dt className="text-muted-foreground">{row.label}</dt>
             <dd className="min-w-0 break-words text-foreground">{row.value || '—'}</dd>
           </div>
@@ -97,7 +101,9 @@ function DetailBlock({
 }
 
 export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardProps) {
-  const intakeCase = patient.cases.find((careCase) => getHomeVisitIntake(careCase.required_visit_support));
+  const intakeCase = patient.cases.find((careCase) =>
+    getHomeVisitIntake(careCase.required_visit_support),
+  );
   const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
   const pref = patient.scheduling_preference;
@@ -109,8 +115,10 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
   const swallowingRoute = pref?.swallowing_route ?? intake?.swallowing_route;
   const infectionIsolation =
     pref?.infection_isolation != null
-      ? (pref.infection_isolation ? '要隔離' : null)
-      : intake?.infection_isolation ?? null;
+      ? pref.infection_isolation
+        ? '要隔離'
+        : null
+      : (intake?.infection_isolation ?? null);
 
   if (!intake || !intakeCase) {
     return null;
@@ -131,7 +139,9 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
       <CardHeader className="space-y-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <CardTitle className="text-base">訪問薬剤管理 新規依頼受付票</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">
+              訪問薬剤管理 新規依頼受付票
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               受付時に得た情報を、依頼元・患者特定・訪問条件・薬学的管理・多職種連携の観点で再構成しています。
             </p>
@@ -158,7 +168,10 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
             },
             {
               label: '電話 / FAX',
-              value: [intake.requester?.phone, intake.requester?.fax ? `FAX ${intake.requester.fax}` : null]
+              value: [
+                intake.requester?.phone,
+                intake.requester?.fax ? `FAX ${intake.requester.fax}` : null,
+              ]
                 .filter(Boolean)
                 .join(' / '),
             },
@@ -181,7 +194,10 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
         <DetailBlock
           title="B. 患者特定情報"
           rows={[
-            { label: '患者氏名', value: [patient.name, patient.name_kana].filter(Boolean).join(' / ') },
+            {
+              label: '患者氏名',
+              value: [patient.name, patient.name_kana].filter(Boolean).join(' / '),
+            },
             { label: '主病名', value: intake.primary_disease ?? '—' },
             {
               label: '年齢 / 性別',
@@ -215,7 +231,10 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
             {
               label: '主連絡先',
               value: [
-                labelOf(intake.primary_contact_preference, { phone: '電話優先', mobile: '携帯優先' }),
+                labelOf(intake.primary_contact_preference, {
+                  phone: '電話優先',
+                  mobile: '携帯優先',
+                }),
                 intake.contact_phone ? `電話 ${intake.contact_phone}` : null,
                 intake.contact_mobile ? `携帯 ${intake.contact_mobile}` : null,
               ]
@@ -273,9 +292,10 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
           rows={[
             {
               label: '服薬支援・実施状況',
-              value: [...medicationSupport, intake.medication_support_other]
-                .filter(Boolean)
-                .join(' / ') || '—',
+              value:
+                [...medicationSupport, intake.medication_support_other]
+                  .filter(Boolean)
+                  .join(' / ') || '—',
             },
             {
               label: 'ENT処方',

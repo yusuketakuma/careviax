@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-185330
+
+- current task: improve patient intake summary card semantic heading and focused coverage
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx`, `src/lib/patient/home-visit-intake.ts`, `src/lib/patient/home-visit-intake.test.ts`, and adjacent patient card tests
+- files changed: `src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-intake-summary-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient intake summary card used a decorative `CardTitle` for a major patient-detail intake summary group. This weakened heading navigation for the new-request intake surface and diverged from the semantic h2 pattern already applied to adjacent patient detail groups
+- security risks found: no patient API path, intake JSON parsing, case selection, scheduling preference fallback, residence rendering, auth, authorization, mutation, or patient data handling changed
+- performance issues found: no query, mutation, memo, loop, data transformation, or render-path behavior changed. The slice only changes heading markup, Prettier formatting, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-intake-summary-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient intake summary Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Care team, communications, external share, medications/prescriptions/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient intake summary heading group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-185140
 
 - current task: post-visit-constraints runtime/browser preflight audit
