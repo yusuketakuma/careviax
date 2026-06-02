@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-180226
+
+- current task: post-patient-readiness runtime/browser preflight audit
+- files inspected: `git status --short`, `git log --oneline -5`, `.codex/ralph-state.md`, and `pnpm medical-ui:e2e:preflight` output after the patient readiness heading group
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, mutation, patient readiness, workflow, billing, prescription, or export behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `git log --oneline -5`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: worktree was clean before this audit entry; recent grouped commits were present through `beddf0a`; medical UI preflight passed environment/script/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL for `ph_os_e2e` on `localhost:5433`, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start the app with `pnpm --config.verify-deps-before-run=false dev:e2e:local`, then run `pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false medical-ui:e2e:targeted`. Broader UI/refactor work remains active, including remaining patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof
+- next action: commit this audit note, then continue another static UI/refactor slice or run full browser proof once local runtime is available
+
 ### 20260602-180148
 
 - current task: improve patient readiness card semantic heading and add focused coverage
