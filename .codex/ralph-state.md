@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-162720
+
+- current task: organize the schedules confirmed-tab presentation and improve accessible state announcements
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and the confirmed-tab usability reviewer subagent report
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `.codex/ralph-state.md`
+- bugs found: confirmed-tab facility filters exposed selection mainly through button variant, confirmed-tab loading/empty states were not announced as status regions, preparation checklist dots used color alone to communicate completion state, facility route-order number inputs were all named only `順序`, and several action clusters used ad hoc flex wrappers instead of the shared action layout primitive
+- security risks found: no API, auth, authorization, tenant, PHI logging, or mutation payload behavior changed. The accessibility changes reduce operational confusion around facility filters and preparation status, but no direct security vulnerability was changed
+- performance issues found: no fetch, query, memo, route-map, gantt, or mutation behavior changed. The refactor reuses existing layout primitives and adds only static ARIA/sr-only markup
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx src/components/ui/action-rail.tsx src/components/ui/action-rail.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`
+- validation results: Prettier completed with no further changes after formatting; focused Vitest passed with 4 files / 11 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: confirmed-tab usability review still found low-risk issues in shared route-map components: `VisitRoutePreviewPanel` route loading/empty/error states need status/alert roles, and `VisitRouteMap` marker titles/info windows should include textual status/priority rather than relying on marker color. DB-backed browser proof for `/schedules` remains pending until local e2e DB port `5433` is available
+- next action: address the shared route-map accessibility slice, then retry browser proof or move to another high-value UI surface if DB is still unavailable
+
 ### 20260602-162430
 
 - current task: organize the schedules day-view left rail and remove context-free safety actions

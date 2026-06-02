@@ -287,6 +287,19 @@ describe('ScheduleDayView', () => {
     ).toBeTruthy();
   });
 
+  it('announces confirmed schedule empty states to assistive technology', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      connected: true,
+    });
+
+    render(<ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />);
+
+    expect(screen.getByRole('status').textContent).toContain('4月9日(木) の確定予定はありません');
+  });
+
   it('drops malformed fresh visit brief cache rows instead of rendering them', async () => {
     visitBriefCacheToArrayMock.mockResolvedValue([
       {

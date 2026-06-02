@@ -3237,193 +3237,188 @@ export function ScheduleDayView({
 
           <TabsContent value="confirmed" className="space-y-4">
             {facilityTracker.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Building2 className="size-4 text-sky-600" aria-hidden="true" />
-                    同時訪問グループトラッカー
-                  </CardTitle>
-                  <CardDescription>
-                    同日・同一施設または個人宅の訪問を束ねて、未準備と未完了を訪問先単位で確認します
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
+              <PageSection
+                title="同時訪問グループトラッカー"
+                description="同日・同一施設または個人宅の訪問を束ねて、未準備と未完了を訪問先単位で確認します"
+                contentClassName="space-y-3"
+                actions={<Building2 className="size-4 text-sky-600" aria-hidden="true" />}
+              >
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={activeFacilityFilter === null ? 'default' : 'outline'}
+                    onClick={() => setFacilityFilter(null)}
+                    aria-pressed={activeFacilityFilter === null}
+                  >
+                    全件表示
+                  </Button>
+                  {facilityTracker.map((group) => (
                     <Button
+                      key={group.key}
                       size="sm"
-                      variant={activeFacilityFilter === null ? 'default' : 'outline'}
-                      onClick={() => setFacilityFilter(null)}
+                      variant={activeFacilityFilter === group.key ? 'default' : 'outline'}
+                      onClick={() => setFacilityFilter(group.key)}
+                      aria-pressed={activeFacilityFilter === group.key}
                     >
-                      全件表示
+                      {group.label}
                     </Button>
-                    {facilityTracker.map((group) => (
-                      <Button
-                        key={group.key}
-                        size="sm"
-                        variant={activeFacilityFilter === group.key ? 'default' : 'outline'}
-                        onClick={() => setFacilityFilter(group.key)}
-                      >
-                        {group.label}
-                      </Button>
-                    ))}
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {facilityTracker.map((group) => (
-                      <div
-                        key={group.key}
-                        className={[
-                          'rounded-xl border px-4 py-3 text-sm transition',
-                          activeFacilityFilter === group.key
-                            ? 'border-sky-300 bg-sky-50'
-                            : 'border-border bg-background',
-                        ].join(' ')}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-foreground">{group.label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {group.siteName ?? '拠点未設定'} / 対象 {group.patientNames.length} 名
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">
-                              ルート順{' '}
-                              {group.routeOrders.length > 0
-                                ? group.routeOrders.join(', ')
-                                : '未設定'}
-                            </Badge>
-                            {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
-                          </div>
+                  ))}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {facilityTracker.map((group) => (
+                    <div
+                      key={group.key}
+                      className={[
+                        'rounded-xl border px-4 py-3 text-sm transition',
+                        activeFacilityFilter === group.key
+                          ? 'border-sky-300 bg-sky-50'
+                          : 'border-border bg-background',
+                      ].join(' ')}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{group.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {group.siteName ?? '拠点未設定'} / 対象 {group.patientNames.length} 名
+                          </p>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <Badge variant="outline">準備完了 {group.preparedCount} 名</Badge>
-                          <Badge variant="outline">持参物未確認 {group.carryPendingCount} 名</Badge>
-                          <Badge
-                            variant="outline"
-                            className={
-                              group.incompleteCount > 0
-                                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            }
-                          >
-                            未完了 {group.incompleteCount} 名
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">
+                            ルート順{' '}
+                            {group.routeOrders.length > 0 ? group.routeOrders.join(', ') : '未設定'}
                           </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          行をドラッグして順序を並べ替えるか、番号入力で微調整できます。
-                        </p>
-                        <div className="mt-3 space-y-2">
-                          {group.patients.map((patient, index) => (
-                            <div
-                              key={patient.scheduleId}
-                              draggable
-                              onDragStart={() =>
-                                setDraggingFacilityPatient({
-                                  groupKey: group.key,
-                                  scheduleId: patient.scheduleId,
-                                })
-                              }
-                              onDragEnd={() => setDraggingFacilityPatient(null)}
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={(event) => {
-                                event.preventDefault();
-                                if (
-                                  draggingFacilityPatient?.groupKey !== group.key ||
-                                  !draggingFacilityPatient?.scheduleId
-                                ) {
-                                  return;
-                                }
-                                reorderFacilityPatients(
-                                  group,
-                                  draggingFacilityPatient.scheduleId,
-                                  patient.scheduleId,
-                                );
-                                setDraggingFacilityPatient(null);
-                              }}
-                              className={[
-                                'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
-                                draggingFacilityPatient?.scheduleId === patient.scheduleId
-                                  ? 'border-sky-300 bg-sky-50'
-                                  : '',
-                              ].join(' ')}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-foreground">{patient.patientName}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {patient.unitName ? `部屋 ${patient.unitName}` : '部屋番号未設定'}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Label
-                                  htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
-                                  className="text-xs text-muted-foreground"
-                                >
-                                  順序
-                                </Label>
-                                <Input
-                                  id={`facility-route-${group.key}-${patient.scheduleId}`}
-                                  type="number"
-                                  min={1}
-                                  value={
-                                    facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
-                                    facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
-                                    String(patient.routeOrder ?? index + 1)
-                                  }
-                                  onChange={(event) =>
-                                    setFacilityRouteOverrides((prev) => ({
-                                      ...prev,
-                                      [group.key]: {
-                                        ...(prev[group.key] ?? {}),
-                                        [patient.scheduleId]: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="h-8 w-20"
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openFacilityVisitDayDialog(group)}
-                          >
-                            定期訪問日を設定
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              facilityBatchMutation.mutate({
-                                groupKey: group.key,
-                                carryItemsConfirmed: false,
-                              })
-                            }
-                            disabled={facilityBatchMutation.isPending}
-                          >
-                            同時訪問を保存
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              facilityBatchMutation.mutate({
-                                groupKey: group.key,
-                                carryItemsConfirmed: true,
-                              })
-                            }
-                            disabled={facilityBatchMutation.isPending}
-                          >
-                            持参確認を一括反映
-                          </Button>
+                          {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <Badge variant="outline">準備完了 {group.preparedCount} 名</Badge>
+                        <Badge variant="outline">持参物未確認 {group.carryPendingCount} 名</Badge>
+                        <Badge
+                          variant="outline"
+                          className={
+                            group.incompleteCount > 0
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          }
+                        >
+                          未完了 {group.incompleteCount} 名
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        行をドラッグして順序を並べ替えるか、番号入力で微調整できます。
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {group.patients.map((patient, index) => (
+                          <div
+                            key={patient.scheduleId}
+                            draggable
+                            onDragStart={() =>
+                              setDraggingFacilityPatient({
+                                groupKey: group.key,
+                                scheduleId: patient.scheduleId,
+                              })
+                            }
+                            onDragEnd={() => setDraggingFacilityPatient(null)}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              if (
+                                draggingFacilityPatient?.groupKey !== group.key ||
+                                !draggingFacilityPatient?.scheduleId
+                              ) {
+                                return;
+                              }
+                              reorderFacilityPatients(
+                                group,
+                                draggingFacilityPatient.scheduleId,
+                                patient.scheduleId,
+                              );
+                              setDraggingFacilityPatient(null);
+                            }}
+                            className={[
+                              'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
+                              draggingFacilityPatient?.scheduleId === patient.scheduleId
+                                ? 'border-sky-300 bg-sky-50'
+                                : '',
+                            ].join(' ')}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground">{patient.patientName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {patient.unitName ? `部屋 ${patient.unitName}` : '部屋番号未設定'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Label
+                                htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
+                                className="text-xs text-muted-foreground"
+                              >
+                                順序
+                              </Label>
+                              <Input
+                                id={`facility-route-${group.key}-${patient.scheduleId}`}
+                                aria-label={`${group.label} ${patient.patientName} の訪問順序`}
+                                type="number"
+                                min={1}
+                                value={
+                                  facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
+                                  facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
+                                  String(patient.routeOrder ?? index + 1)
+                                }
+                                onChange={(event) =>
+                                  setFacilityRouteOverrides((prev) => ({
+                                    ...prev,
+                                    [group.key]: {
+                                      ...(prev[group.key] ?? {}),
+                                      [patient.scheduleId]: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="h-8 w-20"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <ActionRail align="start" className="mt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openFacilityVisitDayDialog(group)}
+                        >
+                          定期訪問日を設定
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            facilityBatchMutation.mutate({
+                              groupKey: group.key,
+                              carryItemsConfirmed: false,
+                            })
+                          }
+                          disabled={facilityBatchMutation.isPending}
+                        >
+                          同時訪問を保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            facilityBatchMutation.mutate({
+                              groupKey: group.key,
+                              carryItemsConfirmed: true,
+                            })
+                          }
+                          disabled={facilityBatchMutation.isPending}
+                        >
+                          持参確認を一括反映
+                        </Button>
+                      </ActionRail>
+                    </div>
+                  ))}
+                </div>
+              </PageSection>
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
               <VisitRoutePreviewPanel
@@ -3497,137 +3492,142 @@ export function ScheduleDayView({
               />
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
-              <Card className="hidden md:block">
-                <CardHeader>
-                  <CardTitle className="text-base">タブレット日次ガント</CardTitle>
-                  <CardDescription>
-                    縦軸=時間、横軸=薬剤師。横向きで当日の訪問密度と準備状況を俯瞰できます
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="outline">
-                      時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
-                      {formatMinutesLabel(ganttWindow.endMinutes)}
-                    </Badge>
-                    <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
-                    <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
-                    <Badge variant="outline">横向き推奨</Badge>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
-                      <thead>
-                        <tr>
-                          <th className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground">
-                            時間
-                          </th>
-                          {ganttTableColumns.map((column) => (
-                            <th
-                              key={column.pharmacistId}
-                              className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <p className="text-sm font-medium text-foreground">
-                                    {column.pharmacistName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {column.siteName ?? '拠点未設定'}
-                                  </p>
-                                </div>
-                                <Badge variant="outline">{column.schedules.length}件</Badge>
+              <PageSection
+                title="タブレット日次ガント"
+                description="縦軸=時間、横軸=薬剤師。横向きで当日の訪問密度と準備状況を俯瞰できます"
+                className="hidden md:block"
+                contentClassName="space-y-4"
+              >
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline">
+                    時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
+                    {formatMinutesLabel(ganttWindow.endMinutes)}
+                  </Badge>
+                  <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
+                  <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
+                  <Badge variant="outline">横向き推奨</Badge>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
+                    <thead>
+                      <tr>
+                        <th className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground">
+                          時間
+                        </th>
+                        {ganttTableColumns.map((column) => (
+                          <th
+                            key={column.pharmacistId}
+                            className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  {column.pharmacistName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {column.siteName ?? '拠点未設定'}
+                                </p>
                               </div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ganttSlots.map((slot, slotIndex) => (
-                          <tr key={slot} className="align-top">
-                            <th className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground">
-                              {formatMinutesLabel(slot)}
-                            </th>
-                            {ganttTableColumns.map((column) => {
-                              const scheduleCell = column.scheduleStarts.get(slotIndex);
-                              if (scheduleCell) {
-                                return (
-                                  <td
-                                    key={`${column.pharmacistId}-${slot}`}
-                                    rowSpan={scheduleCell.span}
-                                    className="w-56 min-w-56 align-top"
-                                  >
-                                    <div
-                                      className={[
-                                        'flex h-full min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
-                                        ganttBlockClass(scheduleCell.schedule),
-                                      ].join(' ')}
-                                    >
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="min-w-0">
-                                          <p className="truncate text-sm font-medium">
-                                            {scheduleCell.schedule.case_.patient.name}
-                                          </p>
-                                          <p className="text-[11px] opacity-80">
-                                            {timeLabel(
-                                              scheduleCell.schedule.time_window_start,
-                                              scheduleCell.schedule.time_window_end,
-                                            )}
-                                          </p>
-                                        </div>
-                                        <Badge variant="outline" className="shrink-0 bg-white/70">
-                                          #{scheduleCell.schedule.route_order ?? '-'}
-                                        </Badge>
-                                      </div>
-                                      <div className="mt-2 flex flex-wrap gap-1">
-                                        <Badge variant="outline" className="bg-white/70">
-                                          {
-                                            SCHEDULE_STATUS_LABELS[
-                                              scheduleCell.schedule.schedule_status
-                                            ]
-                                          }
-                                        </Badge>
-                                        <Badge variant="outline" className="bg-white/70">
-                                          {scheduleCell.schedule.preparation?.prepared_at
-                                            ? '準備完了'
-                                            : '準備未了'}
-                                        </Badge>
-                                      </div>
-                                      <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
-                                        {addressOfPatient(scheduleCell.schedule)}
-                                      </p>
-                                    </div>
-                                  </td>
-                                );
-                              }
-
-                              if (column.coveredSlots.has(slotIndex)) {
-                                return null;
-                              }
-
+                              <Badge variant="outline">{column.schedules.length}件</Badge>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ganttSlots.map((slot, slotIndex) => (
+                        <tr key={slot} className="align-top">
+                          <th className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground">
+                            {formatMinutesLabel(slot)}
+                          </th>
+                          {ganttTableColumns.map((column) => {
+                            const scheduleCell = column.scheduleStarts.get(slotIndex);
+                            if (scheduleCell) {
                               return (
                                 <td
                                   key={`${column.pharmacistId}-${slot}`}
-                                  className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
-                                />
+                                  rowSpan={scheduleCell.span}
+                                  className="w-56 min-w-56 align-top"
+                                >
+                                  <div
+                                    className={[
+                                      'flex h-full min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
+                                      ganttBlockClass(scheduleCell.schedule),
+                                    ].join(' ')}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium">
+                                          {scheduleCell.schedule.case_.patient.name}
+                                        </p>
+                                        <p className="text-[11px] opacity-80">
+                                          {timeLabel(
+                                            scheduleCell.schedule.time_window_start,
+                                            scheduleCell.schedule.time_window_end,
+                                          )}
+                                        </p>
+                                      </div>
+                                      <Badge variant="outline" className="shrink-0 bg-white/70">
+                                        #{scheduleCell.schedule.route_order ?? '-'}
+                                      </Badge>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      <Badge variant="outline" className="bg-white/70">
+                                        {
+                                          SCHEDULE_STATUS_LABELS[
+                                            scheduleCell.schedule.schedule_status
+                                          ]
+                                        }
+                                      </Badge>
+                                      <Badge variant="outline" className="bg-white/70">
+                                        {scheduleCell.schedule.preparation?.prepared_at
+                                          ? '準備完了'
+                                          : '準備未了'}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
+                                      {addressOfPatient(scheduleCell.schedule)}
+                                    </p>
+                                  </div>
+                                </td>
                               );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+                            }
+
+                            if (column.coveredSlots.has(slotIndex)) {
+                              return null;
+                            }
+
+                            return (
+                              <td
+                                key={`${column.pharmacistId}-${slot}`}
+                                className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
+                              />
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </PageSection>
             )}
             {schedulesLoading ? (
               <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                <CardContent
+                  role="status"
+                  aria-live="polite"
+                  className="py-12 text-center text-sm text-muted-foreground"
+                >
                   確定予定を読み込んでいます...
                 </CardContent>
               </Card>
             ) : visibleSchedules.length === 0 ? (
               <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                <CardContent
+                  role="status"
+                  aria-live="polite"
+                  className="py-12 text-center text-sm text-muted-foreground"
+                >
                   {activeFacilityFilter
                     ? '絞り込み条件に一致する訪問はありません'
                     : `${format(selectedDay, 'M月d日(E)', { locale: ja })} の確定予定はありません`}
@@ -3831,7 +3831,11 @@ export function ScheduleDayView({
                                   'size-2 rounded-full',
                                   schedule.preparation?.[field] ? 'bg-emerald-500' : 'bg-slate-300',
                                 ].join(' ')}
-                              />
+                              >
+                                <span className="sr-only">
+                                  {schedule.preparation?.[field] ? '完了' : '未完了'}
+                                </span>
+                              </div>
                               <span className="text-xs text-foreground">{label}</span>
                             </div>
                           ))}
@@ -3892,7 +3896,7 @@ export function ScheduleDayView({
                       {['completed', 'cancelled', 'rescheduled'].includes(
                         schedule.schedule_status,
                       ) ? null : (
-                        <div className="flex flex-wrap gap-2 border-t pt-4">
+                        <ActionRail align="start" className="border-t pt-4">
                           {['ready', 'departed'].includes(schedule.schedule_status) && (
                             <Button
                               size="sm"
@@ -3934,7 +3938,7 @@ export function ScheduleDayView({
                           >
                             リスケ候補を作る
                           </Button>
-                        </div>
+                        </ActionRail>
                       )}
                     </CardContent>
                   </Card>
