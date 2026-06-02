@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-170000
+
+- current task: organize external viewer summary and follow-up groups around the external sharing boundary
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/external/external-viewer-content.tsx`, `src/app/(dashboard)/external/external-viewer-content.test.tsx`, `src/components/layout/page-section.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/external/external-viewer-content.tsx`, `src/app/(dashboard)/external/external-viewer-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the external viewer split active shares, self reports, and community follow-up into separate intro/grid/card groups, while self-report actions used ad hoc flex wrappers. This made the external sharing boundary and follow-up responsibilities less explicit
+- security risks found: no external-share API, auth, authorization, patient scoping, self-report mutation payload, task creation behavior, PHI logging, or query behavior changed. The slice only clarifies the visual grouping of existing external sharing and follow-up data
+- performance issues found: no query, fetch, mutation, cache invalidation, or rendering loop behavior changed. The slice reuses shared layout primitives only
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`
+- validation results: Prettier completed with no changes after formatting; focused Vitest passed with 3 files / 6 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: code-mapper still identified `conferences-content.tsx` as a remaining cluttered surface. Browser proof remains blocked by local app/db availability
+- next action: inspect `conferences/conferences-content.tsx` for a focused header/filter/action grouping slice
+
 ### 20260602-165500
 
 - current task: organize patient workflow preview sections with shared layout primitives

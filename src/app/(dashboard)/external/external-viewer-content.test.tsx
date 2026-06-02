@@ -46,6 +46,8 @@ describe('ExternalViewerContent', () => {
 
     expect(screen.getByTestId('external-context-banner')).toBeTruthy();
     expect(screen.getByText('ホームから自己申告キューにフォーカスして開いています。')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '外部連携サマリー' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '共有とフォロー' })).toBeTruthy();
   });
 
   it('sends the self report version timestamp when updating status', async () => {

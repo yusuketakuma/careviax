@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { SectionIntro } from '@/components/ui/section-intro';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
 import type { ExternalFocus } from '@/lib/dashboard/home-link-builders';
 
@@ -204,11 +205,11 @@ export function ExternalViewerContent({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
-      <SectionIntro
+      <PageSection
         title="外部連携サマリー"
         description="有効な共有、未解消の自己申告、地域フォローを先に把握する導入グループです。"
-      />
-      <div className="grid gap-4 xl:grid-cols-3">
+        contentClassName="grid gap-4 xl:grid-cols-3"
+      >
         <SummaryCard
           title="有効な共有"
           value={grants.length}
@@ -227,13 +228,13 @@ export function ExternalViewerContent({
           description="紹介元・地域活動の要対応"
           icon={Users}
         />
-      </div>
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="共有とフォロー"
         description="共有 grant、自己申告キュー、地域活動フォローを役割ごとに分けて確認します。"
-      />
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        contentClassName="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]"
+      >
         <Card className={cn(initialFocus === 'shares' ? 'ring-2 ring-primary/25' : null)}>
           <CardHeader>
             <CardTitle className="text-base">外部共有管理</CardTitle>
@@ -325,7 +326,7 @@ export function ExternalViewerContent({
                       {report.category}
                       {report.requested_callback ? ' / 折返し希望' : ''}
                     </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <ActionRail align="start" className="mt-3">
                       <Button
                         size="sm"
                         variant="outline"
@@ -367,7 +368,7 @@ export function ExternalViewerContent({
                       >
                         解決
                       </Button>
-                    </div>
+                    </ActionRail>
                   </div>
                 ))
               )}
@@ -402,7 +403,7 @@ export function ExternalViewerContent({
             </CardContent>
           </Card>
         </div>
-      </div>
+      </PageSection>
     </div>
   );
 }
