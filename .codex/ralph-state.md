@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-181223
+
+- current task: improve patient conditions card semantic heading and action grouping
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`, `src/app/api/patients/[id]/detail-slices.test.ts`, and patient condition test search results
+- files changed: `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient conditions card used a decorative `CardTitle` for the disease/problem list and a hand-built action row for add/save controls. This clinical baseline group should expose a semantic heading and use the shared action layout
+- security risks found: no patient conditions API path, org header, PUT payload shape, mutation error handling, query invalidation, toast behavior, condition row state, auth, authorization, or patient data handling changed
+- performance issues found: no state initialization, row mapping, filtering, mutation function, invalidation flow, or render-loop behavior changed. The slice only changes heading markup, shared action layout, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' 'src/app/api/patients/[id]/detail-slices.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient conditions and detail-slices Vitest passed with 2 files / 36 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient conditions card group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-181016
 
 - current task: post-patient-mcs-link runtime/browser preflight audit

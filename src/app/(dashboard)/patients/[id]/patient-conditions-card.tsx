@@ -6,7 +6,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,16 +95,15 @@ export function PatientConditionsCard({
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((payload as { message?: string }).message ?? '病名・課題リストの保存に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? '病名・課題リストの保存に失敗しました',
+        );
       }
       return payload;
     },
     onSuccess: async () => {
       toast.success('病名・課題リストを更新しました');
-      await invalidateQueryKeys(
-        queryClient,
-        getPatientCareQueryKeys({ orgId, patientId })
-      );
+      await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '病名・課題リストの保存に失敗しました');
@@ -113,14 +113,17 @@ export function PatientConditionsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">病名・課題リスト</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">病名・課題リスト</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {conditions
             .filter((condition) => condition.name.trim())
             .map((condition, index) => (
-              <Badge key={`${condition.condition_type}-${condition.name}-${index}`} variant="outline">
+              <Badge
+                key={`${condition.condition_type}-${condition.name}-${index}`}
+                variant="outline"
+              >
                 {condition.condition_type === 'disease' ? '疾患' : '課題'}: {condition.name}
               </Badge>
             ))}
@@ -231,7 +234,9 @@ export function PatientConditionsCard({
                   variant="ghost"
                   size="sm"
                   onClick={() =>
-                    setConditions((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                    setConditions((current) =>
+                      current.filter((_, itemIndex) => itemIndex !== index),
+                    )
                   }
                   disabled={conditions.length === 1}
                 >
@@ -243,7 +248,7 @@ export function PatientConditionsCard({
           ))}
         </div>
 
-        <div className="flex flex-wrap justify-between gap-2">
+        <ActionRail align="between">
           <Button
             type="button"
             variant="outline"
@@ -267,7 +272,7 @@ export function PatientConditionsCard({
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
-        </div>
+        </ActionRail>
       </CardContent>
     </Card>
   );
