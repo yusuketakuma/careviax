@@ -410,6 +410,7 @@ model QrScanDraft {
   status              QrDraftStatus @default(pending)
   schema_version      Int           @default(1)
   raw_qr_texts        Json // String[]
+  qr_payload_hash     String?
   parsed_data         Json // JahisQRData
   parse_errors        Json? // JahisParseError[]
   auto_completed      Json? // AutoCompletedField[]
@@ -422,6 +423,7 @@ model QrScanDraft {
 
   @@index([org_id])
   @@index([org_id, status])
+  @@index([org_id, qr_payload_hash])
   @@index([session_id])
   @@index([patient_id])
 }

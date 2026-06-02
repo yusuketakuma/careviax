@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 type Args = {
   baseUrl: string;
@@ -10,13 +11,37 @@ type Args = {
   headers: Record<string, string>;
 };
 
-function parseArgs(argv: string[]): Args {
+const DEFAULT_REQUESTS = 40;
+const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_TARGET_MS = 500;
+const MAX_REQUESTS = 10_000;
+const MAX_CONCURRENCY = 100;
+const MAX_TARGET_MS = 300_000;
+
+function normalizePositiveInteger(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+
+  const normalized = Math.trunc(parsed);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) return fallback;
+
+  return Math.min(normalized, max);
+}
+
+export function parseArgs(
+  argv: string[],
+  env: Record<string, string | undefined> = process.env,
+): Args {
   const args: Args = {
-    baseUrl: process.env.PERF_BASE_URL ?? 'http://127.0.0.1:3000',
-    requests: Number(process.env.PERF_REQUESTS ?? '40'),
-    concurrency: Number(process.env.PERF_CONCURRENCY ?? '4'),
-    targetMs: Number(process.env.PERF_TARGET_MS ?? '500'),
-    method: process.env.PERF_METHOD ?? 'GET',
+    baseUrl: env.PERF_BASE_URL ?? 'http://127.0.0.1:3000',
+    requests: normalizePositiveInteger(env.PERF_REQUESTS, DEFAULT_REQUESTS, MAX_REQUESTS),
+    concurrency: normalizePositiveInteger(
+      env.PERF_CONCURRENCY,
+      DEFAULT_CONCURRENCY,
+      MAX_CONCURRENCY,
+    ),
+    targetMs: normalizePositiveInteger(env.PERF_TARGET_MS, DEFAULT_TARGET_MS, MAX_TARGET_MS),
+    method: env.PERF_METHOD ?? 'GET',
     paths: ['/api/health'],
     headers: {},
   };
@@ -26,9 +51,15 @@ function parseArgs(argv: string[]): Args {
     const value = argv[index];
     const next = argv[index + 1];
     if (value === '--base-url' && next) args.baseUrl = next;
-    if (value === '--requests' && next) args.requests = Number(next);
-    if (value === '--concurrency' && next) args.concurrency = Number(next);
-    if (value === '--target-ms' && next) args.targetMs = Number(next);
+    if (value === '--requests' && next) {
+      args.requests = normalizePositiveInteger(next, DEFAULT_REQUESTS, MAX_REQUESTS);
+    }
+    if (value === '--concurrency' && next) {
+      args.concurrency = normalizePositiveInteger(next, DEFAULT_CONCURRENCY, MAX_CONCURRENCY);
+    }
+    if (value === '--target-ms' && next) {
+      args.targetMs = normalizePositiveInteger(next, DEFAULT_TARGET_MS, MAX_TARGET_MS);
+    }
     if (value === '--method' && next) args.method = next.toUpperCase();
     if (value === '--path' && next) {
       if (!hasExplicitPath) {
@@ -100,24 +131,32 @@ async function main() {
       ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
       : 0;
 
-  console.log(JSON.stringify({
-    base_url: args.baseUrl,
-    requests: args.requests,
-    concurrency: args.concurrency,
-    target_ms: args.targetMs,
-    method: args.method,
-    paths: args.paths,
-    average_ms: average,
-    p50_ms: p50,
-    p95_ms: p95,
-    max_ms: max,
-    error_count: errorCount,
-    target_met: p95 <= args.targetMs && errorCount === 0,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        base_url: args.baseUrl,
+        requests: args.requests,
+        concurrency: args.concurrency,
+        target_ms: args.targetMs,
+        method: args.method,
+        paths: args.paths,
+        average_ms: average,
+        p50_ms: p50,
+        p95_ms: p95,
+        max_ms: max,
+        error_count: errorCount,
+        target_met: p95 <= args.targetMs && errorCount === 0,
+      },
+      null,
+      2,
+    ),
+  );
 
   if (p95 > args.targetMs || errorCount > 0) {
     process.exitCode = 1;
   }
 }
 
-void main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}

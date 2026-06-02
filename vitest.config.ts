@@ -5,7 +5,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tools/infra/websocket/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+      'tools/infra/websocket/**/*.test.ts',
+      'tools/scripts/**/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       include: ['src/app/api/**/*.ts', 'src/server/**/*.ts'],
