@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -90,5 +90,9 @@ describe('MedicationsContent', () => {
     );
     expect(screen.getByRole('heading', { level: 2, name: 'お薬手帳QR発行' }).tagName).toBe('H2');
     expect(screen.getAllByText('アムロジピン錠5mg').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '薬剤追加' }));
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '登録' })).toBeTruthy();
   });
 });

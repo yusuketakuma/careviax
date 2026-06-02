@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-192335
+
+- current task: improve medication add dialog action grouping
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`, and `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`, `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the medication add dialog used a hand-built right-aligned action row with raw `button` elements instead of the repository dialog/action primitives. This made the dialog action sizing and styling less consistent with adjacent PH-OS controls
+- security risks found: no medication profile API path, org header, add-medication submit payload, query invalidation, auth, authorization, tenant boundary, medication data handling, QR generation, or patient data handling changed
+- performance issues found: no mutation function, form state update, submit handler, query invalidation, or render-loop behavior changed. The slice only changes dialog action markup to `DialogFooter`/`Button` and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`
+- validation results: Prettier completed successfully; focused medications Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. DB-backed browser proof remains incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable. Further clutter reduction needs rendered-page review once runtime is available
+- next action: commit this medication add dialog action group, then retry runtime preflight and decide whether any remaining static candidates have enough evidence to change without browser proof
+
 ### 20260602-192205
 
 - current task: post-patient-insurance-editor runtime/browser preflight audit

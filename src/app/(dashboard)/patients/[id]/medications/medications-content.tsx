@@ -376,22 +376,14 @@ function AddMedicationDialog({ patientId, onClose }: { patientId: string; onClos
           {mutation.isError ? (
             <p className="text-sm text-destructive">{String(mutation.error)}</p>
           ) : null}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-9 items-center rounded-md px-4 text-sm font-medium hover:bg-muted"
-            >
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={onClose}>
               キャンセル
-            </button>
-            <button
-              type="submit"
-              disabled={mutation.isPending}
-              className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
               {mutation.isPending ? '登録中...' : '登録'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
       </div>
     </div>
