@@ -1,8 +1,17 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { reviewBillingCandidate } from '@/server/services/billing-evidence';
+
+const REVIEW_ACTIONS = ['confirm', 'exclude', 'reopen'] as const;
+type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+
+function isReviewAction(value: unknown): value is ReviewAction {
+  return typeof value === 'string' && REVIEW_ACTIONS.includes(value as ReviewAction);
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -12,25 +21,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const candidateId = normalizeRequiredRouteParam(rawId);
+  if (!candidateId) return validationError('請求候補IDが不正です');
 
-  const action = (body as { action?: string }).action;
-  if (!['confirm', 'exclude', 'reopen'].includes(action ?? '')) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const action = payload.action;
+  if (!isReviewAction(action)) {
     return validationError('action は confirm / exclude / reopen のいずれかを指定してください');
   }
 
-  const note =
-    typeof (body as { note?: unknown }).note === 'string'
-      ? ((body as { note?: string }).note ?? null)
-      : null;
-
-  const { id } = await params;
+  const note = typeof payload.note === 'string' ? payload.note : null;
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     const candidate = await tx.billingCandidate.findFirst({
       where: {
-        id,
+        id: candidateId,
         org_id: ctx.orgId,
       },
       select: {
@@ -45,8 +53,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const next = await reviewBillingCandidate(tx, {
       orgId: ctx.orgId,
-      billingCandidateId: id,
-      action: action as 'confirm' | 'exclude' | 'reopen',
+      billingCandidateId: candidateId,
+      action,
       note,
       actorId: ctx.userId,
     });
@@ -57,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actor_id: ctx.userId,
         action: 'billing_candidate_review_updated',
         target_type: 'BillingCandidate',
-        target_id: id,
+        target_id: candidateId,
         changes: {
           action,
           note,

@@ -84,6 +84,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/communication-requests', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"request_type":',
+  });
+}
+
 describe('/api/communication-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,6 +137,26 @@ describe('/api/communication-requests', () => {
     );
   });
 
+  it('trims scoped search filters before listing communication requests', async () => {
+    const response = (await GET(
+      createGetRequest(
+        '?status=%20draft%20&patient_id=%20patient_1%20&related_entity_type=%20tracing_report%20&related_entity_id=%20tracing_1%20',
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'draft',
+          patient_id: 'patient_1',
+          related_entity_type: 'tracing_report',
+          related_entity_id: 'tracing_1',
+        }),
+      }),
+    );
+  });
+
   it('returns 400 for an invalid status filter', async () => {
     const response = (await GET(createGetRequest('?status=foo')))!;
 
@@ -154,6 +182,127 @@ describe('/api/communication-requests', () => {
         context_snapshot: {},
       }),
     });
+  });
+
+  it('normalizes request identity and text fields before assignment checks and persistence', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: ' patient_1 ',
+        case_id: ' case_1 ',
+        request_type: ' 疑義照会 ',
+        template_key: ' template_a ',
+        recipient_name: ' 在宅主治医 ',
+        recipient_role: ' physician ',
+        related_entity_type: ' care_report ',
+        related_entity_id: ' report_1 ',
+        subject: ' 確認事項 ',
+        content: ' 処方内容を確認したいです ',
+        status: ' sent ',
+        due_date: ' 2026-03-31 ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        request_type: '疑義照会',
+        template_key: 'template_a',
+        recipient_name: '在宅主治医',
+        recipient_role: 'physician',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+        status: 'sent',
+        due_date: new Date('2026-03-31'),
+      }),
+    });
+  });
+
+  it('rejects blank required request fields before assignment checks or suggestions', async () => {
+    const response = (await POST(
+      createPostRequest({
+        request_type: '   ',
+        subject: '   ',
+        content: '   ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes blank optional fields before writing standalone requests', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: '   ',
+        case_id: '   ',
+        request_type: '疑義照会',
+        template_key: '   ',
+        recipient_name: '   ',
+        recipient_role: '   ',
+        related_entity_type: '   ',
+        related_entity_id: '   ',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+        due_date: '   ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: null,
+        case_id: null,
+        template_key: null,
+        recipient_name: null,
+        recipient_role: null,
+        related_entity_type: null,
+        related_entity_id: null,
+        due_date: null,
+      }),
+    });
+  });
+
+  it('rejects non-object request bodies before assignment checks or create side effects', async () => {
+    const response = (await POST(createPostRequest(['unexpected'])))!;
+
+    expect(response.status).toBe(400);
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before assignment checks or create side effects', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects an unassigned case before recipient suggestion or create side effects', async () => {

@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -31,10 +32,8 @@ export const GET = withAuthContext(
       where: {
         org_id: ctx.orgId,
         ...(activityType ? { activity_type: activityType } : {}),
-        ...(followUpRequired === null
-          ? {}
-          : { follow_up_required: followUpRequired === 'true' }),
-        ...((from || to)
+        ...(followUpRequired === null ? {} : { follow_up_required: followUpRequired === 'true' }),
+        ...(from || to
           ? {
               activity_date: {
                 ...(from ? { gte: new Date(from) } : {}),
@@ -57,15 +56,15 @@ export const GET = withAuthContext(
   {
     permission: 'canReport',
     message: '地域活動の閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuthContext(
   async (req, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createCommunityActivitySchema.safeParse(body);
+    const parsed = createCommunityActivitySchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -86,7 +85,7 @@ export const POST = withAuthContext(
           outcome_summary: parsed.data.outcome_summary ?? null,
           created_by: ctx.userId,
         },
-      })
+      }),
     );
 
     return success({ data: created }, 201);
@@ -94,5 +93,5 @@ export const POST = withAuthContext(
   {
     permission: 'canReport',
     message: '地域活動の登録権限がありません',
-  }
+  },
 );

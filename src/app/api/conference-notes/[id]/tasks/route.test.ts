@@ -42,6 +42,14 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/conference-notes/note_1/tasks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  });
+}
+
 describe('/api/conference-notes/[id]/tasks POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,7 +72,7 @@ describe('/api/conference-notes/[id]/tasks POST', () => {
         conferenceNote: {
           update: conferenceNoteUpdateMock,
         },
-      })
+      }),
     );
   });
 
@@ -83,7 +91,7 @@ describe('/api/conference-notes/[id]/tasks POST', () => {
             dedupe_key: 'conference-action-item:note_1:1',
           },
         },
-      })
+      }),
     );
     expect(conferenceNoteUpdateMock).toHaveBeenCalledWith({
       where: { id: 'note_1' },
@@ -96,8 +104,54 @@ describe('/api/conference-notes/[id]/tasks POST', () => {
         ]),
       },
     });
-    const updatedActionItems = conferenceNoteUpdateMock.mock.calls[0][0].data
-      .action_items as Array<Record<string, unknown>>;
+    const updatedActionItems = conferenceNoteUpdateMock.mock.calls[0][0].data.action_items as Array<
+      Record<string, unknown>
+    >;
     expect(updatedActionItems[1].legacy_debug).toBeUndefined();
+  });
+
+  it('rejects blank note ids before loading the note or creating a task', async () => {
+    const response = await POST(createRequest({ action_item_index: 1 }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録IDが不正です',
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading the note or creating a task', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before loading the note or creating a task', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
   });
 });

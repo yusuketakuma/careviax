@@ -235,6 +235,25 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('trims patient and visit record filters before report lookup', async () => {
+    const response = await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?patient_id=%20patient_1%20&visit_record_id=%20visit_1%20',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          visit_record_id: 'visit_1',
+        }),
+      }),
+    );
+  });
+
   it('normalizes malformed billing context metadata while enriching reports', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {
@@ -329,6 +348,7 @@ describe('/api/care-reports POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       patient_id: 'patient_1',
@@ -367,11 +387,19 @@ describe('/api/care-reports POST', () => {
     );
   });
 
-  function createPostRequest(body: Record<string, unknown>) {
+  function createPostRequest(body: unknown) {
     return createAuthenticatedRequest('http://localhost/api/care-reports', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+    });
+  }
+
+  function createMalformedPostRequest() {
+    return createAuthenticatedRequest('http://localhost/api/care-reports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"patient_id":',
     });
   }
 
@@ -410,6 +438,47 @@ describe('/api/care-reports POST', () => {
           patient_id: 'patient_1',
           case_id: 'case_1',
           visit_record_id: 'visit_1',
+          content: { summary: '訪問後報告' },
+        }),
+      }),
+    );
+  });
+
+  it('normalizes source IDs before validation and persistence', async () => {
+    const response = await POST(
+      createPostRequest({
+        patient_id: ' patient_1 ',
+        case_id: ' case_1 ',
+        visit_record_id: ' visit_1 ',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+        template_id: ' template_1 ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1', org_id: 'org_1' },
+      select: { id: true },
+    });
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'case_1', org_id: 'org_1', patient_id: 'patient_1' },
+      }),
+    );
+    expect(visitRecordFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'visit_1', org_id: 'org_1', patient_id: 'patient_1' },
+      }),
+    );
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          visit_record_id: 'visit_1',
+          template_id: 'template_1',
         }),
       }),
     );
@@ -502,6 +571,92 @@ describe('/api/care-reports POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient IDs before source validation', async () => {
+    const response = await POST(
+      createPostRequest({
+        patient_id: '   ',
+        report_type: 'care_manager_report',
+        content: {},
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes blank optional source fields before writing patient-only reports', async () => {
+    const response = await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: '   ',
+        visit_record_id: '   ',
+        report_type: 'family_share',
+        content: {},
+        template_id: '   ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: null,
+        }),
+      }),
+    );
+    expect(careReportCreateMock.mock.calls[0]?.[0].data).not.toHaveProperty('template_id', '   ');
+  });
+
+  it('rejects non-object request bodies before source validation', async () => {
+    const response = await POST(createPostRequest(['unexpected']));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before source validation', async () => {
+    const response = await POST(createMalformedPostRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object report content before source validation', async () => {
+    const response = await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        report_type: 'care_manager_report',
+        content: ['unexpected'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careReportCreateMock).not.toHaveBeenCalled();
   });

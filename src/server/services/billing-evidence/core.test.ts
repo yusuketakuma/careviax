@@ -739,6 +739,100 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
+  it('ignores malformed candidate breakdowns when promoting eligible care region add-ons', async () => {
+    buildBillingCandidateSpecsMock.mockResolvedValue([
+      {
+        ssotKey: 'care.addition.malformed',
+        code: 'CARE_REGION_MALFORMED',
+        name: '不正な地域加算',
+        status: 'excluded',
+        points: 0,
+        exclusionReason: '地域加算対象外',
+        calculationBreakdown: null,
+        sourceSnapshot: {},
+      },
+      {
+        ssotKey: 'care.addition.special_15',
+        code: 'CARE_REGION_SPECIAL_15',
+        name: '特別地域加算',
+        status: 'excluded',
+        points: 15,
+        exclusionReason: '地域加算対象外',
+        calculationBreakdown: {
+          conditions: { region_add_on: 'special_15' },
+        },
+        sourceSnapshot: {},
+      },
+      {
+        ssotKey: 'care.addition.unknown',
+        code: 'CARE_REGION_UNKNOWN',
+        name: '未知の地域加算',
+        status: 'excluded',
+        points: 5,
+        exclusionReason: '地域加算対象外',
+        calculationBreakdown: {
+          conditions: { region_add_on: 'unknown_region' },
+        },
+        sourceSnapshot: {},
+      },
+    ]);
+
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'regular',
+              site_id: 'site_1',
+            },
+          }),
+        ),
+      },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue(
+          makePatient({
+            medical_insurance_number: null,
+            care_insurance_number: 'care_1',
+          }),
+        ),
+      },
+      patientInsurance: {
+        findFirst: vi
+          .fn()
+          .mockImplementation(({ where }: { where: { insurance_type: string } }) =>
+            Promise.resolve(
+              where?.insurance_type === 'care'
+                ? { id: 'ins_care', number: 'care_1', insurance_type: 'care', is_active: true }
+                : null,
+            ),
+          ),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'cfg_care',
+          revision_code: '2024',
+          config: { region_special_15: true },
+        }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          recommended_rule_keys: ['care.addition.special_15'],
+        }),
+      }),
+    );
+  });
+
   // ── 11. isUnderAge: exactly 6 years old on birthday → under 6 is false ──
   it('treats a child exactly on their 6th birthday as NOT under 6 (infantEligible=false)', async () => {
     // Visit date is 2026-03-20, birth_date is 2020-03-20 → exactly 6 years old

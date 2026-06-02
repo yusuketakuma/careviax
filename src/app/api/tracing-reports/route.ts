@@ -1,8 +1,10 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import {
@@ -10,23 +12,20 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
+import {
+  optionalTracingReportStatusSchema,
+  optionalTrimmedSearchParam,
+  optionalTrimmedStringSchema,
+  requiredTrimmedStringSchema,
+} from '@/lib/validations/tracing-report';
 
 const createTracingReportSchema = z.object({
-  patient_id: z.string().min(1, '患者IDは必須です'),
-  case_id: z.string().optional(),
-  issue_id: z.string().optional(),
+  patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
+  case_id: optionalTrimmedStringSchema,
+  issue_id: optionalTrimmedStringSchema,
   content: z.record(z.string(), z.unknown()).default({}),
-  sent_to_physician: z.string().optional(),
+  sent_to_physician: optionalTrimmedStringSchema,
 });
-
-const tracingReportStatusSchema = z.enum(['draft', 'sent', 'received', 'acknowledged']);
-type TracingReportStatusValue = z.infer<typeof tracingReportStatusSchema>;
-
-function parseTracingReportStatus(value: string | null): TracingReportStatusValue | undefined {
-  if (!value) return undefined;
-  const parsed = tracingReportStatusSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
 
 async function buildTracingReportAccessWhere(
   req: AuthenticatedRequest,
@@ -83,14 +82,15 @@ export const GET = withAuth(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const statusParam = searchParams.get('status');
-    const status = parseTracingReportStatus(statusParam);
-    if (statusParam && !status) {
+    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
+    const statusParam = optionalTrimmedSearchParam(searchParams.get('status'));
+    const parsedStatus = optionalTracingReportStatusSchema.safeParse(statusParam);
+    if (!parsedStatus.success) {
       return validationError('status が不正です', {
         status: ['status が不正です'],
       });
     }
+    const status = parsedStatus.data;
     const accessWhere = await buildTracingReportAccessWhere(req);
 
     const where: Prisma.TracingReportWhereInput = {
@@ -148,10 +148,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createTracingReportSchema.safeParse(body);
+    const parsed = createTracingReportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -187,7 +187,7 @@ export const POST = withAuth(
           patient_id,
           case_id,
           issue_id,
-          content: content as import('@prisma/client').Prisma.InputJsonValue,
+          content: toPrismaJsonInput(content),
           sent_to_physician,
         },
       });

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -10,13 +12,10 @@ import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { Prisma } from '@prisma/client';
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -44,7 +43,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('ケースIDが不正です');
   const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
   const careCase = await prisma.careCase.findFirst({
@@ -99,12 +100,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('ケースIDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateCaseSchema.safeParse(body);
+  const parsed = updateCaseSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

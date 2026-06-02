@@ -49,7 +49,7 @@ describe('/api/care-reports/analytics GET', () => {
 
   it('returns report delivery analytics with threshold parsing', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/care-reports/analytics?overdue_days=10'),
+      createRequest('http://localhost/api/care-reports/analytics?overdue_days=%2010%20'),
     );
 
     const ensuredResponse = response;
@@ -65,5 +65,23 @@ describe('/api/care-reports/analytics GET', () => {
         },
       },
     });
+  });
+
+  it('rejects malformed overdue day values before loading analytics', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/care-reports/analytics?overdue_days=1e1'),
+    );
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        overdue_days: ['overdue_days は整数で指定してください'],
+      },
+    });
+    expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
   });
 });

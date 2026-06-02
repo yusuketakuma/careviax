@@ -79,12 +79,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   });
 
   it('updates an insurance record', async () => {
-    const response = await PUT(
-      createPutRequest({ is_active: false }),
-      {
-        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
-      },
-    );
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -108,6 +105,51 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       id: 'insurance_1',
       deleted: true,
     });
+  });
+
+  it('PUT rejects non-object payloads before loading the insurance record', async () => {
+    const response = await PUT(createPutRequest([]), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects blank patient ids before parsing payloads or loading insurance records', async () => {
+    const response = await PUT(createInvalidJsonRequest(), {
+      params: Promise.resolve({ id: '   ', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects blank insurance ids before parsing payloads or loading insurance records', async () => {
+    const response = await PUT(createInvalidJsonRequest(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報IDが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
   it('DELETE returns 404 when insurance belongs to a different org (cross-tenant)', async () => {
@@ -135,6 +177,36 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
+  it('DELETE rejects blank patient ids before loading or deleting insurance records', async () => {
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: '\t\n', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('DELETE rejects blank insurance ids before loading or deleting insurance records', async () => {
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報IDが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
   it('PUT returns 403 when user lacks canVisit permission', async () => {
     // clerk role does not have canVisit permission
     requireAuthContextMock.mockResolvedValue({
@@ -144,12 +216,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       ),
     });
 
-    const response = await PUT(
-      createPutRequest({ is_active: false }),
-      {
-        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
-      },
-    );
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
@@ -190,27 +259,26 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   });
 
   it('PUT returns 400 when request body is not valid JSON', async () => {
-    const response = await PUT(
-      createInvalidJsonRequest(),
-      {
-        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
-      },
-    );
+    const response = await PUT(createInvalidJsonRequest(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
   it('PUT returns 404 when insurance belongs to a different org (cross-tenant)', async () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
-    const response = await PUT(
-      createPutRequest({ is_active: false }),
-      {
-        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_other_org' }),
-      },
-    );
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_other_org' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
@@ -220,12 +288,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   it('PUT returns 404 when insurance id does not exist', async () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
-    const response = await PUT(
-      createPutRequest({ is_active: false }),
-      {
-        params: Promise.resolve({ id: 'patient_1', insuranceId: 'nonexistent_id' }),
-      },
-    );
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'nonexistent_id' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);

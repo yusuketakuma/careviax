@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
-import { parseSearchParams } from '@/lib/api/validation';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { caseStatusSchema } from '@/lib/patient/case-status';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import {
   FacilityReferenceValidationError,
   FacilityUnitReferenceValidationError,
@@ -35,7 +37,7 @@ const caseStatusQuerySchema = z
 const patientListQuerySchema = z.object({
   q: z.string().trim().optional(),
   cursor: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(500).optional(),
+  limit: optionalBoundedIntegerSearchParam('limit', 1, 500),
   sort: z.enum(['name_kana', 'name', 'created_at']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
   facility_mode: z.enum(['facility', 'home']).optional(),
@@ -82,16 +84,12 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
+    const raw = await readJsonObjectRequestBody(req);
+    if (!raw) {
       return validationError('リクエストボディが不正です');
     }
 
-    const raw = body as Record<string, unknown>;
-    const rawIntake =
-      raw.intake && typeof raw.intake === 'object'
-        ? (raw.intake as Record<string, unknown>)
-        : undefined;
+    const rawIntake = readJsonObject(raw.intake) ?? undefined;
     const normalizedBody = {
       ...raw,
       name_kana:

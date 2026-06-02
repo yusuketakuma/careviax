@@ -4,6 +4,9 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   applyPatientAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
@@ -11,6 +14,9 @@ import {
 import { LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 
 const labAnalyteCodeSchema = z.enum(LAB_ANALYTE_CODES);
+const labQuerySchema = z.object({
+  limit: boundedIntegerSearchParam('limit', 1, 200, 50),
+});
 
 const createLabSchema = z.object({
   analyte_code: labAnalyteCodeSchema,
@@ -57,7 +63,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
+
   const url = new URL(req.url);
   const analyteCodeParam = url.searchParams.get('analyte_code') ?? undefined;
   const analyteCode = analyteCodeParam ? labAnalyteCodeSchema.safeParse(analyteCodeParam) : null;
@@ -66,7 +75,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       analyte_code: ['対応していない検査項目コードです'],
     });
   }
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
+  const parsedQuery = parseSearchParams(labQuerySchema, url.searchParams);
+  if (!parsedQuery.ok) {
+    return validationError('クエリパラメータが不正です', parsedQuery.error.flatten().fieldErrors);
+  }
+  const { limit } = parsedQuery.data;
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
@@ -98,12 +111,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createLabSchema.safeParse(body);
+  const parsed = createLabSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

@@ -1,6 +1,7 @@
 import { isoOrNull } from '@/lib/utils/date';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { WORKBENCH_MAX_ITEMS } from '@/lib/constants/workflow';
+import { readJsonObject } from '@/lib/db/json';
 import {
   getVisitWorkflowGuidance,
   type VisitWorkflowGateIssue,
@@ -410,10 +411,7 @@ export function buildUnifiedWorkbench(
 ): WorkbenchItem[] {
   const taskItems: WorkbenchItem[] = pendingTasks.map((task) => {
     const presentation = describeOperationalTask(task);
-    const taskMetadata =
-      task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
-        ? (task.metadata as Record<string, unknown>)
-        : null;
+    const taskMetadata = readJsonObject(task.metadata);
     const actionHref =
       typeof taskMetadata?.action_href === 'string'
         ? taskMetadata.action_href

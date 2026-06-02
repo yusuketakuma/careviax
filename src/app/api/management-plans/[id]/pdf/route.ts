@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, notFound } from '@/lib/api/response';
+import { error, notFound, validationError } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -15,7 +16,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if ('response' in authResult) return authResult.response;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('管理計画書IDが不正です');
 
   try {
     const rendered = await buildManagementPlanPdf(authResult.ctx.orgId, id, {

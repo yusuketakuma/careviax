@@ -3,10 +3,20 @@ import { NextRequest } from 'next/server';
 
 const {
   consentRecordFindFirstMock,
+  consentRecordFindUniqueMock,
+  patientFindFirstMock,
+  careCaseFindFirstMock,
+  txPatientFindFirstMock,
+  txCareCaseFindFirstMock,
   consentRecordUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
+  consentRecordFindUniqueMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  txPatientFindFirstMock: vi.fn(),
+  txCareCaseFindFirstMock: vi.fn(),
   consentRecordUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -22,6 +32,12 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     consentRecord: {
       findFirst: consentRecordFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
     },
   },
 }));
@@ -40,22 +56,44 @@ function createRequest(method: 'GET' | 'PATCH', body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/consent-records/consent_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"expiry_date":',
+  });
+}
+
 describe('/api/consent-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consentRecordFindFirstMock.mockResolvedValue({
       id: 'consent_1',
       patient_id: 'patient_1',
+      case_id: null,
       consent_type: 'external_sharing',
+      updated_at: new Date('2026-01-01T00:00:00.000Z'),
     });
-    consentRecordUpdateMock.mockResolvedValue({
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    txPatientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    txCareCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    consentRecordUpdateMock.mockResolvedValue({ count: 1 });
+    consentRecordFindUniqueMock.mockResolvedValue({
       id: 'consent_1',
       document_url: 'https://example.com/consent.pdf',
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         consentRecord: {
-          update: consentRecordUpdateMock,
+          updateMany: consentRecordUpdateMock,
+          findUnique: consentRecordFindUniqueMock,
+        },
+        patient: {
+          findFirst: txPatientFindFirstMock,
+        },
+        careCase: {
+          findFirst: txCareCaseFindFirstMock,
         },
       }),
     );
@@ -70,6 +108,67 @@ describe('/api/consent-records/[id]', () => {
     await expect(response.json()).resolves.toMatchObject({
       id: 'consent_1',
     });
+    expect(consentRecordFindFirstMock).toHaveBeenNthCalledWith(1, {
+      where: { id: 'consent_1', org_id: 'org_1' },
+      select: { id: true, patient_id: true, case_id: true },
+    });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cases: {
+              some: {
+                OR: [
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(consentRecordFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'consent_1', org_id: 'org_1' },
+    });
+  });
+
+  it('rejects blank consent record ids before loading the record on GET', async () => {
+    const response = (await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同意記録IDが不正です',
+    });
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not return a consent record outside the patient assignment scope', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = (await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'consent_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同意記録が見つかりません',
+    });
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'consent_1', org_id: 'org_1' },
+      select: { id: true, patient_id: true, case_id: true },
+    });
+    expect(patientFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
   });
 
   it('updates expiry date and document url', async () => {
@@ -80,16 +179,148 @@ describe('/api/consent-records/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
-      }
+      },
     ))!;
 
     expect(response.status).toBe(200);
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'consent_1', org_id: 'org_1' },
+      select: { id: true, patient_id: true, case_id: true, updated_at: true },
+    });
+    expect(patientFindFirstMock).toHaveBeenCalled();
+    expect(txPatientFindFirstMock).toHaveBeenCalled();
     expect(consentRecordUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'consent_1' },
+      where: {
+        id: 'consent_1',
+        org_id: 'org_1',
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      },
       data: {
         expiry_date: new Date('2026-12-31'),
         document_url: 'https://example.com/consent.pdf',
       },
     });
+    expect(consentRecordFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'consent_1' },
+    });
+  });
+
+  it('does not update a consent record outside the patient assignment scope', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: 'https://example.com/consent.pdf',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同意記録が見つかりません',
+    });
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'consent_1', org_id: 'org_1' },
+      select: { id: true, patient_id: true, case_id: true, updated_at: true },
+    });
+    expect(patientFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('does not update when consent assignment changes inside the transaction', async () => {
+    txPatientFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: 'https://example.com/consent.pdf',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同意記録が見つかりません',
+    });
+    expect(patientFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(txPatientFindFirstMock).toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without a stale update when the consent record changed after loading', async () => {
+    consentRecordUpdateMock.mockResolvedValue({ count: 0 });
+
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: 'https://example.com/consent.pdf',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同意記録が他のユーザーによって更新されています。最新のデータを取得してください。',
+    });
+    expect(consentRecordUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'consent_1',
+        org_id: 'org_1',
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      data: {
+        document_url: 'https://example.com/consent.pdf',
+      },
+    });
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank consent record ids before parsing or updating the record', async () => {
+    const response = (await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同意記録IDが不正です',
+    });
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading or updating the consent record', async () => {
+    const response = (await PATCH(createRequest('PATCH', ['unexpected']), {
+      params: Promise.resolve({ id: 'consent_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before loading or updating the consent record', async () => {
+    const response = (await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'consent_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
   });
 });

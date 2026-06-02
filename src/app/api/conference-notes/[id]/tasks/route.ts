@@ -3,6 +3,8 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 
@@ -24,11 +26,14 @@ function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
 
 export const POST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
-    const { id } = await routeContext.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('カンファレンス記録IDが不正です');
 
-    const parsed = convertActionItemSchema.safeParse(body);
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = convertActionItemSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -108,5 +113,5 @@ export const POST = withAuthContext<{ id: string }>(
   {
     permission: 'canReport',
     message: 'カンファレンス記録の更新権限がありません',
-  }
+  },
 );

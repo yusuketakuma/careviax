@@ -48,6 +48,17 @@ function createRequest(url = 'http://localhost/api/billing-rules', body?: unknow
   return new NextRequest(url, init);
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/billing-rules', {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/billing-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -185,6 +196,36 @@ describe('/api/billing-rules', () => {
         },
       ],
     });
+  });
+
+  it('rejects non-object POST payloads before SSOT sync or billing rule create', async () => {
+    const response = await POST(createRequest('http://localhost/api/billing-rules', []));
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(ensureHomeCareBillingSsotMock).not.toHaveBeenCalled();
+    expect(billingRuleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON POST payloads before SSOT sync or billing rule create', async () => {
+    const response = await POST(createMalformedJsonPostRequest());
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(ensureHomeCareBillingSsotMock).not.toHaveBeenCalled();
+    expect(billingRuleCreateMock).not.toHaveBeenCalled();
   });
 
   it('re-seeds official SSOT via POST action', async () => {

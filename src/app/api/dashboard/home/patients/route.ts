@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { success } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientCard, DashboardPatientsResponse } from '@/types/dashboard-home';
@@ -13,11 +15,11 @@ import {
 
 const ACTIVE_CASE_STATUSES = ['assessment', 'active', 'on_hold'] as const;
 const PATIENTS_PER_PAGE = 12;
+const MAX_DASHBOARD_PATIENT_PAGE = 10_000;
 
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
+const dashboardPatientsPageQuerySchema = z.object({
+  page: boundedIntegerSearchParam('page', 1, MAX_DASHBOARD_PATIENT_PAGE, 1),
+});
 
 function buildDashboardPatientWhere(
   orgId: string,
@@ -149,7 +151,11 @@ export const GET = withAuth(
     const url = new URL(req.url);
     const search = url.searchParams.get('search')?.trim() ?? '';
     const sortBy = url.searchParams.get('sort') === 'name' ? 'name' : 'risk';
-    const page = parsePositiveInteger(url.searchParams.get('page'), 1);
+    const parsedPage = parseSearchParams(dashboardPatientsPageQuerySchema, url.searchParams);
+    if (!parsedPage.ok) {
+      return validationError('クエリパラメータが不正です', parsedPage.error.flatten().fieldErrors);
+    }
+    const { page } = parsedPage.data;
     const namedPage =
       sortBy === 'name'
         ? await listDashboardPatientIdsPageByName(req.orgId, search, page, req)

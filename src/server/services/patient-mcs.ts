@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { prisma } from '@/lib/db/client';
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonObjectOrNull, parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   buildMcsTimelinePayload,
@@ -22,6 +22,7 @@ const execFileAsync = promisify(execFile);
 const MCS_HOST = 'www.medical-care.net';
 const DEFAULT_CDP_TARGET = '18800';
 const DEFAULT_MAX_MESSAGES = 50;
+export const PATIENT_MCS_MAX_MESSAGE_LIMIT = 100;
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const MCS_BROWSER_SYNC_DISABLED_MESSAGE = 'MCS 同期はローカル端末の開発環境でのみ有効です。';
 const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
@@ -263,36 +264,118 @@ async function openUrl(url: string) {
   return extractUrlFromAgentBrowserOutput(output) ?? getCurrentUrl();
 }
 
-export function parseAgentBrowserEvalJson<T extends Record<string, unknown>>(output: string): T {
-  let encodedPayload: unknown;
-  try {
-    encodedPayload = JSON.parse(output) as unknown;
-  } catch {
-    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
-  }
-
+export function parseAgentBrowserEvalJson(output: string): Record<string, unknown> {
+  const encodedPayload = parseJsonOrNull(output);
   if (typeof encodedPayload !== 'string') {
     throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
   }
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(encodedPayload) as unknown;
-  } catch {
-    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
-  }
-
-  const object = readJsonObject(payload);
+  const object = parseJsonObjectOrNull(encodedPayload);
   if (!object) {
     throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
   }
 
-  return object as T;
+  return object;
 }
 
-async function evaluateJson<T extends Record<string, unknown>>(script: string): Promise<T> {
+async function evaluateJson(script: string): Promise<Record<string, unknown>> {
   const output = await runAgentBrowser(['eval', script]);
-  return parseAgentBrowserEvalJson<T>(output);
+  return parseAgentBrowserEvalJson(output);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null;
+}
+
+function readFiniteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+export function normalizeMcsActivationPayload(
+  value: unknown,
+): { projectId: string | null; currentUrl: string; patientName: string | null } | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.currentUrl !== 'string') return null;
+  if (!isNullableString(object.projectId)) return null;
+  if (!isNullableString(object.patientName)) return null;
+  const projectId = object.projectId;
+  const patientName = object.patientName;
+  if (projectId !== null && projectId.trim().length === 0) return null;
+
+  return {
+    projectId,
+    currentUrl: object.currentUrl,
+    patientName,
+  };
+}
+
+function normalizeScrapedMcsMessage(value: unknown): ScrapedMcsTimeline['messages'][number] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.sourceMessageId !== 'string') return null;
+  if (typeof object.authorName !== 'string') return null;
+  if (!isNullableString(object.authorDescriptor)) return null;
+  const authorDescriptor = object.authorDescriptor;
+  if (typeof object.postedAtLabel !== 'string') return null;
+  if (typeof object.body !== 'string') return null;
+  const reactionCount = readFiniteNumber(object.reactionCount);
+  const replyCount = readFiniteNumber(object.replyCount);
+  const sortOrder = readFiniteNumber(object.sortOrder);
+  if (reactionCount === null || replyCount === null || sortOrder === null) return null;
+  if (typeof object.sourceUrl !== 'string') return null;
+
+  return {
+    sourceMessageId: object.sourceMessageId,
+    authorName: object.authorName,
+    authorDescriptor,
+    postedAtLabel: object.postedAtLabel,
+    body: object.body,
+    reactionCount,
+    replyCount,
+    sortOrder,
+    sourceUrl: object.sourceUrl,
+  };
+}
+
+function isScrapedMcsMessage(
+  value: ScrapedMcsTimeline['messages'][number] | null,
+): value is ScrapedMcsTimeline['messages'][number] {
+  return value !== null;
+}
+
+export function normalizeScrapedMcsTimelinePayload(value: unknown): ScrapedMcsTimeline | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.sourceUrl !== 'string') return null;
+  if (!isNullableString(object.mcsPatientId)) return null;
+  if (!isNullableString(object.mcsPatientUrl)) return null;
+  const mcsPatientId = object.mcsPatientId;
+  const mcsPatientUrl = object.mcsPatientUrl;
+  if (typeof object.mcsProjectId !== 'string') return null;
+  if (typeof object.mcsProjectUrl !== 'string') return null;
+  if (!isNullableString(object.projectTitle)) return null;
+  if (!isNullableString(object.projectMemo)) return null;
+  const projectTitle = object.projectTitle;
+  const projectMemo = object.projectMemo;
+  const memberCount = readFiniteNumber(object.memberCount);
+  if (object.memberCount !== null && memberCount === null) return null;
+  if (!Array.isArray(object.messages)) return null;
+
+  const messages = object.messages.map(normalizeScrapedMcsMessage);
+  if (!messages.every(isScrapedMcsMessage)) return null;
+
+  return {
+    sourceUrl: object.sourceUrl,
+    mcsPatientId,
+    mcsPatientUrl,
+    mcsProjectId: object.mcsProjectId,
+    mcsProjectUrl: object.mcsProjectUrl,
+    projectTitle,
+    projectMemo,
+    memberCount,
+    messages,
+  };
 }
 
 function createTokyoDate(year: number, month: number, day: number, hour = 0, minute = 0) {
@@ -499,7 +582,7 @@ function assertTrustedMcsUrl(currentUrl: string) {
 }
 
 async function activateMedicalTimelineFromPatientPage() {
-  return evaluateJson<{ projectId: string | null; currentUrl: string; patientName: string | null }>(
+  const payload = await evaluateJson(
     `(async () => {
       const findProjectId = ${inferMcsProjectIdFromDocument.toString()};
       const normalize = (value) => value?.textContent?.replace(/\\s+/g, ' ').trim() || '';
@@ -545,6 +628,11 @@ async function activateMedicalTimelineFromPatientPage() {
       });
     })()`,
   );
+  const normalized = normalizeMcsActivationPayload(payload);
+  if (!normalized) {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
+  return normalized;
 }
 
 async function ensureMedicalProjectUrl(sourceUrl: string): Promise<ResolvedMcsProjectLink> {
@@ -642,7 +730,11 @@ async function scrapeMcsTimeline(sourceUrl: string): Promise<ScrapedMcsTimelineW
     mcsProjectId: resolved.projectId,
     mcsProjectUrl: resolved.projectUrl,
   };
-  const scraped = await evaluateJson<ScrapedMcsTimeline>(buildTimelineScrapeScript(timelineArgs));
+  const scrapedPayload = await evaluateJson(buildTimelineScrapeScript(timelineArgs));
+  const scraped = normalizeScrapedMcsTimelinePayload(scrapedPayload);
+  if (!scraped) {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
 
   return {
     ...scraped,
@@ -962,6 +1054,7 @@ export async function getPatientMcsOverview(args: {
   limit?: number;
 }): Promise<PatientMcsOverview> {
   return withOrgContext(args.orgId, async (tx) => {
+    const messageLimit = normalizePatientMcsMessageLimit(args.limit);
     const txWithSummary = tx as typeof tx & {
       patientMcsSummary: typeof prisma.patientMcsSummary;
     };
@@ -990,11 +1083,11 @@ export async function getPatientMcsOverview(args: {
             select: selectPatientMcsSummaryRecord(),
           })
         : null,
-      link && args.limit !== 0
+      link && messageLimit !== 0
         ? tx.patientMcsMessage.findMany({
             where: { link_id: link.id },
             orderBy: [{ posted_at: 'desc' }, { sort_order: 'asc' }, { created_at: 'desc' }],
-            take: args.limit ?? DEFAULT_MAX_MESSAGES,
+            take: messageLimit,
             select: {
               id: true,
               source_message_id: true,
@@ -1017,4 +1110,9 @@ export async function getPatientMcsOverview(args: {
 
     return { link, summary, messages };
   });
+}
+
+export function normalizePatientMcsMessageLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_MAX_MESSAGES;
+  return Math.min(Math.max(Math.trunc(limit), 0), PATIENT_MCS_MAX_MESSAGE_LIMIT);
 }

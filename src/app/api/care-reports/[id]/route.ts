@@ -9,6 +9,9 @@ import {
   notFound,
 } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
@@ -35,10 +38,7 @@ const updateCareReportSchema = z.object({
     ])
     .optional(),
   status: z.enum(['draft', 'sent', 'failed', 'confirmed', 'response_waiting']).optional(),
-  content: z
-    .record(z.string(), z.unknown())
-    .transform((v) => v as import('@prisma/client').Prisma.InputJsonValue)
-    .optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
   template_id: z.string().optional(),
 });
 
@@ -50,7 +50,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('報告書IDが不正です');
 
   const report = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -187,17 +189,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('報告書IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateCareReportSchema.safeParse(body);
+  const parsed = updateCareReportSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  if (parsed.data.status && parsed.data.status !== 'draft') {
+  const { content, ...updateData } = parsed.data;
+
+  if (updateData.status && updateData.status !== 'draft') {
     return conflict('報告書の送信状態は送信APIからのみ更新できます');
   }
 
@@ -222,7 +228,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return forbiddenResponse('この報告書を更新する権限がありません');
   }
 
-  if (existing.status !== 'draft' && parsed.data.status === 'draft') {
+  if (existing.status !== 'draft' && updateData.status === 'draft') {
     return conflict('送信済みの報告書を下書きへ戻すことはできません');
   }
 
@@ -231,7 +237,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     async (tx) => {
       return tx.careReport.update({
         where: { id },
-        data: parsed.data,
+        data: {
+          ...updateData,
+          ...(content !== undefined ? { content: toPrismaJsonInput(content) } : {}),
+        },
       });
     },
     { requestContext: ctx },

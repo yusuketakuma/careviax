@@ -67,6 +67,17 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/care-reports/report_1', {
+    method: 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{"content":',
+  });
+}
+
 describe('care-reports/[id] route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -186,6 +197,22 @@ describe('care-reports/[id] route', () => {
     expect(payload.data).not.toHaveProperty('org_id');
   });
 
+  it('rejects blank report ids before loading the report', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書IDが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-draft status updates outside the send workflow', async () => {
     const response = await PATCH(createRequest({ status: 'sent' }), {
       params: Promise.resolve({ id: 'report_1' }),
@@ -193,6 +220,65 @@ describe('care-reports/[id] route', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+  });
+
+  it('rejects blank report ids before updating the report', async () => {
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書IDが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading or updating the report', async () => {
+    const response = await PATCH(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading or updating the report', async () => {
+    const response = await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('updates report content through the persisted JSON normalizer', async () => {
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: {
+        content: { summary: '更新後メモ' },
+      },
+    });
   });
 
   it('rejects reverting a sent report back to draft', async () => {

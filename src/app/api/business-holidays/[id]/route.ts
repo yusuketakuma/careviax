@@ -2,14 +2,13 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateBusinessHolidaySchema } from '@/lib/validations/business-holiday';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '休日設定の更新権限がありません',
@@ -17,17 +16,20 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateBusinessHolidaySchema.safeParse(body);
+  const parsed = updateBusinessHolidaySchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const { id } = await params;
+  const holidayId = normalizeRequiredRouteParam(id);
+  if (!holidayId) return validationError('休日設定IDが不正です');
+
   const existing = await prisma.businessHoliday.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: holidayId, org_id: ctx.orgId },
     select: { id: true },
   });
   if (!existing) return notFound('休日設定が見つかりません');
@@ -40,7 +42,7 @@ export async function PATCH(
   const duplicate = await prisma.businessHoliday.findFirst({
     where: {
       org_id: ctx.orgId,
-      id: { not: id },
+      id: { not: holidayId },
       date: new Date(parsed.data.date),
       site_id: parsed.data.site_id ?? null,
       holiday_type: parsed.data.holiday_type,
@@ -53,7 +55,7 @@ export async function PATCH(
 
   const holiday = await withOrgContext(ctx.orgId, async (tx) => {
     const updated = await tx.businessHoliday.update({
-      where: { id },
+      where: { id: holidayId },
       data: {
         site_id: parsed.data.site_id ?? null,
         date: new Date(parsed.data.date),
@@ -69,7 +71,7 @@ export async function PATCH(
         actor_id: ctx.userId,
         action: 'business_holiday_updated',
         target_type: 'BusinessHoliday',
-        target_id: id,
+        target_id: holidayId,
         changes: {
           date: parsed.data.date,
           site_id: parsed.data.site_id ?? null,
@@ -87,10 +89,7 @@ export async function PATCH(
   return success({ data: holiday });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '休日設定の削除権限がありません',
@@ -99,15 +98,18 @@ export async function DELETE(
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const holidayId = normalizeRequiredRouteParam(id);
+  if (!holidayId) return validationError('休日設定IDが不正です');
+
   const existing = await prisma.businessHoliday.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: holidayId, org_id: ctx.orgId },
     select: { id: true, name: true },
   });
   if (!existing) return notFound('休日設定が見つかりません');
 
   await withOrgContext(ctx.orgId, async (tx) => {
     await tx.businessHoliday.delete({
-      where: { id },
+      where: { id: holidayId },
     });
 
     await tx.auditLog.create({
@@ -116,7 +118,7 @@ export async function DELETE(
         actor_id: ctx.userId,
         action: 'business_holiday_deleted',
         target_type: 'BusinessHoliday',
-        target_id: id,
+        target_id: holidayId,
         changes: {
           name: existing.name,
         },

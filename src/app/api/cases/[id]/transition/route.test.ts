@@ -44,11 +44,19 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import { PATCH } from './route';
 
-function createTransitionRequest(caseId: string, body: { from: string; to: string }) {
+function createTransitionRequest(caseId: string, body: unknown) {
   return new NextRequest(`http://localhost/api/cases/${caseId}/transition`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedTransitionRequest(caseId: string) {
+  return new NextRequest(`http://localhost/api/cases/${caseId}/transition`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"from":',
   });
 }
 
@@ -144,6 +152,58 @@ describe('/api/cases/[id]/transition', () => {
 
     expect(response.status).toBe(400);
     expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object transition payloads before loading the case', async () => {
+    const response = (await PATCH(createTransitionRequest('case_1', []), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank case ids before loading or transitioning the case', async () => {
+    const response = (await PATCH(
+      createTransitionRequest('case_1', {
+        from: 'assessment',
+        to: 'active',
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ケースIDが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the case', async () => {
+    const response = (await PATCH(createMalformedTransitionRequest('case_1'), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('does not transition an unassigned case', async () => {

@@ -8,6 +8,7 @@
 
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { derivePatientStatusIcon, STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
@@ -59,6 +60,26 @@ const NOTIFICATION_TRIGGERS: Array<{
   },
 ];
 
+function readPatientStatusIcon(value: unknown): PatientStatusIcon | null {
+  switch (value) {
+    case 'stable':
+    case 'new':
+    case 'first_visit_soon':
+    case 'attention':
+    case 'urgent':
+    case 'overdue_visit':
+    case 'report_pending':
+    case 'medication_change':
+    case 'hospitalized':
+    case 'discharged':
+    case 'no_contact':
+    case 'paused':
+      return value;
+    default:
+      return null;
+  }
+}
+
 /**
  * Check all patients' status and log changes.
  * Intended to be called from the daily job or on-demand.
@@ -68,7 +89,7 @@ export async function trackPatientStatusChanges(
   args: {
     orgId: string;
     actorId: string;
-  }
+  },
 ): Promise<{
   changed: Array<{
     patientId: string;
@@ -101,12 +122,20 @@ export async function trackPatientStatusChanges(
   // Fetch supplemental data for status derivation
   const [cases, lastVisits, nextVisits, overdueVisits, recentCycles] = await Promise.all([
     db.careCase.findMany({
-      where: { org_id: args.orgId, patient_id: { in: patientIds }, status: { in: ['assessment', 'active', 'on_hold'] } },
+      where: {
+        org_id: args.orgId,
+        patient_id: { in: patientIds },
+        status: { in: ['assessment', 'active', 'on_hold'] },
+      },
       select: { patient_id: true, status: true },
       orderBy: { created_at: 'desc' },
     }),
     db.visitSchedule.findMany({
-      where: { org_id: args.orgId, schedule_status: 'completed', case_: { patient_id: { in: patientIds } } },
+      where: {
+        org_id: args.orgId,
+        schedule_status: 'completed',
+        case_: { patient_id: { in: patientIds } },
+      },
       orderBy: { scheduled_date: 'desc' },
       select: { case_: { select: { patient_id: true } } },
     }),
@@ -175,10 +204,8 @@ export async function trackPatientStatusChanges(
   const previousStatusMap = new Map<string, PatientStatusIcon>();
   for (const log of previousStatusLogs) {
     if (!previousStatusMap.has(log.target_id) && log.changes) {
-      const changes = log.changes as Record<string, unknown>;
-      if (typeof changes.to === 'string') {
-        previousStatusMap.set(log.target_id, changes.to as PatientStatusIcon);
-      }
+      const previousStatus = readPatientStatusIcon(readJsonObject(log.changes)?.to);
+      if (previousStatus) previousStatusMap.set(log.target_id, previousStatus);
     }
   }
 

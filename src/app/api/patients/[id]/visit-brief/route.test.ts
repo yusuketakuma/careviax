@@ -101,4 +101,19 @@ describe('/api/patients/[id]/visit-brief', () => {
       },
     });
   });
+
+  it('rejects blank patient ids before loading visit brief data', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(patientVisitBriefMock).not.toHaveBeenCalled();
+  });
 });

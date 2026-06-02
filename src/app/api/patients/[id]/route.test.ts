@@ -203,6 +203,17 @@ function createRequest(body?: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/patients/patient_1', {
+    method: 'PATCH',
+    body: '{"name":',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
+
 describe('/api/patients/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -483,6 +494,112 @@ describe('/api/patients/[id]', () => {
     expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank patient ids before loading patient detail', async () => {
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientRiskSummaryMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing patch payloads or loading the patient', async () => {
+    const response = await PATCH(
+      createMalformedJsonPatchRequest({ 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: '\t\n' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before loading the patient', async () => {
+    const response = await PATCH(createRequest([], { 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the patient', async () => {
+    const response = await PATCH(
+      createMalformedJsonPatchRequest({ 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed patch contact numbers before loading the patient', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          phone: '090-ABCD-1234',
+          requester: {
+            phone: '03-ABCD-2222',
+            fax: 'FAX-3333',
+          },
+          intake: {
+            contact_phone: '03-4444-ABCD',
+            care_manager: {
+              phone: '03-9999-ABCD',
+            },
+          },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('masks insurance and address details for external viewers in the response payload', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -636,6 +753,8 @@ describe('/api/patients/[id]', () => {
         id: 'first_visit_1',
         case_id: 'case_1',
         emergency_contacts: [
+          null,
+          ['legacy-bad-value'],
           {
             id: 'contact_1',
             name: '長男 山田',
@@ -689,7 +808,7 @@ describe('/api/patients/[id]', () => {
           name_kana: 'コウシンゴ カンジャエー',
           birth_date: '1940-01-02',
           gender: 'female',
-          phone: '090-1111-2222',
+          phone: ' 090-1111-2222 ',
           address: '東京都千代田区1-2-3',
           building_id: 'building_1',
           facility_id: 'facility_1',
@@ -816,6 +935,8 @@ describe('/api/patients/[id]', () => {
           requester: {
             organization_name: '新しい紹介元',
             contact_name: '相談員 田中',
+            phone: ' 03-1111-2222 ',
+            fax: ' 03-1111-3333 ',
           },
           intake: {
             primary_contact_preference: 'phone',
@@ -826,12 +947,17 @@ describe('/api/patients/[id]', () => {
             care_level: 'care_3',
             adl_level: 'b',
             dementia_level: 'ii',
-            contact_phone: '090-9999-8888',
+            contact_phone: ' 090-9999-8888 ',
             primary_disease: '慢性心不全',
             ent_prescription: true,
             ent_period_from: '2026-04-01',
             ent_period_to: '2026-04-30',
             infection_isolation: 'droplet',
+            care_manager: {
+              name: 'ケア 山田',
+              phone: ' 03-9999-0000 ',
+              fax: ' 03-9999-1111 ',
+            },
           },
         },
         { 'x-org-id': 'corg1234567890123456789012' },
@@ -926,6 +1052,8 @@ describe('/api/patients/[id]', () => {
             requester: expect.objectContaining({
               organization_name: '新しい紹介元',
               contact_name: '相談員 田中',
+              phone: '03-1111-2222',
+              fax: '03-1111-3333',
             }),
             contact_phone: '090-9999-8888',
             primary_disease: '慢性心不全',
@@ -941,6 +1069,11 @@ describe('/api/patients/[id]', () => {
             ent_period_from: '2026-04-01',
             ent_period_to: '2026-04-30',
             infection_isolation: 'droplet',
+            care_manager: expect.objectContaining({
+              name: 'ケア 山田',
+              phone: '03-9999-0000',
+              fax: '03-9999-1111',
+            }),
           }),
         },
       },

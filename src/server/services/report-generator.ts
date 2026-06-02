@@ -4,7 +4,12 @@
 
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { readJsonObjectNumber, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
+import {
+  readJsonObject,
+  readJsonObjectNumber,
+  readJsonObjectString,
+  toPrismaJsonInput,
+} from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
 import { buildPhysicianReport, buildCareManagerReport } from './report-templates';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -55,6 +60,10 @@ function readConferenceActionItems(value: unknown): string[] {
       return null;
     })
     .filter((item): item is string => Boolean(item?.trim()));
+}
+
+function readGeneratedReportContent(value: unknown): Record<string, unknown> {
+  return readJsonObject(value) ?? {};
 }
 
 export async function generateReportsFromVisit(
@@ -362,32 +371,39 @@ export async function generateReportsFromVisit(
   for (const type of typesToGenerate) {
     if (type === 'physician_report') {
       contentByType.set(type, {
-        ...(buildPhysicianReport({
-          patient: patientInput,
-          visitRecord: visitRecordInput,
-          structuredSoap,
-          prescriptionLines: prescriptionLinesNormalized,
-          residualMedications: residualMedicationsNormalized,
-          prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
-          pharmacistName,
-          intake,
-          conferenceContext,
-        }) as unknown as Record<string, unknown>),
+        ...readGeneratedReportContent(
+          buildPhysicianReport({
+            patient: patientInput,
+            visitRecord: visitRecordInput,
+            structuredSoap,
+            prescriptionLines: prescriptionLinesNormalized,
+            residualMedications: residualMedicationsNormalized,
+            prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
+            pharmacistName,
+            intake,
+            conferenceContext,
+          }),
+        ),
         billing_context: billingContext,
       });
     } else {
       contentByType.set(type, {
-        ...(buildCareManagerReport({
-          patient: { name: patient.name, birth_date: patient.birth_date },
-          visitRecord: visitRecordInput,
-          structuredSoap,
-          prescriptionLines: prescriptionLinesNormalized,
-          residualMedications: residualMedicationsNormalized,
-          careManager: { name: careManager.name, organization_name: careManager.organization_name },
-          pharmacistName,
-          intake,
-          conferenceContext,
-        }) as unknown as Record<string, unknown>),
+        ...readGeneratedReportContent(
+          buildCareManagerReport({
+            patient: { name: patient.name, birth_date: patient.birth_date },
+            visitRecord: visitRecordInput,
+            structuredSoap,
+            prescriptionLines: prescriptionLinesNormalized,
+            residualMedications: residualMedicationsNormalized,
+            careManager: {
+              name: careManager.name,
+              organization_name: careManager.organization_name,
+            },
+            pharmacistName,
+            intake,
+            conferenceContext,
+          }),
+        ),
         billing_context: billingContext,
       });
     }

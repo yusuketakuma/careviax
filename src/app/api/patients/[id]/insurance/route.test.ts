@@ -44,6 +44,14 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"insurance_type":',
+  });
+}
+
 function createGetRequest() {
   return new NextRequest('http://localhost/api/patients/patient_1/insurance');
 }
@@ -175,6 +183,21 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
+  it('GET rejects blank patient ids before patient or insurance lookup', async () => {
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
   it('POST returns 404 for an inaccessible patient without reading or writing insurance records', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
@@ -189,6 +212,47 @@ describe('/api/patients/[id]/insurance', () => {
 
     expect(response.status).toBe(404);
     expectPatientAssignmentLookup();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST rejects blank patient ids before parsing payloads or writing insurance records', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST rejects non-object payloads before patient lookup or DB writes', async () => {
+    const response = await POST(createRequest([]), routeParams);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST rejects malformed JSON payloads before patient lookup or DB writes', async () => {
+    const response = await POST(createMalformedJsonRequest(), routeParams);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();

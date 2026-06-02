@@ -1,4 +1,6 @@
-import { readJsonObject } from '@/lib/db/json';
+import { readJsonResponseBody } from '@/lib/api/response-body';
+import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 export type PatientMcsSummaryMessage = {
   sourceMessageId: string;
@@ -47,6 +49,7 @@ const ACTION_PATTERN =
 const MUST_CHECK_PATTERN =
   /(発熱|疼痛|痛み|血圧|脈拍|浮腫|転倒|食欲|睡眠|便秘|下痢|むくみ|服薬|眠気|SpO2|酸素|咳|痰|不穏|脱水|感染)/i;
 const DEFAULT_ALLOWED_AI_HOSTS = new Set(['api.openai.com']);
+const DEFAULT_PATIENT_MCS_AI_TIMEOUT_MS = 4000;
 
 function toStringArray(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
@@ -58,14 +61,7 @@ function toStringArray(value: unknown, maxItems: number) {
 }
 
 function parseOpenAiSummaryPayload(raw: string): OpenAiSummaryPayload | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-
-  return readJsonObject(parsed);
+  return parseJsonObjectOrNull(raw);
 }
 
 function readOpenAiMessageContent(payload: unknown): string | null | undefined {
@@ -259,7 +255,9 @@ export async function generatePatientMcsAiSummary(
   const endpoint =
     process.env.PATIENT_MCS_AI_BASE_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = process.env.PATIENT_MCS_AI_MODEL ?? 'gpt-5-mini';
-  const timeoutMs = Number(process.env.PATIENT_MCS_AI_TIMEOUT_MS ?? 4000);
+  const timeoutMs = normalizePositiveTimeoutMs(process.env.PATIENT_MCS_AI_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_PATIENT_MCS_AI_TIMEOUT_MS,
+  });
 
   if (!isAllowedAiEndpoint(endpoint)) {
     return {
@@ -353,7 +351,7 @@ export async function generatePatientMcsAiSummary(
       };
     }
 
-    const raw = readOpenAiMessageContent((await response.json()) as unknown);
+    const raw = readOpenAiMessageContent(await readJsonResponseBody(response));
     if (raw === null) {
       console.warn('[patient-mcs-ai] fallback', {
         provider,

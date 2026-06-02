@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const { requireAuthContextMock, patientFindFirstMock, patientUpdateMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    requireAuthContextMock: vi.fn(),
+    patientFindFirstMock: vi.fn(),
+    patientUpdateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
+
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+  },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+import { PATCH } from './route';
+
+function createRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/restore', {
+    method: 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+describe('/api/patients/[id]/restore PATCH', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    patientUpdateMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: null,
+      archived_by: null,
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        patient: {
+          update: patientUpdateMock,
+        },
+      }),
+    );
+  });
+
+  it('rejects blank patient ids before loading or restoring the patient', async () => {
+    const response = await PATCH(createRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('restores an archived patient under org context', async () => {
+    const response = await PATCH(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1', org_id: 'org_1' },
+      select: { id: true, archived_at: true },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: {
+        archived_at: null,
+        archived_by: null,
+      },
+      select: { id: true, archived_at: true, archived_by: true },
+    });
+  });
+});

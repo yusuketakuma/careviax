@@ -84,6 +84,20 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
     );
   });
 
+  it('rejects blank patient ids before building or auditing the pdf', async () => {
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(buildPatientVisitRecordsPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
     buildPatientVisitRecordsPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
 

@@ -54,6 +54,14 @@ function createPatchRequest(body: unknown) {
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/cases/case_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"primary_pharmacist_id":',
+  });
+}
+
 describe('/api/cases/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -132,6 +140,20 @@ describe('/api/cases/[id]', () => {
     });
   });
 
+  it('rejects blank case ids before loading case details', async () => {
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ケースIDが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('does not fetch first visit document details for an unassigned case', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
@@ -183,10 +205,57 @@ describe('/api/cases/[id]', () => {
       }),
     });
     expect(
-      (
-        careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>
-      ).internal_note,
+      (careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>)
+        .internal_note,
     ).toBeUndefined();
+  });
+
+  it('rejects non-object patch payloads before loading the case', async () => {
+    const response = (await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank case ids before loading or updating the case', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        primary_pharmacist_id: 'pharmacist_2',
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ケースIDが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the case', async () => {
+    const response = (await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned case PATCH before reference validation or updates', async () => {

@@ -73,6 +73,21 @@ describe('/api/care-reports/[id]/pdf', () => {
     );
   });
 
+  it('rejects blank report ids before rendering or auditing the export', async () => {
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書IDが不正です',
+    });
+    expect(buildCareReportPdfMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the care report does not exist', async () => {
     buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
 

@@ -3,18 +3,26 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { z } from 'zod';
 import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
+import { requiredTrimmedStringSchema } from '@/lib/validations/communication-request';
 
 const createResponseSchema = z.object({
-  responder_name: z.string().min(1, '回答者名は必須です'),
-  content: z.string().min(1, '回答内容は必須です'),
-  responded_at: z.string().regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です'),
+  responder_name: requiredTrimmedStringSchema('回答者名は必須です'),
+  content: requiredTrimmedStringSchema('回答内容は必須です'),
+  responded_at: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です'),
 });
 
 export const GET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('連携依頼IDが不正です');
 
     const request = await prisma.communicationRequest.findFirst({
       where: { id, org_id: ctx.orgId },
@@ -48,12 +56,14 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('連携依頼IDが不正です');
 
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createResponseSchema.safeParse(body);
+    const parsed = createResponseSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, notFound } from '@/lib/api/response';
+import { success, notFound, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { prisma } from '@/lib/db/client';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import type { Prisma } from '@prisma/client';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
@@ -33,7 +34,10 @@ function buildKeysetWhere(
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
-    const { id: patientId } = await params;
+    const { id: rawPatientId } = await params;
+    const patientId = normalizeRequiredRouteParam(rawPatientId);
+    if (!patientId) return validationError('患者IDが不正です');
+
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const keysetWhere = buildKeysetWhere(

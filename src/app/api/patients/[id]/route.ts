@@ -3,8 +3,10 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { updatePatientSchema, type UpdatePatientInput } from '@/lib/validations/patient';
+import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
 import { Prisma, type MemberRole } from '@prisma/client';
 import {
@@ -78,9 +80,9 @@ function normalizeFirstVisitDocumentContacts(
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return [];
+    const record = readJsonObject(item);
+    if (!record) return [];
 
-    const record = item as Record<string, unknown>;
     const name = typeof record.name === 'string' ? record.name : null;
     if (!name) return [];
 
@@ -181,8 +183,8 @@ function getCommunicationDirectionLabel(direction: string) {
 
 const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hold'] as const;
 
-type PatientRequesterPatch = NonNullable<UpdatePatientInput['requester']>;
-type PatientIntakePatch = NonNullable<UpdatePatientInput['intake']>;
+type PatientRequesterPatch = NonNullable<UpdatePatientData['requester']>;
+type PatientIntakePatch = NonNullable<UpdatePatientData['intake']>;
 const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
 
 function buildAssignedCareCaseWhere(ctx: {
@@ -278,64 +280,61 @@ function normalizeNullableText(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function assignTextField<T extends Record<string, unknown>>(
-  target: T,
-  key: keyof T,
+function assignOptionalField(target: object, key: string, value: unknown | undefined) {
+  const targetRecord = target as Record<string, unknown>;
+  if (value === undefined) {
+    delete targetRecord[key];
+    return;
+  }
+  targetRecord[key] = value;
+}
+
+function assignTextField(
+  target: object,
+  key: string,
   value: string | null | undefined,
   provided: boolean,
 ) {
   if (!provided) return;
   const normalized = normalizeNullableText(value);
-  if (normalized === undefined) {
-    delete target[key];
-    return;
-  }
-  target[key] = normalized as T[keyof T];
+  assignOptionalField(target, key, normalized);
 }
 
-function assignBooleanField<T extends Record<string, unknown>>(
-  target: T,
-  key: keyof T,
+function assignBooleanField(
+  target: object,
+  key: string,
   value: boolean | undefined,
   provided: boolean,
 ) {
   if (!provided) return;
-  if (value === undefined) {
-    delete target[key];
-    return;
-  }
-  target[key] = value as T[keyof T];
+  assignOptionalField(target, key, value);
 }
 
-function assignNumberField<T extends Record<string, unknown>>(
-  target: T,
-  key: keyof T,
+function assignNumberField(
+  target: object,
+  key: string,
   value: number | undefined,
   provided: boolean,
 ) {
   if (!provided) return;
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    delete target[key];
-    return;
-  }
-  target[key] = value as T[keyof T];
+  assignOptionalField(
+    target,
+    key,
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined,
+  );
 }
 
-function assignArrayField<T extends Record<string, unknown>>(
-  target: T,
-  key: keyof T,
+function assignArrayField(
+  target: object,
+  key: string,
   value: string[] | undefined,
   provided: boolean,
 ) {
   if (!provided) return;
-  if (!Array.isArray(value)) {
-    delete target[key];
-    return;
-  }
-  target[key] = value as T[keyof T];
+  assignOptionalField(target, key, Array.isArray(value) ? value : undefined);
 }
 
-function compactNestedObject<T extends Record<string, unknown>>(value: T) {
+function compactNestedObject<T extends object>(value: T) {
   const entries = Object.entries(value).filter(([, entry]) => entry !== undefined);
   return entries.length > 0 ? (Object.fromEntries(entries) as T) : undefined;
 }
@@ -397,212 +396,202 @@ function mergeHomeVisitIntake(args: {
   }
 
   if (args.intake) {
-    assignNumberField(
-      next as Record<string, unknown>,
-      'reported_age',
-      args.intake.age,
-      hasOwnKey(args.intake, 'age'),
-    );
+    assignNumberField(next, 'reported_age', args.intake.age, hasOwnKey(args.intake, 'age'));
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'primary_disease',
       args.intake.primary_disease,
       hasOwnKey(args.intake, 'primary_disease'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'postal_code',
       args.intake.postal_code,
       hasOwnKey(args.intake, 'postal_code'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'housing_type',
       args.intake.housing_type,
       hasOwnKey(args.intake, 'housing_type'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'facility_name',
       args.intake.facility_name,
       hasOwnKey(args.intake, 'facility_name'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'mcs_linked',
       args.intake.mcs_linked,
       hasOwnKey(args.intake, 'mcs_linked'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'primary_contact_preference',
       args.intake.primary_contact_preference,
       hasOwnKey(args.intake, 'primary_contact_preference'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'contact_phone',
       args.intake.contact_phone,
       hasOwnKey(args.intake, 'contact_phone'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'contact_mobile',
       args.intake.contact_mobile,
       hasOwnKey(args.intake, 'contact_mobile'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'visit_before_contact_required',
       args.intake.visit_before_contact_required,
       hasOwnKey(args.intake, 'visit_before_contact_required'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'first_visit_date',
       args.intake.first_visit_preferred_date,
       hasOwnKey(args.intake, 'first_visit_preferred_date'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'first_visit_time_slot',
       args.intake.first_visit_time_slot,
       hasOwnKey(args.intake, 'first_visit_time_slot'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'first_visit_time_note',
       args.intake.first_visit_time_note,
       hasOwnKey(args.intake, 'first_visit_time_note'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'money_management',
       args.intake.money_management,
       hasOwnKey(args.intake, 'money_management'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'parking_available',
       args.intake.parking_available,
       hasOwnKey(args.intake, 'parking_available'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'family_key_person',
       args.intake.family_key_person,
       hasOwnKey(args.intake, 'family_key_person'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'care_level',
       args.intake.care_level,
       hasOwnKey(args.intake, 'care_level'),
     );
+    assignTextField(next, 'adl_level', args.intake.adl_level, hasOwnKey(args.intake, 'adl_level'));
     assignTextField(
-      next as Record<string, unknown>,
-      'adl_level',
-      args.intake.adl_level,
-      hasOwnKey(args.intake, 'adl_level'),
-    );
-    assignTextField(
-      next as Record<string, unknown>,
+      next,
       'dementia_level',
       args.intake.dementia_level,
       hasOwnKey(args.intake, 'dementia_level'),
     );
     assignArrayField(
-      next as Record<string, unknown>,
+      next,
       'medication_support_methods',
       args.intake.medication_support_methods,
       hasOwnKey(args.intake, 'medication_support_methods'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'medication_support_other',
       args.intake.medication_support_other,
       hasOwnKey(args.intake, 'medication_support_other'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'ent_prescription',
       args.intake.ent_prescription,
       hasOwnKey(args.intake, 'ent_prescription'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'ent_period_from',
       args.intake.ent_period_from,
       hasOwnKey(args.intake, 'ent_period_from'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'ent_period_to',
       args.intake.ent_period_to,
       hasOwnKey(args.intake, 'ent_period_to'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'narcotics_base',
       args.intake.narcotics_base,
       hasOwnKey(args.intake, 'narcotics_base'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'narcotics_rescue',
       args.intake.narcotics_rescue,
       hasOwnKey(args.intake, 'narcotics_rescue'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'allergy_history',
       args.intake.allergy_history,
       hasOwnKey(args.intake, 'allergy_history'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'infection_isolation',
       args.intake.infection_isolation,
       hasOwnKey(args.intake, 'infection_isolation'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'swallowing_route',
       args.intake.swallowing_route,
       hasOwnKey(args.intake, 'swallowing_route'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'residual_medication_status',
       args.intake.residual_medication_status,
       hasOwnKey(args.intake, 'residual_medication_status'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'other_clinical_notes',
       args.intake.other_clinical_notes,
       hasOwnKey(args.intake, 'other_clinical_notes'),
     );
     assignArrayField(
-      next as Record<string, unknown>,
+      next,
       'special_medical_procedures',
       args.intake.special_medical_procedures,
       hasOwnKey(args.intake, 'special_medical_procedures'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'special_medical_notes',
       args.intake.special_medical_notes,
       hasOwnKey(args.intake, 'special_medical_notes'),
     );
     assignTextField(
-      next as Record<string, unknown>,
+      next,
       'intake_note',
       args.intake.intake_note,
       hasOwnKey(args.intake, 'intake_note'),
     );
     assignBooleanField(
-      next as Record<string, unknown>,
+      next,
       'initial_transition_management_expected',
       args.intake.initial_transition_management_expected,
       hasOwnKey(args.intake, 'initial_transition_management_expected'),
@@ -674,7 +663,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
+
   const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
 
   const patient = await prisma.patient.findFirst({
@@ -1597,12 +1589,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updatePatientSchema.safeParse(body);
+  const parsed = updatePatientSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

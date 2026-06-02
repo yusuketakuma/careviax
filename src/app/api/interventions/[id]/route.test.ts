@@ -137,9 +137,52 @@ describe('/api/interventions/[id]', () => {
         },
       });
     });
+
+    it('rejects blank intervention ids before assignment lookup or intervention reads', async () => {
+      const req = createRequest('http://localhost/api/interventions/int_1');
+      const res = await GET(req, { params: Promise.resolve({ id: '   ' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '介入記録IDが不正です',
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(interventionFindFirstMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('PATCH', () => {
+    it('rejects non-object patch payloads before loading the intervention', async () => {
+      const req = createRequest('http://localhost/api/interventions/int_1', []);
+      const res = await PATCH(req, { params: Promise.resolve({ id: 'int_1' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        message: 'リクエストボディが不正です',
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(interventionFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects blank intervention ids before parsing or updating the intervention', async () => {
+      const req = createRequest('http://localhost/api/interventions/int_1', {
+        intervention_type: 'dosage_adjustment',
+        note: 'Updated',
+      });
+      const res = await PATCH(req, { params: Promise.resolve({ id: '   ' }) });
+
+      expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '介入記録IDが不正です',
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(interventionFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
     it('returns 200 on valid update', async () => {
       interventionFindFirstMock.mockResolvedValue({ id: 'int_1' });
       const updated = { id: 'int_1', intervention_type: 'dosage_adjustment', note: 'Updated' };
@@ -157,10 +200,17 @@ describe('/api/interventions/[id]', () => {
       expect(json.data.id).toBe('int_1');
     });
 
-    it('returns 400 on invalid body', async () => {
+    it('rejects malformed JSON patch payloads before loading the intervention', async () => {
       const req = createBadJsonRequest('http://localhost/api/interventions/int_1');
       const res = await PATCH(req, { params: Promise.resolve({ id: 'int_1' }) });
+
       expect(res!.status).toBe(400);
+      await expect(res!.json()).resolves.toMatchObject({
+        message: 'リクエストボディが不正です',
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(interventionFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
     });
   });
 });

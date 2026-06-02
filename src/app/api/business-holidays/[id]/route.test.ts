@@ -31,7 +31,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: vi.fn((args: { where?: { id?: string | { not: string } } }) =>
         typeof args.where?.id === 'string'
           ? holidayFindFirstMock(args)
-          : duplicateFindFirstMock(args)
+          : duplicateFindFirstMock(args),
       ),
     },
   },
@@ -55,6 +55,17 @@ function createRequest(body?: unknown, headers?: Record<string, string>) {
       ...headers,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
+function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/business-holidays/holiday_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+    body: '{bad json',
   });
 }
 
@@ -84,7 +95,7 @@ describe('/api/business-holidays/[id]', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -116,11 +127,84 @@ describe('/api/business-holidays/[id]', () => {
     });
   });
 
-  it('deletes a holiday record', async () => {
-    const response = await DELETE(
-      createRequest(undefined, { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'holiday_1' }) },
+  it('rejects non-object update payloads before loading the holiday', async () => {
+    const response = await PATCH(createRequest([], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'holiday_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(holidayFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(holidayUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the holiday', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'holiday_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(holidayFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(holidayUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patch route ids before loading the holiday', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          date: '2026-05-03',
+          name: '憲法記念日',
+          holiday_type: 'public_holiday',
+          is_closed: true,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: '   ' }) },
     );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '休日設定IDが不正です',
+    });
+    expect(holidayFindFirstMock).not.toHaveBeenCalled();
+    expect(duplicateFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(holidayUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank delete route ids before loading the holiday', async () => {
+    const response = await DELETE(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '休日設定IDが不正です',
+    });
+    expect(holidayFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(holidayDeleteMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes a holiday record', async () => {
+    const response = await DELETE(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'holiday_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

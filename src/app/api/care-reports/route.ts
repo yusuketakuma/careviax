@@ -1,9 +1,10 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
+import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import { Prisma, ReportStatus, ReportType } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
@@ -14,10 +15,23 @@ import {
   getCareReportAccessScope,
 } from '@/server/services/care-report-access';
 
+function trimStringOrUndefined(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
+const optionalTrimmedStringSchema = z.preprocess(
+  trimStringOrUndefined,
+  z.string().min(1).optional(),
+);
+
 const createCareReportSchema = z.object({
-  patient_id: z.string().min(1, '患者IDは必須です'),
-  case_id: z.string().optional(),
-  visit_record_id: z.string().optional(),
+  patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
+  case_id: optionalTrimmedStringSchema,
+  visit_record_id: optionalTrimmedStringSchema,
   report_type: z.enum([
     'physician_report',
     'care_manager_report',
@@ -26,11 +40,8 @@ const createCareReportSchema = z.object({
     'family_share',
     'internal_record',
   ]),
-  content: z
-    .record(z.string(), z.unknown())
-    .default({})
-    .transform((v) => v as import('@prisma/client').Prisma.InputJsonValue),
-  template_id: z.string().optional(),
+  content: z.record(z.string(), z.unknown()).default({}),
+  template_id: optionalTrimmedStringSchema,
 });
 
 const careReportSelect = {
@@ -71,8 +82,8 @@ const optionalDateParamSchema = z
   }, '日付が不正です')
   .optional();
 const careReportQuerySchema = z.object({
-  patient_id: z.string().min(1).optional(),
-  visit_record_id: z.string().min(1).optional(),
+  patient_id: z.string().trim().min(1).optional(),
+  visit_record_id: z.string().trim().min(1).optional(),
   status: reportStatusSchema.optional(),
   report_type: reportTypeSchema.optional(),
   delivery_status: reportStatusSchema.optional(),
@@ -85,7 +96,7 @@ const careReportQuerySchema = z.object({
   sent_to: optionalDateParamSchema,
 });
 
-function normalizeOptionalSearchParam(value: string | null) {
+function optionalTrimmedSearchParam(value: string | null) {
   return value?.trim() || undefined;
 }
 
@@ -162,14 +173,14 @@ export const GET = withAuth(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const parsedQuery = careReportQuerySchema.safeParse({
-      patient_id: searchParams.get('patient_id') ?? undefined,
-      visit_record_id: searchParams.get('visit_record_id') ?? undefined,
+      patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
+      visit_record_id: optionalTrimmedSearchParam(searchParams.get('visit_record_id')),
       status: searchParams.get('status') ?? undefined,
       report_type: searchParams.get('report_type') ?? undefined,
       delivery_status: searchParams.get('delivery_status') ?? undefined,
-      recipient: normalizeOptionalSearchParam(searchParams.get('recipient')),
-      q: normalizeOptionalSearchParam(searchParams.get('q')),
-      keyword: normalizeOptionalSearchParam(searchParams.get('keyword')),
+      recipient: optionalTrimmedSearchParam(searchParams.get('recipient')),
+      q: optionalTrimmedSearchParam(searchParams.get('q')),
+      keyword: optionalTrimmedSearchParam(searchParams.get('keyword')),
       date_from: searchParams.get('date_from') ?? undefined,
       date_to: searchParams.get('date_to') ?? undefined,
       sent_from: searchParams.get('sent_from') ?? undefined,
@@ -371,10 +382,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createCareReportSchema.safeParse(body);
+    const parsed = createCareReportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -392,7 +403,8 @@ export const POST = withAuth(
     }
     const resolvedCaseId = sourceValidation.caseId;
 
-    let enrichedContent = parsed.data.content as Record<string, unknown>;
+    const { content, ...reportInput } = parsed.data;
+    let enrichedContent = content;
     let recipientPrefill: { recipient_name?: string; recipient_organization?: string } | undefined;
 
     if (resolvedCaseId) {
@@ -453,9 +465,9 @@ export const POST = withAuth(
         data: {
           org_id: req.orgId,
           created_by: req.userId,
-          ...parsed.data,
+          ...reportInput,
           case_id: resolvedCaseId ?? null,
-          content: enrichedContent as import('@prisma/client').Prisma.InputJsonValue,
+          content: toPrismaJsonInput(enrichedContent),
         },
       });
     });

@@ -65,7 +65,11 @@ describe('/api/document-delivery-rules/[id]', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
     documentDeliveryRuleFindFirstMock.mockResolvedValue({ id: 'rule_1' });
-    documentDeliveryRuleUpdateMock.mockResolvedValue({ id: 'rule_1', channel: 'fax', is_active: true });
+    documentDeliveryRuleUpdateMock.mockResolvedValue({
+      id: 'rule_1',
+      channel: 'fax',
+      is_active: true,
+    });
     documentDeliveryRuleDeleteMock.mockResolvedValue({ id: 'rule_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -100,13 +104,48 @@ describe('/api/document-delivery-rules/[id]', () => {
       });
     });
 
-    it('returns 400 with invalid body', async () => {
+    it('rejects malformed JSON update payloads before loading the delivery rule', async () => {
       const response = (await PATCH(
         createInvalidJsonRequest('http://localhost/api/document-delivery-rules/rule_1'),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 
       expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'リクエストボディが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-object update payloads before loading the delivery rule', async () => {
+      const response = (await PATCH(
+        createRequest('http://localhost/api/document-delivery-rules/rule_1', []),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects blank route ids before loading the delivery rule', async () => {
+      const response = (await PATCH(
+        createRequest('http://localhost/api/document-delivery-rules/%20%20%20', {
+          channel: 'fax',
+        }),
+        { params: Promise.resolve({ id: '   ' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '文書送達ルールIDが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleUpdateMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when rule not found', async () => {
@@ -138,6 +177,21 @@ describe('/api/document-delivery-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+    });
+
+    it('rejects blank route ids before loading the delivery rule', async () => {
+      const response = (await DELETE(
+        createRequest('http://localhost/api/document-delivery-rules/%20%20%20'),
+        { params: Promise.resolve({ id: '   ' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '文書送達ルールIDが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(documentDeliveryRuleDeleteMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when rule not found', async () => {

@@ -366,6 +366,64 @@ describe('generateReportsFromVisit', () => {
     );
   });
 
+  it('drops non-object template content while keeping generated report metadata', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: null,
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue(null);
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue(['unexpected']);
+    careReportFindManyMock.mockResolvedValue([]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
+          },
+        }),
+    );
+
+    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(careReportCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            content: {
+              billing_context: null,
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   it('throws when patient not found', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',

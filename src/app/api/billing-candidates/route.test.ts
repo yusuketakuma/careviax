@@ -75,6 +75,17 @@ function createRequest(body: unknown) {
   );
 }
 
+function createMalformedJsonRequest() {
+  return Object.assign(
+    new NextRequest('http://localhost/api/billing-candidates', {
+      method: 'POST',
+      body: '{"billing_month":',
+      headers: { 'content-type': 'application/json' },
+    }),
+    { orgId: 'org_1' },
+  );
+}
+
 function createGetRequest(url: string) {
   return Object.assign(new NextRequest(url), { orgId: 'org_1' });
 }
@@ -253,9 +264,7 @@ describe('/api/billing-candidates', () => {
   ])('rejects %s billing_month on read before org context', async (_caseName, billingMonth) => {
     const response = await GET(
       createGetRequest(
-        `http://localhost/api/billing-candidates?billing_month=${encodeURIComponent(
-          billingMonth,
-        )}`,
+        `http://localhost/api/billing-candidates?billing_month=${encodeURIComponent(billingMonth)}`,
       ),
     );
 
@@ -305,6 +314,7 @@ describe('/api/billing-candidates', () => {
   });
 
   it.each([
+    ['non-object root', ['unexpected']],
     ['missing', {}],
     ['empty', { billing_month: '' }],
     ['non-string', { billing_month: 123 }],
@@ -318,6 +328,21 @@ describe('/api/billing-candidates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
+    expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON on generation before database work', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
     expect(visitRecordFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();

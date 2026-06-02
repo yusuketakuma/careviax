@@ -3,6 +3,8 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { conflict, error, forbidden, validationError, success, notFound } from '@/lib/api/response';
 import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -20,7 +22,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return forbidden('MCS 連携の同期権限がありません');
   }
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = syncPatientMcsSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
@@ -30,12 +42,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');
-
-  const body = await req.json().catch(() => ({}));
-  const parsed = syncPatientMcsSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
 
   try {
     const result = await syncPatientMcsTimeline({

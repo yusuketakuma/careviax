@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { createTaskSchema, taskStatusValues } from '@/lib/validations/task';
@@ -98,10 +100,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createTaskSchema.safeParse(body);
+  const parsed = createTaskSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -138,9 +140,7 @@ export async function POST(req: NextRequest) {
           related_entity_type: parsed.data.related_entity_type ?? null,
           related_entity_id: parsed.data.related_entity_id ?? null,
           metadata:
-            parsed.data.metadata != null
-              ? (parsed.data.metadata as import('@prisma/client').Prisma.InputJsonValue)
-              : undefined,
+            parsed.data.metadata != null ? toPrismaJsonInput(parsed.data.metadata) : undefined,
         },
       });
     },

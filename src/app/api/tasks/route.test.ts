@@ -50,6 +50,16 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
+  });
+}
+
 describe('/api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,7 +78,7 @@ describe('/api/tasks', () => {
         task: {
           create: taskCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -99,7 +109,7 @@ describe('/api/tasks', () => {
           related_entity_type: 'conference_note',
           related_entity_id: 'note_1',
         }),
-      })
+      }),
     );
   });
 
@@ -122,6 +132,7 @@ describe('/api/tasks', () => {
         assigned_to: 'user_1',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
+        metadata: { source: 'self_report', severity: 'high' },
       }),
     );
     if (!response) throw new Error('response is undefined');
@@ -136,8 +147,32 @@ describe('/api/tasks', () => {
         assigned_to: 'user_1',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
+        metadata: { source: 'self_report', severity: 'high' },
       }),
     });
+  });
+
+  it('rejects non-object create payloads before resolving assignment scope', async () => {
+    const response = await POST(createRequest('http://localhost/api/tasks', []));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before resolving assignment scope', async () => {
+    const response = await POST(createMalformedJsonRequest('http://localhost/api/tasks'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects creation for an unassigned related patient before write', async () => {

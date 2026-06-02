@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { notFound, success } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
@@ -14,7 +15,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
+
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },

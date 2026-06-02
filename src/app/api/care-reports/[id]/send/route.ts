@@ -8,6 +8,8 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { z } from 'zod';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
@@ -185,12 +187,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('報告書IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = sendCareReportSchema.safeParse(body);
+  const parsed = sendCareReportSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

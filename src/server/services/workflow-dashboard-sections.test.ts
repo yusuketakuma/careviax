@@ -86,10 +86,7 @@ describe('workflow-dashboard-sections', () => {
       },
     ];
 
-    const result = buildFacilityVisibility(
-      upcomingSchedules,
-      new Map([['user_1', '佐藤 薬剤師']]),
-    );
+    const result = buildFacilityVisibility(upcomingSchedules, new Map([['user_1', '佐藤 薬剤師']]));
 
     expect(result.clusters).toMatchObject([
       {
@@ -113,8 +110,8 @@ describe('workflow-dashboard-sections', () => {
           management_plan_review: 3,
           visit_intake_linkage: 1,
         },
-        4
-      )
+        4,
+      ),
     ).toMatchObject([
       expect.objectContaining({ id: 'missing_visit_consent', count: 2 }),
       expect.objectContaining({ id: 'missing_management_plan', count: 1 }),
@@ -186,6 +183,72 @@ describe('workflow-dashboard-sections', () => {
         expect.objectContaining({
           id: 'visit:schedule_1',
           summary: expect.stringContaining('次回算定可 2026-04-17'),
+        }),
+      ]),
+    );
+  });
+
+  it('uses task metadata links only when metadata is object-shaped', () => {
+    const pendingTasks: WorkflowCoreData['pendingTasks'] = [
+      {
+        id: 'task_valid',
+        task_type: 'handoff_confirmation',
+        title: '申し送り確認',
+        description: null,
+        status: 'pending',
+        priority: 'high',
+        assigned_to: 'user_1',
+        due_date: null,
+        sla_due_at: null,
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_1',
+        metadata: {
+          action_href: '/custom-handoff',
+          action_label: '申し送り詳細',
+          patient_name: '患者A',
+        },
+      },
+      {
+        id: 'task_malformed',
+        task_type: 'handoff_confirmation',
+        title: '申し送り確認',
+        description: null,
+        status: 'pending',
+        priority: 'normal',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: null,
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_2',
+        metadata: ['unexpected'],
+      },
+    ];
+
+    const result = buildUnifiedWorkbench(
+      pendingTasks,
+      [],
+      [],
+      [],
+      0,
+      [],
+      emptyCommunicationQueue(),
+      new Map([['user_1', '薬剤師A']]),
+      new Map(),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'task:task_valid',
+          action_href: '/custom-handoff',
+          action_label: '申し送り詳細',
+          patient_name: '患者A',
+        }),
+        expect.objectContaining({
+          id: 'task:task_malformed',
+          action_href: '/visits/handoffs/visit_2',
+          action_label: '申し送りを確認',
+          patient_name: null,
         }),
       ]),
     );

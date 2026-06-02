@@ -124,6 +124,18 @@ function createJsonRequest(body: unknown, auth?: { orgId: string; userId: string
   );
 }
 
+function createMalformedJsonRequest(auth?: { orgId: string; userId: string; role: string }) {
+  return createAuthenticatedRequest(
+    'http://localhost/api/patients',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"name":',
+    },
+    auth,
+  );
+}
+
 describe('/api/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -444,6 +456,25 @@ describe('/api/patients GET', () => {
     expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed limit values before reaching patient filtering', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?limit=1e2'),
+    ))!;
+
+    expect(response.status).toBe(400);
+
+    const payload = (await response.json()) as {
+      code: string;
+      details?: { limit?: string[] };
+    };
+
+    expect(payload.code).toBe('VALIDATION_ERROR');
+    expect(payload.details?.limit?.[0]).toBe('limit は整数で指定してください');
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+  });
+
   it('supports payer-basis and primary pharmacist filters', async () => {
     const response = (await GET(
       createAuthenticatedRequest(
@@ -532,7 +563,7 @@ describe('/api/patients GET', () => {
     listPatientRiskSummariesMock.mockResolvedValue([]);
 
     const response = (await GET(
-      createAuthenticatedRequest('http://localhost/api/patients?cursor=patient_1&limit=1'),
+      createAuthenticatedRequest('http://localhost/api/patients?cursor=patient_1&limit=%201%20'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -540,6 +571,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         cursor: { id: 'patient_1' },
         skip: 1,
+        take: 101,
       }),
     );
   });
@@ -638,13 +670,14 @@ describe('/api/patients GET', () => {
           organization_name: '千代田クリニック',
           profession: 'physician',
           contact_name: '連携 太郎',
-          phone: '03-1111-2222',
+          phone: ' 03-1111-2222 ',
+          fax: ' 03-1111-3333 ',
           preferred_contact_method: 'mcs',
         },
         intake: {
           age: 82,
           primary_disease: '心不全',
-          contact_phone: '03-3333-4444',
+          contact_phone: ' 03-3333-4444 ',
           primary_contact_preference: 'phone',
           visit_before_contact_required: true,
           care_level: 'care_3',
@@ -657,7 +690,8 @@ describe('/api/patients GET', () => {
           care_manager: {
             name: 'ケア 山田',
             organization_name: '地域ケア',
-            phone: '03-9999-0000',
+            phone: ' 03-9999-0000 ',
+            fax: ' 03-9999-1111 ',
           },
           special_medical_procedures: ['narcotics', 'home_oxygen'],
         },
@@ -718,8 +752,11 @@ describe('/api/patients GET', () => {
             home_visit_intake: expect.objectContaining({
               requester: expect.objectContaining({
                 organization_name: '千代田クリニック',
+                phone: '03-1111-2222',
+                fax: '03-1111-3333',
               }),
               reported_age: 82,
+              contact_phone: '03-3333-4444',
               care_level: 'care_3',
               ent_prescription: true,
               ent_period_from: '2026-04-01',
@@ -736,10 +773,78 @@ describe('/api/patients GET', () => {
           expect.objectContaining({
             role: 'care_manager',
             name: 'ケア 山田',
+            phone: '03-9999-0000',
+            fax: '03-9999-1111',
           }),
         ]),
       }),
     );
+  });
+
+  it('rejects malformed patient contact numbers before creating a patient', async () => {
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+        phone: '090-ABCD-1234',
+        requester: {
+          phone: '03-ABCD-2222',
+        },
+        intake: {
+          contact_phone: '03-3333-ABCD',
+          care_manager: {
+            phone: 'FAX-0000',
+          },
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceCreateMock).not.toHaveBeenCalled();
+    expect(careTeamLinkCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before creating a patient', async () => {
+    const response = (await POST(createJsonRequest(['unexpected'])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before creating a patient', async () => {
+    const response = (await POST(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
+    expect(residenceCreateMock).not.toHaveBeenCalled();
+    expect(contactPartyCreateManyMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object intake payloads before creating a patient', async () => {
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+        intake: ['unexpected'],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
   });
 
   it('copies facility acceptance window into schedule preferences on patient creation', async () => {

@@ -68,10 +68,18 @@ const expectedVisitRecordAssignmentWhere = {
   },
 };
 
-function createPostRequest(body: Record<string, unknown>) {
+function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patients/patient_1/labs', {
     method: 'POST',
     body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/labs', {
+    method: 'POST',
+    body: '{"analyte_code":',
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -98,9 +106,24 @@ describe('/api/patients/[id]/labs GET', () => {
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank patient ids before reading labs', async () => {
+    const response = (await GET(createGetRequest('http://localhost/api/patients/%20%20/labs'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('filters labs by a supported analyte_code query value', async () => {
     const response = (await GET(
-      createGetRequest('http://localhost/api/patients/patient_1/labs?analyte_code=egfr'),
+      createGetRequest(
+        'http://localhost/api/patients/patient_1/labs?analyte_code=egfr&limit=%202%20',
+      ),
       { params: Promise.resolve({ id: 'patient_1' }) },
     ))!;
 
@@ -110,6 +133,62 @@ describe('/api/patients/[id]/labs GET', () => {
         where: expect.objectContaining({
           analyte_code: 'egfr',
         }),
+        take: 2,
+      }),
+    );
+  });
+
+  it('rejects malformed limit query values before reading the patient', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/patients/patient_1/labs?limit=20abc'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        limit: ['limit は整数で指定してください'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects out-of-range limit query values before reading the patient', async () => {
+    const lowerResponse = (await GET(
+      createGetRequest('http://localhost/api/patients/patient_1/labs?limit=-5'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(lowerResponse.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+
+    const upperResponse = (await GET(
+      createGetRequest('http://localhost/api/patients/patient_1/labs?limit=999'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(upperResponse.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the default lab limit when omitted', async () => {
+    const response = (await GET(createGetRequest('http://localhost/api/patients/patient_1/labs'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 50,
       }),
     );
   });
@@ -126,6 +205,48 @@ describe('/api/patients/[id]/labs POST', () => {
         ...args.data,
       }),
     );
+  });
+
+  it('rejects non-object lab payloads before loading the patient', async () => {
+    const response = (await POST(createPostRequest([]), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing lab payloads or creating labs', async () => {
+    const response = (await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON lab payloads before loading the patient', async () => {
+    const response = (await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
   });
 
   it('validates same-org same-patient assigned visit-record provenance before creating', async () => {

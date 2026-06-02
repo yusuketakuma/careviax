@@ -90,12 +90,11 @@ describe('/api/conference-notes/[id] PATCH', () => {
       content: '会議目的: 訪問頻度の見直し',
       structured_content: {
         template: 'service_manager',
-        sections: [
-          { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
-        ],
+        sections: [{ key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' }],
       },
       metadata: {
         generated_report_id: 'report_prev',
+        legacy_note: 'preserve me',
         sync_summary: {
           report_draft_ids: ['report_prev'],
         },
@@ -109,24 +108,24 @@ describe('/api/conference-notes/[id] PATCH', () => {
       conference_date: new Date('2026-03-30T10:00:00.000Z'),
       action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師', legacy_debug: undefined }],
     });
-    conferenceNoteUpdateMock.mockImplementation(async (args?: { data?: { metadata?: unknown } }) => ({
-      id: 'note_1',
-      case_id: 'case_1',
-      patient_id: 'patient_1',
-      facility_id: 'facility_1',
-      note_type: 'service_manager',
-      title: '担当者会議（更新）',
-      content: '会議目的: 訪問頻度の見直し\nサービス調整: 月2回から月4回へ変更',
-      structured_content: {
-        template: 'service_manager',
-        sections: [
-          { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
-          { key: 'care_plan_changes', label: 'ケアプラン変更点', body: '服薬支援を強化' },
-          { key: 'service_adjustments', label: 'サービス調整', body: '月2回から月4回へ変更' },
-        ],
-      },
-      metadata:
-        (args?.data?.metadata as Record<string, unknown> | undefined) ?? {
+    conferenceNoteUpdateMock.mockImplementation(
+      async (args?: { data?: { metadata?: unknown } }) => ({
+        id: 'note_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        facility_id: 'facility_1',
+        note_type: 'service_manager',
+        title: '担当者会議（更新）',
+        content: '会議目的: 訪問頻度の見直し\nサービス調整: 月2回から月4回へ変更',
+        structured_content: {
+          template: 'service_manager',
+          sections: [
+            { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+            { key: 'care_plan_changes', label: 'ケアプラン変更点', body: '服薬支援を強化' },
+            { key: 'service_adjustments', label: 'サービス調整', body: '月2回から月4回へ変更' },
+          ],
+        },
+        metadata: (args?.data?.metadata as Record<string, unknown> | undefined) ?? {
           billing: {
             link_status: 'candidate',
             code: 'MED_INFO_PROVISION_2_HA',
@@ -137,15 +136,16 @@ describe('/api/conference-notes/[id] PATCH', () => {
             report_draft_ids: ['report_prev'],
           },
         },
-      billing_eligible: true,
-      billing_code: 'MED_INFO_PROVISION_2_HA',
-      follow_up_date: new Date('2026-04-15T00:00:00.000Z'),
-      follow_up_completed: false,
-      generated_report_id: 'report_prev',
-      participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
-      conference_date: new Date('2026-03-30T10:00:00.000Z'),
-      action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
-    }));
+        billing_eligible: true,
+        billing_code: 'MED_INFO_PROVISION_2_HA',
+        follow_up_date: new Date('2026-04-15T00:00:00.000Z'),
+        follow_up_completed: false,
+        generated_report_id: 'report_prev',
+        participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+        conference_date: new Date('2026-03-30T10:00:00.000Z'),
+        action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
+      }),
+    );
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       patient_id: 'patient_1',
@@ -194,7 +194,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
           return [{ id: 'report_cm_1', report_type: args.where.report_type.in[0] }];
         }
         return [];
-      }
+      },
     );
     careReportCreateManyMock.mockResolvedValue({ count: 1 });
     residenceFindFirstMock.mockResolvedValue({ facility_id: 'facility_1' });
@@ -242,7 +242,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
         patientSchedulePreference: {
           upsert: patientSchedulePreferenceUpsertMock,
         },
-      })
+      }),
     );
   });
 
@@ -257,10 +257,18 @@ describe('/api/conference-notes/[id] PATCH', () => {
             { key: 'service_adjustments', label: 'サービス調整', body: '月2回から月4回へ変更' },
           ],
         },
+        participants: [
+          {
+            name: '佐藤CM',
+            role: 'care_manager',
+            attended: true,
+            fax: ' 03-1111-2222 ',
+          },
+        ],
       }),
       {
         params: Promise.resolve({ id: 'note_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
@@ -280,15 +288,20 @@ describe('/api/conference-notes/[id] PATCH', () => {
               code: 'MED_INFO_PROVISION_2_HA',
               points: 20,
             }),
+            legacy_note: 'preserve me',
+            sync_summary: expect.objectContaining({
+              report_draft_ids: ['report_prev'],
+            }),
           }),
         }),
-      })
+      }),
     );
     const savedData = conferenceNoteUpdateMock.mock.calls[0][0].data as {
       participants: Array<Record<string, unknown>>;
       action_items: Array<Record<string, unknown>>;
     };
     expect(savedData.participants[0].legacy_debug).toBeUndefined();
+    expect(savedData.participants[0].fax).toBe('03-1111-2222');
     expect(savedData.action_items[0].legacy_debug).toBeUndefined();
     expect(conferenceNoteUpdateMock).toHaveBeenNthCalledWith(
       2,
@@ -304,7 +317,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
             }),
           }),
         }),
-      })
+      }),
     );
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
@@ -327,7 +340,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
           billing_code: 'MED_INFO_PROVISION_2_HA',
           points: 20,
         }),
-      })
+      }),
     );
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
@@ -342,5 +355,70 @@ describe('/api/conference-notes/[id] PATCH', () => {
         visit_proposal_id: 'proposal_new',
       }),
     });
+  });
+
+  it('rejects non-object request bodies before loading or syncing the note', async () => {
+    const response = await PATCH(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank note ids before loading or syncing the note', async () => {
+    const response = await PATCH(
+      createRequest({
+        title: '担当者会議（更新）',
+      }),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録IDが不正です',
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed participant fax before loading or syncing the note', async () => {
+    const response = await PATCH(
+      createRequest({
+        participants: [{ name: '佐藤CM', role: 'care_manager', fax: '03-ABCD-5678' }],
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        participants: expect.arrayContaining(['FAX番号形式が不正です']),
+      },
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 });

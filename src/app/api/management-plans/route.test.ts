@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   requireAuthContextMock,
@@ -54,6 +55,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/management-plans', {
+    method: 'POST',
+    body: '{"case_id":',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/management-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,7 +96,7 @@ describe('/api/management-plans', () => {
 
   it('lists management plans filtered by case id', async () => {
     const response = (await GET(
-      createGetRequest('http://localhost/api/management-plans?case_id=case_1'),
+      createGetRequest('http://localhost/api/management-plans?case_id=%20case_1%20'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -105,6 +114,19 @@ describe('/api/management-plans', () => {
       },
       orderBy: [{ updated_at: 'desc' }],
     });
+  });
+
+  it('rejects blank case filters before listing management plans', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/management-plans?case_id=%20%20'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'case_id は空にできません',
+    });
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
   it('denies management plan creation for an unassigned case before write', async () => {
@@ -133,6 +155,121 @@ describe('/api/management-plans', () => {
         id: true,
       },
     });
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before loading the care case', async () => {
+    const response = (await POST(createPostRequest(['case_1'])))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before loading the care case', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank create identifiers before loading the care case', async () => {
+    const response = (await POST(
+      createPostRequest({
+        case_id: '   ',
+        title: '   ',
+        content: { summary: '内容' },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects impossible review dates before loading the care case', async () => {
+    const response = (await POST(
+      createPostRequest({
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+        next_review_date: '2026-02-29',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects impossible effective dates before loading the care case', async () => {
+    const response = (await POST(
+      createPostRequest({
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+        effective_from: '2026-04-31',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects review dates before effective dates before loading the care case', async () => {
+    const response = (await POST(
+      createPostRequest({
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+        effective_from: '2026-06-30',
+        next_review_date: '2026-06-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(managementPlanCreateMock).not.toHaveBeenCalled();
   });
 
@@ -187,6 +324,90 @@ describe('/api/management-plans', () => {
         created_by: 'user_1',
         content: { summary: '内容' },
         next_review_date: new Date('2026-04-30'),
+      }),
+    });
+  });
+
+  it('maps version conflicts during management plan creation to 409', async () => {
+    managementPlanCreateMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const response = (await POST(
+      createPostRequest({
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同じケースで同じバージョンの管理計画書が既に作成されています。最新のデータを取得してください。',
+    });
+    expect(managementPlanCreateMock).toHaveBeenCalled();
+  });
+
+  it('normalizes create identifiers, text, and blank optional fields before lookup and write', async () => {
+    managementPlanFindFirstMock
+      .mockResolvedValueOnce({ id: 'source_plan_1' })
+      .mockResolvedValueOnce({ version: 2 });
+
+    const response = (await POST(
+      createPostRequest({
+        case_id: ' case_1 ',
+        title: ' 更新版 計画書 ',
+        summary: '   ',
+        content: { summary: '内容' },
+        effective_from: ' 2026-04-01 ',
+        next_review_date: ' 2026-04-30 ',
+        source_plan_id: ' source_plan_1 ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'case_1',
+        org_id: 'org_1',
+        OR: [
+          { primary_pharmacist_id: 'user_1' },
+          { backup_pharmacist_id: 'user_1' },
+          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(managementPlanFindFirstMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'source_plan_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        case_: {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    expect(managementPlanCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_1',
+        title: '更新版 計画書',
+        summary: null,
+        effective_from: new Date('2026-04-01'),
+        next_review_date: new Date('2026-04-30'),
+        source_plan_id: 'source_plan_1',
       }),
     });
   });

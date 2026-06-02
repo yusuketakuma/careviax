@@ -51,6 +51,21 @@ describe('/api/tracing-reports/[id]/pdf', () => {
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
+  it('rejects blank tracing report ids before rendering or audit', async () => {
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'トレーシングレポートIDが不正です',
+    });
+    expect(buildTracingReportPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('returns the rendered tracing report pdf', async () => {
     buildTracingReportPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),

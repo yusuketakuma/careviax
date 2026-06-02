@@ -1,28 +1,51 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
+import {
+  patientSelfReportResponseSelect,
+  serializePatientSelfReport,
+} from '@/lib/patient/self-report-response';
 import { z } from 'zod';
 import { selfReportStatusSchema } from '@/lib/validations/self-report';
 
+function trimStringOrUndefined(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
+const optionalTrimmedStringSchema = (max: number) =>
+  z.preprocess(trimStringOrUndefined, z.string().max(max).optional());
+
 const createSelfReportSchema = z.object({
-  patient_id: z.string().min(1, '患者IDは必須です'),
-  reported_by_name: z.string().trim().min(1, '報告者氏名は必須です'),
-  relation: z.string().trim().max(100).optional(),
+  patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
+  reported_by_name: requiredTrimmedStringSchema('報告者氏名は必須です'),
+  relation: optionalTrimmedStringSchema(100),
   category: z.string().trim().min(1, 'カテゴリは必須です').max(100),
   subject: z.string().trim().min(1, '件名は必須です').max(200),
   content: z.string().trim().min(1, '内容は必須です').max(4000),
   requested_callback: z.boolean().default(false),
-  preferred_contact_time: z.string().trim().max(200).optional(),
+  preferred_contact_time: optionalTrimmedStringSchema(200),
 });
+
+function optionalTrimmedSearchParam(value: string | null) {
+  if (value === null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const patientId = searchParams.get('patient_id') ?? undefined;
+    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
     const statusParam = searchParams.get('status') ?? undefined;
     const status = statusParam ? selfReportStatusSchema.safeParse(statusParam) : null;
     if (status && !status.success) {
@@ -61,30 +84,14 @@ export const GET = withAuthContext(
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { created_at: 'desc' },
-      select: {
-        id: true,
-        patient_id: true,
-        reported_by_name: true,
-        relation: true,
-        category: true,
-        subject: true,
-        content: true,
-        requested_callback: true,
-        preferred_contact_time: true,
-        status: true,
-        triaged_by: true,
-        triaged_at: true,
-        created_at: true,
-        updated_at: true,
-      },
+      select: patientSelfReportResponseSelect,
     });
 
     const hasMore = reports.length > limit;
-    const data = (hasMore ? reports.slice(0, limit) : reports).map((report) => ({
-      ...report,
-      patient_name: patientMap.get(report.patient_id)?.name ?? null,
-      patient_name_kana: patientMap.get(report.patient_id)?.name_kana ?? null,
-    }));
+    const privacy = getPatientPrivacyFlags(ctx.role);
+    const data = (hasMore ? reports.slice(0, limit) : reports).map((report) =>
+      serializePatientSelfReport(report, privacy, patientMap.get(report.patient_id)),
+    );
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
     return success({ data, hasMore, nextCursor });
@@ -97,10 +104,10 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createSelfReportSchema.safeParse(body);
+    const parsed = createSelfReportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -118,7 +125,7 @@ export const POST = withAuthContext(
     if (!patient) return notFound('患者が見つかりません');
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.patientSelfReport.create({
+      const report = await tx.patientSelfReport.create({
         data: {
           org_id: ctx.orgId,
           patient_id: parsed.data.patient_id,
@@ -133,10 +140,31 @@ export const POST = withAuthContext(
           triaged_at: new Date(),
           status: 'triaged',
         },
+        select: patientSelfReportResponseSelect,
       });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: ctx.orgId,
+          actor_id: ctx.userId,
+          action: 'patient_self_report_created',
+          target_type: 'patient_self_report',
+          target_id: report.id,
+          changes: {
+            patient_id: report.patient_id,
+            status_after: report.status,
+            requested_callback: parsed.data.requested_callback,
+            relation_provided: parsed.data.relation !== undefined,
+            preferred_contact_time_provided: parsed.data.preferred_contact_time !== undefined,
+          },
+        },
+      });
+
+      return report;
     });
 
-    return success({ data: created }, 201);
+    const privacy = getPatientPrivacyFlags(ctx.role);
+    return success({ data: serializePatientSelfReport(created, privacy) }, 201);
   },
   {
     permission: 'canReport',

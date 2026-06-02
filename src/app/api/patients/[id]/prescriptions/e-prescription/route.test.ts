@@ -70,16 +70,23 @@ import { EPrescriptionAdapterError } from '@/server/adapters/e-prescription';
 import { POST } from './route';
 
 function createRequest(body?: unknown) {
-  return new NextRequest(
-    'http://localhost/api/patients/patient_1/prescriptions/e-prescription',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
+  return new NextRequest('http://localhost/api/patients/patient_1/prescriptions/e-prescription', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
     },
-  );
+    body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/prescriptions/e-prescription', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"prescription_id":',
+  });
 }
 
 const DEFAULT_CTX = { orgId: 'org_1', userId: 'user_1', role: 'admin' };
@@ -129,6 +136,57 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     withOrgContextMock.mockImplementation(
       async (_orgId: string, callback: (tx: typeof txMock) => unknown) => callback(txMock),
     );
+  });
+
+  it('rejects non-object request payloads before patient lookup or adapter calls', async () => {
+    const response = await POST(createRequest([]), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(listAccessiblePatientCaseIdsMock).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
+  });
+
+  it('rejects malformed JSON request payloads before patient lookup or adapter calls', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(listAccessiblePatientCaseIdsMock).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
+  });
+
+  it('rejects blank patient ids before parsing request payloads or adapter calls', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(listAccessiblePatientCaseIdsMock).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
   });
 
   it.each([

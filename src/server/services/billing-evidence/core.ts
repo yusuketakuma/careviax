@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
-import { normalizeJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
@@ -20,6 +20,11 @@ import {
   getHomeVisitSpecialMedicalProcedures,
 } from '@/lib/patient/home-visit-intake';
 import type { StructuredSoap } from '@/types/structured-soap';
+
+type RegionAddOnKey = 'special_15' | 'small_office_10' | 'resident_5';
+
+const REGION_ADD_ON_KEYS = ['special_15', 'small_office_10', 'resident_5'] as const;
+const REGION_ADD_ON_KEY_SET = new Set<string>(REGION_ADD_ON_KEYS);
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -350,6 +355,17 @@ function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
 function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   const normalized = normalizeJsonInput(value);
   return Array.isArray(normalized) ? normalized : [];
+}
+
+function readCalculationBreakdownRegionAddOn(value: unknown): RegionAddOnKey | null {
+  const breakdown = readJsonObject(value);
+  const conditions = readJsonObject(breakdown?.conditions);
+  const regionAddOn = conditions?.region_add_on;
+  return typeof regionAddOn === 'string' && isRegionAddOnKey(regionAddOn) ? regionAddOn : null;
+}
+
+function isRegionAddOnKey(value: string): value is RegionAddOnKey {
+  return REGION_ADD_ON_KEY_SET.has(value);
 }
 
 function csvFromUnique(values: Array<string | null | undefined>) {
@@ -1508,14 +1524,8 @@ export async function upsertBillingEvidenceForVisit(
     if (siteConfigRow && payerBasis === 'care') {
       if (regionAddOnEligible.length > 0) {
         for (const spec of candidateSpecs) {
-          const cond = spec.calculationBreakdown as Record<string, unknown>;
-          const regionKey = (cond.conditions as Record<string, unknown>)?.region_add_on;
-          if (
-            typeof regionKey === 'string' &&
-            regionAddOnEligible.includes(
-              regionKey as 'special_15' | 'small_office_10' | 'resident_5',
-            )
-          ) {
+          const regionKey = readCalculationBreakdownRegionAddOn(spec.calculationBreakdown);
+          if (regionKey && regionAddOnEligible.includes(regionKey)) {
             if (spec.status === 'excluded' && claimable) {
               spec.status = 'candidate';
               spec.exclusionReason = 'SSOT上の追加算定候補です。要件確認後に採否を確定してください';

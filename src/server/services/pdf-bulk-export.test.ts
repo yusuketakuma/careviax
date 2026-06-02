@@ -176,7 +176,7 @@ describe('pdf-bulk-export', () => {
     const result = await queueMedicationHistoryBulkExport({
       orgId: 'org_1',
       requestedBy: 'user_1',
-      patientIds: ['patient_1', 'patient_2', 'patient_1'],
+      patientIds: [' patient_1 ', 'patient_2', 'patient_1'],
       accessContext: {
         userId: 'user_1',
         role: 'admin',
@@ -219,6 +219,25 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     });
+  });
+
+  it('rejects blank patient ids before queueing a medication history bulk export job', async () => {
+    await expect(
+      queueMedicationHistoryBulkExport({
+        orgId: 'org_1',
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', '   '],
+        accessContext: {
+          userId: 'user_1',
+          role: 'admin',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 400,
+    });
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(integrationJobCreateMock).not.toHaveBeenCalled();
   });
 
   it('propagates audit write failures so the queue transaction can roll back', async () => {
@@ -374,6 +393,38 @@ describe('pdf-bulk-export', () => {
     });
   });
 
+  it('fails jobs with blank persisted patient ids before rendering PDFs', async () => {
+    integrationJobFindFirstMock.mockResolvedValue(null);
+    integrationJobFindUniqueMock.mockResolvedValueOnce({
+      id: 'job_1',
+      org_id: 'org_1',
+      status: 'pending',
+      job_type: 'medication-history-bulk-export',
+      input: {
+        version: 1,
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', '   '],
+      },
+    });
+
+    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 400,
+      message: '一括出力ジョブの入力が不正です',
+    });
+    expect(buildMedicationHistoryPdfMock).not.toHaveBeenCalled();
+    expect(patientCountMock).not.toHaveBeenCalled();
+    expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed',
+          error_log: '一括出力ジョブの入力が不正です',
+          locked_at: null,
+        }),
+      }),
+    );
+  });
+
   it('audits partial exports with the actual successful PDF count', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
     buildMedicationHistoryPdfMock
@@ -469,6 +520,21 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     );
+  });
+
+  it('ignores sub-byte configured PDF byte limits instead of treating them as zero', async () => {
+    process.env.MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES = '0.5';
+    integrationJobFindFirstMock.mockResolvedValue(null);
+
+    const result = await runMedicationHistoryBulkExportJob('job_1');
+
+    expect(result).toMatchObject({
+      jobId: 'job_1',
+      fileId: 'file_1',
+      patientCount: 2,
+    });
+    expect(zipSyncMock).toHaveBeenCalledOnce();
+    expect(storeGeneratedFileMock).toHaveBeenCalledOnce();
   });
 
   it('fails the job when the final export audit cannot be written', async () => {

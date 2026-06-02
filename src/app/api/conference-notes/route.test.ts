@@ -87,14 +87,17 @@ function createRequest({
   url?: string;
   body?: unknown;
 }) {
-  return Object.assign(new NextRequest(url, {
-    method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  }), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return Object.assign(
+    new NextRequest(url, {
+      method,
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
+    {
+      orgId: 'org_1',
+      userId: 'user_1',
+    },
+  );
 }
 
 /** Build a tx mock that covers all the Prisma models used by ConferenceSyncService */
@@ -442,6 +445,7 @@ describe('/api/conference-notes', () => {
               name: '鈴木薬剤師',
               role: '薬剤師',
               external_professional_id: 'external_1',
+              fax: ' 03-1111-2222 ',
             },
           ],
           billing_eligible: true,
@@ -484,6 +488,7 @@ describe('/api/conference-notes', () => {
           expect.objectContaining({
             name: '鈴木薬剤師',
             external_professional_id: 'external_1',
+            fax: '03-1111-2222',
           }),
         ],
         billing_eligible: true,
@@ -492,6 +497,75 @@ describe('/api/conference-notes', () => {
         follow_up_completed: false,
       }),
     });
+  });
+
+  it('rejects non-object request bodies before transaction or sync side effects', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: ['unexpected'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed participant fax before transaction or sync side effects', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'pre_discharge',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              {
+                key: 'discharge_background',
+                label: '退院背景',
+                body: '来週火曜に退院予定',
+              },
+            ],
+          },
+          participants: [
+            {
+              name: '鈴木薬剤師',
+              role: '薬剤師',
+              fax: '03-ABCD-5678',
+            },
+          ],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(body.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: 'FAX番号形式が不正です',
+          path: ['participants', 0, 'fax'],
+        }),
+      ]),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects conference note creation when conference type is omitted', async () => {

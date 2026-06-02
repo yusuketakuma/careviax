@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { generateReportsFromVisit } from '@/server/services/report-generator';
 import { z } from 'zod';
 
@@ -10,10 +11,10 @@ const generateFromVisitSchema = z.object({
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = generateFromVisitSchema.safeParse(body);
+    const parsed = generateFromVisitSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

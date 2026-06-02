@@ -75,6 +75,21 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank patient ids before loading or exporting prescriptions', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when the user has no accessible cases for the patient', async () => {
     careCaseFindManyMock.mockResolvedValue([]);
 

@@ -26,6 +26,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findFirst: patientFindFirstMock,
     },
+    patientCondition: {
+      findMany: findManyMock,
+    },
   },
 }));
 
@@ -33,7 +36,7 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { PUT } from './route';
+import { GET, PUT } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/patients/patient_1/conditions', {
@@ -43,6 +46,24 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
       ...headers,
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createGetRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/patients/patient_1/conditions', {
+    method: 'GET',
+    headers,
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/conditions', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'corg1234567890123456789012',
+    },
+    body: '{"conditions":',
   });
 }
 
@@ -66,8 +87,70 @@ describe('/api/patients/[id]/conditions PUT', () => {
           createMany: createManyMock,
           findMany: findManyMock,
         },
-      })
+      }),
     );
+  });
+
+  it('rejects blank patient ids before loading conditions', async () => {
+    const response = await GET(createGetRequest({ 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing condition payloads or replacing conditions', async () => {
+    const response = await PUT(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object condition payloads before loading the patient', async () => {
+    const response = await PUT(createRequest([], { 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON condition payloads before loading the patient', async () => {
+    const response = await PUT(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
   });
 
   it('replaces patient conditions and normalizes dates', async () => {
@@ -115,10 +198,7 @@ describe('/api/patients/[id]/conditions PUT', () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = await PUT(
-      createRequest(
-        { conditions: [] },
-        { 'x-org-id': 'corg1234567890123456789012' },
-      ),
+      createRequest({ conditions: [] }, { 'x-org-id': 'corg1234567890123456789012' }),
       { params: Promise.resolve({ id: 'patient_unknown' }) },
     );
 

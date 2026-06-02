@@ -46,6 +46,14 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/workflow-exceptions/exception_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/workflow-exceptions/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,6 +93,19 @@ describe('/api/workflow-exceptions/[id]', () => {
     expect(response.status).toBe(200);
   });
 
+  it('rejects blank route params before exception lookup', async () => {
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ワークフロー例外IDが不正です',
+    });
+    expect(workflowExceptionFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('resolves an open exception and clears the cycle exception status when no open issues remain', async () => {
     const response = (await PATCH(
       createRequest({
@@ -101,5 +122,53 @@ describe('/api/workflow-exceptions/[id]', () => {
       where: { id: 'cycle_1' },
       data: { exception_status: null },
     });
+  });
+
+  it('rejects blank PATCH route params before body parsing or resolution', async () => {
+    const response = (await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ワークフロー例外IDが不正です',
+    });
+    expect(workflowExceptionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(workflowExceptionUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object PATCH payloads before exception lookup or resolution', async () => {
+    const response = (await PATCH(createRequest([]), {
+      params: Promise.resolve({ id: 'exception_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(workflowExceptionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(workflowExceptionUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON PATCH payloads before exception lookup or resolution', async () => {
+    const response = (await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'exception_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(workflowExceptionFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(workflowExceptionUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
   });
 });

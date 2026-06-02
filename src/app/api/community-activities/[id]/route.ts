@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -20,10 +21,10 @@ const patchCommunityActivitySchema = z.object({
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id } = await routeContext.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = patchCommunityActivitySchema.safeParse(body);
+    const parsed = patchCommunityActivitySchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -43,7 +44,7 @@ export const PATCH = withAuthContext<{ id: string }>(
             ? { activity_date: new Date(parsed.data.activity_date) }
             : {}),
         },
-      })
+      }),
     );
 
     return success({ data: updated });
@@ -51,5 +52,5 @@ export const PATCH = withAuthContext<{ id: string }>(
   {
     permission: 'canReport',
     message: '地域活動の更新権限がありません',
-  }
+  },
 );

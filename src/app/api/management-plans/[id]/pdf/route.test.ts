@@ -60,6 +60,21 @@ describe('/api/management-plans/[id]/pdf', () => {
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
+  it('rejects blank management plan ids before rendering or audit', async () => {
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '管理計画書IDが不正です',
+    });
+    expect(buildManagementPlanPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('returns the rendered management plan pdf', async () => {
     buildManagementPlanPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),

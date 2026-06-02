@@ -40,6 +40,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/billing-candidates/candidate_1', {
+    method: 'PATCH',
+    body: '{"action":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/billing-candidates/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +84,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
   it('confirms a candidate and records the audit trail', async () => {
     const response = await PATCH(createRequest({ action: 'confirm' }), {
-      params: Promise.resolve({ id: 'candidate_1' }),
+      params: Promise.resolve({ id: '  candidate_1  ' }),
     });
 
     if (!response) throw new Error('response is required');
@@ -104,6 +115,22 @@ describe('/api/billing-candidates/[id] PATCH', () => {
     });
   });
 
+  it('rejects blank candidate ids before parsing request bodies or audit work', async () => {
+    const response = await PATCH(createRequest({ action: 'confirm' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '請求候補IDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects updates for exported candidates', async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 'candidate_1',
@@ -125,6 +152,36 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before transaction or audit work', async () => {
+    const response = await PATCH(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before transaction or audit work', async () => {
+    const response = await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(findFirstMock).not.toHaveBeenCalled();
     expect(reviewBillingCandidateMock).not.toHaveBeenCalled();

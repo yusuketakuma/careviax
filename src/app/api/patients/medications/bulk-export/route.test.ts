@@ -50,6 +50,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/medications/bulk-export', {
+    method: 'POST',
+    body: '{"patient_ids":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/patients/medications/bulk-export POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,7 +88,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   it('queues a bulk export and returns 202', async () => {
     const response = await POST(
       createRequest({
-        patient_ids: ['patient_1', 'patient_2'],
+        patient_ids: [' patient_1 ', 'patient_2', 'patient_1'],
       }),
     );
 
@@ -132,5 +143,41 @@ describe('/api/patients/medications/bulk-export POST', () => {
     }
     expect(response.status).toBe(400);
     expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before queueing work', async () => {
+    const response = await POST(createRequest({ patient_ids: ['patient_1', '   '] }));
+
+    if (!response) {
+      throw new Error('Expected a response from blank patient id bulk export POST');
+    }
+    expect(response.status).toBe(400);
+    expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+    expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object export payloads before queueing work', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) {
+      throw new Error('Expected a response from non-object bulk export POST');
+    }
+    expect(response.status).toBe(400);
+    expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+    expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON export payloads before queueing work', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) {
+      throw new Error('Expected a response from malformed JSON bulk export POST');
+    }
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+    expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
   });
 });

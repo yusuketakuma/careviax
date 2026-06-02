@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, error } from '@/lib/api/response';
+import { success, notFound, error, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   createQualificationCheckAdapter,
   QualificationCheckAdapterError,
@@ -18,7 +19,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(

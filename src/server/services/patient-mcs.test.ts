@@ -36,12 +36,18 @@ vi.mock('./patient-mcs-ai', () => ({
   generatePatientMcsAiSummary: generatePatientMcsAiSummaryMock,
 }));
 
+import { withOrgContext } from '@/lib/db/rls';
 import {
   extractPatientNameFromProjectTitle,
   generatePatientMcsSummarySafely,
+  getPatientMcsOverview,
   isPatientMcsBrowserSyncEnabled,
   matchesPatientIdentity,
   normalizeMedicalCareStationUrl,
+  normalizePatientMcsMessageLimit,
+  normalizeMcsActivationPayload,
+  normalizeScrapedMcsTimelinePayload,
+  PATIENT_MCS_MAX_MESSAGE_LIMIT,
   parseAgentBrowserEvalJson,
   parseMcsAuthorDescriptor,
   parseMcsPostedAtLabel,
@@ -228,5 +234,133 @@ describe('patient-mcs service helpers', () => {
     expect(() => parseAgentBrowserEvalJson(JSON.stringify(JSON.stringify(123)))).toThrow(
       'MCS からデータを取得できませんでした',
     );
+  });
+
+  it('normalizes agent-browser activation payloads before using project IDs', () => {
+    expect(
+      normalizeMcsActivationPayload({
+        projectId: '57886227',
+        currentUrl: 'https://www.medical-care.net/patients/123',
+        patientName: '板屋 美恵子',
+      }),
+    ).toEqual({
+      projectId: '57886227',
+      currentUrl: 'https://www.medical-care.net/patients/123',
+      patientName: '板屋 美恵子',
+    });
+    expect(
+      normalizeMcsActivationPayload({
+        projectId: 57886227,
+        currentUrl: 'https://www.medical-care.net/patients/123',
+        patientName: '板屋 美恵子',
+      }),
+    ).toBeNull();
+    expect(
+      normalizeMcsActivationPayload({
+        projectId: '57886227',
+        currentUrl: null,
+        patientName: '板屋 美恵子',
+      }),
+    ).toBeNull();
+  });
+
+  it('normalizes scraped MCS timelines before syncing messages', () => {
+    const validTimeline = {
+      sourceUrl: 'https://www.medical-care.net/patients/123',
+      mcsPatientId: '123',
+      mcsPatientUrl: 'https://www.medical-care.net/patients/123',
+      mcsProjectId: '57886227',
+      mcsProjectUrl: 'https://www.medical-care.net/projects/medical/57886227',
+      projectTitle: '板屋 美恵子：年長者の里',
+      projectMemo: null,
+      memberCount: 4,
+      messages: [
+        {
+          sourceMessageId: 'message-1',
+          authorName: '看護師 佐藤',
+          authorDescriptor: '看護師（訪問看護）',
+          postedAtLabel: '4/2 12:12',
+          body: '発熱なし',
+          reactionCount: 1,
+          replyCount: 0,
+          sortOrder: 0,
+          sourceUrl: 'https://www.medical-care.net/projects/medical/57886227#message-message-1',
+        },
+      ],
+    };
+
+    expect(normalizeScrapedMcsTimelinePayload(validTimeline)).toEqual(validTimeline);
+    expect(
+      normalizeScrapedMcsTimelinePayload({
+        ...validTimeline,
+        messages: [{ ...validTimeline.messages[0], reactionCount: '1' }],
+      }),
+    ).toBeNull();
+    expect(
+      normalizeScrapedMcsTimelinePayload({
+        ...validTimeline,
+        messages: { sourceMessageId: 'message-1' },
+      }),
+    ).toBeNull();
+  });
+
+  it('normalizes overview message limits before querying messages', async () => {
+    type TransactionCallback = Parameters<typeof withOrgContext>[1];
+    type TransactionClient = Parameters<TransactionCallback>[0];
+
+    const tx = {
+      patientMcsLink: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'link_1',
+          source_url: 'https://www.medical-care.net/patients/1',
+          mcs_patient_id: '1',
+          mcs_patient_url: 'https://www.medical-care.net/patients/1',
+          mcs_project_id: '57886227',
+          mcs_project_url: 'https://www.medical-care.net/projects/medical/57886227',
+          project_title: '青葉 花子：年長者の里',
+          project_memo: null,
+          member_count: 9,
+          last_sync_attempt_at: null,
+          last_synced_at: null,
+          last_sync_status: null,
+          last_sync_error: null,
+        }),
+      },
+      patientMcsSummary: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      patientMcsMessage: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+    vi.mocked(withOrgContext).mockImplementationOnce(async (_orgId, callback) =>
+      callback(tx as unknown as TransactionClient),
+    );
+
+    await expect(
+      getPatientMcsOverview({
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        limit: 999,
+      }),
+    ).resolves.toMatchObject({
+      link: { id: 'link_1' },
+      messages: [],
+    });
+
+    expect(tx.patientMcsMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: PATIENT_MCS_MAX_MESSAGE_LIMIT,
+      }),
+    );
+  });
+
+  it('normalizes direct overview limit inputs defensively', () => {
+    expect(normalizePatientMcsMessageLimit(undefined)).toBe(50);
+    expect(normalizePatientMcsMessageLimit(0)).toBe(0);
+    expect(normalizePatientMcsMessageLimit(25.9)).toBe(25);
+    expect(normalizePatientMcsMessageLimit(-5)).toBe(0);
+    expect(normalizePatientMcsMessageLimit(Number.POSITIVE_INFINITY)).toBe(50);
+    expect(normalizePatientMcsMessageLimit(999)).toBe(PATIENT_MCS_MAX_MESSAGE_LIMIT);
   });
 });

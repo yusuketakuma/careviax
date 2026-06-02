@@ -27,10 +27,16 @@ const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_MAX_TOTAL_PDF_BYTES = 128 * BYTES_PER_MIB;
 const MAX_TOTAL_PDF_BYTES_ENV = 'MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES';
 
+const bulkExportPatientIdsSchema = z
+  .array(z.string().trim().min(1))
+  .min(1)
+  .max(MAX_PATIENTS_PER_EXPORT)
+  .transform((values) => uniqueStrings(values));
+
 const bulkExportInputSchema = z.object({
   version: z.literal(1).default(1),
-  requestedBy: z.string().min(1),
-  patientIds: z.array(z.string().min(1)).min(1).max(MAX_PATIENTS_PER_EXPORT),
+  requestedBy: z.string().trim().min(1),
+  patientIds: bulkExportPatientIdsSchema,
 });
 
 type QueueMedicationHistoryBulkExportArgs = {
@@ -85,7 +91,7 @@ class BulkExportLockLostError extends Error {
 }
 
 function uniqueStrings(values: string[]) {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+  return Array.from(new Set(values));
 }
 
 function formatTimestampForFileName(date = new Date()) {
@@ -104,7 +110,14 @@ function formatTimestampForFileName(date = new Date()) {
 
 function getMaxTotalPdfBytes() {
   const value = Number(process.env[MAX_TOTAL_PDF_BYTES_ENV]);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_MAX_TOTAL_PDF_BYTES;
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_MAX_TOTAL_PDF_BYTES;
+  }
+
+  const normalized = Math.floor(value);
+  return Number.isSafeInteger(normalized) && normalized > 0
+    ? normalized
+    : DEFAULT_MAX_TOTAL_PDF_BYTES;
 }
 
 function getZipEntriesTotalBytes(zipEntries: Record<string, Uint8Array>) {
@@ -503,8 +516,8 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
     );
   }
 
-  const normalizedPatientIds = uniqueStrings(args.patientIds);
-  if (normalizedPatientIds.length === 0) {
+  const parsedPatientIds = bulkExportPatientIdsSchema.safeParse(args.patientIds);
+  if (!parsedPatientIds.success) {
     throw new MedicationHistoryBulkExportError(
       'VALIDATION_ERROR',
       '患者IDを1件以上指定してください',
@@ -512,6 +525,7 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
     );
   }
 
+  const normalizedPatientIds = parsedPatientIds.data;
   if (normalizedPatientIds.length > MAX_PATIENTS_PER_EXPORT) {
     throw new MedicationHistoryBulkExportError(
       'VALIDATION_ERROR',

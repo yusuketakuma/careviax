@@ -3,9 +3,15 @@ import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
+import {
+  optionalCommunicationRequestStatusSchema,
+  requiredTrimmedStringSchema,
+  trimStringOrUndefined,
+} from '@/lib/validations/communication-request';
 import {
   canAccessCommunicationRequestRecord,
   resolveTracingReportCommunicationScope,
@@ -20,7 +26,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { ctx } = authResult;
   const orgId = ctx.orgId;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('連携依頼IDが不正です');
+
+  const requestScope = await prisma.communicationRequest.findFirst({
+    where: { id, org_id: orgId },
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+    },
+  });
+
+  if (!requestScope) return notFound('依頼が見つかりません');
+  if (
+    !(await canAccessCommunicationRequestRecord({
+      db: prisma,
+      orgId,
+      patientId: requestScope.patient_id,
+      caseId: requestScope.case_id,
+      accessContext: ctx,
+    }))
+  ) {
+    return notFound('依頼が見つかりません');
+  }
 
   const request = await prisma.communicationRequest.findFirst({
     where: { id, org_id: orgId },
@@ -56,17 +86,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   if (!request) return notFound('依頼が見つかりません');
-  if (
-    !(await canAccessCommunicationRequestRecord({
-      db: prisma,
-      orgId,
-      patientId: request.patient_id,
-      caseId: request.case_id,
-      accessContext: ctx,
-    }))
-  ) {
-    return notFound('依頼が見つかりません');
-  }
 
   // FVD-01C: Include emergency contacts as SSOT for contact target suggestions
   // Avoids re-inferring contacts from care team on every communication request load
@@ -108,7 +127,7 @@ const ALLOWED_STATUS_TRANSITIONS: Record<
 };
 
 const patchCommunicationRequestSchema = z.object({
-  status: communicationRequestStatusSchema.optional(),
+  status: optionalCommunicationRequestStatusSchema,
   status_change_reason: z
     .string()
     .trim()
@@ -117,9 +136,9 @@ const patchCommunicationRequestSchema = z.object({
     .optional(),
   response: z
     .object({
-      responder_name: z.string().min(1, '返信者名は必須です'),
-      content: z.string().min(1, '返信内容は必須です'),
-      responded_at: z.string().datetime().optional(),
+      responder_name: requiredTrimmedStringSchema('返信者名は必須です'),
+      content: requiredTrimmedStringSchema('返信内容は必須です'),
+      responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime().optional()),
     })
     .optional(),
 });
@@ -133,12 +152,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { ctx } = authResult;
   const orgId = ctx.orgId;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('連携依頼IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = patchCommunicationRequestSchema.safeParse(body);
+  const parsed = patchCommunicationRequestSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

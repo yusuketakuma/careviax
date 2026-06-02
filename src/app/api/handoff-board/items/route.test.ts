@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  handoffBoardFindFirstMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  handoffBoardFindFirstMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, handoffBoardFindFirstMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    handoffBoardFindFirstMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 
@@ -39,6 +35,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{bad json',
+  });
+}
+
 describe('/api/handoff-board/items', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +57,7 @@ describe('/api/handoff-board/items', () => {
     handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
     const created = { id: 'item_1', board_id: 'board_1', content: 'Test item' };
     withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-      fn({ handoffItem: { create: vi.fn().mockResolvedValue(created) } })
+      fn({ handoffItem: { create: vi.fn().mockResolvedValue(created) } }),
     );
 
     const req = createRequest('http://localhost/api/handoff-board/items', {
@@ -82,5 +89,26 @@ describe('/api/handoff-board/items', () => {
     });
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+  });
+
+  it('rejects non-object create payloads before loading the board', async () => {
+    const req = createRequest('http://localhost/api/handoff-board/items', []);
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(400);
+    expect(handoffBoardFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before loading the board', async () => {
+    const req = createMalformedJsonRequest('http://localhost/api/handoff-board/items');
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(handoffBoardFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

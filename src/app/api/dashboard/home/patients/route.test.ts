@@ -158,7 +158,7 @@ describe('/api/dashboard/home/patients GET', () => {
 
     const response = await GET(
       createRequest(
-        'http://localhost/api/dashboard/home/patients?search=%E4%BD%90%E8%97%A4&sort=name&page=NaN',
+        'http://localhost/api/dashboard/home/patients?search=%E4%BD%90%E8%97%A4&sort=name&page=%201%20',
         { 'x-org-id': 'org_1' },
       ),
     );
@@ -198,6 +198,58 @@ describe('/api/dashboard/home/patients GET', () => {
         ],
       },
     });
+  });
+
+  it('rejects malformed name-sort page values before querying patient pages', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    patientCountMock.mockResolvedValue(0);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/home/patients?sort=name&page=2abc', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        page: ['page は整数で指定してください'],
+      },
+    });
+    expect(patientCountMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized name-sort page values before querying patient pages', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    patientCountMock.mockResolvedValue(0);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/home/patients?sort=name&page=999999999', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        page: expect.any(Array),
+      },
+    });
+    expect(patientCountMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
   });
 
   it('returns an empty result when no active patients match the search', async () => {

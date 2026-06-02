@@ -64,6 +64,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedPostRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{"patient_id":',
+  });
+}
+
 describe('/api/consent-records', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,7 +103,9 @@ describe('/api/consent-records', () => {
 
   it('lists consent records for the target patient', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/consent-records?patient_id=patient_1&consent_type=external_sharing')
+      createRequest(
+        'http://localhost/api/consent-records?patient_id=patient_1&consent_type=external_sharing',
+      ),
     ))!;
 
     expect(response.status).toBe(200);
@@ -104,7 +117,7 @@ describe('/api/consent-records', () => {
           consent_type: 'external_sharing',
           is_active: true,
         }),
-      })
+      }),
     );
   });
 
@@ -115,7 +128,7 @@ describe('/api/consent-records', () => {
         consent_type: 'external_sharing',
         method: 'paper_scan',
         obtained_date: '2026-03-29',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -134,6 +147,35 @@ describe('/api/consent-records', () => {
     });
   });
 
+  it('rejects non-object request bodies before validation lookups or create side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', ['unexpected']),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before validation lookups or create side effects', async () => {
+    const response = (await POST(
+      createMalformedPostRequest('http://localhost/api/consent-records'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+  });
+
   it('returns validation error when an explicit template_id is not found', async () => {
     templateFindFirstMock.mockResolvedValueOnce(null);
 
@@ -144,7 +186,7 @@ describe('/api/consent-records', () => {
         consent_type: 'external_sharing',
         method: 'paper_scan',
         obtained_date: '2026-03-29',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(400);

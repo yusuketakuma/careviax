@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { forbiddenResponse, notFound } from '@/lib/api/response';
+import { forbiddenResponse, notFound, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
@@ -33,7 +34,9 @@ function buildCsvRow(values: (string | null | undefined)[]): string {
  */
 export const GET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
-    const { id: patientId } = await params;
+    const { id: rawPatientId } = await params;
+    const patientId = normalizeRequiredRouteParam(rawPatientId);
+    if (!patientId) return validationError('患者IDが不正です');
 
     const patient = await prisma.patient.findFirst({
       where: applyPatientAssignmentWhere(

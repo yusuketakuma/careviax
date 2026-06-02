@@ -2,10 +2,11 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { optionalBoundedIntegerSearchParam } from '@/lib/api/validation';
 import { getCareReportDeliveryAnalytics } from '@/server/services/report-reminders';
 
 const querySchema = z.object({
-  overdue_days: z.coerce.number().int().min(1).max(90).optional(),
+  overdue_days: optionalBoundedIntegerSearchParam('overdue_days', 1, 90),
 });
 
 export async function GET(req: NextRequest) {

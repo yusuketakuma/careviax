@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
@@ -9,10 +11,7 @@ import {
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '運用タスクの更新権限がありません',
@@ -20,15 +19,18 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('タスクIDが不正です');
 
-  const parsed = updateTaskSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateTaskSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { id } = await params;
   const assignmentScope = await resolveDashboardAssignmentScope({
     db: prisma,
     orgId: ctx.orgId,
@@ -51,26 +53,30 @@ export async function PATCH(
     return validationError('担当者の変更権限がありません');
   }
 
-  const task = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.task.update({
-      where: { id },
-      data: {
-        ...(parsed.data.status ? { status: parsed.data.status } : {}),
-        ...(parsed.data.assigned_to !== undefined
-          ? { assigned_to: parsed.data.assigned_to }
-          : {}),
-        ...(parsed.data.due_date !== undefined
-          ? { due_date: parsed.data.due_date ? new Date(parsed.data.due_date) : null }
-          : {}),
-        completed_at:
-          parsed.data.status === 'completed'
-            ? new Date()
-            : parsed.data.status
-              ? null
-              : existing.completed_at,
-      },
-    });
-  }, { requestContext: ctx });
+  const task = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      return tx.task.update({
+        where: { id },
+        data: {
+          ...(parsed.data.status ? { status: parsed.data.status } : {}),
+          ...(parsed.data.assigned_to !== undefined
+            ? { assigned_to: parsed.data.assigned_to }
+            : {}),
+          ...(parsed.data.due_date !== undefined
+            ? { due_date: parsed.data.due_date ? new Date(parsed.data.due_date) : null }
+            : {}),
+          completed_at:
+            parsed.data.status === 'completed'
+              ? new Date()
+              : parsed.data.status
+                ? null
+                : existing.completed_at,
+        },
+      });
+    },
+    { requestContext: ctx },
+  );
 
   return success({ data: task });
 }

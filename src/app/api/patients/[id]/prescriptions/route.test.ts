@@ -76,12 +76,9 @@ describe('/api/patients/[id]/prescriptions', () => {
       },
     ]);
 
-    const response = (await GET(
-      createGetRequest('patient_1', 'limit=1'),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest('patient_1', 'limit=1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(200);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
@@ -100,6 +97,20 @@ describe('/api/patients/[id]/prescriptions', () => {
     });
   });
 
+  it('rejects blank patient ids before loading prescriptions', async () => {
+    const response = (await GET(createGetRequest('%20%20', 'limit=1'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('uses keyset cursor conditions after the first page', async () => {
     const keysetCursor = Buffer.from(
       JSON.stringify({
@@ -110,12 +121,9 @@ describe('/api/patients/[id]/prescriptions', () => {
       'utf8',
     ).toString('base64url');
 
-    const response = (await GET(
-      createGetRequest('patient_1', `limit=20&cursor=${keysetCursor}`),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest('patient_1', `limit=20&cursor=${keysetCursor}`), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(200);
     const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
@@ -141,12 +149,9 @@ describe('/api/patients/[id]/prescriptions', () => {
   });
 
   it('ignores legacy numeric cursors instead of offset paging', async () => {
-    const response = (await GET(
-      createGetRequest('patient_1', 'limit=20&cursor=20'),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest('patient_1', 'limit=20&cursor=20'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(200);
     const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];

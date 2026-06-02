@@ -44,6 +44,14 @@ function createPatchRequest(taskId: string, body: unknown) {
   });
 }
 
+function createMalformedJsonPatchRequest(taskId: string) {
+  return new NextRequest(`http://localhost/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  });
+}
+
 describe('/api/tasks/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,6 +95,22 @@ describe('/api/tasks/[id]', () => {
     expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank task ids before parsing or resolving assignment scope', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest('task_1'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'タスクIDが不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('updates a task and sets completed_at when marking it completed', async () => {
     const response = (await PATCH(
       createPatchRequest('task_1', {
@@ -105,6 +129,33 @@ describe('/api/tasks/[id]', () => {
         completed_at: expect.any(Date),
       }),
     });
+  });
+
+  it('rejects non-object update payloads before resolving assignment scope', async () => {
+    const response = (await PATCH(createPatchRequest('task_1', []), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before resolving assignment scope', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest('task_1'), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('does not update tasks outside the assignment scope', async () => {

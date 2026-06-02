@@ -41,6 +41,17 @@ function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
   return new NextRequest('http://localhost/api/billing-rules/rule_1', init);
 }
 
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/billing-rules/rule_1', {
+    method: 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/billing-rules/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,6 +102,21 @@ describe('/api/billing-rules/[id]', () => {
     });
   });
 
+  it('rejects blank GET route ids before rule lookup', async () => {
+    const response = await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      message: '算定ルールIDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('blocks non-active field changes for system rules', async () => {
     billingRuleFindFirstMock.mockResolvedValue({
       id: 'rule_1',
@@ -108,6 +134,56 @@ describe('/api/billing-rules/[id]', () => {
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object PATCH payloads before rule lookup or update', async () => {
+    const response = await PATCH(createRequest('PATCH', []), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON PATCH payloads before rule lookup or update', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank PATCH route ids before rule lookup or update', async () => {
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      message: '算定ルールIDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
     expect(billingRuleUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -175,6 +251,22 @@ describe('/api/billing-rules/[id]', () => {
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
+    expect(billingRuleDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank DELETE route ids before rule lookup or delete', async () => {
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(400);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      message: '算定ルールIDが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
     expect(billingRuleDeleteMock).not.toHaveBeenCalled();
   });
 });

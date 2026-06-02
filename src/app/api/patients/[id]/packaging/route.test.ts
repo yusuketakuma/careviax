@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  prismaMock,
-  withOrgContextMock,
-  txMock,
-} = vi.hoisted(() => ({
+const { requireAuthContextMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   prismaMock: {
     patient: { findFirst: vi.fn() },
@@ -44,6 +39,16 @@ function createRequest(body?: unknown) {
           },
           body: JSON.stringify(body),
         }),
+  });
+}
+
+function createMalformedJsonPutRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/packaging', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"default_packaging_method":',
   });
 }
 
@@ -87,6 +92,64 @@ describe('/api/patients/[id]/packaging', () => {
         effective_summary: 'お薬BOX / BOX色:赤 / 昼は別袋',
       },
     });
+  });
+
+  it('rejects blank patient ids before loading packaging data', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing packaging payloads or upserting', async () => {
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.patientPackagingProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object packaging payloads before loading the patient', async () => {
+    const response = await PUT(createRequest([]), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.patientPackagingProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON packaging payloads before loading the patient', async () => {
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.patientPackagingProfile.upsert).not.toHaveBeenCalled();
   });
 
   it('upserts the patient packaging profile', async () => {

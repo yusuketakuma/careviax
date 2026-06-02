@@ -36,6 +36,14 @@ function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/document-delivery-rules', init);
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/document-delivery-rules', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/document-delivery-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,5 +93,24 @@ describe('/api/document-delivery-rules', () => {
         fallback_channels: ['email'],
       }),
     });
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    const response = (await POST(createRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before opening an org transaction', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
   });
 });

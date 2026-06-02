@@ -57,6 +57,17 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/cases', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"patient_id":',
+  });
+}
+
 describe('/api/cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,9 +133,7 @@ describe('/api/cases', () => {
   });
 
   it('rejects unsupported status filters before querying cases', async () => {
-    const response = (await GET(
-      createRequest('http://localhost/api/cases?status=bad_status'),
-    ))!;
+    const response = (await GET(createRequest('http://localhost/api/cases?status=bad_status')))!;
 
     expect(response.status).toBe(400);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
@@ -150,6 +159,27 @@ describe('/api/cases', () => {
         notes: '初回相談',
       }),
     });
+  });
+
+  it('rejects non-object create payloads before loading the patient', async () => {
+    const response = (await POST(createRequest('http://localhost/api/cases', [])))!;
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the patient', async () => {
+    const response = (await POST(createMalformedPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
   });
 
   it('does not create a case for an unassigned patient', async () => {

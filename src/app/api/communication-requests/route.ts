@@ -1,12 +1,20 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
+import {
+  communicationRequestStatusSchema,
+  optionalCommunicationRequestStatusSchema,
+  optionalTrimmedSearchParam,
+  optionalTrimmedStringSchema,
+  requiredTrimmedStringSchema,
+  trimStringOrUndefined,
+} from '@/lib/validations/communication-request';
 import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import {
@@ -16,13 +24,10 @@ import {
 } from '@/server/services/communication-request-access';
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -33,28 +38,33 @@ function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
 
 const communicationRequestQuerySchema = z.object({
   status: communicationRequestStatusSchema.optional(),
-  patient_id: z.string().min(1).optional(),
-  related_entity_type: z.string().min(1).optional(),
-  related_entity_id: z.string().min(1).optional(),
+  patient_id: optionalTrimmedStringSchema,
+  related_entity_type: optionalTrimmedStringSchema,
+  related_entity_id: optionalTrimmedStringSchema,
 });
 
-const createCommunicationRequestSchema = z.object({
-  patient_id: z.string().optional(),
-  case_id: z.string().optional(),
-  request_type: z.string().min(1, '依頼タイプは必須です'),
-  template_key: z.string().optional(),
-  recipient_name: z.string().optional(),
-  recipient_role: z.string().optional(),
-  related_entity_type: z.string().optional(),
-  related_entity_id: z.string().optional(),
-  context_snapshot: z.record(z.string(), z.unknown()).optional(),
-  status: communicationRequestStatusSchema.optional(),
-  subject: z.string().min(1, '件名は必須です'),
-  content: z.string().min(1, '内容は必須です'),
-  due_date: z
+const optionalDateSchema = z.preprocess(
+  trimStringOrUndefined,
+  z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
     .optional(),
+);
+
+const createCommunicationRequestSchema = z.object({
+  patient_id: optionalTrimmedStringSchema,
+  case_id: optionalTrimmedStringSchema,
+  request_type: requiredTrimmedStringSchema('依頼タイプは必須です'),
+  template_key: optionalTrimmedStringSchema,
+  recipient_name: optionalTrimmedStringSchema,
+  recipient_role: optionalTrimmedStringSchema,
+  related_entity_type: optionalTrimmedStringSchema,
+  related_entity_id: optionalTrimmedStringSchema,
+  context_snapshot: z.record(z.string(), z.unknown()).optional(),
+  status: optionalCommunicationRequestStatusSchema,
+  subject: requiredTrimmedStringSchema('件名は必須です'),
+  content: requiredTrimmedStringSchema('内容は必須です'),
+  due_date: optionalDateSchema,
 });
 
 export const GET = withAuth(
@@ -63,10 +73,10 @@ export const GET = withAuth(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const parsedQuery = communicationRequestQuerySchema.safeParse({
-      status: searchParams.get('status') ?? undefined,
-      patient_id: searchParams.get('patient_id') ?? undefined,
-      related_entity_type: searchParams.get('related_entity_type') ?? undefined,
-      related_entity_id: searchParams.get('related_entity_id') ?? undefined,
+      status: optionalTrimmedSearchParam(searchParams.get('status')),
+      patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
+      related_entity_type: optionalTrimmedSearchParam(searchParams.get('related_entity_type')),
+      related_entity_id: optionalTrimmedSearchParam(searchParams.get('related_entity_id')),
     });
     if (!parsedQuery.success) {
       return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);
@@ -145,10 +155,10 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createCommunicationRequestSchema.safeParse(body);
+    const parsed = createCommunicationRequestSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }

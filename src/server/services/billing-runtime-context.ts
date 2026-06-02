@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { readJsonObject } from '@/lib/db/json';
 import {
   CARE_REVISIONS,
   MEDICAL_REVISIONS,
@@ -213,7 +214,7 @@ export async function resolveBillingRuntimeContext(
       cadencePolicy: BILLING_CADENCE_POLICY,
     };
   }
-  const siteConfig = (siteConfigRow.config ?? {}) as Record<string, unknown>;
+  const siteConfig = readJsonObject(siteConfigRow.config) ?? {};
   const siteConfigStatus =
     siteConfigRow.revision_code === effectiveRevisionCode ? 'resolved' : 'revision_mismatch';
   if (siteConfigStatus === 'revision_mismatch') {

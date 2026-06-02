@@ -10,10 +10,7 @@ const {
   class PatientMcsSyncError extends Error {
     kind: 'validation' | 'conflict' | 'external';
 
-    constructor(
-      message: string,
-      kind: 'validation' | 'conflict' | 'external' = 'external',
-    ) {
+    constructor(message: string, kind: 'validation' | 'conflict' | 'external' = 'external') {
       super(message);
       this.kind = kind;
     }
@@ -57,6 +54,17 @@ function createRequest(body: unknown = {}) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/mcs-sync', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"source_url":',
+  });
+}
+
 describe('/api/patients/[id]/mcs-sync POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,6 +84,54 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
         headline: '看護師から共有があります。',
       },
     });
+  });
+
+  it('rejects non-object sync payloads before loading the patient', async () => {
+    const response = await POST(createRequest([]), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing sync payloads or loading the patient', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON sync payloads before loading the patient', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
   it('returns a sync result on success', async () => {
@@ -151,7 +207,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');
@@ -168,7 +224,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');

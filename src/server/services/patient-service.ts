@@ -29,6 +29,9 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 
+const DEFAULT_PATIENT_LIST_LIMIT = 50;
+const MAX_PATIENT_LIST_LIMIT = 500;
+
 export type PatientListFilters = {
   q?: string;
   cursor?: string;
@@ -232,6 +235,19 @@ function buildPatientOrderBy(
     default:
       return [{ name_kana: direction }, { name: direction }, { id: direction }];
   }
+}
+
+function normalizePatientListLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_PATIENT_LIST_LIMIT;
+  }
+
+  const normalized = Math.trunc(limit);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
+    return DEFAULT_PATIENT_LIST_LIMIT;
+  }
+
+  return Math.min(normalized, MAX_PATIENT_LIST_LIMIT);
 }
 
 function matchesPatientPostFilters(patient: MappedPatientListItem, filters: PatientListFilters) {
@@ -519,7 +535,7 @@ export async function listPatients(
   filters: PatientListFilters,
   accessContext?: VisitScheduleAccessContext,
 ) {
-  const limit = filters.limit ?? 50;
+  const limit = normalizePatientListLimit(filters.limit);
   const referenceDate = new Date();
   const baseWhere = buildDbWhere(orgId, filters);
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;

@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 type CaseSummary = {
   id: string;
@@ -143,19 +144,11 @@ function formatCaseLabel(careCase: CaseSummary) {
 }
 
 function parseContentValue(contentText: string) {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(contentText);
-  } catch {
-    throw new Error('本文は JSON 形式で入力してください');
-  }
-
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('本文は JSON オブジェクト形式で入力してください');
-  }
-
-  return parsed as Record<string, unknown>;
+  return parseJsonObjectText(
+    contentText,
+    '本文は JSON 形式で入力してください',
+    '本文は JSON オブジェクト形式で入力してください',
+  );
 }
 
 function buildPlanPayload(form: ManagementPlanFormState) {

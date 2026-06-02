@@ -11,6 +11,7 @@ const {
   auditLogCreateMock,
   careCaseFindFirstMock,
   patientFindFirstMock,
+  fetchEmergencyContactsMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   auditLogCreateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  fetchEmergencyContactsMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -50,7 +52,15 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { PATCH } from './route';
+vi.mock('@/lib/patient/emergency-contacts', () => ({
+  fetchEmergencyContacts: fetchEmergencyContactsMock,
+}));
+
+import { GET, PATCH } from './route';
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/communication-requests/request_1');
+}
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/communication-requests/request_1', {
@@ -62,6 +72,137 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
     body: JSON.stringify(body),
   });
 }
+
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/communication-requests/request_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      ...(headers ?? {}),
+    },
+    body: '{"status":',
+  });
+}
+
+describe('/api/communication-requests/[id] GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    fetchEmergencyContactsMock.mockResolvedValue([{ id: 'contact_1', name: '家族A' }]);
+  });
+
+  it('loads request content and suggested contacts after assignment access succeeds', async () => {
+    communicationRequestFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      })
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+        responses: [{ id: 'response_1', content: '承知しました' }],
+      });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'request_1',
+        subject: '確認事項',
+        suggested_contacts: [{ id: 'contact_1', name: '家族A' }],
+      },
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(1, {
+      where: { id: 'request_1', org_id: 'org_1' },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+      },
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { id: 'request_1', org_id: 'org_1' },
+        select: expect.objectContaining({
+          subject: true,
+          content: true,
+          responses: expect.objectContaining({
+            select: expect.objectContaining({ content: true }),
+          }),
+        }),
+      }),
+    );
+    expect(fetchEmergencyContactsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'org_1',
+      'patient_1',
+    );
+  });
+
+  it('rejects blank request ids before loading communication content', async () => {
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '連携依頼IDが不正です',
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns not found for unassigned requests before loading communication content', async () => {
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '依頼が見つかりません',
+    });
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledOnce();
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'request_1', org_id: 'org_1' },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+      },
+    });
+    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('/api/communication-requests/[id] PATCH', () => {
   beforeEach(() => {
@@ -159,10 +300,100 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('records an audit log with the reason for direct status changes', async () => {
+  it('rejects non-object request bodies before loading the request', async () => {
+    const response = await PATCH(createRequest(['unexpected'], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank request ids before loading or updating the request', async () => {
     const response = await PATCH(
       createRequest(
         { status: 'in_progress', status_change_reason: '電話で受領確認し対応を開始' },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '連携依頼IDが不正です',
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before loading the request', async () => {
+    const response = await PATCH(createMalformedJsonRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank response fields before loading the request', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '   ',
+            content: '   ',
+            responded_at: '   ',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: 'request_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('records an audit log with the reason for direct status changes', async () => {
+    const response = await PATCH(
+      createRequest(
+        { status: ' in_progress ', status_change_reason: ' 電話で受領確認し対応を開始 ' },
         { 'x-org-id': 'org_1' },
       ),
       { params: Promise.resolve({ id: 'request_1' }) },
@@ -196,8 +427,8 @@ describe('/api/communication-requests/[id] PATCH', () => {
       createRequest(
         {
           response: {
-            responder_name: '在宅主治医',
-            content: '現行処方で継続',
+            responder_name: ' 在宅主治医 ',
+            content: ' 現行処方で継続 ',
           },
         },
         { 'x-org-id': 'org_1' },

@@ -7,89 +7,103 @@ import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
 export type CommunicationQueueReader = {
   patientSelfReport?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      subject: string;
-      category?: string | null;
-      requested_callback: boolean;
-      preferred_contact_time: string | null;
-      reported_by_name: string | null;
-      status: string;
-      created_at: Date;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        subject: string;
+        category?: string | null;
+        requested_callback: boolean;
+        preferred_contact_time: string | null;
+        reported_by_name: string | null;
+        status: string;
+        created_at: Date;
+      }>
+    >;
   };
   visitScheduleContactLog?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      outcome: string;
-      contact_name: string | null;
-      contact_phone: string | null;
-      note: string | null;
-      callback_due_at: Date | null;
-      called_at: Date;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        outcome: string;
+        contact_name: string | null;
+        contact_phone: string | null;
+        note: string | null;
+        callback_due_at: Date | null;
+        called_at: Date;
+      }>
+    >;
   };
   communicationRequest?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string | null;
-      request_type: string;
-      subject: string;
-      content?: string | null;
-      template_key?: string | null;
-      status: string;
-      due_date: Date | null;
-      requested_at: Date;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string | null;
+        request_type: string;
+        subject: string;
+        content?: string | null;
+        template_key?: string | null;
+        status: string;
+        due_date: Date | null;
+        requested_at: Date;
+      }>
+    >;
   };
   deliveryRecord?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      channel: string;
-      recipient_name: string | null;
-      status: string;
-      failure_reason: string | null;
-      sent_at: Date | null;
-      confirmed_at: Date | null;
-      updated_at: Date;
-      report: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        channel: string;
+        recipient_name: string | null;
+        status: string;
+        failure_reason: string | null;
+        sent_at: Date | null;
+        confirmed_at: Date | null;
+        updated_at: Date;
+        report: {
+          id: string;
+          patient_id: string | null;
+          report_type: string;
+        };
+      }>
+    >;
+  };
+  externalAccessGrant?: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        granted_to_name: string;
+        expires_at: Date;
+        scope: string | null;
+      }>
+    >;
+  };
+  careReport?: {
+    findMany(args: unknown): Promise<
+      Array<{
         id: string;
         patient_id: string | null;
         report_type: string;
-      };
-    }>>;
-  };
-  externalAccessGrant?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      granted_to_name: string;
-      expires_at: Date;
-      scope: string | null;
-    }>>;
-  };
-  careReport?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string | null;
-      report_type: string;
-      status: string;
-      created_at: Date;
-      updated_at: Date | null;
-    }>>;
+        status: string;
+        created_at: Date;
+        updated_at: Date | null;
+      }>
+    >;
   };
   tracingReport?: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      status: string;
-      sent_to_physician: string | null;
-      sent_at: Date | null;
-      acknowledged_at: Date | null;
-      updated_at: Date;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        status: string;
+        sent_to_physician: string | null;
+        sent_at: Date | null;
+        acknowledged_at: Date | null;
+        updated_at: Date;
+      }>
+    >;
   };
   patient?: {
     findFirst?(args: unknown): Promise<{
@@ -113,6 +127,17 @@ export type CommunicationQueueReader = {
 
 type DbClient = CommunicationQueueReader;
 type QueuePriority = 'urgent' | 'high' | 'normal';
+const DEFAULT_COMMUNICATION_QUEUE_LIMIT = 8;
+
+function normalizeCommunicationQueueLimit(value: number | undefined) {
+  if (value === undefined) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
+  if (!Number.isFinite(value)) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
+
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized)) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
+
+  return Math.max(normalized, 1);
+}
 
 export type CommunicationQueueItem = {
   id: string;
@@ -473,7 +498,7 @@ export async function listCommunicationQueue(
   const reader = db as CommunicationQueueReader;
   const now = new Date();
   const shareWindow = addDays(now, 7);
-  const limit = Math.max(args.limit ?? 8, 1);
+  const limit = normalizeCommunicationQueueLimit(args.limit);
   const patientScope =
     args.patientId !== undefined
       ? { patient_id: args.patientId }
@@ -557,7 +582,7 @@ export async function listCommunicationQueue(
     // anyway, but the intent is clearer with an explicit fast-path.
     args.caseIds !== undefined && args.caseIds.length === 0
       ? Promise.resolve([])
-      : reader.visitScheduleContactLog?.findMany({
+      : (reader.visitScheduleContactLog?.findMany({
           where: {
             org_id: args.orgId,
             ...patientScope,
@@ -589,7 +614,7 @@ export async function listCommunicationQueue(
             callback_due_at: true,
             called_at: true,
           },
-        }) ?? Promise.resolve([]),
+        }) ?? Promise.resolve([])),
     reader.communicationRequest?.findMany({
       where: {
         org_id: args.orgId,
@@ -720,15 +745,15 @@ export async function listCommunicationQueue(
       ? []
       : reader.patient?.findMany
         ? await reader.patient.findMany({
-          where: {
-            org_id: args.orgId,
-            id: { in: patientIds },
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        })
+            where: {
+              org_id: args.orgId,
+              id: { in: patientIds },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          })
         : [];
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
 

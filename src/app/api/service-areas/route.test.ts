@@ -41,6 +41,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/service-areas', {
+    method: 'POST',
+    body: '{bad json',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/service-areas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,7 +84,7 @@ describe('/api/service-areas', () => {
       ok: false,
       response: Response.json(
         { code: 'VALIDATION_ERROR', message: '指定された店舗が見つかりません' },
-        { status: 400 }
+        { status: 400 },
       ),
     });
 
@@ -111,12 +119,33 @@ describe('/api/service-areas', () => {
     });
   });
 
+  it('rejects non-object create payloads before validating references', async () => {
+    const response = (await POST(createPostRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(serviceAreaCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before validating references', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(serviceAreaCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects creating a service area with a site outside the authenticated org', async () => {
     validateOrgReferencesMock.mockResolvedValueOnce({
       ok: false,
       response: Response.json(
         { code: 'VALIDATION_ERROR', message: '指定された店舗が見つかりません' },
-        { status: 400 }
+        { status: 400 },
       ),
     });
 

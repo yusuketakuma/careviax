@@ -1,15 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  communityActivityFindManyMock,
-  communityActivityCreateMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  communityActivityFindManyMock: vi.fn(),
-  communityActivityCreateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { communityActivityFindManyMock, communityActivityCreateMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    communityActivityFindManyMock: vi.fn(),
+    communityActivityCreateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
@@ -43,6 +40,16 @@ function createRequest(url: string, body?: unknown) {
           },
           body: JSON.stringify(body),
         }),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/community-activities', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
   });
 }
 
@@ -90,5 +97,33 @@ describe('/api/community-activities', () => {
         created_by: 'user_1',
       }),
     });
+  });
+
+  it('rejects non-object POST payloads before activity creation', async () => {
+    const response = (await POST(createRequest('http://localhost/api/community-activities', []), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communityActivityCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before activity creation', async () => {
+    const response = (await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communityActivityCreateMock).not.toHaveBeenCalled();
   });
 });

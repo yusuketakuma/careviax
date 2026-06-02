@@ -82,6 +82,20 @@ describe('/api/conference-notes/[id]/pdf', () => {
     );
   });
 
+  it('rejects blank conference note ids before rendering or auditing the export', async () => {
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録IDが不正です',
+    });
+    expect(buildConferenceNotePdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the conference note is missing', async () => {
     buildConferenceNotePdfMock.mockRejectedValue(new Error('カンファレンス記録が見つかりません'));
 

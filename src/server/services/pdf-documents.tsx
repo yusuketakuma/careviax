@@ -31,6 +31,13 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
+import {
+  flattenPdfJson,
+  readPdfJsonArrayField,
+  readPdfJsonObject,
+  readPdfJsonObjectField,
+  readPdfJsonObjects,
+} from '@/server/services/pdf-document-json';
 
 type PdfRenderResult = {
   buffer: Buffer;
@@ -507,71 +514,39 @@ function inferPharmacyName(orgName?: string | null, siteName?: string | null) {
   return siteName?.trim() || orgName?.trim() || 'PH-OS薬局';
 }
 
-function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
-  if (value == null) {
-    return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
-    }
-
-    if (
-      value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item))
-    ) {
-      return labelPrefix
-        ? [{ label: labelPrefix, value: value.map((item) => String(item ?? '—')).join(' / ') }]
-        : [];
-    }
-
-    return value.flatMap((item, index) =>
-      flattenJson(item, labelPrefix ? `${labelPrefix}[${index + 1}]` : `[${index + 1}]`),
-    );
-  }
-
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) {
-      return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
-    }
-
-    return entries.flatMap(([key, nextValue]) =>
-      flattenJson(nextValue, labelPrefix ? `${labelPrefix}.${key}` : key),
-    );
-  }
-
-  return labelPrefix ? [{ label: labelPrefix, value: String(value) }] : [];
-}
-
 function parseConferenceParticipants(raw: unknown): ConferenceNoteParticipant[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (item): item is ConferenceNoteParticipant => typeof item === 'object' && item !== null,
-  );
+  return readPdfJsonObjects(raw).map((item) => ({
+    name: typeof item.name === 'string' ? item.name : undefined,
+    role: typeof item.role === 'string' ? item.role : undefined,
+    attended: typeof item.attended === 'boolean' ? item.attended : undefined,
+    is_report_recipient:
+      typeof item.is_report_recipient === 'boolean' ? item.is_report_recipient : undefined,
+    email: typeof item.email === 'string' ? item.email : undefined,
+    fax: typeof item.fax === 'string' ? item.fax : undefined,
+  }));
 }
 
 function parseConferenceActionItems(raw: unknown): ConferenceNoteActionItem[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (item): item is ConferenceNoteActionItem => typeof item === 'object' && item !== null,
-  );
+  return readPdfJsonObjects(raw).map((item) => ({
+    title: typeof item.title === 'string' ? item.title : undefined,
+    assignee: typeof item.assignee === 'string' ? item.assignee : undefined,
+    converted_task_id:
+      typeof item.converted_task_id === 'string' ? item.converted_task_id : undefined,
+    converted_at: typeof item.converted_at === 'string' ? item.converted_at : undefined,
+  }));
 }
 
 function parseConferenceStructuredSections(raw: unknown): ConferenceNoteStructuredSection[] {
-  if (
-    typeof raw !== 'object' ||
-    raw === null ||
-    !('sections' in raw) ||
-    !Array.isArray((raw as { sections?: unknown }).sections)
-  ) {
-    return [];
-  }
-
-  return (raw as { sections: unknown[] }).sections.filter(
-    (item): item is ConferenceNoteStructuredSection =>
-      typeof item === 'object' && item !== null && 'label' in item && 'key' in item,
-  );
+  return readPdfJsonObjects(readPdfJsonArrayField(raw, 'sections')).flatMap((item) => {
+    if (typeof item.key !== 'string' || typeof item.label !== 'string') return [];
+    return [
+      {
+        key: item.key,
+        label: item.label,
+        body: typeof item.body === 'string' ? item.body : undefined,
+      },
+    ];
+  });
 }
 
 function inferCalendarSlots(frequency?: string | null): CalendarSlot[] {
@@ -801,246 +776,383 @@ function renderBaselineContextSection(baseline: BaselineContext) {
   );
 }
 
-function renderCareReportContent(report: CareReportRecord) {
-  const billingContext = (report.content as Record<string, unknown> | null)
-    ?.billing_context as Record<string, unknown> | null;
-  if (report.report_type === 'physician_report') {
-    const content = report.content as unknown as PhysicianReportContent;
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isOptionalString(value: unknown) {
+  return value === undefined || typeof value === 'string';
+}
+
+function isBaselineContext(value: unknown): value is BaselineContext {
+  if (value === undefined) return true;
+  const object = readPdfJsonObject(value);
+  if (
+    !isOptionalString(object.care_level) ||
+    !isOptionalString(object.adl_level) ||
+    !isOptionalString(object.dementia_level) ||
+    !isOptionalString(object.primary_disease)
+  ) {
+    return false;
+  }
+  if (
+    object.special_medical_procedures !== undefined &&
+    !isStringArray(object.special_medical_procedures)
+  ) {
+    return false;
+  }
+  if (object.requester !== undefined) {
+    const requester = readPdfJsonObject(object.requester);
     return (
-      <>
-        <Section title="基本情報">
-          <KeyValueCards
-            rows={[
-              { label: '患者名', value: content.patient.name },
-              { label: '生年月日', value: content.patient.birth_date },
-              { label: '性別', value: content.patient.gender },
-              { label: '訪問日', value: content.visit_date },
-              { label: '報告日', value: content.report_date },
-              { label: '担当薬剤師', value: content.pharmacist_name },
-              { label: '主治医', value: content.prescriber.name },
-              { label: '所属', value: content.prescriber.institution },
-            ]}
-          />
-        </Section>
-        {billingContext ? (
-          <Section title="請求コンテキスト">
+      isOptionalString(requester.contact_name) &&
+      isOptionalString(requester.organization_name) &&
+      isOptionalString(requester.profession) &&
+      isOptionalString(requester.phone) &&
+      isOptionalString(requester.fax)
+    );
+  }
+  return true;
+}
+
+function isPhysicianPrescription(
+  value: unknown,
+): value is PhysicianReportContent['prescriptions'][number] {
+  const object = readPdfJsonObject(value);
+  return (
+    typeof object.drug_name === 'string' &&
+    typeof object.dose === 'string' &&
+    typeof object.frequency === 'string' &&
+    typeof object.days === 'number'
+  );
+}
+
+function isResidualMedication(
+  value: unknown,
+): value is PhysicianReportContent['residual_medications'][number] {
+  const object = readPdfJsonObject(value);
+  return (
+    typeof object.drug_name === 'string' &&
+    typeof object.remaining_qty === 'number' &&
+    typeof object.excess_days === 'number'
+  );
+}
+
+function isPhysicianReportContent(value: unknown): value is PhysicianReportContent {
+  const object = readPdfJsonObject(value);
+  const patient = readPdfJsonObject(object.patient);
+  const prescriber = readPdfJsonObject(object.prescriber);
+  const medicationManagement = readPdfJsonObject(object.medication_management);
+
+  return (
+    typeof patient.name === 'string' &&
+    typeof patient.birth_date === 'string' &&
+    typeof patient.gender === 'string' &&
+    typeof object.report_date === 'string' &&
+    typeof object.visit_date === 'string' &&
+    typeof object.pharmacist_name === 'string' &&
+    typeof prescriber.name === 'string' &&
+    typeof prescriber.institution === 'string' &&
+    Array.isArray(object.prescriptions) &&
+    object.prescriptions.every(isPhysicianPrescription) &&
+    typeof medicationManagement.compliance_summary === 'string' &&
+    typeof medicationManagement.adherence_score === 'number' &&
+    typeof medicationManagement.self_management === 'string' &&
+    typeof medicationManagement.calendar_used === 'boolean' &&
+    typeof object.assessment === 'string' &&
+    typeof object.plan === 'string' &&
+    isOptionalString(object.prescription_proposals) &&
+    Array.isArray(object.residual_medications) &&
+    object.residual_medications.every(isResidualMedication) &&
+    isStringArray(object.warnings) &&
+    isBaselineContext(object.baseline_context)
+  );
+}
+
+function isCareManagerReportContent(value: unknown): value is CareManagerReportContent {
+  const object = readPdfJsonObject(value);
+  const patient = readPdfJsonObject(object.patient);
+  const careManager = readPdfJsonObject(object.care_manager);
+  const medicationSummary = readPdfJsonObject(object.medication_management_summary);
+  const functionalImpact = readPdfJsonObject(object.functional_impact);
+  const residualStatus = readPdfJsonObject(object.residual_status);
+  const careServiceCoordination = readPdfJsonObject(object.care_service_coordination);
+  const nextVisitPlan = readPdfJsonObject(object.next_visit_plan);
+
+  return (
+    typeof patient.name === 'string' &&
+    typeof patient.birth_date === 'string' &&
+    typeof careManager.name === 'string' &&
+    typeof careManager.organization === 'string' &&
+    typeof object.report_date === 'string' &&
+    typeof object.visit_date === 'string' &&
+    typeof object.pharmacist_name === 'string' &&
+    typeof medicationSummary.total_drugs === 'number' &&
+    typeof medicationSummary.compliance_summary === 'string' &&
+    typeof medicationSummary.self_management === 'string' &&
+    typeof medicationSummary.calendar_used === 'boolean' &&
+    typeof functionalImpact.sleep_impact === 'string' &&
+    typeof functionalImpact.cognition_impact === 'string' &&
+    typeof functionalImpact.diet_impact === 'string' &&
+    typeof functionalImpact.mobility_impact === 'string' &&
+    typeof functionalImpact.excretion_impact === 'string' &&
+    typeof residualStatus.summary === 'string' &&
+    isStringArray(residualStatus.reduction_proposals) &&
+    typeof careServiceCoordination.medication_assistance === 'string' &&
+    typeof careServiceCoordination.unit_dose_packaging === 'boolean' &&
+    typeof careServiceCoordination.calendar_recommendation === 'boolean' &&
+    typeof careServiceCoordination.other_items === 'string' &&
+    isOptionalString(nextVisitPlan.date) &&
+    isStringArray(nextVisitPlan.followup_items) &&
+    isStringArray(object.warnings) &&
+    isBaselineContext(object.baseline_context)
+  );
+}
+
+function renderCareReportContent(report: CareReportRecord) {
+  const billingContext = readPdfJsonObjectField(report.content, 'billing_context');
+  if (report.report_type === 'physician_report') {
+    const content = readPdfJsonObject(report.content);
+    if (isPhysicianReportContent(content)) {
+      return (
+        <>
+          <Section title="基本情報">
             <KeyValueCards
               rows={[
+                { label: '患者名', value: content.patient.name },
+                { label: '生年月日', value: content.patient.birth_date },
+                { label: '性別', value: content.patient.gender },
+                { label: '訪問日', value: content.visit_date },
+                { label: '報告日', value: content.report_date },
+                { label: '担当薬剤師', value: content.pharmacist_name },
+                { label: '主治医', value: content.prescriber.name },
+                { label: '所属', value: content.prescriber.institution },
+              ]}
+            />
+          </Section>
+          {billingContext ? (
+            <Section title="請求コンテキスト">
+              <KeyValueCards
+                rows={[
+                  {
+                    label: '保険種別',
+                    value:
+                      typeof billingContext.payer_basis === 'string'
+                        ? billingContext.payer_basis
+                        : '—',
+                  },
+                  {
+                    label: '適用改定',
+                    value:
+                      typeof billingContext.effective_revision_code === 'string'
+                        ? billingContext.effective_revision_code
+                        : '—',
+                  },
+                  {
+                    label: '薬局設定',
+                    value:
+                      typeof billingContext.site_config_status === 'string'
+                        ? billingContext.site_config_status
+                        : '—',
+                  },
+                  {
+                    label: 'JAHIS補足',
+                    value:
+                      typeof billingContext.jahis_supplemental_record_count === 'number'
+                        ? `${billingContext.jahis_supplemental_record_count}件`
+                        : '—',
+                  },
+                  {
+                    label: 'JAHIS残薬確認',
+                    value:
+                      typeof billingContext.jahis_residual_confirmation_count === 'number'
+                        ? `${billingContext.jahis_residual_confirmation_count}件`
+                        : '—',
+                  },
+                ]}
+              />
+            </Section>
+          ) : null}
+          {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
+
+          <Section title="処方内容">
+            <Table
+              headers={['薬剤名', '用量', '用法', '日数']}
+              widths={[42, 18, 25, 15]}
+              rows={content.prescriptions.map((item) => [
+                item.drug_name,
+                item.dose,
+                item.frequency,
+                `${item.days}日`,
+              ])}
+            />
+          </Section>
+
+          <Section title="服薬管理">
+            <KeyValueCards
+              rows={[
+                { label: '服薬サマリー', value: content.medication_management.compliance_summary },
                 {
-                  label: '保険種別',
-                  value:
-                    typeof billingContext.payer_basis === 'string'
-                      ? billingContext.payer_basis
-                      : '—',
+                  label: 'アドヒアランス',
+                  value: `${content.medication_management.adherence_score}/5`,
                 },
+                { label: '自己管理', value: content.medication_management.self_management },
                 {
-                  label: '適用改定',
-                  value:
-                    typeof billingContext.effective_revision_code === 'string'
-                      ? billingContext.effective_revision_code
-                      : '—',
-                },
-                {
-                  label: '薬局設定',
-                  value:
-                    typeof billingContext.site_config_status === 'string'
-                      ? billingContext.site_config_status
-                      : '—',
-                },
-                {
-                  label: 'JAHIS補足',
-                  value:
-                    typeof billingContext.jahis_supplemental_record_count === 'number'
-                      ? `${billingContext.jahis_supplemental_record_count}件`
-                      : '—',
-                },
-                {
-                  label: 'JAHIS残薬確認',
-                  value:
-                    typeof billingContext.jahis_residual_confirmation_count === 'number'
-                      ? `${billingContext.jahis_residual_confirmation_count}件`
-                      : '—',
+                  label: 'カレンダー使用',
+                  value: content.medication_management.calendar_used ? '使用あり' : '使用なし',
                 },
               ]}
             />
           </Section>
-        ) : null}
-        {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
-        <Section title="処方内容">
-          <Table
-            headers={['薬剤名', '用量', '用法', '日数']}
-            widths={[42, 18, 25, 15]}
-            rows={content.prescriptions.map((item) => [
-              item.drug_name,
-              item.dose,
-              item.frequency,
-              `${item.days}日`,
-            ])}
-          />
-        </Section>
+          <Section title="薬学的評価と対応">
+            <Text style={styles.paragraph}>{content.assessment}</Text>
+            <Text style={[styles.paragraph, { marginTop: 6 }]}>{content.plan}</Text>
+            {content.prescription_proposals ? (
+              <Text style={[styles.paragraph, { marginTop: 6 }]}>
+                処方提案: {content.prescription_proposals}
+              </Text>
+            ) : null}
+          </Section>
 
-        <Section title="服薬管理">
-          <KeyValueCards
-            rows={[
-              { label: '服薬サマリー', value: content.medication_management.compliance_summary },
-              {
-                label: 'アドヒアランス',
-                value: `${content.medication_management.adherence_score}/5`,
-              },
-              { label: '自己管理', value: content.medication_management.self_management },
-              {
-                label: 'カレンダー使用',
-                value: content.medication_management.calendar_used ? '使用あり' : '使用なし',
-              },
-            ]}
-          />
-        </Section>
-
-        <Section title="薬学的評価と対応">
-          <Text style={styles.paragraph}>{content.assessment}</Text>
-          <Text style={[styles.paragraph, { marginTop: 6 }]}>{content.plan}</Text>
-          {content.prescription_proposals ? (
-            <Text style={[styles.paragraph, { marginTop: 6 }]}>
-              処方提案: {content.prescription_proposals}
-            </Text>
-          ) : null}
-        </Section>
-
-        <Section title="残薬・注意事項">
-          <BulletList
-            items={[
-              ...content.residual_medications.map(
-                (item) =>
-                  `${item.drug_name}: 残 ${item.remaining_qty} / 余剰 ${item.excess_days}日`,
-              ),
-              ...content.warnings,
-            ]}
-          />
-        </Section>
-      </>
-    );
+          <Section title="残薬・注意事項">
+            <BulletList
+              items={[
+                ...content.residual_medications.map(
+                  (item) =>
+                    `${item.drug_name}: 残 ${item.remaining_qty} / 余剰 ${item.excess_days}日`,
+                ),
+                ...content.warnings,
+              ]}
+            />
+          </Section>
+        </>
+      );
+    }
   }
 
   if (report.report_type === 'care_manager_report') {
-    const content = report.content as unknown as CareManagerReportContent;
-    return (
-      <>
-        <Section title="基本情報">
-          <KeyValueCards
-            rows={[
-              { label: '患者名', value: content.patient.name },
-              { label: '生年月日', value: content.patient.birth_date },
-              { label: '報告日', value: content.report_date },
-              { label: '訪問日', value: content.visit_date },
-              { label: '担当薬剤師', value: content.pharmacist_name },
-              { label: 'ケアマネ', value: content.care_manager.name },
-              { label: '所属', value: content.care_manager.organization },
-            ]}
-          />
-        </Section>
-        {billingContext ? (
-          <Section title="請求コンテキスト">
+    const content = readPdfJsonObject(report.content);
+    if (isCareManagerReportContent(content)) {
+      return (
+        <>
+          <Section title="基本情報">
+            <KeyValueCards
+              rows={[
+                { label: '患者名', value: content.patient.name },
+                { label: '生年月日', value: content.patient.birth_date },
+                { label: '報告日', value: content.report_date },
+                { label: '訪問日', value: content.visit_date },
+                { label: '担当薬剤師', value: content.pharmacist_name },
+                { label: 'ケアマネ', value: content.care_manager.name },
+                { label: '所属', value: content.care_manager.organization },
+              ]}
+            />
+          </Section>
+          {billingContext ? (
+            <Section title="請求コンテキスト">
+              <KeyValueCards
+                rows={[
+                  {
+                    label: '保険種別',
+                    value:
+                      typeof billingContext.payer_basis === 'string'
+                        ? billingContext.payer_basis
+                        : '—',
+                  },
+                  {
+                    label: '適用改定',
+                    value:
+                      typeof billingContext.effective_revision_code === 'string'
+                        ? billingContext.effective_revision_code
+                        : '—',
+                  },
+                  {
+                    label: '薬局設定',
+                    value:
+                      typeof billingContext.site_config_status === 'string'
+                        ? billingContext.site_config_status
+                        : '—',
+                  },
+                  {
+                    label: 'JAHIS補足',
+                    value:
+                      typeof billingContext.jahis_supplemental_record_count === 'number'
+                        ? `${billingContext.jahis_supplemental_record_count}件`
+                        : '—',
+                  },
+                  {
+                    label: 'JAHIS残薬確認',
+                    value:
+                      typeof billingContext.jahis_residual_confirmation_count === 'number'
+                        ? `${billingContext.jahis_residual_confirmation_count}件`
+                        : '—',
+                  },
+                ]}
+              />
+            </Section>
+          ) : null}
+          {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
+
+          <Section title="服薬管理サマリー">
             <KeyValueCards
               rows={[
                 {
-                  label: '保険種別',
-                  value:
-                    typeof billingContext.payer_basis === 'string'
-                      ? billingContext.payer_basis
-                      : '—',
+                  label: '服薬薬剤数',
+                  value: `${content.medication_management_summary.total_drugs}剤`,
                 },
                 {
-                  label: '適用改定',
-                  value:
-                    typeof billingContext.effective_revision_code === 'string'
-                      ? billingContext.effective_revision_code
-                      : '—',
+                  label: '服薬状況',
+                  value: content.medication_management_summary.compliance_summary,
                 },
                 {
-                  label: '薬局設定',
-                  value:
-                    typeof billingContext.site_config_status === 'string'
-                      ? billingContext.site_config_status
-                      : '—',
+                  label: '自己管理',
+                  value: content.medication_management_summary.self_management,
                 },
                 {
-                  label: 'JAHIS補足',
-                  value:
-                    typeof billingContext.jahis_supplemental_record_count === 'number'
-                      ? `${billingContext.jahis_supplemental_record_count}件`
-                      : '—',
-                },
-                {
-                  label: 'JAHIS残薬確認',
-                  value:
-                    typeof billingContext.jahis_residual_confirmation_count === 'number'
-                      ? `${billingContext.jahis_residual_confirmation_count}件`
-                      : '—',
+                  label: 'カレンダー使用',
+                  value: content.medication_management_summary.calendar_used
+                    ? '使用あり'
+                    : '使用なし',
                 },
               ]}
             />
           </Section>
-        ) : null}
-        {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
-        <Section title="服薬管理サマリー">
-          <KeyValueCards
-            rows={[
-              {
-                label: '服薬薬剤数',
-                value: `${content.medication_management_summary.total_drugs}剤`,
-              },
-              {
-                label: '服薬状況',
-                value: content.medication_management_summary.compliance_summary,
-              },
-              {
-                label: '自己管理',
-                value: content.medication_management_summary.self_management,
-              },
-              {
-                label: 'カレンダー使用',
-                value: content.medication_management_summary.calendar_used
-                  ? '使用あり'
-                  : '使用なし',
-              },
-            ]}
-          />
-        </Section>
+          <Section title="生活機能への影響">
+            <BulletList
+              items={[
+                `睡眠: ${content.functional_impact.sleep_impact}`,
+                `認知: ${content.functional_impact.cognition_impact}`,
+                `食事・口腔: ${content.functional_impact.diet_impact}`,
+                `移動: ${content.functional_impact.mobility_impact}`,
+                `排泄: ${content.functional_impact.excretion_impact}`,
+              ]}
+            />
+          </Section>
 
-        <Section title="生活機能への影響">
-          <BulletList
-            items={[
-              `睡眠: ${content.functional_impact.sleep_impact}`,
-              `認知: ${content.functional_impact.cognition_impact}`,
-              `食事・口腔: ${content.functional_impact.diet_impact}`,
-              `移動: ${content.functional_impact.mobility_impact}`,
-              `排泄: ${content.functional_impact.excretion_impact}`,
-            ]}
-          />
-        </Section>
-
-        <Section title="連携・次回計画">
-          <BulletList
-            items={[
-              `残薬状況: ${content.residual_status.summary}`,
-              `服薬支援: ${content.care_service_coordination.medication_assistance}`,
-              `一包化: ${content.care_service_coordination.unit_dose_packaging ? 'あり' : 'なし'}`,
-              `服薬カレンダー提案: ${content.care_service_coordination.calendar_recommendation ? 'あり' : 'なし'}`,
-              `次回訪問予定: ${content.next_visit_plan.date ?? '未定'}`,
-              ...content.next_visit_plan.followup_items,
-              ...content.warnings,
-            ]}
-          />
-        </Section>
-      </>
-    );
+          <Section title="連携・次回計画">
+            <BulletList
+              items={[
+                `残薬状況: ${content.residual_status.summary}`,
+                `服薬支援: ${content.care_service_coordination.medication_assistance}`,
+                `一包化: ${content.care_service_coordination.unit_dose_packaging ? 'あり' : 'なし'}`,
+                `服薬カレンダー提案: ${content.care_service_coordination.calendar_recommendation ? 'あり' : 'なし'}`,
+                `次回訪問予定: ${content.next_visit_plan.date ?? '未定'}`,
+                ...content.next_visit_plan.followup_items,
+                ...content.warnings,
+              ]}
+            />
+          </Section>
+        </>
+      );
+    }
   }
 
   return (
     <Section title="内容">
-      <BulletList items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)} />
+      <BulletList
+        items={flattenPdfJson(report.content).map((row) => `${row.label}: ${row.value}`)}
+      />
     </Section>
   );
 }
@@ -1068,7 +1180,9 @@ function renderManagementPlanContent(plan: ManagementPlanRecord) {
       </Section>
 
       <Section title="計画内容">
-        <BulletList items={flattenJson(plan.content).map((row) => `${row.label}: ${row.value}`)} />
+        <BulletList
+          items={flattenPdfJson(plan.content).map((row) => `${row.label}: ${row.value}`)}
+        />
       </Section>
     </>
   );
@@ -1384,7 +1498,7 @@ function renderTracingReportContent(report: TracingReportRecord) {
 
       <Section title="報告内容">
         <BulletList
-          items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)}
+          items={flattenPdfJson(report.content).map((row) => `${row.label}: ${row.value}`)}
         />
       </Section>
     </>
@@ -1417,7 +1531,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
           item.converted_task_id ? 'タスク化済み' : '未処理',
         ])
       : [['記録なし', '', '']];
-  const metadataRows = flattenJson(record.metadata);
+  const metadataRows = flattenPdfJson(record.metadata);
 
   return (
     <>
@@ -1577,7 +1691,7 @@ async function getCareReportRecord(
 
   return {
     ...report,
-    content: (report.content as Record<string, unknown>) ?? {},
+    content: readPdfJsonObject(report.content),
     patient,
   };
 }
@@ -1634,7 +1748,7 @@ async function getManagementPlanRecord(
     next_review_date: plan.next_review_date,
     approved_at: plan.approved_at,
     updated_at: plan.updated_at,
-    content: (plan.content as Record<string, unknown>) ?? {},
+    content: readPdfJsonObject(plan.content),
     patient: plan.case_.patient,
   };
 }
@@ -2001,7 +2115,7 @@ async function getTracingReportRecord(
 
   return {
     ...report,
-    content: (report.content as Record<string, unknown>) ?? {},
+    content: readPdfJsonObject(report.content),
     patient,
   };
 }
@@ -2098,7 +2212,7 @@ async function getConferenceNoteRecord(
     participants: parseConferenceParticipants(note.participants),
     structured_sections: parseConferenceStructuredSections(note.structured_content),
     action_items: parseConferenceActionItems(note.action_items),
-    metadata: (note.metadata as Record<string, unknown>) ?? {},
+    metadata: readPdfJsonObject(note.metadata),
     patient: careCase?.patient ?? null,
     facility_name: careCase?.patient.residences[0]?.facility?.name ?? null,
     unit_name: careCase?.patient.residences[0]?.unit_name ?? null,

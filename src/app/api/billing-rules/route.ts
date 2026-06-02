@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import type { PayerBasis, Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
@@ -123,10 +124,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const seedParsed = seedBillingRuleSchema.safeParse(body);
+  const seedParsed = seedBillingRuleSchema.safeParse(payload);
   if (seedParsed.success) {
     const seeded = await withOrgContext(ctx.orgId, (tx) =>
       ensureHomeCareBillingSsot(tx, ctx.orgId),
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const parsed = createBillingRuleSchema.safeParse(body);
+  const parsed = createBillingRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

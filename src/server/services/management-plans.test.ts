@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  consentRecordFindFirstMock,
-  managementPlanFindFirstMock,
-} = vi.hoisted(() => ({
+const { consentRecordFindFirstMock, managementPlanFindFirstMock } = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
 }));
@@ -28,6 +25,8 @@ import {
   formatVisitWorkflowGateIssues,
   getVisitWorkflowGuidance,
   buildManagementPlanReviewTaskKey,
+  isVisitWorkflowGateIssue,
+  parseVisitWorkflowGateErrorMessage,
 } from './management-plans';
 
 function makeGateDb() {
@@ -192,6 +191,17 @@ describe('formatVisitWorkflowGateIssues', () => {
     const result = formatVisitWorkflowGateIssues([]);
     expect(result).toBe('');
   });
+
+  it('parses only known issue codes from workflow gate error messages', () => {
+    expect(isVisitWorkflowGateIssue('missing_visit_consent')).toBe(true);
+    expect(isVisitWorkflowGateIssue('unknown_issue')).toBe(false);
+    expect(
+      parseVisitWorkflowGateErrorMessage(
+        'VISIT_WORKFLOW_GATE:missing_visit_consent,unknown_issue,missing_management_plan',
+      ),
+    ).toEqual(['missing_visit_consent', 'missing_management_plan']);
+    expect(parseVisitWorkflowGateErrorMessage('OTHER:missing_visit_consent')).toEqual([]);
+  });
 });
 
 describe('getVisitWorkflowGuidance', () => {
@@ -209,8 +219,6 @@ describe('getVisitWorkflowGuidance', () => {
 
 describe('buildManagementPlanReviewTaskKey', () => {
   it('generates expected key format', () => {
-    expect(buildManagementPlanReviewTaskKey('plan-123')).toBe(
-      'management-plan-review:plan-123'
-    );
+    expect(buildManagementPlanReviewTaskKey('plan-123')).toBe('management-plan-review:plan-123');
   });
 });

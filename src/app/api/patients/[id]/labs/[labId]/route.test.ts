@@ -45,13 +45,23 @@ vi.mock('@/lib/db/client', () => ({
 
 import { PATCH } from './route';
 
-function createPatchRequest(body: Record<string, unknown>) {
+function createPatchRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patients/patient_1/labs/lab_1', {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/labs/lab_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"note":',
   });
 }
 
@@ -80,6 +90,62 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
       note: '再確認済み',
     });
     visitRecordFindFirstMock.mockResolvedValue({ id: 'visit_1' });
+  });
+
+  it('rejects non-object patch payloads before loading the lab observation', async () => {
+    const response = (await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing patch payloads or loading lab observations', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: '   ', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank lab ids before parsing patch payloads or loading lab observations', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'patient_1', labId: '\t\n' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '検査値IDが不正です',
+    });
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch payloads before loading the lab observation', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 
   it('folds assignment-scope into the lab resource lookup before updating', async () => {

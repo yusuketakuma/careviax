@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
@@ -14,10 +15,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const billingMonth = (body as { billing_month?: unknown }).billing_month;
+  const billingMonth = payload.billing_month;
   if (!billingMonth) return validationError('billing_month は必須です');
 
   const parsedBillingMonth = parseStrictBillingMonth(billingMonth);

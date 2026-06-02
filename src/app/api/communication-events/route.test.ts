@@ -76,6 +76,14 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/communication-events', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"event_type":',
+  });
+}
+
 describe('/api/communication-events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -135,6 +143,30 @@ describe('/api/communication-events', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before assignment checks or create side effects', async () => {
+    const response = (await POST(createPostRequest(['unexpected'])))!;
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON request bodies before assignment checks or create side effects', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
   });

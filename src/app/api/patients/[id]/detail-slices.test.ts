@@ -163,9 +163,13 @@ const sliceRoutes = [
   expectedBody: unknown;
 }>;
 
-function callSliceRoute({ get, path }: (typeof sliceRoutes)[number], patientId = 'patient_1') {
+function callSliceRoute(
+  { get, path }: (typeof sliceRoutes)[number],
+  patientId = 'patient_1',
+  paramId = patientId,
+) {
   return get(createRequest(`http://localhost/api/patients/${patientId}/${path}`), {
-    params: Promise.resolve({ id: patientId }),
+    params: Promise.resolve({ id: paramId }),
   });
 }
 
@@ -335,30 +339,40 @@ describe('patient detail slice routes', () => {
   );
 
   it.each(sliceRoutes)(
-    'passes auth context arguments to the $name service',
+    'rejects blank patient ids before calling the $name service',
     async (routeCase) => {
-      routeCase.serviceMock.mockResolvedValue(routeCase.successData);
-      authContextMock.mockReturnValue({
-        orgId: 'org_custom',
-        role: 'admin',
-        userId: 'user_custom',
+      const response = await callSliceRoute(routeCase, '%20%20', '   ');
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '患者IDが不正です',
       });
-
-      const response = await callSliceRoute(routeCase, 'patient_custom');
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject(routeCase.expectedBody as object);
-      expect(routeCase.serviceMock).toHaveBeenCalledWith(
-        {},
-        {
-          orgId: 'org_custom',
-          patientId: 'patient_custom',
-          role: 'admin',
-          userId: 'user_custom',
-        },
-      );
+      expectNoServiceCalls();
     },
   );
+
+  it.each(sliceRoutes)('passes auth context arguments to the $name service', async (routeCase) => {
+    routeCase.serviceMock.mockResolvedValue(routeCase.successData);
+    authContextMock.mockReturnValue({
+      orgId: 'org_custom',
+      role: 'admin',
+      userId: 'user_custom',
+    });
+
+    const response = await callSliceRoute(routeCase, 'patient_custom');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject(routeCase.expectedBody as object);
+    expect(routeCase.serviceMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_custom',
+        patientId: 'patient_custom',
+        role: 'admin',
+        userId: 'user_custom',
+      },
+    );
+  });
 
   it.each(sliceRoutes)(
     'does not call the $name service when auth rejects the request',

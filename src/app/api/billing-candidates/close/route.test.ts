@@ -42,6 +42,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/billing-candidates/close', {
+    method: 'POST',
+    body: '{"billing_month":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 describe('/api/billing-candidates/close POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -125,6 +136,7 @@ describe('/api/billing-candidates/close POST', () => {
   });
 
   it.each([
+    ['non-object root', ['unexpected']],
     ['missing', {}],
     ['empty', { billing_month: '' }],
     ['non-string', { billing_month: 123 }],
@@ -138,6 +150,20 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before closing or webhook side effects', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();

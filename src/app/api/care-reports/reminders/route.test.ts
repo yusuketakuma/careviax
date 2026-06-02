@@ -7,8 +7,9 @@ const { withOrgContextMock, queueOverdueReportResponseRemindersMock } = vi.hoist
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+  withAuth: (
+    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+  ) => handler,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -35,6 +36,20 @@ function createRequest(body: unknown) {
   );
 }
 
+function createMalformedRequest() {
+  return Object.assign(
+    new NextRequest('http://localhost/api/care-reports/reminders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"overdue_days":',
+    }),
+    {
+      orgId: 'org_1',
+      userId: 'user_1',
+    },
+  );
+}
+
 describe('/api/care-reports/reminders POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,9 +57,7 @@ describe('/api/care-reports/reminders POST', () => {
       queued_count: 2,
       delivery_ids: ['delivery_1', 'delivery_2'],
     });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({ tx: true })
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({ tx: true }));
   });
 
   it('creates overdue response follow-up tasks', async () => {
@@ -53,15 +66,41 @@ describe('/api/care-reports/reminders POST', () => {
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(201);
-    expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith(
-      { tx: true },
-      'org_1',
-      { overdueDays: 5 }
-    );
+    expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith({ tx: true }, 'org_1', {
+      overdueDays: 5,
+    });
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       data: {
         queued_count: 2,
       },
     });
+  });
+
+  it('rejects non-object JSON payloads before reminder queueing', async () => {
+    const response = await POST(createRequest([]));
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before reminder queueing', async () => {
+    const response = await POST(createMalformedRequest());
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
   });
 });

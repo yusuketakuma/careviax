@@ -47,6 +47,14 @@ function createPutRequest(body: unknown, patientId = 'patient_1') {
   } satisfies NextRequestInit);
 }
 
+function createMalformedJsonPutRequest(patientId = 'patient_1') {
+  return new NextRequest(`http://localhost/api/patients/${patientId}/visit-constraints`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: '{"preferred_weekdays":',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/patients/[id]/visit-constraints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,12 +102,94 @@ describe('/api/patients/[id]/visit-constraints', () => {
     });
   });
 
+  it('rejects blank patient ids before loading visit constraint data', async () => {
+    const response = (await GET(createGetRequest('%20%20'), {
+      params: Promise.resolve({ id: '   ' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing visit constraint payloads or upserting', async () => {
+    const response = (await PUT(createMalformedJsonPutRequest(''), {
+      params: Promise.resolve({ id: '\t\n' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object visit constraint payloads before loading the patient', async () => {
+    const response = (await PUT(createPutRequest([]), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON visit constraint payloads before loading the patient', async () => {
+    const response = (await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed preferred contact phone before loading the patient', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        preferred_contact_name: '長男 山田',
+        preferred_contact_phone: '090-ABCD-1234',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        preferred_contact_phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('upserts visit constraints and geocoding fields', async () => {
     const response = (await PUT(
       createPutRequest({
         preferred_weekdays: [1, 3],
         preferred_time_from: '09:00',
         preferred_time_to: '12:00',
+        preferred_contact_name: '長男 山田',
+        preferred_contact_phone: ' 090-1111-2222 ',
         family_presence_required: true,
         residence_lat: 35.0,
         residence_lng: 139.0,
@@ -110,7 +200,19 @@ describe('/api/patients/[id]/visit-constraints', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
+      where: {
+        patient_id: 'patient_1',
+      },
+      create: expect.objectContaining({
+        preferred_contact_name: '長男 山田',
+        preferred_contact_phone: '090-1111-2222',
+      }),
+      update: expect.objectContaining({
+        preferred_contact_name: '長男 山田',
+        preferred_contact_phone: '090-1111-2222',
+      }),
+    });
     expect(residenceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'res_1' },
       data: expect.objectContaining({

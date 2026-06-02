@@ -1,9 +1,15 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { communicationChannelSchema } from '@/lib/validations/communication-channel';
+import {
+  optionalTracingReportStatusSchema,
+  type TracingReportStatusValue,
+} from '@/lib/validations/tracing-report';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -14,7 +20,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('トレーシングレポートIDが不正です');
 
   const existing = await prisma.tracingReport.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -49,20 +57,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 }
 
 const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
-  'draft' | 'sent' | 'received' | 'acknowledged',
-  Array<'draft' | 'sent' | 'received' | 'acknowledged'>
+  TracingReportStatusValue,
+  TracingReportStatusValue[]
 > = {
   draft: ['sent'],
   sent: ['received', 'acknowledged'],
   received: ['acknowledged'],
   acknowledged: [],
 };
-
-type TracingReportStatus = 'draft' | 'sent' | 'received' | 'acknowledged';
-
-function isTracingReportStatus(value: string): value is TracingReportStatus {
-  return ['draft', 'sent', 'received', 'acknowledged'].includes(value);
-}
 
 function parseCommunicationChannel(value: unknown) {
   if (value === undefined || value === null) return 'fax';
@@ -89,19 +91,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { id } = await params;
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body !== 'object') {
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('トレーシングレポートIDが不正です');
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) {
     return validationError('リクエストボディが不正です');
   }
 
-  const status = typeof body.status === 'string' ? body.status : null;
+  const parsedStatus = optionalTracingReportStatusSchema.safeParse(payload.status);
+  const status = parsedStatus.success ? parsedStatus.data : undefined;
   const sentToPhysician =
-    typeof body.sent_to_physician === 'string' ? body.sent_to_physician.trim() : undefined;
-  const channel = parseCommunicationChannel(body.channel);
-  const statusChangeReason = parseStatusChangeReason(body.status_change_reason);
+    typeof payload.sent_to_physician === 'string' ? payload.sent_to_physician.trim() : undefined;
+  const channel = parseCommunicationChannel(payload.channel);
+  const statusChangeReason = parseStatusChangeReason(payload.status_change_reason);
 
-  if (!status || !isTracingReportStatus(status)) {
+  if (!status) {
     return validationError('status が不正です');
   }
   if (!channel) {

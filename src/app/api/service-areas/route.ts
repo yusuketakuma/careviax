@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-    })
+    }),
   );
 
   return success({ data: serviceAreas });
@@ -53,10 +54,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createServiceAreaSchema.safeParse(body);
+  const parsed = createServiceAreaSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
           },
         },
       },
-    })
+    }),
   );
 
   return success({ data: serviceArea }, 201);

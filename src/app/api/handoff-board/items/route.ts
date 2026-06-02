@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -14,10 +15,10 @@ const createHandoffItemSchema = z.object({
 
 export const POST = withAuthContext(
   async (req, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createHandoffItemSchema.safeParse(body);
+    const parsed = createHandoffItemSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -39,7 +40,7 @@ export const POST = withAuthContext(
           read_by: [],
           created_by: ctx.userId,
         },
-      })
+      }),
     );
 
     return success({ data: created }, 201);
@@ -47,5 +48,5 @@ export const POST = withAuthContext(
   {
     permission: 'canDispense',
     message: '申し送り項目の追加権限がありません',
-  }
+  },
 );

@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
-import { readJsonObjectString } from '@/lib/db/json';
+import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
@@ -188,9 +188,8 @@ function normalizeFirstVisitDocumentContacts(
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return [];
-
-    const record = item as Record<string, unknown>;
+    const record = readJsonObject(item);
+    if (!record) return [];
     const name = typeof record.name === 'string' ? record.name : null;
     if (!name) return [];
 

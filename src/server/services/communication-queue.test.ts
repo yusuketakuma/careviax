@@ -361,6 +361,27 @@ describe('listCommunicationQueue', () => {
     expect(result.items.length).toBeLessThanOrEqual(2);
   });
 
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])('uses the default query limit when the supplied limit is %s', async (_label, limit) => {
+    emptyDbMocks();
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      limit,
+    });
+
+    expect(result.items).toEqual([]);
+    expect(selfReportFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 8 }));
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 }),
+    );
+  });
+
   it('filters external share visibility before applying the final queue item limit', async () => {
     emptyDbMocks();
     externalAccessGrantFindManyMock.mockResolvedValue([

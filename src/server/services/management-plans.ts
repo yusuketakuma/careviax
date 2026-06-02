@@ -16,10 +16,17 @@ type GateDb = {
   }>;
 };
 
-export type VisitWorkflowGateIssue =
-  | 'missing_visit_consent'
-  | 'missing_management_plan'
-  | 'management_plan_review_overdue';
+const VISIT_WORKFLOW_GATE_ISSUES = [
+  'missing_visit_consent',
+  'missing_management_plan',
+  'management_plan_review_overdue',
+] as const;
+
+export const VISIT_WORKFLOW_GATE_ERROR_PREFIX = 'VISIT_WORKFLOW_GATE:';
+
+export type VisitWorkflowGateIssue = (typeof VISIT_WORKFLOW_GATE_ISSUES)[number];
+
+const VISIT_WORKFLOW_GATE_ISSUE_SET = new Set<string>(VISIT_WORKFLOW_GATE_ISSUES);
 
 type VisitWorkflowGuidanceDefinition = {
   title: string;
@@ -42,7 +49,7 @@ function isDateActive(date: Date | null | undefined, asOf: Date) {
 
 export async function findActiveVisitConsent(
   tx: GateDb,
-  args: { orgId: string; patientId: string; asOf?: Date }
+  args: { orgId: string; patientId: string; asOf?: Date },
 ) {
   const asOf = args.asOf ?? new Date();
 
@@ -61,7 +68,7 @@ export async function findActiveVisitConsent(
 
 export async function findCurrentManagementPlan(
   tx: GateDb,
-  args: { orgId: string; caseId: string; asOf?: Date }
+  args: { orgId: string; caseId: string; asOf?: Date },
 ) {
   const asOf = args.asOf ?? new Date();
 
@@ -85,8 +92,7 @@ export async function findCurrentManagementPlan(
   return {
     current: approvedPlan,
     reviewOverdue:
-      approvedPlan.next_review_date != null &&
-      !isDateActive(approvedPlan.next_review_date, asOf),
+      approvedPlan.next_review_date != null && !isDateActive(approvedPlan.next_review_date, asOf),
   };
 }
 
@@ -97,7 +103,7 @@ export async function evaluateVisitWorkflowGate(
     patientId: string;
     caseId: string;
     asOf?: Date;
-  }
+  },
 ): Promise<VisitWorkflowGateResult> {
   const asOf = args.asOf ?? new Date();
 
@@ -135,8 +141,20 @@ export function formatVisitWorkflowGateIssues(issues: VisitWorkflowGateIssue[]) 
   return issues.map((issue) => labels[issue]).join(' / ');
 }
 
+export function isVisitWorkflowGateIssue(value: string): value is VisitWorkflowGateIssue {
+  return VISIT_WORKFLOW_GATE_ISSUE_SET.has(value);
+}
+
+export function parseVisitWorkflowGateErrorMessage(message: string): VisitWorkflowGateIssue[] {
+  if (!message.startsWith(VISIT_WORKFLOW_GATE_ERROR_PREFIX)) return [];
+  return message
+    .slice(VISIT_WORKFLOW_GATE_ERROR_PREFIX.length)
+    .split(',')
+    .filter(isVisitWorkflowGateIssue);
+}
+
 export function getVisitWorkflowGuidance(
-  issue: VisitWorkflowGateIssue
+  issue: VisitWorkflowGateIssue,
 ): VisitWorkflowGuidanceDefinition {
   const definitions: Record<VisitWorkflowGateIssue, VisitWorkflowGuidanceDefinition> = {
     missing_visit_consent: {
@@ -178,7 +196,7 @@ export async function scheduleManagementPlanReviewAlert(
     patientId: string;
     dueDate: Date;
     assignedTo?: string | null;
-  }
+  },
 ) {
   const dedupeKey = buildManagementPlanReviewTaskKey(args.planId);
 
@@ -219,7 +237,7 @@ export async function scheduleManagementPlanReviewAlert(
 
 export async function resolveManagementPlanReviewAlert(
   tx: Tx,
-  args: { orgId: string; planId: string }
+  args: { orgId: string; planId: string },
 ) {
   await resolveOperationalTasks(tx, {
     orgId: args.orgId,

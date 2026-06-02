@@ -4,6 +4,8 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   buildCareCaseAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
@@ -53,12 +55,16 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const { id, labId } = await params;
+  const { id: rawId, labId: rawLabId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('患者IDが不正です');
+  const labId = normalizeRequiredRouteParam(rawLabId);
+  if (!labId) return validationError('検査値IDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = patchLabSchema.safeParse(body);
+  const parsed = patchLabSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

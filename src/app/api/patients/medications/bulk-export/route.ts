@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { conflict, error, success, validationError } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import {
   drainMedicationHistoryBulkExportQueue,
   MedicationHistoryBulkExportError,
@@ -11,7 +12,7 @@ import {
 export const runtime = 'nodejs';
 
 const bulkMedicationExportSchema = z.object({
-  patient_ids: z.array(z.string().min(1)).min(1).max(500),
+  patient_ids: z.array(z.string().trim().min(1)).min(1).max(500),
 });
 
 export async function POST(req: NextRequest) {
@@ -21,19 +22,21 @@ export async function POST(req: NextRequest) {
   });
   if ('response' in authResult) return authResult.response;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = bulkMedicationExportSchema.safeParse(body);
+  const parsed = bulkMedicationExportSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+
+  const patientIds = Array.from(new Set(parsed.data.patient_ids));
 
   try {
     const data = await queueMedicationHistoryBulkExport({
       orgId: authResult.ctx.orgId,
       requestedBy: authResult.ctx.userId,
-      patientIds: parsed.data.patient_ids,
+      patientIds,
       accessContext: {
         userId: authResult.ctx.userId,
         role: authResult.ctx.role,

@@ -4,7 +4,11 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
 
-import { getPatientReadinessData, getPatientTimelineData } from './patient-detail';
+import {
+  getPatientDocumentsData,
+  getPatientReadinessData,
+  getPatientTimelineData,
+} from './patient-detail';
 
 function buildDb<T extends Record<string, unknown> = Record<string, never>>(overrides?: T) {
   return {
@@ -444,5 +448,72 @@ describe('getPatientTimelineData', () => {
     expect(result?.timeline_events.map((item) => item.id)).not.toContain(
       'communication:comm_self_report',
     );
+  });
+});
+
+describe('getPatientDocumentsData', () => {
+  it('normalizes object-shaped first-visit emergency contacts and ignores malformed items', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'doc_1',
+            case_id: 'case_1',
+            document_url: null,
+            delivered_at: null,
+            delivered_to: null,
+            created_at: new Date('2026-04-01T00:00:00.000Z'),
+            updated_at: new Date('2026-04-01T00:00:00.000Z'),
+            emergency_contacts: [
+              ['unexpected'],
+              { relation: '長女' },
+              {
+                id: 'contact_1',
+                name: '山田 花子',
+                relation: '長女',
+                phone: '03-0000-0000',
+                email: 'hanako@example.test',
+                fax: null,
+                organization_name: '山田家',
+                department: '家族',
+                is_primary: true,
+                is_emergency_contact: true,
+              },
+            ],
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientDocumentsData(
+      db as unknown as Parameters<typeof getPatientDocumentsData>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
+    );
+
+    expect(result?.first_visit_documents[0]?.emergency_contacts).toEqual([
+      {
+        id: 'contact_1',
+        name: '山田 花子',
+        relation: '長女',
+        phone: '03-0000-0000',
+        email: 'hanako@example.test',
+        fax: null,
+        organization_name: '山田家',
+        department: '家族',
+        is_primary: true,
+        is_emergency_contact: true,
+      },
+    ]);
   });
 });

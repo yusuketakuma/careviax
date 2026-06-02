@@ -6,6 +6,7 @@ const {
   membershipFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  firstVisitDocumentCreateMock,
   firstVisitDocumentFindManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   membershipFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  firstVisitDocumentCreateMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -74,17 +76,16 @@ describe('/api/first-visit-documents', () => {
         updated_at: new Date(),
       },
     ]);
+    firstVisitDocumentCreateMock.mockResolvedValue({
+      id: 'doc_2',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      emergency_contacts: [{ name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' }],
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         firstVisitDocument: {
-          create: vi.fn().mockResolvedValue({
-            id: 'doc_2',
-            patient_id: 'patient_1',
-            case_id: 'case_1',
-            emergency_contacts: [
-              { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
-            ],
-          }),
+          create: firstVisitDocumentCreateMock,
         },
       }),
     );
@@ -127,13 +128,51 @@ describe('/api/first-visit-documents', () => {
   });
 
   describe('POST', () => {
+    it('rejects non-object JSON payloads before case access check or document creation', async () => {
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', []),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'リクエストボディが不正です',
+      });
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed emergency contact phone before case access check or document creation', async () => {
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-ABCD-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          emergency_contacts: expect.arrayContaining(['電話番号形式が不正です']),
+        },
+      });
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+    });
+
     it('returns 201 when creating a document', async () => {
       const response = (await POST(
         createRequest('http://localhost/api/first-visit-documents', {
           patient_id: 'patient_1',
           case_id: 'case_1',
           emergency_contacts: [
-            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+            { name: '山田太郎', relationship: '配偶者', phone: ' 090-1234-5678 ' },
           ],
         }),
       ))!;
@@ -155,6 +194,13 @@ describe('/api/first-visit-documents', () => {
           ],
         },
         select: { id: true },
+      });
+      expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
       });
     });
 

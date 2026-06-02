@@ -56,6 +56,17 @@ function createRequest(url: string, body?: unknown, headers?: Record<string, str
   });
 }
 
+function createMalformedJsonPutRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/care-team', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'corg1234567890123456789012',
+    },
+    body: '{"case_id":',
+  });
+}
+
 describe('/api/patients/[id]/care-team', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -101,17 +112,15 @@ describe('/api/patients/[id]/care-team', () => {
           createMany: createManyMock,
           findMany: findManyMock,
         },
-      })
+      }),
     );
   });
 
   it('returns the active case by default for care-team editing', async () => {
     const response = await GET(
-      createRequest(
-        'http://localhost/api/patients/patient_1/care-team',
-        undefined,
-        { 'x-org-id': 'corg1234567890123456789012' },
-      ),
+      createRequest('http://localhost/api/patients/patient_1/care-team', undefined, {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
@@ -127,6 +136,102 @@ describe('/api/patients/[id]/care-team', () => {
     });
   });
 
+  it('rejects blank patient ids before loading care-team cases', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/patients/%20%20/care-team', undefined, {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patient ids before parsing care-team payloads or replacing links', async () => {
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ id: '\t\n' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object care-team payloads before loading the case', async () => {
+    const response = await PUT(
+      createRequest('http://localhost/api/patients/patient_1/care-team', [], {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON care-team payloads before loading the case', async () => {
+    const response = await PUT(createMalformedJsonPutRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed care-team phone and fax before loading the case', async () => {
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              role: 'nurse',
+              name: '山田看護師',
+              phone: '03-ABCD-3333',
+              fax: 'FAX-4444',
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
   it('replaces care-team links for the selected case', async () => {
     const response = await PUT(
       createRequest(
@@ -140,9 +245,9 @@ describe('/api/patients/[id]/care-team', () => {
               name: '山田看護師',
               organization_name: '訪問看護ステーションA',
               department: '在宅部',
-              phone: '03-2222-3333',
+              phone: ' 03-2222-3333 ',
               email: 'nurse@example.com',
-              fax: '03-3333-4444',
+              fax: ' 03-3333-4444 ',
               address: '東京都千代田区7-8-9',
               is_primary: true,
               notes: '月水金に訪問',
@@ -204,9 +309,9 @@ describe('/api/patients/[id]/care-team', () => {
             },
           ],
         },
-        { 'x-org-id': 'corg1234567890123456789012' }
+        { 'x-org-id': 'corg1234567890123456789012' },
       ),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -221,11 +326,9 @@ describe('/api/patients/[id]/care-team', () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = await GET(
-      createRequest(
-        'http://localhost/api/patients/patient_unknown/care-team',
-        undefined,
-        { 'x-org-id': 'corg1234567890123456789012' },
-      ),
+      createRequest('http://localhost/api/patients/patient_unknown/care-team', undefined, {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
       { params: Promise.resolve({ id: 'patient_unknown' }) },
     );
 

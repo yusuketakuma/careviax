@@ -30,11 +30,19 @@ vi.mock('@/server/services/report-generator', () => ({
 
 import { POST } from './route';
 
-function createGenerateFromVisitRequest(body: { visit_record_id: string; report_type?: string }) {
+function createGenerateFromVisitRequest(body: unknown) {
   return new NextRequest('http://localhost/api/care-reports/generate-from-visit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedGenerateFromVisitRequest() {
+  return new NextRequest('http://localhost/api/care-reports/generate-from-visit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"visit_record_id":',
   });
 }
 
@@ -91,5 +99,23 @@ describe('/api/care-reports/generate-from-visit', () => {
     ))!;
 
     expect(response.status).toBe(403);
+  });
+
+  it('rejects non-object generation payloads before calling the generator', async () => {
+    const response = (await POST(createGenerateFromVisitRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before calling the generator', async () => {
+    const response = (await POST(createMalformedGenerateFromVisitRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
   });
 });

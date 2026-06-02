@@ -57,6 +57,17 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedPatchRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/tracing-reports/tracing_1', {
+    method: 'PATCH',
+    headers: {
+      ...headers,
+      'content-type': 'application/json',
+    },
+    body: '{"status":',
+  });
+}
+
 describe('/api/tracing-reports/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,13 +126,42 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     );
   });
 
-  it('marks a draft tracing report as sent and creates a linked communication request', async () => {
+  it('rejects blank tracing report ids before parsing or loading the report', async () => {
     const response = await PATCH(
       createRequest(
         {
           status: 'sent',
           sent_to_physician: '在宅主治医',
           status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'トレーシングレポートIDが不正です',
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('marks a draft tracing report as sent and creates a linked communication request', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          status: ' sent ',
+          sent_to_physician: ' 在宅主治医 ',
+          status_change_reason: ' 医師へ服薬情報提供書を送付 ',
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -209,6 +249,70 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'channel が不正です',
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank status before loading the tracing report', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          status: '   ',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'status が不正です',
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading the tracing report', async () => {
+    const response = await PATCH(createRequest(['unexpected'], { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the tracing report', async () => {
+    const response = await PATCH(createMalformedPatchRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
     });
     expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -357,6 +461,22 @@ describe('/api/tracing-reports/[id] DELETE', () => {
         },
       }),
     );
+  });
+
+  it('rejects blank tracing report ids before loading or deleting the report', async () => {
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'トレーシングレポートIDが不正です',
+    });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('does not delete when assignment access is denied', async () => {

@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
-import { normalizeJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
 import {
   buildConferenceContent,
@@ -26,11 +28,14 @@ function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
-    const { id } = await routeContext.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('カンファレンス記録IDが不正です');
 
-    const parsed = updateConferenceNoteSchema.safeParse(body);
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = updateConferenceNoteSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -74,6 +79,9 @@ export const PATCH = withAuthContext<{ id: string }>(
       return validationError('conference_type と note_type が一致していません');
     }
 
+    const existingStructuredContent = readJsonObject(existing.structured_content);
+    const existingMetadata = readJsonObject(existing.metadata);
+
     const mergedPayload = {
       case_id: existing.case_id ?? undefined,
       patient_id: parsed.data.patient_id ?? existing.patient_id ?? undefined,
@@ -81,20 +89,8 @@ export const PATCH = withAuthContext<{ id: string }>(
       note_type: candidateNoteType ?? existing.note_type,
       title: parsed.data.title ?? existing.title,
       content: parsed.data.content ?? existing.content,
-      structured_content:
-        parsed.data.structured_content ??
-        (existing.structured_content &&
-        typeof existing.structured_content === 'object' &&
-        !Array.isArray(existing.structured_content)
-          ? existing.structured_content
-          : undefined),
-      metadata:
-        parsed.data.metadata ??
-        (existing.metadata &&
-        typeof existing.metadata === 'object' &&
-        !Array.isArray(existing.metadata)
-          ? existing.metadata
-          : undefined),
+      structured_content: parsed.data.structured_content ?? existingStructuredContent ?? undefined,
+      metadata: parsed.data.metadata ?? existingMetadata ?? undefined,
       billing_eligible: parsed.data.billing_eligible ?? existing.billing_eligible,
       billing_code: parsed.data.billing_code ?? existing.billing_code ?? undefined,
       follow_up_date:
@@ -132,17 +128,13 @@ export const PATCH = withAuthContext<{ id: string }>(
       resolvedNoteType,
       mergedValidation.data.structured_content,
     );
-    const existingMetadataExtras =
-      existing.metadata &&
-      typeof existing.metadata === 'object' &&
-      !Array.isArray(existing.metadata)
-        ? Object.fromEntries(
-            Object.entries(existing.metadata as Record<string, unknown>).filter(
-              ([key]) =>
-                key !== 'billing' && key !== 'visit_brief' && key !== 'generated_report_id',
-            ),
-          )
-        : null;
+    const existingMetadataExtras = existingMetadata
+      ? Object.fromEntries(
+          Object.entries(existingMetadata).filter(
+            ([key]) => key !== 'billing' && key !== 'visit_brief' && key !== 'generated_report_id',
+          ),
+        )
+      : null;
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const careCase = mergedValidation.data.case_id

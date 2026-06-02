@@ -7,7 +7,7 @@ function makeTx(
     revision_code: string;
     effective_from: Date;
     effective_to: Date | null;
-    config: Record<string, unknown> | null;
+    config: unknown;
   } | null,
 ) {
   return {
@@ -81,5 +81,27 @@ describe('resolveBillingRuntimeContext', () => {
     expect(context.siteConfigStatus).toBe('revision_mismatch');
     expect(context.homeComprehensive).toBeNull();
     expect(context.warnings[0]).toContain('一致していません');
+  });
+
+  it('treats malformed site config JSON as an empty config object', async () => {
+    const tx = makeTx({
+      id: 'cfg_array',
+      revision_code: '2026',
+      effective_from: new Date('2026-06-01T00:00:00.000Z'),
+      effective_to: null,
+      config: ['unexpected'],
+    });
+
+    const context = await resolveBillingRuntimeContext(tx, {
+      orgId: 'org_1',
+      payerBasis: 'medical',
+      asOfDate: new Date('2026-06-15T00:00:00.000Z'),
+      siteId: 'site_1',
+      buildingPatientCount: 1,
+    });
+
+    expect(context.siteConfigStatus).toBe('resolved');
+    expect(context.siteConfig).toEqual({});
+    expect(context.homeComprehensive).toBeNull();
   });
 });

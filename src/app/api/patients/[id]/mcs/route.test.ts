@@ -23,6 +23,7 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/patient-mcs', () => ({
   getPatientMcsOverview: getPatientMcsOverviewMock,
+  PATIENT_MCS_MAX_MESSAGE_LIMIT: 100,
 }));
 
 import { GET } from './route';
@@ -153,12 +154,9 @@ describe('/api/patients/[id]/mcs GET', () => {
   });
 
   it('passes through a validated limit parameter', async () => {
-    const response = await GET(
-      createRequest('patient_1', 'limit=0'),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
+    const response = await GET(createRequest('patient_1', 'limit=0'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
     if (!response) {
       throw new Error('response was not returned');
     }
@@ -169,6 +167,22 @@ describe('/api/patients/[id]/mcs GET', () => {
       patientId: 'patient_1',
       limit: 0,
     });
+  });
+
+  it('rejects blank patient ids before validating query or loading MCS overview', async () => {
+    const response = await GET(createRequest('%20%20', 'limit=200'), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-sensitive roles', async () => {
@@ -188,17 +202,43 @@ describe('/api/patients/[id]/mcs GET', () => {
   });
 
   it('rejects invalid limit values', async () => {
-    const response = await GET(
-      createRequest('patient_1', 'limit=200'),
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    );
+    const response = await GET(createRequest('patient_1', 'limit=200'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
     if (!response) {
       throw new Error('response was not returned');
     }
 
     expect(response.status).toBe(400);
+    expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed limit values before loading the patient', async () => {
+    const response = await GET(createRequest('patient_1', 'limit=1e2'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'limit は 0 から 100 の整数で指定してください',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank limit values before loading the patient', async () => {
+    const response = await GET(createRequest('patient_1', 'limit='), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ describe('patient-mcs-ai', () => {
     allowedHosts: process.env.PATIENT_MCS_AI_ALLOWED_HOSTS,
     baseUrl: process.env.PATIENT_MCS_AI_BASE_URL,
     model: process.env.PATIENT_MCS_AI_MODEL,
+    timeoutMs: process.env.PATIENT_MCS_AI_TIMEOUT_MS,
   };
 
   beforeEach(() => {
@@ -20,6 +21,7 @@ describe('patient-mcs-ai', () => {
     delete process.env.PATIENT_MCS_AI_ALLOWED_HOSTS;
     delete process.env.PATIENT_MCS_AI_BASE_URL;
     delete process.env.PATIENT_MCS_AI_MODEL;
+    delete process.env.PATIENT_MCS_AI_TIMEOUT_MS;
   });
 
   afterEach(() => {
@@ -30,6 +32,7 @@ describe('patient-mcs-ai', () => {
     process.env.PATIENT_MCS_AI_ALLOWED_HOSTS = originalEnv.allowedHosts;
     process.env.PATIENT_MCS_AI_BASE_URL = originalEnv.baseUrl;
     process.env.PATIENT_MCS_AI_MODEL = originalEnv.model;
+    process.env.PATIENT_MCS_AI_TIMEOUT_MS = originalEnv.timeoutMs;
   });
 
   it('falls back to a rule summary when AI is not configured', async () => {
@@ -140,6 +143,53 @@ describe('patient-mcs-ai', () => {
     expect(summary.is_fallback).toBe(false);
     expect(summary.headline).toBe('看護師とケアマネから重要共有があります。');
     expect(summary.suggested_actions).toEqual(['次回訪問時に水分摂取量を確認してください。']);
+  });
+
+  it('uses the default AI timeout when the configured timeout is invalid', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_TIMEOUT_MS = 'NaN';
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  headline: '看護師から共有があります。',
+                  bullets: ['食欲低下が続いています。'],
+                  must_check_today: ['脱水兆候を確認してください。'],
+                  suggested_actions: ['水分摂取量を確認してください。'],
+                }),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(4000);
+    expect(summary.provider).toBe('openai');
   });
 
   it('selects the latest 12 messages before sending the AI request', async () => {
@@ -296,6 +346,49 @@ describe('patient-mcs-ai', () => {
     expect(summary.headline).toContain('1件の共有を取り込みました');
   });
 
+  it('falls back when the AI response content is malformed JSON text', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_MODEL = 'gpt-5-mini';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: 'not-json',
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(summary.provider).toBe('rule');
+    expect(summary.model).toBe('gpt-5-mini');
+    expect(summary.fallback_reason).toBe('invalid_response');
+  });
+
   it('falls back with invalid_response when the AI response envelope is malformed', async () => {
     process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
     process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
@@ -318,6 +411,44 @@ describe('patient-mcs-ai', () => {
             },
           },
         }),
+      }),
+    );
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(summary.provider).toBe('rule');
+    expect(summary.model).toBe('gpt-5-mini');
+    expect(summary.fallback_reason).toBe('invalid_response');
+    expect(summary.headline).toContain('1件の共有を取り込みました');
+  });
+
+  it('falls back with invalid_response when the AI response body is invalid JSON', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_MODEL = 'gpt-5-mini';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('Unexpected token');
+        },
       }),
     );
 

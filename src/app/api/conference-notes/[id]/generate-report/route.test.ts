@@ -50,6 +50,14 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/conference-notes/note_1/generate-report', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"report_type":',
+  });
+}
+
 describe('/api/conference-notes/[id]/generate-report POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -162,6 +170,76 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
         ],
       },
     });
+  });
+
+  it('rejects blank note ids before loading the note or generating drafts', async () => {
+    const response = await POST(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'カンファレンス記録IDが不正です',
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading the note or generating drafts', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the note or generating drafts', async () => {
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCreateManyMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps empty request bodies as default report generation', async () => {
+    const response = await POST(createRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'note_1',
+          org_id: 'org_1',
+        },
+      }),
+    );
+    expect(careReportCreateManyMock).toHaveBeenCalled();
   });
 
   it('does not create duplicate delivery drafts when the same recipient is already queued', async () => {

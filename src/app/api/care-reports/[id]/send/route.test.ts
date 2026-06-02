@@ -112,6 +112,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedRequest() {
+  return new NextRequest('http://localhost/api/care-reports/report_1/send', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{"channel":',
+  });
+}
+
 describe('/api/care-reports/[id]/send POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -201,6 +212,32 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
+  it('rejects blank report ids before loading the report or delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: '   ' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書IDが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when recipient fields contain only whitespace', async () => {
     const response = await POST(
       createRequest({
@@ -222,6 +259,42 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_contact: ['送付先連絡先は必須です'],
       },
     });
+  });
+
+  it('rejects non-object request bodies before loading the report or delivery side effects', async () => {
+    const response = await POST(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading the report or delivery side effects', async () => {
+    const response = await POST(createMalformedRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the safety acknowledgement is missing', async () => {

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
@@ -58,10 +60,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('算定ルールIDが不正です');
 
   const rule = await withOrgContext(ctx.orgId, (tx) =>
     tx.billingRule.findFirst({
-      where: { id, org_id: ctx.orgId },
+      where: { id: ruleId, org_id: ctx.orgId },
     }),
   );
 
@@ -74,17 +78,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('算定ルールIDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateBillingRuleSchema.safeParse(body);
+  const parsed = updateBillingRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } }),
+    tx.billingRule.findFirst({ where: { id: ruleId, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('算定ルールが見つかりません');
 
@@ -102,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { conditions, evidence_requirements, effective_from, effective_to, ...rest } = parsed.data;
   const updated = await withOrgContext(ctx.orgId, (tx) =>
     tx.billingRule.update({
-      where: { id },
+      where: { id: ruleId },
       data: {
         ...rest,
         ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
@@ -125,13 +131,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('算定ルールIDが不正です');
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } }),
+    tx.billingRule.findFirst({ where: { id: ruleId, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('算定ルールが見つかりません');
   if (existing.is_system) return forbidden('SSOTの公式ルールは削除できません');
 
-  await withOrgContext(ctx.orgId, (tx) => tx.billingRule.delete({ where: { id } }));
+  await withOrgContext(ctx.orgId, (tx) => tx.billingRule.delete({ where: { id: ruleId } }));
   return success({ message: '算定ルールを削除しました' });
 }

@@ -1,4 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -10,10 +12,14 @@ import {
 
 export const POST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
-    const { id } = await routeContext.params;
-    const body = await req.json().catch(() => ({}));
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('カンファレンス記録IDが不正です');
 
-    const parsed = generateConferenceReportSchema.safeParse(body);
+    const payload = await readOptionalJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = generateConferenceReportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
