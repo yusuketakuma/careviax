@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -379,7 +379,7 @@ function DispensingInformationPanel({
         <div className="grid gap-4 xl:grid-cols-3">
           <Card className="bg-background">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">処方由来情報</CardTitle>
+              <h3 className="font-heading text-sm leading-snug font-medium">処方由来情報</h3>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-3">
@@ -409,7 +409,7 @@ function DispensingInformationPanel({
 
           <Card className="bg-background xl:col-span-2">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">服用日付</CardTitle>
+              <h3 className="font-heading text-sm leading-snug font-medium">服用日付</h3>
             </CardHeader>
             <CardContent>
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -432,7 +432,7 @@ function DispensingInformationPanel({
         <div className="grid gap-4 xl:grid-cols-2">
           <Card className="bg-background">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">前回処方内容</CardTitle>
+              <h3 className="font-heading text-sm leading-snug font-medium">前回処方内容</h3>
             </CardHeader>
             <CardContent>
               {!previousIntake ? (
@@ -464,7 +464,7 @@ function DispensingInformationPanel({
 
           <Card className="bg-background">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">処方内容の変更</CardTitle>
+              <h3 className="font-heading text-sm leading-snug font-medium">処方内容の変更</h3>
             </CardHeader>
             <CardContent>
               {medicationChanges.length === 0 ? (
@@ -1220,7 +1220,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                 return (
                   <Card key={groupId}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">{label}</CardTitle>
+                      <h4 className="font-heading text-sm leading-snug font-medium">{label}</h4>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {linesInGroup.map((g) => renderLine(g))}
@@ -1232,7 +1232,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
               {ungroupedLines.length > 0 && (
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">個別包装</CardTitle>
+                    <h4 className="font-heading text-sm leading-snug font-medium text-muted-foreground">
+                      個別包装
+                    </h4>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {ungroupedLines.map((g) => renderLine(g))}
@@ -1245,10 +1247,10 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
         <Card className="border-amber-300 bg-amber-50/60">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm text-amber-950">
+            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-amber-950">
               <AlertTriangle className="size-4" aria-hidden="true" />
               調剤完了前の安全確認
-            </CardTitle>
+            </h3>
           </CardHeader>
           <CardContent className="space-y-3">
             <CdsAlertPanel
@@ -1274,7 +1276,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         </Card>
 
         {/* Prefill action buttons */}
-        <div className="flex justify-end gap-3">
+        <ActionRail>
           <Button
             type="button"
             variant="outline"
@@ -1295,7 +1297,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           >
             承認
           </LoadingButton>
-        </div>
+        </ActionRail>
       </div>
     );
   }
@@ -1681,7 +1683,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-3">
+      <ActionRail>
         <Button
           type="button"
           variant="outline"
@@ -1698,7 +1700,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         >
           調剤完了
         </LoadingButton>
-      </div>
+      </ActionRail>
 
       {/* Inquiry filing dialog */}
       <Dialog
