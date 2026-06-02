@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173430
+
+- current task: post-schedule and visit record UI/refactor runtime preflight audit
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, and `pnpm medical-ui:e2e:preflight` output after schedule proposal, weekly optimizer, and visit record form groups
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, mutation, route, schedule, or visit-record behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `git log --oneline -8`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: worktree was clean before this audit entry; recent grouped commits were present through `ee222d4`; medical UI preflight passed script/package/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL for `ph_os_e2e` on `localhost:5433`, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start the app with `pnpm --config.verify-deps-before-run=false dev:e2e:local`, then run `pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false medical-ui:e2e:targeted`. More dense UI/refactor surfaces remain, especially visit detail, patient detail panels, medication set edit/audit pages, prescription detail/QR draft pages, and admin master pages
+- next action: commit this audit note, then continue future UI/refactor work once another bounded surface is selected or the local E2E runtime is available
+
 ### 20260602-173338
 
 - current task: improve visit record form semantic headings and submit action grouping
