@@ -298,7 +298,7 @@ export function VisitsTable() {
       </PageSection>
 
       <PageSection
-        title="訪問記録一覧"
+        title="訪問記録テーブル"
         description="訪問結果、SOAP有無、患者ごとの過去歴を同じ一覧で確認します。"
         tone="subtle"
         contentClassName="space-y-4"

@@ -89,6 +89,8 @@ describe('VisitsTable', () => {
 
     render(<VisitsTable />);
 
+    expect(screen.getByRole('heading', { level: 2, name: '訪問記録テーブル' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: '訪問記録一覧' })).toBeTruthy();
     expect(screen.getByText('患者ごとの過去歴確認')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: '山田太郎' })[0]?.getAttribute('href')).toBe(
       '/patients/patient_1?tab=visits',
