@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173949
+
+- current task: improve patient labs card semantic heading and form action grouping
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient labs panel used a decorative `CardTitle` for the lab section heading and a hand-built flex wrapper for lab editor cancel/save actions. These are clinical monitoring controls and should follow the shared heading/action patterns
+- security risks found: no patient labs API path, org header, create payload, update payload, query invalidation, toast behavior, edit draft state, date/value input handling, auth, authorization, or data handling changed
+- performance issues found: no query key, query function, mutation function, invalidation flow, lab list rendering, or render-loop behavior changed. The slice only changes heading markup and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx'`
+- validation results: Prettier completed successfully; focused patient labs card Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Larger dense UI/refactor surfaces remain, especially other patient detail panels, medication set edit/audit pages, prescription detail/QR draft pages, and admin master pages
+- next action: commit this patient labs card group, then retry runtime preflight or continue with the next bounded dense surface
+
 ### 20260602-173815
 
 - current task: improve patient visits panel semantic headings and action grouping
