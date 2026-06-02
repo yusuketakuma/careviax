@@ -12,13 +12,10 @@ import {
 } from './core';
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -74,7 +71,7 @@ export const HOME_DUPLICATE_INTERACTION_RULES_2024: Record<
 //   1_i (照会後変更・残薬以外) → 薬学的有害事象等防止加算 ロ(疑義照会)
 //   1_ro (照会後変更・残薬)     → 調剤時残薬調整加算 ロ(在宅)
 //   2_i (事前提案反映・残薬以外) → 薬学的有害事象等防止加算 イ(処方提案反映)
-//   2_ro (事前提案反映・残薬)    → 調剤時残薬調整加算 ロ(在宅)
+//   2_ro (事前提案反映・残薬)    → 調剤時残薬調整加算 イ(在宅・処方提案反映)
 export const HOME_ADVERSE_EVENT_RULES_2026: Record<
   HomeDuplicateInteractionFeeType,
   AdditionalBillingRuleDefinition
@@ -104,11 +101,11 @@ export const HOME_ADVERSE_EVENT_RULES_2026: Record<
     targetLabel: '事前提案反映',
   },
   '2_ro': {
-    ssotKey: 'medical.residual_adjustment.home',
-    code: 'MED_RESIDUAL_ADJUSTMENT_HOME',
-    name: '調剤時残薬調整加算 ロ（在宅患者）',
+    ssotKey: 'medical.residual_adjustment.home_proposal',
+    code: 'MED_RESIDUAL_ADJUSTMENT_HOME_PROPOSAL',
+    name: '調剤時残薬調整加算 イ（在宅・処方提案反映）',
     points: 50,
-    sourceNote: '令和8年度診療報酬改定 調剤時残薬調整加算 ロ（在宅）50点',
+    sourceNote: '令和8年度診療報酬改定 調剤時残薬調整加算 イ（在宅・処方提案反映）50点',
     targetLabel: '残薬事前提案反映',
   },
 };
@@ -160,17 +157,19 @@ export type HomeDuplicateInteractionCandidatesTx = {
     upsert(args: unknown): Promise<unknown>;
   };
   inquiryRecord: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      cycle_id: string | null;
-      reason: string;
-      result: string;
-      proposal_origin: string | null;
-      residual_adjustment: boolean | null;
-      change_detail: string | null;
-      cycle: { patient_id: string | null } | null;
-      issue: { category: string | null } | null;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        cycle_id: string | null;
+        reason: string;
+        result: string;
+        proposal_origin: string | null;
+        residual_adjustment: boolean | null;
+        change_detail: string | null;
+        cycle: { patient_id: string | null } | null;
+        issue: { category: string | null } | null;
+      }>
+    >;
   };
 };
 
@@ -271,7 +270,7 @@ export async function generateHomeDuplicateInteractionCandidates(
           evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
           ruleMessage: exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
           workflow: existingWorkflow,
-        })
+        }),
       ),
       existingWorkflow,
     );

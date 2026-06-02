@@ -33,4 +33,13 @@ describe('resolveHomeDuplicateRules', () => {
       points: 50,
     });
   });
+
+  it('maps 2026 pre-issuance residual proposals to residual adjustment type i', () => {
+    expect(resolveHomeDuplicateRules(new Date('2026-06-01T00:00:00.000Z'))['2_ro']).toMatchObject({
+      ssotKey: 'medical.residual_adjustment.home_proposal',
+      code: 'MED_RESIDUAL_ADJUSTMENT_HOME_PROPOSAL',
+      name: '調剤時残薬調整加算 イ（在宅・処方提案反映）',
+      points: 50,
+    });
+  });
 });

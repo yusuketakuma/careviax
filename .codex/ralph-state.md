@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-184820
+
+- current task: fix 2026 duplicate-interaction residual proposal mapping after dispensing revision SSOT expansion
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/server/services/billing-evidence/duplicate-interaction.ts`, `src/server/services/billing-evidence/duplicate-interaction.test.ts`, `src/server/services/billing-evidence.test.ts`, and 2026 rule seed references for `MED_RESIDUAL_ADJUSTMENT_HOME_PROPOSAL`
+- files changed: `src/server/services/billing-evidence/duplicate-interaction.ts`, `src/server/services/billing-evidence/duplicate-interaction.test.ts`, `.codex/ralph-state.md`
+- bugs found: after adding the full 2026 residual adjustment rule set, the legacy duplicate-interaction adapter still mapped `2_ro` (pre-issuance proposal with residual adjustment) to `調剤時残薬調整加算 ロ` instead of the official 2026 `調剤時残薬調整加算 イ（在宅・処方提案反映）`
+- security risks found: no auth, authorization, tenant boundary, DB mutation shape, migration, external request, secret, export, or patient data disclosure behavior changed. Dedupe keys and inquiry selection are unchanged; only the 2026 rule/code/name/source mapping is corrected
+- performance issues found: no additional DB query, loop, I/O, or computation added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write src/server/services/billing-evidence/duplicate-interaction.ts src/server/services/billing-evidence/duplicate-interaction.test.ts`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/billing-evidence/duplicate-interaction.test.ts src/server/services/billing-evidence.test.ts src/server/services/billing-rules/__tests__/medical-2026.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/server/services/billing-evidence/duplicate-interaction.ts src/server/services/billing-evidence/duplicate-interaction.test.ts src/server/services/billing-evidence.test.ts --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- src/server/services/billing-evidence/duplicate-interaction.ts src/server/services/billing-evidence/duplicate-interaction.test.ts`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 40 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: full DB-backed/browser proof remains unavailable until local app `localhost:3012` and DB `localhost:5433` are running. Broader UI/refactor work remains active
+- next action: commit this 2026 duplicate-interaction mapping group, then continue the remaining static UI/refactor slices or runtime proof once services are available
+
 ### 20260602-184650
 
 - current task: post-2026-dispensing-revision runtime/browser preflight audit
