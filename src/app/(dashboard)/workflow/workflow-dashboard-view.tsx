@@ -1026,8 +1026,10 @@ export function WorkflowDashboardView({
         )}
       </WorkflowSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">工程・アウトカム</h2>
+      <PageSection
+        title="工程・アウトカム"
+        description="直近7日の訪問完了、中断、至急対応、報告待ち、例外の残数を確認します。"
+      >
         <div className="grid gap-3 md:grid-cols-5">
           <MetricCard
             icon={ClipboardList}
@@ -1060,10 +1062,12 @@ export function WorkflowDashboardView({
             caption="オープン中"
           />
         </div>
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">担当負荷</h2>
+      <PageSection
+        title="担当負荷"
+        description="薬剤師ごとの確定訪問、未処理タスク、至急案件、再架電、施設集約を確認します。"
+      >
         {(workflow?.workload_metrics.pharmacists.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">表示可能な担当データがありません</p>
         ) : (
@@ -1087,10 +1091,12 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">施設モード可視化</h2>
+      <PageSection
+        title="施設モード可視化"
+        description="同日集約できる施設訪問候補と担当、拠点、ルート順を確認します。"
+      >
         {(workflow?.facility_visibility.clusters.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">同日集約の候補はありません</p>
         ) : (
@@ -1120,10 +1126,12 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">Intake から訪問への接続</h2>
+      <PageSection
+        title="Intake から訪問への接続"
+        description="処方受付から訪問計画へ未接続の案件を確認し、必要な作成画面へ移動します。"
+      >
         {(workflow?.intake_linkage.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未接続の処方受付はありません</p>
         ) : (
@@ -1154,10 +1162,12 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">患者・家族セルフレポート</h2>
+      <PageSection
+        title="患者・家族セルフレポート"
+        description="患者または家族から届いた triage 対象の申告と折返し希望を確認します。"
+      >
         {(workflow?.self_reports.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">triage 対象の申告はありません</p>
         ) : (
@@ -1193,10 +1203,12 @@ export function WorkflowDashboardView({
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">処方サイクル工程別件数</h2>
+      <PageSection
+        title="処方サイクル工程別件数"
+        description="進行中の処方サイクルを工程ごとの件数で確認します。"
+      >
         {cycleStatusEntries.length === 0 ? (
           <p className="text-sm text-muted-foreground">進行中のサイクルはありません</p>
         ) : (
@@ -1230,10 +1242,12 @@ export function WorkflowDashboardView({
             })}
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">連携ダッシュボード</h2>
+      <PageSection
+        title="連携ダッシュボード"
+        description="コミュニケーション、配送、例外、ルート連携の横断状態を確認します。"
+      >
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           <MetricCard
             icon={BellRing}
@@ -1272,10 +1286,12 @@ export function WorkflowDashboardView({
             caption="handoff"
           />
         </div>
-      </section>
+      </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">運用キュー</h2>
+      <PageSection
+        title="運用キュー"
+        description="訪問候補、再架電、計画見直し、準備未完了など、担当者が処理するキューを確認します。"
+      >
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
           <QueueCard
             label="訪問候補承認待ち"
@@ -1308,7 +1324,7 @@ export function WorkflowDashboardView({
             count={workflow?.route_operations.emergency_candidates ?? 0}
           />
         </div>
-      </section>
+      </PageSection>
 
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">継続調剤 — 次回対応</h2>
