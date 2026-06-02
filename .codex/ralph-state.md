@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-163500
+
+- current task: verify whether DB-backed medical UI browser proof can run after schedule and route UI refactors
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, e2e script grep output, local port checks for 3012 and 5433, and recent git log
+- files changed: `.codex/ralph-state.md`
+- bugs found: no application bug was changed in this iteration. Browser proof remains unavailable because neither the local app port 3012 nor the local e2e database port 5433 is listening
+- security risks found: no code, auth, authorization, tenant, DB, API, or PHI behavior changed
+- performance issues found: no code performance behavior changed
+- validation commands: `lsof -iTCP:5433 -sTCP:LISTEN -n -P || true`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`; `git status --short`; `git log --oneline -8`; focused grep for e2e scripts
+- validation results: port 5433 had no listener; `medical-ui:e2e:preflight` failed as expected with `FAIL port:app-3012: 127.0.0.1:3012 ECONNREFUSED` and `FAIL port:db-5433: 127.0.0.1:5433 ECONNREFUSED`, while required package scripts and specs were found
+- remaining work: start local PostgreSQL for `ph_os_e2e` on localhost:5433, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start `pnpm dev:e2e:local` on localhost:3012, then run the targeted Playwright/medical UI checks. Until then, browser proof is blocked by local runtime availability rather than code
+- next action: continue code-level UI/refactor improvements with another high-density surface while a code-mapper subagent identifies remaining candidates
+
 ### 20260602-163230
 
 - current task: improve shared visit route map accessibility for loading, empty, error, marker, and info-window states
