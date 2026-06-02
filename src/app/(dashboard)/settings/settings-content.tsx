@@ -521,53 +521,52 @@ function NotificationsTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell className="h-5 w-5 text-blue-600" aria-hidden="true" />
-          通知設定
-        </CardTitle>
-        <CardDescription>種別ごとに通知の有効/無効を切り替えられます</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {saved && (
-          <Alert className="mb-4 border-green-200 bg-green-50">
-            <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">通知設定を保存しました。</AlertDescription>
-          </Alert>
-        )}
+    <PageSection
+      title="通知設定"
+      description="種別ごとの通知とブラウザ通知権限を管理します。"
+      actions={<Bell className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+      contentClassName="space-y-6"
+    >
+      {saved && (
+        <Alert className="border-green-200 bg-green-50">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">通知設定を保存しました。</AlertDescription>
+        </Alert>
+      )}
 
-        <div className="mb-6 rounded-lg border p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium">ブラウザ通知権限</p>
-              <p className="mt-1 text-xs text-slate-500">
-                権限: {permission === 'unsupported' ? '非対応' : permission} / 状態:{' '}
-                {browserNotificationsEnabled ? '有効' : '無効'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleEnableBrowserNotifications()}
-                disabled={permission === 'unsupported'}
-              >
-                許可して有効化
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleDisableBrowserNotifications}
-                disabled={!browserNotificationsEnabled}
-              >
-                停止
-              </Button>
-            </div>
+      <div className="rounded-lg border p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-sm font-medium">ブラウザ通知権限</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              権限: {permission === 'unsupported' ? '非対応' : permission} / 状態:{' '}
+              {browserNotificationsEnabled ? '有効' : '無効'}
+            </p>
           </div>
+          <ActionRail>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleEnableBrowserNotifications()}
+              disabled={permission === 'unsupported'}
+            >
+              許可して有効化
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDisableBrowserNotifications}
+              disabled={!browserNotificationsEnabled}
+            >
+              停止
+            </Button>
+          </ActionRail>
         </div>
+      </div>
 
-        <div className="flex flex-col divide-y">
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">通知種別</h3>
+        <div className="flex flex-col divide-y rounded-lg border px-4">
           {settings.map((setting) => (
             <div
               key={setting.id}
@@ -591,14 +590,14 @@ function NotificationsTab() {
             </div>
           ))}
         </div>
+      </div>
 
-        <div className="mt-6">
-          <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSave}>
-            設定を保存
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <ActionRail align="start">
+        <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSave}>
+          設定を保存
+        </Button>
+      </ActionRail>
+    </PageSection>
   );
 }
 

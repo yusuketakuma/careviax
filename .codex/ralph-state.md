@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-172346
+
+- current task: organize settings notification tab without changing notification behavior
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/settings/settings-content.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and focused notification/settings tests
+- files changed: `src/app/(dashboard)/settings/settings-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the notification tab used one raw card for browser permission, notification type switches, and save action, with local flex action rows and plain text labels for subgroups. This made permission state and per-category switches visually merge
+- security risks found: no browser notification permission request, service-worker registration, notification preference persistence, localStorage key, toast behavior, `/api/settings` path, auth, session, or data payload behavior changed
+- performance issues found: no notification settings normalization, localStorage parsing/writing, browser notification registration, permission check, or render-loop behavior changed. The slice only changes notification tab section wrappers, subgroup headings, and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/settings/settings-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/notifications/user-settings.test.ts src/app/api/settings/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/settings/settings-content.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/settings/settings-content.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 2 files / 7 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. The settings location/session tabs and schedule proposal workspaces still have dense raw cards/action rows
+- next action: commit this settings notification group, then continue with settings location/session or schedule proposal slice
+
 ### 20260602-172230
 
 - current task: organize settings security tab without changing MFA behavior
