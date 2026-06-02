@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-174500
+
+- current task: organize admin dashboard overview groups with shared section boundaries
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/admin/admin-dashboard-content.tsx`, `src/app/(dashboard)/admin/admin-dashboard-content.test.tsx`, and dashboard density scan output
+- files changed: `src/app/(dashboard)/admin/admin-dashboard-content.tsx`, `.codex/ralph-state.md`
+- bugs found: admin dashboard used four standalone `SectionIntro` headings followed by separate grids/cards, so management summary, master readiness, monthly progress, and overdue/exception monitoring lacked explicit shared group boundaries. Several operational cards used decorative `CardTitle` divs instead of semantic section headings
+- security risks found: no admin API path, org header, auth, authorization, query key, error handling, monthly navigation behavior, link destination, or master-readiness data handling changed
+- performance issues found: no query, fetch, memo, date calculation, progress calculation, table/list rendering, or network behavior changed. The slice only changes local section wrappers and heading markup
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/admin-dashboard-content.tsx' 'src/app/(dashboard)/admin/admin-dashboard-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/admin-dashboard-content.test.tsx' src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/admin-dashboard-content.tsx' 'src/app/(dashboard)/admin/admin-dashboard-content.test.tsx' src/components/layout/page-section.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/admin-dashboard-content.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 2 files / 5 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: settings, schedule proposal, QR scan, and several patient/admin detail surfaces still have hand-built cards/headings. Browser proof remains blocked unless local app/db listeners are started
+- next action: commit this admin dashboard group, then retry runtime preflight and continue with the next high-value surface if still blocked
+
 ### 20260602-174000
 
 - current task: final status and browser-preflight audit after grouped UI/refactor commits

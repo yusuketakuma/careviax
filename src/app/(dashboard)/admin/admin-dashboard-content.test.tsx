@@ -28,11 +28,13 @@ describe('MasterReadinessSection', () => {
   it('falls back to static readiness links while the summary is unavailable', () => {
     render(<MasterReadinessSection />);
 
-    expect(screen.getAllByText('整備状況を読み込み中、または未集計です。').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('tab', { name: /訪問先・同時訪問マスター/ }));
-    expect(screen.getByRole('link', { name: /施設・ユニット・同時訪問の母艦/ }).getAttribute('href')).toBe(
-      '/admin/facilities',
+    expect(screen.getAllByText('整備状況を読み込み中、または未集計です。').length).toBeGreaterThan(
+      0,
     );
+    fireEvent.click(screen.getByRole('tab', { name: /訪問先・同時訪問マスター/ }));
+    expect(
+      screen.getByRole('link', { name: /施設・ユニット・同時訪問の母艦/ }).getAttribute('href'),
+    ).toBe('/admin/facilities');
   });
 
   it('shows settings and master links required for home-visit operations', () => {
@@ -42,20 +44,22 @@ describe('MasterReadinessSection', () => {
     expect(screen.getByText('訪問先・同時訪問マスター')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: /訪問先・同時訪問マスター/ }));
     expect(screen.getByText(/施設・ユニット、個人宅同居グループ/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /施設・ユニット・同時訪問の母艦/ }).getAttribute('href')).toBe(
-      '/admin/facilities',
-    );
+    expect(
+      screen.getByRole('link', { name: /施設・ユニット・同時訪問の母艦/ }).getAttribute('href'),
+    ).toBe('/admin/facilities');
     fireEvent.click(screen.getByRole('tab', { name: /他職種連携マスター/ }));
     expect(screen.getByRole('link', { name: /職種別の連携先マスター/ }).getAttribute('href')).toBe(
       '/admin/external-professionals',
     );
     fireEvent.click(screen.getByRole('tab', { name: /薬剤・調剤マスター/ }));
-    expect(screen.getByRole('link', { name: /調剤・監査・セットへ渡す薬剤基本情報/ }).getAttribute('href')).toBe(
-      '/admin/drug-masters',
-    );
-    expect(screen.getByRole('link', { name: /セット・患者設定で使う配薬方法/ }).getAttribute('href')).toBe(
-      '/admin/packaging-methods',
-    );
+    expect(
+      screen
+        .getByRole('link', { name: /調剤・監査・セットへ渡す薬剤基本情報/ })
+        .getAttribute('href'),
+    ).toBe('/admin/drug-masters');
+    expect(
+      screen.getByRole('link', { name: /セット・患者設定で使う配薬方法/ }).getAttribute('href'),
+    ).toBe('/admin/packaging-methods');
     fireEvent.click(screen.getByRole('tab', { name: /スタッフ・請求・監査/ }));
     expect(screen.getByRole('link', { name: /算定要件とルールSSOT/ }).getAttribute('href')).toBe(
       '/admin/billing-rules',
@@ -70,7 +74,8 @@ describe('MasterReadinessSection', () => {
         {
           key: 'visit-place',
           title: '訪問先・同時訪問マスター',
-          description: '施設・ユニット、個人宅同居グループ、訪問エリア、施設基準をまとめて整備します。',
+          description:
+            '施設・ユニット、個人宅同居グループ、訪問エリア、施設基準をまとめて整備します。',
           status: 'missing',
           ready_count: 1,
           warning_count: 0,
@@ -117,7 +122,9 @@ describe('MasterReadinessSection', () => {
     expect(screen.getByText('不足 1')).toBeTruthy();
     expect(screen.getByText('3件登録済み')).toBeTruthy();
     expect(screen.getByText('訪問エリアが未登録です。')).toBeTruthy();
-    expect(screen.getByText('添付文書情報が未取込です。監査・訪問前確認に影響します。')).toBeTruthy();
+    expect(
+      screen.getByText('添付文書情報が未取込です。監査・訪問前確認に影響します。'),
+    ).toBeTruthy();
     expect(screen.getByText('相互作用マスターが未取込です。処方監査に影響します。')).toBeTruthy();
   });
 });

@@ -16,14 +16,14 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { SectionIntro } from '@/components/ui/section-intro';
+import { PageSection } from '@/components/layout/page-section';
 import {
   ADMIN_MASTER_READINESS_GROUPS,
   type AdminMasterReadinessSnapshot,
@@ -229,7 +229,10 @@ function SummaryCard({
   return <Card>{content}</Card>;
 }
 
-const masterReadinessStatusMeta: Record<AdminMasterReadinessStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
+const masterReadinessStatusMeta: Record<
+  AdminMasterReadinessStatus,
+  { label: string; variant: 'default' | 'secondary' | 'destructive' }
+> = {
   ready: { label: '整備済み', variant: 'default' },
   warning: { label: '要確認', variant: 'secondary' },
   missing: { label: '不足', variant: 'destructive' },
@@ -240,20 +243,22 @@ export function MasterReadinessSection({
 }: {
   snapshot?: AdminMasterReadinessSnapshot | null;
 }) {
-  const groups = snapshot?.groups ?? ADMIN_MASTER_READINESS_GROUPS.map((group) => ({
-    ...group,
-    status: 'warning' as const,
-    ready_count: 0,
-    warning_count: group.items.length,
-    missing_count: 0,
-    items: group.items.map((item) => ({
-      ...item,
+  const groups =
+    snapshot?.groups ??
+    ADMIN_MASTER_READINESS_GROUPS.map((group) => ({
+      ...group,
       status: 'warning' as const,
-      count: 0,
-      detail: '整備状況を読み込み中、または未集計です。',
-      issues: [],
-    })),
-  }));
+      ready_count: 0,
+      warning_count: group.items.length,
+      missing_count: 0,
+      items: group.items.map((item) => ({
+        ...item,
+        status: 'warning' as const,
+        count: 0,
+        detail: '整備状況を読み込み中、または未集計です。',
+        issues: [],
+      })),
+    }));
   const defaultTab = groups[0]?.key ?? 'operations';
 
   return (
@@ -261,7 +266,7 @@ export function MasterReadinessSection({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <CardTitle className="text-base">設定・マスター整備</CardTitle>
+            <h3 className="font-heading text-base leading-snug font-medium">設定・マスター整備</h3>
             <CardDescription>
               訪問時、報告書、他職種連携、算定要件に影響する管理項目を用途別に確認します。
             </CardDescription>
@@ -297,52 +302,58 @@ export function MasterReadinessSection({
             const statusMeta = masterReadinessStatusMeta[group.status];
             return (
               <TabsContent key={group.key} value={group.key}>
-              <section
-                className="rounded-2xl border border-border/70 bg-muted/[0.06] p-3"
-                aria-labelledby={`admin-master-readiness-${group.key}`}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <h3 id={`admin-master-readiness-${group.key}`} className="text-sm font-semibold text-foreground">
-                      {group.title}
-                    </h3>
-                    <p className="text-xs leading-5 text-muted-foreground">{group.description}</p>
+                <section
+                  className="rounded-2xl border border-border/70 bg-muted/[0.06] p-3"
+                  aria-labelledby={`admin-master-readiness-${group.key}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <h3
+                        id={`admin-master-readiness-${group.key}`}
+                        className="text-sm font-semibold text-foreground"
+                      >
+                        {group.title}
+                      </h3>
+                      <p className="text-xs leading-5 text-muted-foreground">{group.description}</p>
+                    </div>
+                    <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
                   </div>
-                  <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {group.items.map((item) => (
-                    <Link
-                      key={`${group.key}:${item.href}`}
-                      href={item.href}
-                      className="rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-muted/30"
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-foreground">{item.label}</span>
-                        <Badge variant={masterReadinessStatusMeta[item.status].variant}>
-                          {masterReadinessStatusMeta[item.status].label}
-                        </Badge>
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        {item.purpose}
-                      </span>
-                      {item.issues.length > 0 ? (
-                        <span className="mt-2 block space-y-1">
-                          {item.issues.map((issue) => (
-                            <span key={issue} className="block text-[11px] leading-5 text-amber-700">
-                              {issue}
-                            </span>
-                          ))}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {group.items.map((item) => (
+                      <Link
+                        key={`${group.key}:${item.href}`}
+                        href={item.href}
+                        className="rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-muted/30"
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">{item.label}</span>
+                          <Badge variant={masterReadinessStatusMeta[item.status].variant}>
+                            {masterReadinessStatusMeta[item.status].label}
+                          </Badge>
                         </span>
-                      ) : (
-                        <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
-                          {item.detail}
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                          {item.purpose}
                         </span>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              </section>
+                        {item.issues.length > 0 ? (
+                          <span className="mt-2 block space-y-1">
+                            {item.issues.map((issue) => (
+                              <span
+                                key={issue}
+                                className="block text-[11px] leading-5 text-amber-700"
+                              >
+                                {issue}
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
+                            {item.detail}
+                          </span>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
+                </section>
               </TabsContent>
             );
           })}
@@ -377,7 +388,7 @@ function MonthlyProgressSection({
     <Card>
       <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <CardTitle className="text-base">月間訪問回数進捗</CardTitle>
+          <h3 className="font-heading text-base leading-snug font-medium">月間訪問回数進捗</h3>
           <CardDescription>
             患者別・保険種別ごとの訪問回数と上限到達状況を確認します。
           </CardDescription>
@@ -477,7 +488,7 @@ function UnrecordedVisitsSection({ visits }: { visits: OverdueDashboard['unrecor
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">未記録訪問</CardTitle>
+        <h3 className="font-heading text-base leading-snug font-medium">未記録訪問</h3>
         <CardDescription>訪問完了前後の記録漏れを優先確認します。</CardDescription>
       </CardHeader>
       <CardContent>
@@ -510,7 +521,7 @@ function UnsentReportsSection({ reports }: { reports: OverdueDashboard['unsent_r
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">未送付報告書</CardTitle>
+        <h3 className="font-heading text-base leading-snug font-medium">未送付報告書</h3>
         <CardDescription>送達待ち、失敗、返信待ちの報告書を確認します。</CardDescription>
       </CardHeader>
       <CardContent>
@@ -553,7 +564,7 @@ function OverdueTasksSection({ tasks }: { tasks: OverdueDashboard['overdue_tasks
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">期限超過タスク</CardTitle>
+        <h3 className="font-heading text-base leading-snug font-medium">期限超過タスク</h3>
         <CardDescription>SLA または期限を過ぎた業務タスクです。</CardDescription>
       </CardHeader>
       <CardContent>
@@ -598,7 +609,7 @@ function WorkflowExceptionsSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">ワークフロー例外</CardTitle>
+        <h3 className="font-heading text-base leading-snug font-medium">ワークフロー例外</h3>
         <CardDescription>未解消の例外と患者影響を一覧します。</CardDescription>
       </CardHeader>
       <CardContent>
@@ -681,7 +692,10 @@ export function AdminDashboardContent() {
     retry: false,
     enabled: !!orgId,
   });
-  const masterReadinessQuery = useQuery<{ data: AdminMasterReadinessSnapshot }, AdminDashboardFetchError>({
+  const masterReadinessQuery = useQuery<
+    { data: AdminMasterReadinessSnapshot },
+    AdminDashboardFetchError
+  >({
     queryKey: ['admin', 'master-readiness', orgId],
     queryFn: () =>
       fetchJson<{ data: AdminMasterReadinessSnapshot }>(
@@ -790,51 +804,53 @@ export function AdminDashboardContent() {
 
   return (
     <div className="space-y-8">
-      <SectionIntro
+      <PageSection
         title="管理サマリー"
         description="重大な滞留や超過を先に把握するための概要グループです。"
-      />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        contentClassName="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+      >
         {summaryCards.map((card) => (
           <SummaryCard key={card.title} {...card} />
         ))}
-      </div>
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="設定・マスター"
         description="訪問時、報告書、他職種連携、算定要件に影響する設定とマスターの整備状況を確認します。"
-      />
-      <MasterReadinessSection snapshot={masterReadinessQuery.data?.data ?? null} />
+      >
+        <MasterReadinessSection snapshot={masterReadinessQuery.data?.data ?? null} />
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="月間進捗"
         description="患者ごとの訪問回数進捗と上限超過状況を確認する主要グループです。"
-      />
-      <MonthlyProgressSection
-        month={monthlyStats?.month ?? currentMonth}
-        summary={
-          monthlyStats?.summary ?? {
-            total_patients: 0,
-            over_limit_count: 0,
-            within_limit_count: 0,
-            under_limit_count: 0,
+      >
+        <MonthlyProgressSection
+          month={monthlyStats?.month ?? currentMonth}
+          summary={
+            monthlyStats?.summary ?? {
+              total_patients: 0,
+              over_limit_count: 0,
+              within_limit_count: 0,
+              under_limit_count: 0,
+            }
           }
-        }
-        items={monthlyStats?.patient_stats ?? []}
-        onPreviousMonth={() => setSelectedMonth((value) => addMonths(value, -1))}
-        onNextMonth={() => setSelectedMonth((value) => addMonths(value, 1))}
-      />
+          items={monthlyStats?.patient_stats ?? []}
+          onPreviousMonth={() => setSelectedMonth((value) => addMonths(value, -1))}
+          onNextMonth={() => setSelectedMonth((value) => addMonths(value, 1))}
+        />
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
         title="滞留と例外"
         description="未記録、未送付、期限超過、ワークフロー例外をまとめて確認する運用監視グループです。"
-      />
-      <div className="grid gap-6 xl:grid-cols-2">
+        contentClassName="grid gap-6 xl:grid-cols-2"
+      >
         <UnrecordedVisitsSection visits={overdue?.unrecorded_visits ?? []} />
         <UnsentReportsSection reports={overdue?.unsent_reports ?? []} />
         <OverdueTasksSection tasks={overdue?.overdue_tasks ?? []} />
         <WorkflowExceptionsSection exceptions={workflow?.workflow_exceptions.items ?? []} />
-      </div>
+      </PageSection>
 
       {(overdue?.summary.total ?? 0) === 0 &&
       (workflow?.workflow_exceptions.open ?? 0) === 0 &&
