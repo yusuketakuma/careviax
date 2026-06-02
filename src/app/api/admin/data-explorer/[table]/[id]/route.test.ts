@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  updateDataExplorerRowMock,
-} = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, updateDataExplorerRowMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   updateDataExplorerRowMock: vi.fn(),
@@ -92,11 +88,29 @@ describe('/api/admin/data-explorer/[table]/[id]', () => {
     expect(res!.status).toBe(404);
   });
 
-  it('returns 400 on invalid body', async () => {
+  it('rejects malformed JSON patch payloads before updating rows', async () => {
     const req = createInvalidJsonRequest('http://localhost/api/admin/data-explorer/Patient/row_1');
     const res = await PATCH(req, {
       params: Promise.resolve({ table: 'Patient', id: 'row_1' }),
     });
+
     expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(updateDataExplorerRowMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object patch payloads before updating rows', async () => {
+    const req = createRequest('http://localhost/api/admin/data-explorer/Patient/row_1', []);
+    const res = await PATCH(req, {
+      params: Promise.resolve({ table: 'Patient', id: 'row_1' }),
+    });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(updateDataExplorerRowMock).not.toHaveBeenCalled();
   });
 });

@@ -27,7 +27,7 @@ describe('buildPilotOrgAuditSnapshot', () => {
           name: '本店',
           address: '東京都新宿区1-1-1',
           lat: 35.69,
-          lng: 139.70,
+          lng: 139.7,
           service_areas: [
             {
               id: 'area_1',
@@ -141,7 +141,9 @@ describe('buildPilotOrgAuditSnapshot', () => {
 
     expect(snapshot.coverage.review_required_count).toBe(1);
     expect(snapshot.recommendations.some((item) => item.includes('位置情報不足'))).toBe(true);
-    expect(snapshot.recommendations.some((item) => item.includes('service area 未設定'))).toBe(true);
+    expect(snapshot.recommendations.some((item) => item.includes('service area 未設定'))).toBe(
+      true,
+    );
   });
 
   it('treats missing primary residence as review-required and still counts set pilot cases', () => {
@@ -159,13 +161,23 @@ describe('buildPilotOrgAuditSnapshot', () => {
             residences: [],
           },
         },
+        {
+          id: 'case_2',
+          status: 'active',
+          required_visit_support: [{ set_pilot_enabled: true }],
+          patient: {
+            id: 'patient_2',
+            name: '配列 設定',
+            residences: [],
+          },
+        },
       ],
     });
 
-    expect(snapshot.pilot_targets.active_case_count).toBe(1);
+    expect(snapshot.pilot_targets.active_case_count).toBe(2);
     expect(snapshot.pilot_targets.set_pilot_case_count).toBe(1);
     expect(snapshot.coverage.total_primary_residences).toBe(0);
-    expect(snapshot.coverage.review_required_count).toBe(1);
+    expect(snapshot.coverage.review_required_count).toBe(2);
     expect(snapshot.coverage.flagged_patients[0]).toMatchObject({
       patient_name: '住所未登録 患者',
       reason: 'primary residence が未登録のため訪問カバレッジ判定不可',

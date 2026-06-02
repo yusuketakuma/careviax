@@ -57,6 +57,17 @@ function createRequest(headers?: Record<string, string>, body?: unknown) {
   return new NextRequest('http://localhost/api/admin/facilities', init);
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/admin/facilities', {
+    method: 'POST',
+    body: '{bad-json',
+    headers: {
+      ...(headers ?? {}),
+      'content-type': 'application/json',
+    },
+  });
+}
+
 describe('/api/admin/facilities GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -165,7 +176,17 @@ describe('/api/admin/facilities GET', () => {
         {
           name: 'みどり苑',
           facility_type: 'group_home',
+          phone: ' 03-1234-5678 ',
+          fax: '   ',
           regular_visit_weekdays: [2, 4],
+          contacts: [
+            {
+              name: '施設担当',
+              phone: ' 03-0000-0000 ',
+              fax: ' 03-0000-0001 ',
+              is_primary: true,
+            },
+          ],
         },
       ),
     );
@@ -177,9 +198,78 @@ describe('/api/admin/facilities GET', () => {
         org_id: 'org_1',
         name: 'みどり苑',
         facility_type: 'group_home',
+        phone: '03-1234-5678',
+        fax: null,
         regular_visit_weekdays: [2, 4],
+        contacts: {
+          create: [
+            expect.objectContaining({
+              org_id: 'org_1',
+              name: '施設担当',
+              phone: '03-0000-0000',
+              fax: '03-0000-0001',
+              is_primary: true,
+            }),
+          ],
+        },
       }),
       include: expect.any(Object),
     });
+  });
+
+  it('rejects malformed facility contact numbers before opening an org transaction', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        {
+          name: 'みどり苑',
+          facility_type: 'group_home',
+          phone: '03-ABCD-5678',
+          fax: 'FAX-0001',
+        },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }, []));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before opening an org transaction', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityCreateMock).not.toHaveBeenCalled();
   });
 });

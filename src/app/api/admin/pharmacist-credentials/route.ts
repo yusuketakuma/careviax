@@ -1,138 +1,25 @@
-import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { createPharmacistCredentialSchema } from '@/lib/validations/pharmacist-credential';
 
-const createPharmacistCredentialSchema = z.object({
-  user_id: z.string().min(1, '対象スタッフは必須です'),
-  certification_type: z.string().trim().min(1, '認定種別は必須です'),
-  certification_number: z.string().trim().nullable().optional(),
-  issued_date: z.string().date().nullable().optional(),
-  expiry_date: z.string().date().nullable().optional(),
-  tenure_years: z.coerce.number().min(0).max(80).nullable().optional(),
-  weekly_work_hours: z.coerce.number().min(0).max(168).nullable().optional(),
-});
-
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const credentials = await prisma.pharmacistCredential.findMany({
-    where: {
-      org_id: req.orgId,
-    },
-    select: {
-      id: true,
-      certification_type: true,
-      certification_number: true,
-      issued_date: true,
-      expiry_date: true,
-      tenure_years: true,
-      weekly_work_hours: true,
-      user: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
-  });
-
-  const pharmacistIds = credentials.map((item) => item.user.id);
-  const assignedPatients =
-    pharmacistIds.length === 0
-      ? []
-      : await prisma.visitSchedule.findMany({
-          where: {
-            org_id: req.orgId,
-            pharmacist_id: { in: pharmacistIds },
-            schedule_status: { not: 'cancelled' },
-            case_: {
-              patient: {
-                consents: {
-                  some: {
-                    org_id: req.orgId,
-                    is_active: true,
-                    revoked_date: null,
-                  },
-                },
-              },
-            },
-          },
-          select: {
-            pharmacist_id: true,
-            case_: {
-              select: {
-                patient: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-        });
-
-  const consentedPatientsByPharmacist = new Map<string, Array<{ id: string; name: string }>>();
-  for (const schedule of assignedPatients) {
-    if (!schedule.pharmacist_id) continue;
-    const patient = schedule.case_?.patient;
-    if (!patient) continue;
-
-    const existing = consentedPatientsByPharmacist.get(schedule.pharmacist_id) ?? [];
-    if (!existing.some((item) => item.id === patient.id)) {
-      existing.push({ id: patient.id, name: patient.name });
-      consentedPatientsByPharmacist.set(schedule.pharmacist_id, existing);
-    }
-  }
-
-  return success({
-    data: credentials.map((item) => ({
-      id: item.id,
-      user_id: item.user.id,
-      user_name: item.user.name,
-      certification_type: item.certification_type,
-      certification_number: item.certification_number,
-      issued_date: item.issued_date?.toISOString() ?? null,
-      expiry_date: item.expiry_date?.toISOString() ?? null,
-      tenure_years: item.tenure_years,
-      weekly_work_hours: item.weekly_work_hours,
-      consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
-    })),
-  });
-}, {
-  permission: 'canAdmin',
-  message: '薬剤師認定情報の閲覧権限がありません',
-});
-
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-
-  const parsed = createPharmacistCredentialSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
-
-  const refResult = await validateOrgReferences(req.orgId, {
-    pharmacist_id: parsed.data.user_id,
-  });
-  if (!refResult.ok) return refResult.response;
-
-  const created = await withOrgContext(req.orgId, async (tx) => {
-    const credential = await tx.pharmacistCredential.create({
-      data: {
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const credentials = await prisma.pharmacistCredential.findMany({
+      where: {
         org_id: req.orgId,
-        user_id: parsed.data.user_id,
-        certification_type: parsed.data.certification_type,
-        certification_number: parsed.data.certification_number || null,
-        issued_date: parsed.data.issued_date ? new Date(parsed.data.issued_date) : null,
-        expiry_date: parsed.data.expiry_date ? new Date(parsed.data.expiry_date) : null,
-        tenure_years: parsed.data.tenure_years ?? null,
-        weekly_work_hours: parsed.data.weekly_work_hours ?? null,
       },
-      include: {
+      select: {
+        id: true,
+        certification_type: true,
+        certification_number: true,
+        issued_date: true,
+        expiry_date: true,
+        tenure_years: true,
+        weekly_work_hours: true,
         user: {
           select: {
             id: true,
@@ -140,43 +27,156 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           },
         },
       },
+      orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: req.orgId,
-        actor_id: req.userId,
-        action: 'pharmacist_credential_created',
-        target_type: 'PharmacistCredential',
-        target_id: credential.id,
-        changes: {
+    const pharmacistIds = credentials.map((item) => item.user.id);
+    const assignedPatients =
+      pharmacistIds.length === 0
+        ? []
+        : await prisma.visitSchedule.findMany({
+            where: {
+              org_id: req.orgId,
+              pharmacist_id: { in: pharmacistIds },
+              schedule_status: { not: 'cancelled' },
+              case_: {
+                patient: {
+                  consents: {
+                    some: {
+                      org_id: req.orgId,
+                      is_active: true,
+                      revoked_date: null,
+                    },
+                  },
+                },
+              },
+            },
+            select: {
+              pharmacist_id: true,
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+    const consentedPatientsByPharmacist = new Map<string, Array<{ id: string; name: string }>>();
+    for (const schedule of assignedPatients) {
+      if (!schedule.pharmacist_id) continue;
+      const patient = schedule.case_?.patient;
+      if (!patient) continue;
+
+      const existing = consentedPatientsByPharmacist.get(schedule.pharmacist_id) ?? [];
+      if (!existing.some((item) => item.id === patient.id)) {
+        existing.push({ id: patient.id, name: patient.name });
+        consentedPatientsByPharmacist.set(schedule.pharmacist_id, existing);
+      }
+    }
+
+    return success({
+      data: credentials.map((item) => ({
+        id: item.id,
+        user_id: item.user.id,
+        user_name: item.user.name,
+        certification_type: item.certification_type,
+        certification_number: item.certification_number,
+        issued_date: item.issued_date?.toISOString() ?? null,
+        expiry_date: item.expiry_date?.toISOString() ?? null,
+        tenure_years: item.tenure_years,
+        weekly_work_hours: item.weekly_work_hours,
+        consented_patients: consentedPatientsByPharmacist.get(item.user.id) ?? [],
+      })),
+    });
+  },
+  {
+    permission: 'canAdmin',
+    message: '薬剤師認定情報の閲覧権限がありません',
+  },
+);
+
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = createPharmacistCredentialSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const refResult = await validateOrgReferences(req.orgId, {
+      pharmacist_id: parsed.data.user_id,
+    });
+    if (!refResult.ok) return refResult.response;
+
+    const created = await withOrgContext(req.orgId, async (tx) => {
+      const credential = await tx.pharmacistCredential.create({
+        data: {
+          org_id: req.orgId,
           user_id: parsed.data.user_id,
           certification_type: parsed.data.certification_type,
-          expiry_date: parsed.data.expiry_date ?? null,
+          certification_number: parsed.data.certification_number ?? null,
+          issued_date: parsed.data.issued_date ? new Date(parsed.data.issued_date) : null,
+          expiry_date: parsed.data.expiry_date ? new Date(parsed.data.expiry_date) : null,
+          tenure_years: parsed.data.tenure_years ?? null,
+          weekly_work_hours: parsed.data.weekly_work_hours ?? null,
         },
-        ip_address: req.ipAddress,
-        user_agent: req.userAgent,
-      },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: req.orgId,
+          actor_id: req.userId,
+          action: 'pharmacist_credential_created',
+          target_type: 'PharmacistCredential',
+          target_id: credential.id,
+          changes: {
+            user_id: parsed.data.user_id,
+            certification_type: parsed.data.certification_type,
+            expiry_date: parsed.data.expiry_date ?? null,
+          },
+          ip_address: req.ipAddress,
+          user_agent: req.userAgent,
+        },
+      });
+
+      return credential;
     });
 
-    return credential;
-  });
-
-  return success({
-    data: {
-      id: created.id,
-      user_id: created.user.id,
-      user_name: created.user.name,
-      certification_type: created.certification_type,
-      certification_number: created.certification_number,
-      issued_date: created.issued_date?.toISOString() ?? null,
-      expiry_date: created.expiry_date?.toISOString() ?? null,
-      tenure_years: created.tenure_years,
-      weekly_work_hours: created.weekly_work_hours,
-      consented_patients: [],
-    },
-  }, 201);
-}, {
-  permission: 'canAdmin',
-  message: '薬剤師認定情報の作成権限がありません',
-});
+    return success(
+      {
+        data: {
+          id: created.id,
+          user_id: created.user.id,
+          user_name: created.user.name,
+          certification_type: created.certification_type,
+          certification_number: created.certification_number,
+          issued_date: created.issued_date?.toISOString() ?? null,
+          expiry_date: created.expiry_date?.toISOString() ?? null,
+          tenure_years: created.tenure_years,
+          weekly_work_hours: created.weekly_work_hours,
+          consented_patients: [],
+        },
+      },
+      201,
+    );
+  },
+  {
+    permission: 'canAdmin',
+    message: '薬剤師認定情報の作成権限がありません',
+  },
+);

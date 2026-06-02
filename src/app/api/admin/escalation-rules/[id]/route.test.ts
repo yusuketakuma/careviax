@@ -34,7 +34,11 @@ vi.mock('@/lib/db/client', () => ({
 
 import { DELETE, PATCH } from './route';
 
-function createRequest(method: 'PATCH' | 'DELETE', headers?: Record<string, string>, body?: unknown) {
+function createRequest(
+  method: 'PATCH' | 'DELETE',
+  headers?: Record<string, string>,
+  body?: unknown,
+) {
   return new NextRequest('http://localhost/api/admin/escalation-rules/rule_1', {
     method,
     headers: {
@@ -42,6 +46,17 @@ function createRequest(method: 'PATCH' | 'DELETE', headers?: Record<string, stri
       ...headers,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
+function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/admin/escalation-rules/rule_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+    body: '{bad json',
   });
 }
 
@@ -69,15 +84,22 @@ describe('/api/admin/escalation-rules/[id]', () => {
     });
 
     const response = await PATCH(
-      createRequest('PATCH', { 'x-org-id': 'org_1' }, {
-        is_active: false,
-        condition: { threshold_hours: '6', severity: 'urgent', status_in: ['open'] },
-      }),
-      { params: Promise.resolve({ id: 'rule_1' }) },
+      createRequest(
+        'PATCH',
+        { 'x-org-id': 'org_1' },
+        {
+          is_active: false,
+          condition: { threshold_hours: ' 6 ', severity: 'urgent', status_in: ['open'] },
+        },
+      ),
+      { params: Promise.resolve({ id: '  rule_1  ' }) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(escalationRuleFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1', org_id: 'org_1' },
+    });
     expect(escalationRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
       data: {
@@ -85,6 +107,81 @@ describe('/api/admin/escalation-rules/[id]', () => {
         condition: { threshold_hours: 6, severity: 'urgent', status_in: ['open'] },
       },
     });
+  });
+
+  it.each(['1e2', '10.0', '6abc', ' ', true, 0, 721])(
+    'rejects malformed threshold_hours=%s before loading the escalation rule',
+    async (thresholdHours) => {
+      authMock.mockResolvedValue({ user: { id: 'user_1' } });
+      membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+      const response = await PATCH(
+        createRequest(
+          'PATCH',
+          { 'x-org-id': 'org_1' },
+          {
+            condition: { threshold_hours: thresholdHours, severity: 'urgent' },
+          },
+        ),
+        { params: Promise.resolve({ id: 'rule_1' }) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '入力値が不正です',
+      });
+      expect(escalationRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(escalationRuleUpdateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects blank escalation rule ids before parsing update payloads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await PATCH(createMalformedJsonPatchRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'エスカレーションルールIDが不正です',
+    });
+    expect(escalationRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(escalationRuleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object update payloads before loading the escalation rule', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await PATCH(createRequest('PATCH', { 'x-org-id': 'org_1' }, []), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(escalationRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(escalationRuleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the escalation rule', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await PATCH(createMalformedJsonPatchRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(escalationRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(escalationRuleUpdateMock).not.toHaveBeenCalled();
   });
 
   it('deletes an escalation rule', async () => {
@@ -96,15 +193,31 @@ describe('/api/admin/escalation-rules/[id]', () => {
     });
     escalationRuleDeleteMock.mockResolvedValue({ id: 'rule_1' });
 
-    const response = await DELETE(
-      createRequest('DELETE', { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'rule_1' }) },
-    );
+    const response = await DELETE(createRequest('DELETE', { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(escalationRuleDeleteMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
     });
+  });
+
+  it('rejects blank escalation rule ids before delete lookups', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await DELETE(createRequest('DELETE', { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'エスカレーションルールIDが不正です',
+    });
+    expect(escalationRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(escalationRuleDeleteMock).not.toHaveBeenCalled();
   });
 });

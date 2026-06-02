@@ -122,10 +122,9 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   );
 }
 
-function toNullableNumber(value: string) {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function toNullableNumberText(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function buildForm(credential: PharmacistCredential): CredentialForm {
@@ -195,8 +194,8 @@ export function PharmacistCredentialsContent() {
           certification_number: form.certification_number || null,
           issued_date: form.issued_date || null,
           expiry_date: form.expiry_date || null,
-          tenure_years: toNullableNumber(form.tenure_years),
-          weekly_work_hours: toNullableNumber(form.weekly_work_hours),
+          tenure_years: toNullableNumberText(form.tenure_years),
+          weekly_work_hours: toNullableNumberText(form.weekly_work_hours),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -270,9 +269,7 @@ export function PharmacistCredentialsContent() {
         header: '在籍年数',
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">
-            {row.original.tenure_years != null
-              ? `${row.original.tenure_years.toFixed(1)}年`
-              : '—'}
+            {row.original.tenure_years != null ? `${row.original.tenure_years.toFixed(1)}年` : '—'}
           </span>
         ),
       },
@@ -281,9 +278,7 @@ export function PharmacistCredentialsContent() {
         header: '週勤務時間',
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">
-            {row.original.weekly_work_hours != null
-              ? `${row.original.weekly_work_hours}時間`
-              : '—'}
+            {row.original.weekly_work_hours != null ? `${row.original.weekly_work_hours}時間` : '—'}
           </span>
         ),
       },
@@ -303,9 +298,7 @@ export function PharmacistCredentialsContent() {
                   {patient.name}
                 </Badge>
               ))}
-              {patients.length > 2 ? (
-                <Badge variant="outline">+{patients.length - 2}</Badge>
-              ) : null}
+              {patients.length > 2 ? <Badge variant="outline">+{patients.length - 2}</Badge> : null}
             </div>
           );
         },
@@ -326,18 +319,14 @@ export function PharmacistCredentialsContent() {
             >
               編集
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => setDeleteTarget(row.original)}
-            >
+            <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(row.original)}>
               失効
             </Button>
           </div>
         ),
       },
     ],
-    []
+    [],
   );
 
   return (
@@ -396,12 +385,8 @@ export function PharmacistCredentialsContent() {
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>
-              {editingCredential ? '資格情報を編集' : '資格情報を登録'}
-            </DialogTitle>
-            <DialogDescription>
-              資格種別、番号、有効期限、在籍年数を管理します。
-            </DialogDescription>
+            <DialogTitle>{editingCredential ? '資格情報を編集' : '資格情報を登録'}</DialogTitle>
+            <DialogDescription>資格種別、番号、有効期限、在籍年数を管理します。</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 md:grid-cols-2">
             <Field label="対象スタッフ">
@@ -508,11 +493,7 @@ export function PharmacistCredentialsContent() {
             </Button>
             <Button
               onClick={() => saveMutation.mutate()}
-              disabled={
-                saveMutation.isPending ||
-                !form.user_id ||
-                !form.certification_type.trim()
-              }
+              disabled={saveMutation.isPending || !form.user_id || !form.certification_type.trim()}
             >
               {saveMutation.isPending ? '保存中...' : '保存'}
             </Button>
@@ -520,10 +501,7 @@ export function PharmacistCredentialsContent() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>資格情報を失効しますか</DialogTitle>

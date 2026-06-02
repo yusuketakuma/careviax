@@ -156,6 +156,26 @@ describe('data explorer service hardening', () => {
     expect(result.totalCountIsExact).toBe(false);
   });
 
+  it('caps direct row pagination inputs before issuing SQL offsets', async () => {
+    const tx = mockOrgContext(async (query) => {
+      if (query.includes('COUNT(*)')) {
+        return [{ row_count: 2_000_000 }];
+      }
+      return [];
+    });
+
+    const result = await listDataExplorerRows('org_1', 'Patient', {
+      limit: 10_000,
+      offset: 999_999_999,
+    });
+
+    const [, rowsCall] = tx.$queryRawUnsafe.mock.calls;
+    expect(rowsCall?.slice(1)).toEqual(['org_1', 100, 999_900]);
+    expect(result.limit).toBe(100);
+    expect(result.offset).toBe(999_900);
+    expect(result.hasMore).toBe(true);
+  });
+
   it.each(['Setting', 'ExternalAccessGrant', 'PatientMcsMessage', 'PushSubscription'])(
     'rejects excluded Prisma model %s before issuing SQL',
     async (tableName) => {
@@ -467,11 +487,7 @@ describe('data explorer service hardening', () => {
     expect(sql).toContain('WHERE t."id" = $2 AND t."id" = $3');
     expect(sql).not.toContain('"email"');
     expect(sql).not.toContain("'email'");
-    expect(call?.slice(1)).toEqual([
-      JSON.stringify({ name: 'PH-OS Pharmacy' }),
-      'org_1',
-      'org_1',
-    ]);
+    expect(call?.slice(1)).toEqual([JSON.stringify({ name: 'PH-OS Pharmacy' }), 'org_1', 'org_1']);
     expect(updated).toMatchObject({
       id: 'org_1',
       name: 'PH-OS Pharmacy',

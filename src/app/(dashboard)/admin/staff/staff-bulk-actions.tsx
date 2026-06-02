@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileUp, CalendarRange } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,24 +18,16 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  getImportFeedback,
+  resolveImportOutcome,
+  type ImportApiResponse,
+} from './staff-bulk-actions.shared';
 
 type PharmacistOption = {
   id: string;
   name: string;
   site_name: string | null;
-};
-
-type ImportApiResponse = {
-  data: {
-    created_count: number;
-    failed_count: number;
-    results: Array<{
-      email: string;
-      name: string;
-      status: 'created' | 'failed';
-      message: string;
-    }>;
-  };
 };
 
 const CSV_TEMPLATE = `name,name_kana,email,phone,role,site_name,certification_type,certification_number,issued_date,expiry_date,tenure_years,weekly_work_hours
@@ -138,9 +131,7 @@ export function StaffBulkActions() {
   const [csvText, setCsvText] = useState(CSV_TEMPLATE);
   const [applyMonth, setApplyMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [applyUserId, setApplyUserId] = useState('all');
-  const [lastImportResult, setLastImportResult] = useState<ImportApiResponse['data'] | null>(
-    null
-  );
+  const [lastImportResult, setLastImportResult] = useState<ImportApiResponse['data'] | null>(null);
 
   const pharmacistsQuery = useQuery({
     queryKey: ['staff-bulk-pharmacists', orgId],
@@ -170,11 +161,20 @@ export function StaffBulkActions() {
     },
     onSuccess: async (payload) => {
       setLastImportResult(payload.data);
-      toast.success(`${payload.data.created_count}件のスタッフを取込しました`);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['pharmacist-credentials', orgId] }),
-      ]);
+      const feedback = getImportFeedback(payload.data);
+      if (feedback.tone === 'error') {
+        toast.error(feedback.message);
+      } else if (feedback.tone === 'warning') {
+        toast.warning(feedback.message);
+      } else {
+        toast.success(feedback.message);
+      }
+      if (payload.data.created_count > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] }),
+          queryClient.invalidateQueries({ queryKey: ['pharmacist-credentials', orgId] }),
+        ]);
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'CSV取込に失敗しました');
@@ -193,7 +193,9 @@ export function StaffBulkActions() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? 'シフト一括反映に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? 'シフト一括反映に失敗しました',
+        );
       }
       return payload as { data: { applied_count: number } };
     },
@@ -213,6 +215,19 @@ export function StaffBulkActions() {
   }
 
   const pharmacists = pharmacistsQuery.data?.data ?? [];
+  const importOutcome = lastImportResult ? resolveImportOutcome(lastImportResult) : null;
+  const importStatusLabel =
+    importOutcome === 'failed'
+      ? '取込失敗'
+      : importOutcome === 'partial_failed'
+        ? '一部失敗'
+        : '取込完了';
+  const importResultClass =
+    importOutcome === 'failed'
+      ? 'border-destructive/40 bg-destructive/5'
+      : importOutcome === 'partial_failed'
+        ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/20 dark:text-amber-100'
+        : 'border-border bg-card';
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -243,7 +258,10 @@ export function StaffBulkActions() {
             />
           </div>
           <div className="text-xs text-muted-foreground">
-            ヘッダー: <code>name,name_kana,email,phone,role,site_name,certification_type,certification_number,issued_date,expiry_date,tenure_years,weekly_work_hours</code>
+            ヘッダー:{' '}
+            <code>
+              name,name_kana,email,phone,role,site_name,certification_type,certification_number,issued_date,expiry_date,tenure_years,weekly_work_hours
+            </code>
           </div>
           <div className="flex justify-end">
             <Button onClick={() => importMutation.mutate()} disabled={importMutation.isPending}>
@@ -251,14 +269,33 @@ export function StaffBulkActions() {
             </Button>
           </div>
           {lastImportResult ? (
-            <div className="space-y-2 rounded-lg border p-3 text-sm">
-              <div className="flex flex-wrap gap-3 text-muted-foreground">
+            <div className={`space-y-2 rounded-lg border p-3 text-sm ${importResultClass}`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge
+                  variant={importOutcome === 'failed' ? 'destructive' : 'outline'}
+                  className={
+                    importOutcome === 'partial_failed'
+                      ? 'border-amber-500 text-amber-700 dark:text-amber-200'
+                      : ''
+                  }
+                >
+                  {importStatusLabel}
+                </Badge>
                 <span>作成 {lastImportResult.created_count}件</span>
                 <span>失敗 {lastImportResult.failed_count}件</span>
               </div>
               <div className="max-h-48 space-y-1 overflow-y-auto text-xs">
                 {lastImportResult.results.map((result) => (
-                  <div key={`${result.email}-${result.status}`} className="rounded border px-2 py-1">
+                  <div
+                    key={`${result.row_number ?? result.email}-${result.email}-${result.status}`}
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded border bg-background/70 px-2 py-1"
+                  >
+                    <span className="min-w-8 text-muted-foreground">
+                      {result.row_number ? `${result.row_number}行目` : '行未設定'}
+                    </span>
+                    <Badge variant={result.status === 'failed' ? 'destructive' : 'outline'}>
+                      {result.status === 'failed' ? '失敗' : '作成'}
+                    </Badge>
                     <span className="font-medium">{result.name}</span>
                     <span className="ml-2 text-muted-foreground">{result.email}</span>
                     <span className="ml-2">{result.message}</span>

@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
@@ -12,10 +14,7 @@ const updateUatFeedbackSchema = z.object({
   due_date: z.string().datetime().nullable().optional(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: 'UAT フィードバックの更新権限がありません',
@@ -23,15 +22,18 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('UAT フィードバックIDが不正です');
 
-  const parsed = updateUatFeedbackSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateUatFeedbackSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { id } = await params;
   const existing = await prisma.uatFeedback.findFirst({
     where: { id, org_id: ctx.orgId },
     select: { id: true, status: true, resolved_at: true },
@@ -65,8 +67,12 @@ export async function PATCH(
     data: {
       ...(parsed.data.priority !== undefined ? { priority: parsed.data.priority } : {}),
       ...(nextStatus !== undefined ? { status: nextStatus } : {}),
-      ...(parsed.data.owner_user_id !== undefined ? { owner_user_id: parsed.data.owner_user_id } : {}),
-      ...(parsed.data.linked_work_item !== undefined ? { linked_work_item: parsed.data.linked_work_item } : {}),
+      ...(parsed.data.owner_user_id !== undefined
+        ? { owner_user_id: parsed.data.owner_user_id }
+        : {}),
+      ...(parsed.data.linked_work_item !== undefined
+        ? { linked_work_item: parsed.data.linked_work_item }
+        : {}),
       ...(parsed.data.due_date !== undefined
         ? { due_date: parsed.data.due_date ? new Date(parsed.data.due_date) : null }
         : {}),

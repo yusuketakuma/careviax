@@ -1,5 +1,6 @@
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { assertFacilityReference } from '@/lib/patient/facility-reference';
@@ -40,50 +41,53 @@ function toResponse(item: {
   };
 }
 
-export const GET = withAuthContext<{ id: string }>(async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
-  const { id } = await routeContext.params;
+export const GET = withAuthContext<{ id: string }>(
+  async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+    const { id } = await routeContext.params;
 
-  const item = await prisma.externalProfessional.findFirst({
-    where: { id, org_id: ctx.orgId },
-    include: {
-      facility: {
-        select: {
-          name: true,
+    const item = await prisma.externalProfessional.findFirst({
+      where: { id, org_id: ctx.orgId },
+      include: {
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            care_team_links: true,
+          },
         },
       },
-      _count: {
-        select: {
-          care_team_links: true,
-        },
-      },
-    },
-  });
-  if (!item) return notFound('他職種が見つかりません');
+    });
+    if (!item) return notFound('他職種が見つかりません');
 
-  return success({ data: toResponse(item) });
-}, {
-  permission: 'canReport',
-  message: '他職種マスターの閲覧権限がありません',
-});
+    return success({ data: toResponse(item) });
+  },
+  {
+    permission: 'canReport',
+    message: '他職種マスターの閲覧権限がありません',
+  },
+);
 
-export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
-  const { id } = await routeContext.params;
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const PATCH = withAuthContext<{ id: string }>(
+  async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+    const { id } = await routeContext.params;
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateExternalProfessionalSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = updateExternalProfessionalSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  const existing = await prisma.externalProfessional.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true },
-  });
-  if (!existing) return notFound('他職種が見つかりません');
+    const existing = await prisma.externalProfessional.findFirst({
+      where: { id, org_id: ctx.orgId },
+      select: { id: true },
+    });
+    if (!existing) return notFound('他職種が見つかりません');
 
-  const updated = await withOrgContext(ctx.orgId, async (tx) =>
-    {
+    const updated = await withOrgContext(ctx.orgId, async (tx) => {
       if (parsed.data.facility_id !== undefined) {
         await assertFacilityReference(tx, ctx.orgId, parsed.data.facility_id || null);
       }
@@ -91,13 +95,19 @@ export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeConte
       return tx.externalProfessional.update({
         where: { id },
         data: {
-          ...(parsed.data.profession_type !== undefined ? { profession_type: parsed.data.profession_type } : {}),
+          ...(parsed.data.profession_type !== undefined
+            ? { profession_type: parsed.data.profession_type }
+            : {}),
           ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-          ...(parsed.data.facility_id !== undefined ? { facility_id: parsed.data.facility_id || null } : {}),
+          ...(parsed.data.facility_id !== undefined
+            ? { facility_id: parsed.data.facility_id || null }
+            : {}),
           ...(parsed.data.organization_name !== undefined
             ? { organization_name: parsed.data.organization_name || null }
             : {}),
-          ...(parsed.data.department !== undefined ? { department: parsed.data.department || null } : {}),
+          ...(parsed.data.department !== undefined
+            ? { department: parsed.data.department || null }
+            : {}),
           ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
           ...(parsed.data.email !== undefined ? { email: parsed.data.email || null } : {}),
           ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
@@ -118,30 +128,34 @@ export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeConte
           },
         },
       });
-    },
-  );
+    });
 
-  return success({ data: toResponse(updated) });
-}, {
-  permission: 'canAdmin',
-  message: '他職種マスターの更新権限がありません',
-});
+    return success({ data: toResponse(updated) });
+  },
+  {
+    permission: 'canAdmin',
+    message: '他職種マスターの更新権限がありません',
+  },
+);
 
-export const DELETE = withAuthContext<{ id: string }>(async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
-  const { id } = await routeContext.params;
+export const DELETE = withAuthContext<{ id: string }>(
+  async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+    const { id } = await routeContext.params;
 
-  const existing = await prisma.externalProfessional.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true },
-  });
-  if (!existing) return notFound('他職種が見つかりません');
+    const existing = await prisma.externalProfessional.findFirst({
+      where: { id, org_id: ctx.orgId },
+      select: { id: true },
+    });
+    if (!existing) return notFound('他職種が見つかりません');
 
-  await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.externalProfessional.delete({ where: { id } });
-  });
+    await withOrgContext(ctx.orgId, async (tx) => {
+      await tx.externalProfessional.delete({ where: { id } });
+    });
 
-  return success({ ok: true });
-}, {
-  permission: 'canAdmin',
-  message: '他職種マスターの更新権限がありません',
-});
+    return success({ ok: true });
+  },
+  {
+    permission: 'canAdmin',
+    message: '他職種マスターの更新権限がありません',
+  },
+);

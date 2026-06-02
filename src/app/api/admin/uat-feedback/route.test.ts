@@ -1,17 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  feedbackFindManyMock,
-  feedbackCreateMock,
-} = vi.hoisted(() => ({
+const { feedbackFindManyMock, feedbackCreateMock } = vi.hoisted(() => ({
   feedbackFindManyMock: vi.fn(),
   feedbackCreateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+  withAuth: (
+    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+  ) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -39,6 +37,16 @@ function createJsonAuthRequest(body: unknown) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonAuthRequest() {
+  return createAuthRequest({
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
   });
 }
 
@@ -123,5 +131,29 @@ describe('/api/admin/uat-feedback', () => {
         resolved_at: null,
       },
     });
+  });
+
+  it('rejects non-object POST payloads before feedback creation', async () => {
+    const response = await POST(createJsonAuthRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(feedbackCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON POST payloads before feedback creation', async () => {
+    const response = await POST(createMalformedJsonAuthRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(feedbackCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { NextResponse } from 'next/server';
 import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
@@ -7,9 +8,7 @@ import { randomBytes } from 'node:crypto';
 
 const createWebhookSchema = z.object({
   url: z.string().url('有効なURLを入力してください'),
-  events: z
-    .array(z.enum(WEBHOOK_EVENT_TYPES))
-    .min(1, 'イベントを1件以上選択してください'),
+  events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).min(1, 'イベントを1件以上選択してください'),
 });
 
 function generateWebhookSecret(): string {
@@ -36,21 +35,21 @@ export const GET = withAuth(
 
     return NextResponse.json({ data: registrations });
   },
-  { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' }
+  { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' },
 );
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) {
       return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 });
     }
 
-    const parsed = createWebhookSchema.safeParse(body);
+    const parsed = createWebhookSchema.safeParse(payload);
     if (!parsed.success) {
       return NextResponse.json(
         { error: '入力値が不正です', fieldErrors: parsed.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -59,7 +58,7 @@ export const POST = withAuth(
     if (!(await isAllowedWebhookUrl(url))) {
       return NextResponse.json(
         { error: 'WebhookのURLはHTTPS公開エンドポイントである必要があります' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -87,7 +86,7 @@ export const POST = withAuth(
 
     return NextResponse.json({ data: registration }, { status: 201 });
   },
-  { permission: 'canAdmin', message: 'Webhook 登録権限がありません' }
+  { permission: 'canAdmin', message: 'Webhook 登録権限がありません' },
 );
 
 // Re-export supported event types for reference

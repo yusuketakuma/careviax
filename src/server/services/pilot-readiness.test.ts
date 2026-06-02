@@ -48,7 +48,7 @@ describe('buildPilotReadinessSnapshot', () => {
     expect(snapshot.uat_summary.blocker_count).toBe(1);
     expect(snapshot.decisions.phase2_entry).toBe('blocked');
     expect(snapshot.recommendations).toContain(
-      'UAT に critical/high が 1 件あります。Phase 2 開始前に優先修正を完了してください。'
+      'UAT に critical/high が 1 件あります。Phase 2 開始前に優先修正を完了してください。',
     );
   });
 
@@ -65,10 +65,21 @@ describe('buildPilotReadinessSnapshot', () => {
             residences: [{ facility_id: null }],
           },
         },
+        {
+          id: 'case_2',
+          status: 'active',
+          required_visit_support: [{ set_pilot_enabled: true }],
+          patient: {
+            id: 'patient_2',
+            name: '配列 設定',
+            residences: [{ facility_id: null }],
+          },
+        },
       ],
       feedback: [],
     });
 
+    expect(snapshot.case_summary.set_pilot_case_count).toBe(0);
     expect(snapshot.decisions).toMatchObject({
       facility_batching: 'phase2_candidate',
       medication_set_workflow: 'phase2_candidate',

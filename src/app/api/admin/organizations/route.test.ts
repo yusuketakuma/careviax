@@ -16,6 +16,7 @@ const {
   membershipDeleteManyMock,
   transactionMock,
   inviteCognitoUserMock,
+  deleteCognitoUserMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   organizationFindUniqueMock: vi.fn(),
@@ -31,6 +32,7 @@ const {
   membershipDeleteManyMock: vi.fn(),
   transactionMock: vi.fn(),
   inviteCognitoUserMock: vi.fn(),
+  deleteCognitoUserMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -52,6 +54,7 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/cognito-admin', () => ({
   inviteCognitoUser: inviteCognitoUserMock,
+  deleteCognitoUser: deleteCognitoUserMock,
 }));
 
 import { POST } from './route';
@@ -63,6 +66,16 @@ function createRequest(body: unknown) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/admin/organizations', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"name":',
   });
 }
 
@@ -123,6 +136,7 @@ describe('/api/admin/organizations POST', () => {
     userUpdateMock.mockResolvedValue({
       id: 'user_new',
     });
+    deleteCognitoUserMock.mockResolvedValue(undefined);
     membershipDeleteManyMock.mockResolvedValue({ count: 1 });
     userDeleteMock.mockResolvedValue({ id: 'user_new' });
     pharmacySiteDeleteMock.mockResolvedValue({ id: 'site_new' });
@@ -156,7 +170,92 @@ describe('/api/admin/organizations POST', () => {
     expect(transactionMock).not.toHaveBeenCalled();
   });
 
-  it('normalizes admin email and returns 201 after successful Cognito invite', async () => {
+  it('rejects malformed JSON create payloads before duplicate checks or tenant writes', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(deleteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object organization payloads before duplicate checks', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects whitespace-only required organization fields before duplicate checks', async () => {
+    const response = await POST(
+      createRequest({
+        name: '   ',
+        site_name: ' ',
+        site_address: '\t',
+        admin_email: 'admin@example.com',
+        admin_name: '\n',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        name: ['組織名は必須です'],
+        site_name: ['薬局名は必須です'],
+        site_address: ['薬局住所は必須です'],
+        admin_name: ['管理者氏名は必須です'],
+      },
+    });
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed optional phone fields before duplicate checks', async () => {
+    const response = await POST(
+      createRequest({
+        name: '新規法人',
+        site_name: '新宿店',
+        site_address: '東京都新宿区1-1-1',
+        admin_email: 'admin@example.com',
+        admin_name: '管理者',
+        phone: '090-ABCD-1234',
+        site_phone: '03-ABCD-5678',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        site_phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes blank optional organization fields to null without duplicate corporate lookup', async () => {
     setupCreateTransaction();
     inviteCognitoUserMock.mockResolvedValue({
       sub: 'cognito_sub_1',
@@ -166,14 +265,68 @@ describe('/api/admin/organizations POST', () => {
     const response = await POST(
       createRequest({
         name: '新規法人',
+        corporate_number: '   ',
+        address: ' ',
+        phone: '\t',
+        email: ' ',
         site_name: '新宿店',
         site_address: '東京都新宿区1-1-1',
-        admin_email: ' Admin@Example.com ',
+        site_phone: '\n',
+        admin_email: 'admin@example.com',
         admin_name: '管理者',
       }),
     );
 
     if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(organizationCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          corporate_number: null,
+          address: null,
+          phone: null,
+          email: null,
+        }),
+      }),
+    );
+    expect(pharmacySiteCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          phone: null,
+        }),
+      }),
+    );
+    expect(deleteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes required organization fields and admin email after successful Cognito invite', async () => {
+    setupCreateTransaction();
+    inviteCognitoUserMock.mockResolvedValue({
+      sub: 'cognito_sub_1',
+      username: 'admin@example.com',
+    });
+
+    const response = await POST(
+      createRequest({
+        name: ' 新規法人 ',
+        corporate_number: ' 1234567890123 ',
+        address: ' 東京都新宿区2-2-2 ',
+        phone: ' 03-1234-5678 ',
+        email: ' Info@Example.com ',
+        site_name: ' 新宿店 ',
+        site_address: ' 東京都新宿区1-1-1 ',
+        site_phone: ' +81 3 1234 5678 ',
+        admin_email: ' Admin@Example.com ',
+        admin_name: ' 管理者 ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(organizationFindUniqueMock).toHaveBeenCalledWith({
+      where: { corporate_number: '1234567890123' },
+      select: { id: true },
+    });
     expect(userFindUniqueMock).toHaveBeenCalledWith({
       where: { email: 'admin@example.com' },
       select: { id: true },
@@ -182,8 +335,29 @@ describe('/api/admin/organizations POST', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           email: 'admin@example.com',
+          name: '管理者',
         }),
-      })
+      }),
+    );
+    expect(organizationCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '新規法人',
+          corporate_number: '1234567890123',
+          address: '東京都新宿区2-2-2',
+          phone: '03-1234-5678',
+          email: 'Info@Example.com',
+        }),
+      }),
+    );
+    expect(pharmacySiteCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '新宿店',
+          address: '東京都新宿区1-1-1',
+          phone: '+81 3 1234 5678',
+        }),
+      }),
     );
     expect(inviteCognitoUserMock).toHaveBeenCalledWith({
       email: 'admin@example.com',
@@ -197,6 +371,7 @@ describe('/api/admin/organizations POST', () => {
         account_status: 'invited',
       },
     });
+    expect(deleteCognitoUserMock).not.toHaveBeenCalled();
     expect(response.status).toBe(201);
   });
 
@@ -230,6 +405,80 @@ describe('/api/admin/organizations POST', () => {
     expect(organizationDeleteMock).toHaveBeenCalledWith({
       where: { id: 'org_new' },
     });
+    expect(deleteCognitoUserMock).not.toHaveBeenCalled();
     expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes the invited Cognito user and tenant state when final user update fails', async () => {
+    setupCreateTransaction();
+    setupCleanupTransaction();
+    inviteCognitoUserMock.mockResolvedValue({
+      sub: 'cognito_sub_1',
+      username: 'admin@example.com',
+    });
+    userUpdateMock.mockRejectedValueOnce(new Error('final update failed'));
+
+    const response = await POST(
+      createRequest({
+        name: '新規法人',
+        corporate_number: '1234567890123',
+        site_name: '新宿店',
+        site_address: '東京都新宿区1-1-1',
+        admin_email: 'admin@example.com',
+        admin_name: '管理者',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'ORGANIZATION_PROVISIONING_FAILED',
+      message: '組織作成中に最終更新が失敗しました。変更をロールバックしました。',
+    });
+    expect(deleteCognitoUserMock).toHaveBeenCalledWith('admin@example.com');
+    expect(membershipDeleteManyMock).toHaveBeenCalledWith({
+      where: { user_id: 'user_new', org_id: 'org_new' },
+    });
+    expect(userDeleteMock).toHaveBeenCalledWith({
+      where: { id: 'user_new' },
+    });
+    expect(pharmacySiteDeleteMock).toHaveBeenCalledWith({
+      where: { id: 'site_new' },
+    });
+    expect(organizationDeleteMock).toHaveBeenCalledWith({
+      where: { id: 'org_new' },
+    });
+  });
+
+  it('reports a partial failure when final user update rollback fails', async () => {
+    setupCreateTransaction();
+    transactionMock.mockRejectedValueOnce(new Error('tenant cleanup failed'));
+    inviteCognitoUserMock.mockResolvedValue({
+      sub: 'cognito_sub_1',
+      username: 'admin@example.com',
+    });
+    userUpdateMock.mockRejectedValueOnce(new Error('final update failed'));
+
+    const response = await POST(
+      createRequest({
+        name: '新規法人',
+        site_name: '新宿店',
+        site_address: '東京都新宿区1-1-1',
+        admin_email: 'admin@example.com',
+        admin_name: '管理者',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
+      message: '組織作成中に最終更新が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
+    });
+    expect(deleteCognitoUserMock).toHaveBeenCalledWith('admin@example.com');
+    expect(membershipDeleteManyMock).not.toHaveBeenCalled();
+    expect(userDeleteMock).not.toHaveBeenCalled();
+    expect(pharmacySiteDeleteMock).not.toHaveBeenCalled();
+    expect(organizationDeleteMock).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { isAddressCoveredByServiceArea, type ServiceAreaRecord } from '@/lib/patient/service-area';
+import { readJsonObject } from '@/lib/db/json';
 
 type AuditMembership = {
   role: string;
@@ -77,8 +78,8 @@ export type PilotOrgAuditSnapshot = {
 };
 
 function hasSetPilotEnabled(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
+  const record = readJsonObject(value);
+  if (!record) return false;
   return record.set_pilot_enabled === true;
 }
 
@@ -98,18 +99,12 @@ function haversineDistanceKm(args: {
   const lat1 = toRadians(args.fromLat);
   const lat2 = toRadians(args.toLat);
 
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 }
 
-function findNearestSite(args: {
-  sites: AuditSite[];
-  lat: number | null;
-  lng: number | null;
-}) {
+function findNearestSite(args: { sites: AuditSite[]; lat: number | null; lng: number | null }) {
   if (args.lat == null || args.lng == null) {
     return { site: null, distanceKm: null };
   }
@@ -145,7 +140,7 @@ export function buildPilotOrgAuditSnapshot(args: {
     (membership) =>
       membership.is_active &&
       membership.user.is_active &&
-      membership.user.account_status === 'active'
+      membership.user.account_status === 'active',
   );
 
   const roleCounts = activeMemberships.reduce<Record<string, number>>((acc, membership) => {
@@ -156,7 +151,8 @@ export function buildPilotOrgAuditSnapshot(args: {
   const siteBreakdown = args.sites.map((site) => ({
     site_id: site.id,
     site_name: site.name,
-    active_member_count: activeMemberships.filter((membership) => membership.site_id === site.id).length,
+    active_member_count: activeMemberships.filter((membership) => membership.site_id === site.id)
+      .length,
     service_area_count: site.service_areas.length,
     has_geo: site.lat != null && site.lng != null,
   }));
@@ -201,8 +197,8 @@ export function buildPilotOrgAuditSnapshot(args: {
           area,
           address: residence.address,
           facilityId: residence.facility_id,
-        })
-      )
+        }),
+      ),
     );
     if (serviceAreaCovered) {
       serviceAreaCoveredCount += 1;
@@ -249,28 +245,44 @@ export function buildPilotOrgAuditSnapshot(args: {
 
   const recommendations: string[] = [];
   if (args.sites.length === 0) {
-    recommendations.push('対象 org に pharmacy site がありません。店舗構成を先に確定してください。');
+    recommendations.push(
+      '対象 org に pharmacy site がありません。店舗構成を先に確定してください。',
+    );
   }
   if (siteBreakdown.some((site) => site.service_area_count === 0)) {
-    recommendations.push('service area 未設定の店舗があります。16km 圏確認前に訪問エリアを登録してください。');
+    recommendations.push(
+      'service area 未設定の店舗があります。16km 圏確認前に訪問エリアを登録してください。',
+    );
   }
   if (reviewRequiredCount > 0) {
-    recommendations.push(`位置情報不足で ${reviewRequiredCount} 件の患者住所が要確認です。緯度経度または facility 紐付けを補完してください。`);
+    recommendations.push(
+      `位置情報不足で ${reviewRequiredCount} 件の患者住所が要確認です。緯度経度または facility 紐付けを補完してください。`,
+    );
   }
   if (uncoveredCount > 0) {
-    recommendations.push(`${uncoveredCount} 件の患者住所が既存拠点の 16km 圏外です。対象店舗か訪問体制を見直してください。`);
+    recommendations.push(
+      `${uncoveredCount} 件の患者住所が既存拠点の 16km 圏外です。対象店舗か訪問体制を見直してください。`,
+    );
   }
   if (facilityLinkedCaseCount === 0) {
-    recommendations.push('施設患者が未確認です。FacilityVisitBatch は Phase 2 候補として扱ってください。');
+    recommendations.push(
+      '施設患者が未確認です。FacilityVisitBatch は Phase 2 候補として扱ってください。',
+    );
   }
   if (setPilotCaseCount === 0) {
-    recommendations.push('セット pilot 対象ケースが未確認です。セット本格機能は pilot 対象明示後に有効化してください。');
+    recommendations.push(
+      'セット pilot 対象ケースが未確認です。セット本格機能は pilot 対象明示後に有効化してください。',
+    );
   }
   if (truncatedFlaggedPatients) {
-    recommendations.push(`要確認患者は ${flaggedPatientCount} 件あります。画面と CLI には先頭 20 件のみ表示しています。`);
+    recommendations.push(
+      `要確認患者は ${flaggedPatientCount} 件あります。画面と CLI には先頭 20 件のみ表示しています。`,
+    );
   }
   if (recommendations.length === 0) {
-    recommendations.push('対象 org の店舗構成・pilot 対象・16km 圏カバレッジに大きな欠落は見当たりません。');
+    recommendations.push(
+      '対象 org の店舗構成・pilot 対象・16km 圏カバレッジに大きな欠落は見当たりません。',
+    );
   }
 
   return {
@@ -392,10 +404,7 @@ export async function getPilotOrgAuditSnapshot(orgId: string): Promise<PilotOrgA
         site_id: area.site_id,
         name: area.name,
         area_type: area.area_type,
-        geo_data:
-          area.geo_data && typeof area.geo_data === 'object'
-            ? (area.geo_data as Record<string, unknown>)
-            : null,
+        geo_data: readJsonObject(area.geo_data),
         notes: area.notes,
       })),
     })),

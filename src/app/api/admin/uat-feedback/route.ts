@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
@@ -38,15 +39,15 @@ export const GET = withAuth(
   {
     permission: 'canAdmin',
     message: 'UAT フィードバックの閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createUatFeedbackSchema.safeParse(body);
+    const parsed = createUatFeedbackSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -79,11 +80,11 @@ export const POST = withAuth(
           updated_at: created.updated_at.toISOString(),
         },
       },
-      201
+      201,
     );
   },
   {
     permission: 'canAdmin',
     message: 'UAT フィードバックの登録権限がありません',
-  }
+  },
 );

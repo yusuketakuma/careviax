@@ -45,6 +45,7 @@ import {
   escalationTriggerTypes,
 } from '@/lib/validations/escalation-rule';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { parseEscalationThresholdHoursInput } from './escalation-threshold';
 
 type NotificationRule = {
   id: string;
@@ -461,9 +462,9 @@ export function NotificationSettingsContent() {
 
   const createEscalationRule = useCallback(async () => {
     if (!orgId) return;
-    const thresholdHours = Number.parseInt(newEscalationThresholdHours, 10);
-    if (!Number.isFinite(thresholdHours) || thresholdHours <= 0) {
-      toast.error('しきい時間は 1 以上の整数で入力してください');
+    const thresholdHours = parseEscalationThresholdHoursInput(newEscalationThresholdHours);
+    if (thresholdHours === null) {
+      toast.error('しきい時間は 1〜720 の整数で入力してください');
       return;
     }
 

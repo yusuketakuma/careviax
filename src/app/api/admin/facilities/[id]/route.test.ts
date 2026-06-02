@@ -56,6 +56,14 @@ function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
   return new NextRequest('http://localhost/api/admin/facilities/facility_1', init);
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1', {
+    method: 'PATCH',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/admin/facilities/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -110,6 +118,8 @@ describe('/api/admin/facilities/[id]', () => {
         name: 'あおば苑',
         facility_type: 'group_home',
         address: '東京都千代田区1-1-1',
+        phone: ' 03-1111-2222 ',
+        fax: '   ',
         acceptance_time_from: '09:30',
         acceptance_time_to: '15:30',
         regular_visit_weekdays: [1, 3, 5],
@@ -118,7 +128,8 @@ describe('/api/admin/facilities/[id]', () => {
           {
             name: '相談員A',
             role: '相談員',
-            phone: '03-3333-4444',
+            phone: ' 03-3333-4444 ',
+            fax: ' 03-3333-5555 ',
             is_primary: true,
           },
         ],
@@ -137,6 +148,8 @@ describe('/api/admin/facilities/[id]', () => {
         data: expect.objectContaining({
           name: 'あおば苑',
           facility_type: 'group_home',
+          phone: '03-1111-2222',
+          fax: null,
           acceptance_time_from: new Date('1970-01-01T09:30:00.000Z'),
           acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
           regular_visit_weekdays: [1, 3, 5],
@@ -146,12 +159,88 @@ describe('/api/admin/facilities/[id]', () => {
                 org_id: 'org_1',
                 name: '相談員A',
                 role: '相談員',
+                phone: '03-3333-4444',
+                fax: '03-3333-5555',
               }),
             ],
           },
         }),
       }),
     );
+  });
+
+  it('does not clear facility contact numbers when PATCH omits them', async () => {
+    const response = await PATCH(createRequest('PATCH', { notes: '更新メモ' }), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'facility_1' },
+        data: {
+          notes: '更新メモ',
+        },
+      }),
+    );
+  });
+
+  it('rejects malformed facility contact numbers before loading the facility', async () => {
+    const response = await PATCH(
+      createRequest('PATCH', {
+        phone: '03-ABCD-5678',
+        fax: 'FAX-0001',
+        contacts: [
+          {
+            name: '相談員A',
+            phone: '03-ABCD-4444',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'facility_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object update payloads before loading the facility', async () => {
+    const response = await PATCH(createRequest('PATCH', []), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the facility', async () => {
+    const response = await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUpdateMock).not.toHaveBeenCalled();
   });
 
   it('returns facility detail with patient count', async () => {

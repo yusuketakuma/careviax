@@ -85,6 +85,7 @@ const SEARCH_CANDIDATE_FIELDS = [
   'change_type',
 ] as const;
 const SEARCH_COUNT_EXACT_LIMIT = 1000;
+export const DATA_EXPLORER_MAX_OFFSET = 999_900;
 
 const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
   'Setting',
@@ -330,7 +331,7 @@ function normalizeLimit(limit: number) {
 
 function normalizeOffset(offset: number) {
   if (!Number.isFinite(offset)) return 0;
-  return Math.max(Math.trunc(offset), 0);
+  return Math.min(Math.max(Math.trunc(offset), 0), DATA_EXPLORER_MAX_OFFSET);
 }
 
 type CountRow = { table_name: string; row_count: bigint | number | string };

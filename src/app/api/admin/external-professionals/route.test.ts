@@ -15,9 +15,10 @@ const {
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>,
-  ) =>
-    handler,
+    handler: (
+      req: NextRequest & { orgId: string; userId: string; role: string },
+    ) => Promise<Response>,
+  ) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -54,6 +55,16 @@ function createJsonAuthRequest(body: unknown) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonAuthRequest() {
+  return createAuthRequest('http://localhost/api/admin/external-professionals', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
   });
 }
 
@@ -165,7 +176,8 @@ describe('/api/admin/external-professionals', () => {
         name: '山田 ケアマネ',
         facility_id: 'facility_1',
         organization_name: '居宅支援A',
-        phone: '03-1111-2222',
+        phone: ' 03-1111-2222 ',
+        fax: ' 03-1111-3333 ',
       }),
     ))!;
 
@@ -186,6 +198,43 @@ describe('/api/admin/external-professionals', () => {
         organization_name: '居宅支援A',
         department: null,
         phone: '03-1111-2222',
+        fax: '03-1111-3333',
+        email: null,
+        preferred_contact_method: null,
+        preferred_contact_time: null,
+        address: null,
+        notes: null,
+      },
+      include: {
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+  });
+
+  it('normalizes blank optional contact fields to null on create', async () => {
+    const response = (await POST(
+      createJsonAuthRequest({
+        profession_type: 'care_manager',
+        name: '山田 ケアマネ',
+        phone: '   ',
+        fax: '\t',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(externalProfessionalCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        profession_type: 'care_manager',
+        name: '山田 ケアマネ',
+        facility_id: null,
+        organization_name: null,
+        department: null,
+        phone: null,
         email: null,
         fax: null,
         preferred_contact_method: null,
@@ -201,5 +250,49 @@ describe('/api/admin/external-professionals', () => {
         },
       },
     });
+  });
+
+  it('rejects malformed contact numbers before facility validation', async () => {
+    const response = (await POST(
+      createJsonAuthRequest({
+        profession_type: 'care_manager',
+        name: '山田 ケアマネ',
+        phone: '03-ABCD-2222',
+        fax: 'FAX-3333',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object create payloads before facility validation', async () => {
+    const response = (await POST(createJsonAuthRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before facility validation', async () => {
+    const response = (await POST(createMalformedJsonAuthRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalCreateMock).not.toHaveBeenCalled();
   });
 });

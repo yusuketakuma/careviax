@@ -17,10 +17,8 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (
-      req: NextRequest,
-      routeContext: { params: Promise<{ id: string; unitId: string }> },
-    ) => handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+    return (req: NextRequest, routeContext: { params: Promise<{ id: string; unitId: string }> }) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
   },
 }));
 
@@ -49,6 +47,14 @@ function createRequest(method: 'DELETE' | 'PATCH', body?: unknown) {
     init.body = JSON.stringify(body);
   }
   return new NextRequest('http://localhost/api/admin/facilities/facility_1/units/unit_1', init);
+}
+
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/units/unit_1', {
+    method: 'PATCH',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 describe('/api/admin/facilities/[id]/units/[unitId]', () => {
@@ -105,6 +111,31 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
         },
       },
     });
+  });
+
+  it('rejects non-object update payloads before loading the unit', async () => {
+    const response = (await PATCH(createRequest('PATCH', []), {
+      params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(facilityUnitFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUnitUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the unit', async () => {
+    const response = (await PATCH(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(facilityUnitFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUnitUpdateMock).not.toHaveBeenCalled();
   });
 
   it('blocks deleting a unit that still has residents', async () => {

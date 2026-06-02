@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { recordRoutePerformance, resetPerformanceMetrics } from '@/lib/utils/performance';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-} = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
 }));
@@ -24,8 +21,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
-function createRequest(headers?: Record<string, string>) {
-  const url = 'http://localhost/api/admin/performance-metrics?top=2';
+function createRequest(search = '?top=2', headers?: Record<string, string>) {
+  const url = `http://localhost/api/admin/performance-metrics${search}`;
   return new NextRequest(url, {
     method: 'GET',
     headers,
@@ -61,7 +58,7 @@ describe('/api/admin/performance-metrics GET', () => {
       durationMs: 510,
     });
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest('?top=%202%20', { 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -93,4 +90,30 @@ describe('/api/admin/performance-metrics GET', () => {
       },
     });
   });
+
+  it.each(['', '1e1', '2.0', '2abc', '0', '21'])(
+    'rejects malformed top=%s before returning a snapshot',
+    async (top) => {
+      authMock.mockResolvedValue({ user: { id: 'admin_1' } });
+      membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+      recordRoutePerformance({
+        route: '/api/visit-schedules',
+        method: 'GET',
+        status: 200,
+        durationMs: 220,
+      });
+
+      const response = await GET(
+        createRequest(`?top=${encodeURIComponent(top)}`, { 'x-org-id': 'org_1' }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+      });
+    },
+  );
 });

@@ -1,27 +1,69 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, conflict, error, forbidden } from '@/lib/api/response';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
-import { inviteCognitoUser } from '@/server/services/cognito-admin';
+import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
+import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
+
+function trimStringOrUndefined(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const optionalTrimmedStringSchema = z.preprocess(
+  trimStringOrUndefined,
+  z.string().min(1).optional(),
+);
+
+const optionalOrganizationEmailSchema = z.preprocess(
+  trimStringOrUndefined,
+  z.string().email('有効なメールアドレスを入力してください').optional(),
+);
 
 const createOrganizationSchema = z.object({
   // Organization
-  name: z.string().min(1, '組織名は必須です'),
-  corporate_number: z.string().optional(),
-  address: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().trim().email('有効なメールアドレスを入力してください').optional(),
+  name: z.string().trim().min(1, '組織名は必須です'),
+  corporate_number: optionalTrimmedStringSchema,
+  address: optionalTrimmedStringSchema,
+  phone: optionalPhoneNumberSchema,
+  email: optionalOrganizationEmailSchema,
 
   // Initial PharmacySite
-  site_name: z.string().min(1, '薬局名は必須です'),
-  site_address: z.string().min(1, '薬局住所は必須です'),
-  site_phone: z.string().optional(),
+  site_name: z.string().trim().min(1, '薬局名は必須です'),
+  site_address: z.string().trim().min(1, '薬局住所は必須です'),
+  site_phone: optionalPhoneNumberSchema,
 
   // Admin user invite
   admin_email: z.string().trim().email('管理者メールアドレスが不正です'),
-  admin_name: z.string().min(1, '管理者氏名は必須です'),
+  admin_name: z.string().trim().min(1, '管理者氏名は必須です'),
 });
+
+type ProvisionedTenantState = {
+  org: { id: string };
+  site: { id: string };
+  user: { id: string };
+};
+
+async function cleanupProvisionedTenant(records: ProvisionedTenantState) {
+  await prisma.$transaction(async (tx) => {
+    await tx.membership.deleteMany({
+      where: { user_id: records.user.id, org_id: records.org.id },
+    });
+    await tx.user.delete({
+      where: { id: records.user.id },
+    });
+    await tx.pharmacySite.delete({
+      where: { id: records.site.id },
+    });
+    await tx.organization.delete({
+      where: { id: records.org.id },
+    });
+  });
+}
 
 /**
  * POST /api/admin/organizations
@@ -41,10 +83,10 @@ export async function POST(req: NextRequest) {
     return forbidden('組織プロビジョニングは owner のみ実行できます');
   }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createOrganizationSchema.safeParse(body);
+  const parsed = createOrganizationSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -140,33 +182,23 @@ export async function POST(req: NextRequest) {
     const message = cause instanceof Error ? cause.message : String(cause);
     let cleanupFailed = false;
     try {
-      await prisma.$transaction(async (tx) => {
-        await tx.membership.deleteMany({
-          where: { user_id: result.user.id, org_id: result.org.id },
-        });
-        await tx.user.delete({
-          where: { id: result.user.id },
-        });
-        await tx.pharmacySite.delete({
-          where: { id: result.site.id },
-        });
-        await tx.organization.delete({
-          where: { id: result.org.id },
-        });
-      });
+      await cleanupProvisionedTenant(result);
     } catch (cleanupError) {
       cleanupFailed = true;
       console.error(
         `[organizations] Cleanup failed after Cognito error for org ${result.org.id}:`,
-        cleanupError
+        cleanupError,
       );
     }
-    console.error(`[organizations] Cognito user creation failed for user ${result.user.id}:`, cause);
+    console.error(
+      `[organizations] Cognito user creation failed for user ${result.user.id}:`,
+      cause,
+    );
     if (cleanupFailed) {
       return error(
         'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
         '組織作成中に外部連携が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
-        500
+        500,
       );
     }
     if (message.includes('UsernameExistsException')) {
@@ -176,14 +208,49 @@ export async function POST(req: NextRequest) {
   }
 
   // Step 3: Update user record with Cognito sub and set status to invited
-  await prisma.user.update({
-    where: { id: result.user.id },
-    data: {
-      cognito_sub: cognitoSub,
-      cognito_username: cognitoUsername,
-      account_status: 'invited',
-    },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: result.user.id },
+      data: {
+        cognito_sub: cognitoSub,
+        cognito_username: cognitoUsername,
+        account_status: 'invited',
+      },
+    });
+  } catch (cause) {
+    let cleanupFailed = false;
+    try {
+      await deleteCognitoUser(cognitoUsername);
+    } catch (cleanupError) {
+      cleanupFailed = true;
+      console.error(
+        `[organizations] Cognito cleanup failed after final update error for user ${result.user.id}:`,
+        cleanupError,
+      );
+    }
+    try {
+      await cleanupProvisionedTenant(result);
+    } catch (cleanupError) {
+      cleanupFailed = true;
+      console.error(
+        `[organizations] Tenant cleanup failed after final update error for org ${result.org.id}:`,
+        cleanupError,
+      );
+    }
+    console.error(`[organizations] Final user update failed for user ${result.user.id}:`, cause);
+    if (cleanupFailed) {
+      return error(
+        'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
+        '組織作成中に最終更新が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
+        500,
+      );
+    }
+    return error(
+      'ORGANIZATION_PROVISIONING_FAILED',
+      '組織作成中に最終更新が失敗しました。変更をロールバックしました。',
+      500,
+    );
+  }
 
   return success(
     {
@@ -192,6 +259,6 @@ export async function POST(req: NextRequest) {
       admin_user: result.user,
       membership: result.membership,
     },
-    201
+    201,
   );
 }

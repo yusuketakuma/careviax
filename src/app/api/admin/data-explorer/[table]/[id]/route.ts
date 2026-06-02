@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { updateDataExplorerRow } from '@/server/services/data-explorer';
 
@@ -8,16 +9,12 @@ const patchSchema = z.object({
 });
 
 export const PATCH = withAuthContext<{ table: string; id: string }>(
-  async (
-    req,
-    ctx,
-    routeContext: AuthRouteContext<{ table: string; id: string }>
-  ) => {
+  async (req, ctx, routeContext: AuthRouteContext<{ table: string; id: string }>) => {
     const { table, id } = await routeContext.params;
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = patchSchema.safeParse(body);
+    const parsed = patchSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -43,5 +40,5 @@ export const PATCH = withAuthContext<{ table: string; id: string }>(
   {
     permission: 'canAdmin',
     message: 'データ探索画面の利用権限がありません',
-  }
+  },
 );

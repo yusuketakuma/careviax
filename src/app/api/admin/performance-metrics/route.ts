@@ -1,18 +1,30 @@
+import { z } from 'zod';
+
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { success } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
+import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { getPerformanceSnapshot } from '@/lib/utils/performance';
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const topParam = Number(searchParams.get('top') ?? '8');
-  const topRoutes = Number.isFinite(topParam) ? Math.min(Math.max(Math.trunc(topParam), 1), 20) : 8;
-
-  return success({
-    data: getPerformanceSnapshot({
-      topRoutes,
-    }),
-  });
-}, {
-  permission: 'canAdmin',
-  message: 'パフォーマンス指標の閲覧権限がありません',
+const performanceMetricsQuerySchema = z.object({
+  top: boundedIntegerSearchParam('top', 1, 20, 8),
 });
+
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const { searchParams } = new URL(req.url);
+    const parsed = parseSearchParams(performanceMetricsQuerySchema, searchParams);
+    if (!parsed.ok) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    return success({
+      data: getPerformanceSnapshot({
+        topRoutes: parsed.data.top,
+      }),
+    });
+  },
+  {
+    permission: 'canAdmin',
+    message: 'パフォーマンス指標の閲覧権限がありません',
+  },
+);

@@ -1,24 +1,13 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { z } from 'zod';
+import { updatePharmacistCredentialSchema } from '@/lib/validations/pharmacist-credential';
 
-const updatePharmacistCredentialSchema = z.object({
-  user_id: z.string().min(1, '対象スタッフは必須です').optional(),
-  certification_type: z.string().trim().min(1, '認定種別は必須です').optional(),
-  certification_number: z.string().trim().nullable().optional(),
-  issued_date: z.string().date().nullable().optional(),
-  expiry_date: z.string().date().nullable().optional(),
-  tenure_years: z.coerce.number().min(0).max(80).nullable().optional(),
-  weekly_work_hours: z.coerce.number().min(0).max(168).nullable().optional(),
-});
-
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬剤師認定情報の更新権限がありません',
@@ -27,16 +16,19 @@ export async function PATCH(
   const { ctx } = authResult;
 
   const { id } = await params;
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const credentialId = normalizeRequiredRouteParam(id);
+  if (!credentialId) return validationError('薬剤師認定情報IDが不正です');
 
-  const parsed = updatePharmacistCredentialSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updatePharmacistCredentialSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const existing = await prisma.pharmacistCredential.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: credentialId, org_id: ctx.orgId },
     include: {
       user: {
         select: {
@@ -56,14 +48,14 @@ export async function PATCH(
   }
 
   const updated = await prisma.pharmacistCredential.update({
-    where: { id },
+    where: { id: credentialId },
     data: {
       ...(parsed.data.user_id !== undefined ? { user_id: parsed.data.user_id } : {}),
       ...(parsed.data.certification_type !== undefined
         ? { certification_type: parsed.data.certification_type }
         : {}),
       ...(parsed.data.certification_number !== undefined
-        ? { certification_number: parsed.data.certification_number || null }
+        ? { certification_number: parsed.data.certification_number ?? null }
         : {}),
       ...(parsed.data.issued_date !== undefined
         ? { issued_date: parsed.data.issued_date ? new Date(parsed.data.issued_date) : null }
@@ -102,10 +94,7 @@ export async function PATCH(
   });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '薬剤師認定情報の更新権限がありません',
@@ -114,14 +103,17 @@ export async function DELETE(
   const { ctx } = authResult;
 
   const { id } = await params;
+  const credentialId = normalizeRequiredRouteParam(id);
+  if (!credentialId) return validationError('薬剤師認定情報IDが不正です');
+
   const existing = await prisma.pharmacistCredential.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: { id: credentialId, org_id: ctx.orgId },
     select: { id: true },
   });
   if (!existing) return notFound('薬剤師認定情報が見つかりません');
 
   await prisma.pharmacistCredential.delete({
-    where: { id },
+    where: { id: credentialId },
   });
 
   return success({ message: '薬剤師認定情報を削除しました' });

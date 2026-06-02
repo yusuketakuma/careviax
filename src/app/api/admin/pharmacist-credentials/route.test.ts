@@ -67,6 +67,17 @@ function createJsonRequest(body: unknown, headers?: Record<string, string>) {
   });
 }
 
+function createMalformedJsonRequest(headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/admin/pharmacist-credentials', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+    body: '{bad json',
+  });
+}
+
 describe('/api/admin/pharmacist-credentials GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,7 +104,7 @@ describe('/api/admin/pharmacist-credentials GET', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -157,6 +168,40 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     });
   });
 
+  it('rejects non-object create payloads before pharmacist reference validation', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createJsonRequest([], { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistCredentialCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before pharmacist reference validation', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistCredentialCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('creates a pharmacist credential row for admins', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
@@ -164,13 +209,13 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     const response = await POST(
       createJsonRequest(
         {
-          user_id: 'user_2',
-          certification_type: '研修認定',
-          certification_number: 'N-100',
-          issued_date: '2025-04-01',
-          expiry_date: '2027-03-31',
-          tenure_years: 3,
-          weekly_work_hours: 28,
+          user_id: ' user_2 ',
+          certification_type: ' 研修認定 ',
+          certification_number: ' N-100 ',
+          issued_date: ' 2025-04-01 ',
+          expiry_date: ' 2027-03-31 ',
+          tenure_years: ' 3 ',
+          weekly_work_hours: ' 28 ',
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -186,6 +231,11 @@ describe('/api/admin/pharmacist-credentials GET', () => {
         org_id: 'org_1',
         user_id: 'user_2',
         certification_type: '研修認定',
+        certification_number: 'N-100',
+        issued_date: new Date('2025-04-01'),
+        expiry_date: new Date('2027-03-31'),
+        tenure_years: 3,
+        weekly_work_hours: 28,
       }),
       include: {
         user: {
@@ -196,5 +246,98 @@ describe('/api/admin/pharmacist-credentials GET', () => {
         },
       },
     });
+  });
+
+  it('normalizes blank optional create fields to null before insert', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(
+      createJsonRequest(
+        {
+          user_id: 'user_2',
+          certification_type: '研修認定',
+          certification_number: ' ',
+          issued_date: ' ',
+          expiry_date: '',
+          tenure_years: ' ',
+          weekly_work_hours: '',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(pharmacistCredentialCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        certification_number: null,
+        issued_date: null,
+        expiry_date: null,
+        tenure_years: null,
+        weekly_work_hours: null,
+      }),
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  });
+
+  it('rejects non-plain numeric create fields before pharmacist reference validation', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(
+      createJsonRequest(
+        {
+          user_id: 'user_2',
+          certification_type: '研修認定',
+          tenure_years: '1e1',
+          weekly_work_hours: '32hours',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistCredentialCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed credential dates before pharmacist reference validation', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(
+      createJsonRequest(
+        {
+          user_id: 'user_2',
+          certification_type: '研修認定',
+          issued_date: '2027-03-31',
+          expiry_date: '2025-04-01',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistCredentialCreateMock).not.toHaveBeenCalled();
   });
 });

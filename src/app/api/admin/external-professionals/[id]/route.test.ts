@@ -55,6 +55,14 @@ function createPatchRequest(body: unknown, id = 'external_1') {
   } satisfies NextRequestInit);
 }
 
+function createMalformedJsonPatchRequest(id = 'external_1') {
+  return new NextRequest(`http://localhost/api/admin/external-professionals/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  } satisfies NextRequestInit);
+}
+
 function createDeleteRequest(id = 'external_1') {
   return new NextRequest(`http://localhost/api/admin/external-professionals/${id}`, {
     method: 'DELETE',
@@ -145,7 +153,8 @@ describe('/api/admin/external-professionals/[id]', () => {
         name: '訪問 看護',
         facility_id: 'facility_1',
         organization_name: 'あおば訪看',
-        phone: '03-1111-2222',
+        phone: ' 03-1111-2222 ',
+        fax: '   ',
       }),
       {
         params: Promise.resolve({ id: 'external_1' }),
@@ -168,6 +177,7 @@ describe('/api/admin/external-professionals/[id]', () => {
         facility_id: 'facility_1',
         organization_name: 'あおば訪看',
         phone: '03-1111-2222',
+        fax: null,
       }),
       include: {
         facility: {
@@ -177,6 +187,86 @@ describe('/api/admin/external-professionals/[id]', () => {
         },
       },
     });
+  });
+
+  it('does not clear contact numbers when PATCH omits them', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        notes: '連携先メモ',
+      }),
+      {
+        params: Promise.resolve({ id: 'external_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(externalProfessionalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'external_1' },
+      data: expect.objectContaining({
+        notes: '連携先メモ',
+      }),
+      include: {
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+    expect(externalProfessionalUpdateMock.mock.calls[0][0].data).not.toHaveProperty('phone');
+    expect(externalProfessionalUpdateMock.mock.calls[0][0].data).not.toHaveProperty('fax');
+  });
+
+  it('rejects malformed contact numbers before loading the external professional', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        phone: '03-ABCD-2222',
+        fax: 'FAX-3333',
+      }),
+      {
+        params: Promise.resolve({ id: 'external_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        phone: ['電話番号形式が不正です'],
+        fax: ['FAX番号形式が不正です'],
+      },
+    });
+    expect(externalProfessionalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object update payloads before loading the external professional', async () => {
+    const response = (await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(externalProfessionalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the external professional', async () => {
+    const response = (await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(externalProfessionalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
+    expect(externalProfessionalUpdateMock).not.toHaveBeenCalled();
   });
 
   it('deletes an external professional row', async () => {

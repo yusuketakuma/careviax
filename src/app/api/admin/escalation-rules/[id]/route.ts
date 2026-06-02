@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -10,10 +12,7 @@ function serializeCondition(value: Prisma.JsonValue) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: 'エスカレーションルールの更新権限がありません',
@@ -21,11 +20,14 @@ export async function PATCH(
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { id } = await params;
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('エスカレーションルールIDが不正です');
 
-  const parsed = updateEscalationRuleSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateEscalationRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -62,10 +64,7 @@ export async function PATCH(
   });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: 'エスカレーションルールの更新権限がありません',
@@ -73,7 +72,10 @@ export async function DELETE(
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('エスカレーションルールIDが不正です');
+
   const existing = await prisma.escalationRule.findFirst({
     where: { id, org_id: ctx.orgId },
   });

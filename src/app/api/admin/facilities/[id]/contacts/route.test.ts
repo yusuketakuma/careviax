@@ -52,6 +52,14 @@ function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/admin/facilities/facility_1/contacts', init);
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/contacts', {
+    method: 'PUT',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/admin/facilities/[id]/contacts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,18 +100,22 @@ describe('/api/admin/facilities/[id]/contacts', () => {
   });
 
   it('replaces facility contacts', async () => {
-    const response = await PUT(createRequest({
-      contacts: [
-        {
-          name: '相談員A',
-          role: '相談員',
-          phone: '03-3333-4444',
-          is_primary: true,
-        },
-      ],
-    }), {
-      params: Promise.resolve({ id: 'facility_1' }),
-    });
+    const response = await PUT(
+      createRequest({
+        contacts: [
+          {
+            name: '相談員A',
+            role: '相談員',
+            phone: ' 03-3333-4444 ',
+            fax: ' 03-3333-5555 ',
+            is_primary: true,
+          },
+        ],
+      }),
+      {
+        params: Promise.resolve({ id: 'facility_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -118,12 +130,100 @@ describe('/api/admin/facilities/[id]/contacts', () => {
           name: '相談員A',
           role: '相談員',
           phone: '03-3333-4444',
+          fax: '03-3333-5555',
           email: null,
-          fax: null,
           is_primary: true,
           notes: null,
         },
       ],
     });
+  });
+
+  it('normalizes blank optional contact numbers to null when replacing contacts', async () => {
+    const response = await PUT(
+      createRequest({
+        contacts: [
+          {
+            name: '相談員A',
+            phone: '   ',
+            fax: '\t',
+          },
+        ],
+      }),
+      {
+        params: Promise.resolve({ id: 'facility_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(facilityContactCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        {
+          org_id: 'org_1',
+          facility_id: 'facility_1',
+          name: '相談員A',
+          role: null,
+          phone: null,
+          email: null,
+          fax: null,
+          is_primary: false,
+          notes: null,
+        },
+      ],
+    });
+  });
+
+  it('rejects malformed contact numbers before replacing contacts', async () => {
+    const response = await PUT(
+      createRequest({
+        contacts: [
+          {
+            name: '相談員A',
+            phone: '03-ABCD-4444',
+            fax: 'FAX-5555',
+          },
+        ],
+      }),
+      {
+        params: Promise.resolve({ id: 'facility_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityContactCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object replacement payloads before loading the facility', async () => {
+    const response = await PUT(createRequest([]), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityContactCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON replacement payloads before loading the facility', async () => {
+    const response = await PUT(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityContactDeleteManyMock).not.toHaveBeenCalled();
+    expect(facilityContactCreateManyMock).not.toHaveBeenCalled();
   });
 });

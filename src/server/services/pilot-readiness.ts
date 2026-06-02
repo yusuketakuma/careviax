@@ -1,4 +1,5 @@
 import { isUnresolvedUatBlocker } from '@/lib/uat-feedback';
+import { readJsonObject } from '@/lib/db/json';
 
 type PilotReadinessCase = {
   id: string;
@@ -58,8 +59,8 @@ export type PilotReadinessSnapshot = {
 };
 
 function hasSetPilotEnabled(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
+  const record = readJsonObject(value);
+  if (!record) return false;
   return record.set_pilot_enabled === true;
 }
 
@@ -100,22 +101,22 @@ export function buildPilotReadinessSnapshot(args: {
   const recommendations: string[] = [];
   if (facilityLinkedCaseCount === 0) {
     recommendations.push(
-      '施設患者が未確認です。FacilityVisitBatch と自動ルート最適化は Phase 2 移行候補として扱ってください。'
+      '施設患者が未確認です。FacilityVisitBatch と自動ルート最適化は Phase 2 移行候補として扱ってください。',
     );
   }
   if (setPilotCaseCount === 0) {
     recommendations.push(
-      'セット pilot 対象ケースが未確認です。セット本格機能は pilot 対象明示後に有効化してください。'
+      'セット pilot 対象ケースが未確認です。セット本格機能は pilot 対象明示後に有効化してください。',
     );
   }
   if (blockerCount > 0) {
     recommendations.push(
-      `UAT に critical/high が ${blockerCount} 件あります。Phase 2 開始前に優先修正を完了してください。`
+      `UAT に critical/high が ${blockerCount} 件あります。Phase 2 開始前に優先修正を完了してください。`,
     );
   }
   if (setPilotWithoutFacilityCount > 0) {
     recommendations.push(
-      `セット pilot 対象のうち ${setPilotWithoutFacilityCount} 件は施設紐付けがありません。運用導線と患者属性を確認してください。`
+      `セット pilot 対象のうち ${setPilotWithoutFacilityCount} 件は施設紐付けがありません。運用導線と患者属性を確認してください。`,
     );
   }
   if (recommendations.length === 0) {

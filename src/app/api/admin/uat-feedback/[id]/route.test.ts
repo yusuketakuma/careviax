@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  feedbackFindFirstMock,
-  feedbackUpdateMock,
-  userFindFirstMock,
-  requireAuthContextMock,
-} = vi.hoisted(() => ({
-  feedbackFindFirstMock: vi.fn(),
-  feedbackUpdateMock: vi.fn(),
-  userFindFirstMock: vi.fn(),
-  requireAuthContextMock: vi.fn(),
-}));
+const { feedbackFindFirstMock, feedbackUpdateMock, userFindFirstMock, requireAuthContextMock } =
+  vi.hoisted(() => ({
+    feedbackFindFirstMock: vi.fn(),
+    feedbackUpdateMock: vi.fn(),
+    userFindFirstMock: vi.fn(),
+    requireAuthContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -38,6 +34,14 @@ function createPatchRequest(body: unknown, feedbackId = 'feedback_1') {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createMalformedJsonPatchRequest(feedbackId = 'feedback_1') {
+  return new NextRequest(`http://localhost/api/admin/uat-feedback/${feedbackId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
   } satisfies NextRequestInit);
 }
 
@@ -84,11 +88,15 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
         linked_work_item: 'CVX-102',
         due_date: '2026-04-02T00:00:00.000Z',
       }),
-      { params: Promise.resolve({ id: 'feedback_1' }) }
+      { params: Promise.resolve({ id: '  feedback_1  ' }) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(feedbackFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'feedback_1', org_id: 'org_1' },
+      select: { id: true, status: true, resolved_at: true },
+    });
     expect(feedbackUpdateMock).toHaveBeenCalledWith({
       where: { id: 'feedback_1' },
       data: expect.objectContaining({
@@ -101,6 +109,54 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
     });
   });
 
+  it('rejects blank feedback ids before parsing PATCH payloads', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'UAT フィードバックIDが不正です',
+    });
+    expect(feedbackFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(feedbackUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object PATCH payloads before feedback lookup or update', async () => {
+    const response = await PATCH(createPatchRequest([]), {
+      params: Promise.resolve({ id: 'feedback_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(feedbackFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(feedbackUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON PATCH payloads before feedback lookup or update', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'feedback_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(feedbackFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(feedbackUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects an owner outside the org', async () => {
     userFindFirstMock.mockResolvedValue(null);
 
@@ -108,7 +164,7 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
       createPatchRequest({
         owner_user_id: 'user_x',
       }),
-      { params: Promise.resolve({ id: 'feedback_1' }) }
+      { params: Promise.resolve({ id: 'feedback_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -128,7 +184,7 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
         status: 'resolved',
         linked_work_item: 'CVX-103',
       }),
-      { params: Promise.resolve({ id: 'feedback_1' }) }
+      { params: Promise.resolve({ id: 'feedback_1' }) },
     );
 
     expect(feedbackUpdateMock).toHaveBeenCalledWith({

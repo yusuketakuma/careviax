@@ -169,15 +169,54 @@ describe('/api/admin/staff-metrics GET', () => {
     });
   });
 
-  it('rejects an invalid month query', async () => {
+  it('trims a valid month query before building the date range', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/admin/staff-metrics?month=2026/03'),
+      createRequest('http://localhost/api/admin/staff-metrics?month=%202026-03%20'),
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          visit_date: {
+            gte: new Date(2026, 2, 1),
+            lt: new Date(2026, 3, 1),
+          },
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
+      data: {
+        month: '2026-03',
+      },
     });
+  });
+
+  it.each(['', '2026/03', '2026-00', '2026-13', '0001-03'])(
+    'rejects invalid month query "%s" before loading staff data',
+    async (month) => {
+      const response = await GET(
+        createRequest(`http://localhost/api/admin/staff-metrics?month=${month}`),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(careReportFindManyMock).not.toHaveBeenCalled();
+      expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('defaults to the current month when the month query is omitted', async () => {
+    const response = await GET(createRequest('http://localhost/api/admin/staff-metrics'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipFindManyMock).toHaveBeenCalledOnce();
   });
 });

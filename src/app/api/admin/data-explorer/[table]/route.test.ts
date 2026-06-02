@@ -11,6 +11,7 @@ vi.mock('@/lib/auth/context', () => ({
 }));
 
 vi.mock('@/server/services/data-explorer', () => ({
+  DATA_EXPLORER_MAX_OFFSET: 999_900,
   listDataExplorerRows: listDataExplorerRowsMock,
 }));
 
@@ -47,6 +48,31 @@ describe('/api/admin/data-explorer/[table] GET', () => {
       limit: 10,
       search: '花子',
     });
+  });
+
+  it('passes through validated offset parameters', async () => {
+    const response = await GET(createRequest('?limit=10&offset=20'), {
+      params: Promise.resolve({ table: 'Patient' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(listDataExplorerRowsMock).toHaveBeenCalledWith('org_1', 'Patient', {
+      limit: 10,
+      offset: 20,
+      search: undefined,
+    });
+  });
+
+  it('rejects malformed and oversized pagination parameters before querying rows', async () => {
+    const response = await GET(createRequest('?limit=1e2&offset=999999999'), {
+      params: Promise.resolve({ table: 'Patient' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
   });
 
   it('returns validation error for unknown tables', async () => {

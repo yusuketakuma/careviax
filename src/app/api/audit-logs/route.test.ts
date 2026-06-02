@@ -26,10 +26,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
-function createRequest(
-  headers?: Record<string, string>,
-  search = 'limit=10'
-) {
+function createRequest(headers?: Record<string, string>, search = 'limit=10') {
   return new NextRequest(`http://localhost/api/audit-logs?${search}`, {
     headers,
   });
@@ -54,9 +51,7 @@ describe('/api/audit-logs GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    const response = (await GET(
-      createRequest({ 'x-org-id': 'org_1' })
-    )) as Response;
+    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
@@ -68,13 +63,59 @@ describe('/api/audit-logs GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = (await GET(
-      createRequest({ 'x-org-id': 'org_1' })
-    )) as Response;
+    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
     expect(countMock).toHaveBeenCalledOnce();
+  });
+
+  it('defaults malformed pagination params before querying audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'page=2abc&limit=10abc'),
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      pagination: {
+        page: 1,
+        limit: 20,
+      },
+    });
+  });
+
+  it('caps oversized pagination params before querying audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'page=999999999&limit=500'),
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 999_900,
+        take: 100,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      pagination: {
+        page: 10000,
+        limit: 100,
+      },
+    });
   });
 
   it('supports UI filter parameter names and inclusive date ranges', async () => {
@@ -84,8 +125,8 @@ describe('/api/audit-logs GET', () => {
     const response = (await GET(
       createRequest(
         { 'x-org-id': 'org_1' },
-        'actor=user_99&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31'
-      )
+        'actor=user_99&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31',
+      ),
     )) as Response;
 
     expect(response.status).toBe(200);
@@ -101,7 +142,7 @@ describe('/api/audit-logs GET', () => {
             lte: new Date('2026-03-31T23:59:59.999Z'),
           },
         }),
-      })
+      }),
     );
   });
 });

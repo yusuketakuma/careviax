@@ -50,6 +50,14 @@ function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/admin/facilities/facility_1/units', init);
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/units', {
+    method: 'POST',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/admin/facilities/[id]/units', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -119,5 +127,30 @@ describe('/api/admin/facilities/[id]/units', () => {
         unit_type: 'wing',
       }),
     });
+  });
+
+  it('rejects non-object create payloads before loading the facility', async () => {
+    const response = (await POST(createRequest([]), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUnitCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before loading the facility', async () => {
+    const response = (await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(facilityUnitCreateMock).not.toHaveBeenCalled();
   });
 });
