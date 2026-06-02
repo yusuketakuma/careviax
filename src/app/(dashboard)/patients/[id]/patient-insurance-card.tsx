@@ -7,7 +7,8 @@ import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -271,14 +272,14 @@ function InsuranceEditor({
         <span>この保険を有効として扱う</span>
       </label>
 
-      <div className="flex justify-end gap-2">
+      <ActionRail>
         <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
           キャンセル
         </Button>
         <Button type="button" onClick={onSave} disabled={saving}>
           {saving ? '保存中...' : '保存'}
         </Button>
-      </div>
+      </ActionRail>
     </div>
   );
 }
@@ -311,7 +312,7 @@ function InsuranceBlock({
   return (
     <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-foreground">{title}</p>
+        <h3 className="font-heading text-sm leading-snug font-medium text-foreground">{title}</h3>
         <Badge variant="outline">{items.length}件</Badge>
       </div>
       {items.length === 0 ? (
@@ -334,7 +335,7 @@ function InsuranceBlock({
                     {!item.is_active ? <Badge variant="outline">無効</Badge> : null}
                   </div>
                   {isEditing ? null : (
-                    <div className="flex flex-wrap gap-2">
+                    <ActionRail>
                       <Button
                         type="button"
                         size="sm"
@@ -362,7 +363,7 @@ function InsuranceBlock({
                           削除
                         </Button>
                       )}
-                    </div>
+                    </ActionRail>
                   )}
                 </div>
                 <dl className="space-y-2 text-sm">
@@ -536,7 +537,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
     <Card>
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-base">保険詳細</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">保険詳細</h2>
           <Button
             type="button"
             size="sm"
