@@ -10264,6 +10264,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Visit record browser proof remains pending because dashboard routes need the local e2e DB. Remaining code-level surfaces include deeper workflow raw sections, schedule-proposal cards, and deeper drug-master safety/detail sections
 - next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
 
+### 20260602-160318
+
+- current task: remove unused admin performance content component
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/admin/performance/page.tsx`, `src/app/(dashboard)/admin/performance/performance-content.tsx`, `Plans.md`, `rg -n "PerformanceContent|performance-content" .`
+- files changed: `src/app/(dashboard)/admin/performance/performance-content.tsx`, `Plans.md`, `.codex/ralph-state.md`
+- bugs found: no runtime bug was targeted. `performance-content.tsx` was no longer imported by code; the only remaining reference was an old completed-plan note, while `/admin/performance/page.tsx` contains the active page implementation
+- security risks found: no admin performance API, query, auth, or metrics behavior changed
+- performance issues found: no runtime performance path changed. Removing the dead client component reduces maintenance surface and prevents future edits from targeting an unused file
+- validation commands: `rg -n "PerformanceContent|performance-content" .`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/performance/page.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/performance/performance-content.tsx' Plans.md`
+- validation results: after updating the stale `Plans.md` reference, `rg` found no remaining `PerformanceContent` or `performance-content` references; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include deeper workflow raw sections, schedule-proposal card cleanup, deeper drug-master safety/detail sections, and DB-backed browser proof
+- next action: run post-append whitespace/status checks, commit this cleanup slice, then continue with the next highest-value dense UI/refactor surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

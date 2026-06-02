@@ -1482,7 +1482,7 @@ flowchart LR
 - [x] 薬剤師別 KPI ダッシュボード `cc:完了` (2026-03-31)
   - 月間訪問数 / 担当患者数 / 平均訪問時間 / 報告書提出率
   - データソース: `VisitRecord` + `CareReport` + `PharmacistShift` を集計
-  - 既存基盤: `/admin/performance` の performance-content.tsx を拡張
+  - 既存基盤: `/admin/performance` の `page.tsx` を拡張
 - [x] ワークロードバランス表示 `cc:完了` (2026-03-31)
   - 薬剤師間の訪問数/移動距離の偏り可視化
   - 既存 `visit-schedule-planner.ts` の `workload_penalty` スコアを流用
