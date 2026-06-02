@@ -84,7 +84,7 @@ describe('VisitRoutePreviewPanel', () => {
         onMoveItem={handleMove}
         actionLabel="最適順を反映"
         onAction={handleApply}
-      />
+      />,
     );
 
     expect(screen.getByText('薬剤師A / 2026-04-09')).toBeTruthy();
@@ -100,5 +100,25 @@ describe('VisitRoutePreviewPanel', () => {
     expect(handleMove).toHaveBeenCalledWith('schedule_1', 'down');
     fireEvent.click(screen.getByRole('button', { name: '最適順を反映' }));
     expect(handleApply).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces route calculation loading, empty, and error states', () => {
+    const baseProps = {
+      controlId: 'test-route-preview',
+      title: 'route preview',
+      description: 'desc',
+      travelMode: 'DRIVE' as const,
+      plan: null,
+      points: [],
+    };
+
+    const { rerender } = render(<VisitRoutePreviewPanel {...baseProps} loading />);
+    expect(screen.getByRole('status').textContent).toContain('ルートを計算中');
+
+    rerender(<VisitRoutePreviewPanel {...baseProps} emptyMessage="対象がありません" />);
+    expect(screen.getByRole('status').textContent).toContain('対象がありません');
+
+    rerender(<VisitRoutePreviewPanel {...baseProps} errorMessage="ルート計算に失敗しました" />);
+    expect(screen.getByRole('alert').textContent).toContain('ルート計算に失敗しました');
   });
 });

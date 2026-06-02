@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-163230
+
+- current task: improve shared visit route map accessibility for loading, empty, error, marker, and info-window states
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/components/features/visits/visit-route-preview-panel.tsx`, `src/components/features/visits/visit-route-preview-panel.test.tsx`, `src/components/features/visits/visit-route-map.tsx`, route-map test grep output, and the frontend reviewer subagent report for shared route UI
+- files changed: `src/components/features/visits/visit-route-preview-panel.tsx`, `src/components/features/visits/visit-route-preview-panel.test.tsx`, `src/components/features/visits/visit-route-map.tsx`, `src/components/features/visits/visit-route-map.test.tsx`, `.codex/ralph-state.md`
+- bugs found: route preview loading and empty states were plain text without status announcements, route preview errors were not exposed as alerts, map marker titles did not include route order, point kind, status, or priority, and map info windows used route order/kind/ETA but omitted status and priority even though marker color encoded those values
+- security risks found: no API, auth, authorization, tenant, DB, audit, logging, or persistence behavior changed. Existing patient name/address already shown in the route map remained in the same UI surface; the change adds status and priority text only to avoid color-only interpretation
+- performance issues found: no route calculation, map rendering, network, or data transformation behavior changed beyond small constant label lookups
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write src/components/features/visits/visit-route-preview-panel.tsx src/components/features/visits/visit-route-preview-panel.test.tsx src/components/features/visits/visit-route-map.tsx src/components/features/visits/visit-route-map.test.tsx`; `pnpm --config.verify-deps-before-run=false exec vitest run src/components/features/visits/visit-route-preview-panel.test.tsx src/components/features/visits/visit-route-map.test.tsx 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint src/components/features/visits/visit-route-preview-panel.tsx src/components/features/visits/visit-route-preview-panel.test.tsx src/components/features/visits/visit-route-map.tsx src/components/features/visits/visit-route-map.test.tsx 'src/app/(dashboard)/schedules/day-view.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- src/components/features/visits/visit-route-preview-panel.tsx src/components/features/visits/visit-route-preview-panel.test.tsx src/components/features/visits/visit-route-map.tsx src/components/features/visits/visit-route-map.test.tsx`
+- validation results: Prettier completed successfully; focused Vitest passed with 4 files / 11 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed for tracked files before staging
+- remaining work: DB-backed browser proof for `/schedules` remains pending until local e2e DB port `5433` is available. Other non-schedule dense UI surfaces may still need review
+- next action: check local e2e DB availability and attempt a browser proof if possible; otherwise continue with the next high-value cluttered UI surface
+
 ### 20260602-162720
 
 - current task: organize the schedules confirmed-tab presentation and improve accessible state announcements

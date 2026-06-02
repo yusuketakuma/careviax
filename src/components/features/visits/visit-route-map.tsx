@@ -1,13 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import {
-  APIProvider,
-  InfoWindow,
-  Map,
-  Marker,
-  Polyline,
-} from '@vis.gl/react-google-maps';
+import { APIProvider, InfoWindow, Map, Marker, Polyline } from '@vis.gl/react-google-maps';
 import { Badge } from '@/components/ui/badge';
 
 type VisitMapStatus =
@@ -44,6 +38,42 @@ function markerColor(point: Pick<VisitRouteMapPoint, 'status' | 'priority' | 'po
   if (point.status === 'in_progress') return '#16a34a';
   if (point.status === 'completed') return '#6b7280';
   return '#2563eb';
+}
+
+const statusLabel: Record<VisitMapStatus, string> = {
+  planned: '予定',
+  in_preparation: '準備中',
+  ready: '訪問準備完了',
+  departed: '出発済み',
+  in_progress: '訪問中',
+  completed: '完了',
+  cancelled: 'キャンセル',
+  postponed: '延期',
+  rescheduled: 'リスケ済み',
+  no_show: '不在',
+};
+
+const priorityLabel: Record<VisitMapPriority, string> = {
+  normal: '通常',
+  urgent: '至急',
+  emergency: '緊急',
+};
+
+function pointKindLabel(pointKind: VisitRouteMapPoint['pointKind']) {
+  if (pointKind === 'proposal') return '候補';
+  if (pointKind === 'schedule') return '確定予定';
+  return '訪問先';
+}
+
+function mapPointTitle(point: VisitRouteMapPoint) {
+  return [
+    `順路 ${point.orderLabel}`,
+    point.patientName,
+    point.address,
+    `種別 ${pointKindLabel(point.pointKind)}`,
+    `状態 ${statusLabel[point.status]}`,
+    `優先度 ${priorityLabel[point.priority]}`,
+  ].join(' / ');
 }
 
 function buildMarkerIcon(orderLabel: string, fill: string) {
@@ -97,8 +127,7 @@ export function VisitRouteMap(props: {
     return averageCenter(allPoints);
   }, [allPoints]);
 
-  const activePoint =
-    props.points.find((point) => point.scheduleId === activeScheduleId) ?? null;
+  const activePoint = props.points.find((point) => point.scheduleId === activeScheduleId) ?? null;
 
   if (!apiKey) {
     return (
@@ -155,7 +184,7 @@ export function VisitRouteMap(props: {
               <Marker
                 key={point.scheduleId}
                 position={{ lat: point.lat, lng: point.lng }}
-                title={`${point.patientName} / ${point.address}`}
+                title={mapPointTitle(point)}
                 icon={{
                   url: buildMarkerIcon(point.orderLabel, markerColor(point)),
                 }}
@@ -175,11 +204,9 @@ export function VisitRouteMap(props: {
                   ) : null}
                   <div className="flex flex-wrap gap-1 pt-1">
                     <Badge variant="outline">順路 {activePoint.orderLabel}</Badge>
-                    {activePoint.pointKind ? (
-                      <Badge variant="outline">
-                        {activePoint.pointKind === 'proposal' ? '候補' : '確定予定'}
-                      </Badge>
-                    ) : null}
+                    <Badge variant="outline">{pointKindLabel(activePoint.pointKind)}</Badge>
+                    <Badge variant="outline">状態 {statusLabel[activePoint.status]}</Badge>
+                    <Badge variant="outline">優先度 {priorityLabel[activePoint.priority]}</Badge>
                     {activePoint.etaLabel ? (
                       <Badge variant="outline">ETA {activePoint.etaLabel}</Badge>
                     ) : null}

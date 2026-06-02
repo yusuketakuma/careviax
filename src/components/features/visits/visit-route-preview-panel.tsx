@@ -13,15 +13,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { formatDistanceLabel, formatDurationLabel } from '@/app/(dashboard)/schedules/calendar-view.helpers';
-import type {
-  VisitRoutePlan,
-  VisitRouteTravelMode,
-} from '@/server/services/visit-route-engine';
 import {
-  VisitRouteMap,
-  type VisitRouteMapPoint,
-} from './visit-route-map';
+  formatDistanceLabel,
+  formatDurationLabel,
+} from '@/app/(dashboard)/schedules/calendar-view.helpers';
+import type { VisitRoutePlan, VisitRouteTravelMode } from '@/server/services/visit-route-engine';
+import { VisitRouteMap, type VisitRouteMapPoint } from './visit-route-map';
 import {
   VISIT_ROUTE_TRAVEL_MODE_LABELS,
   VISIT_ROUTE_TRAVEL_MODE_OPTIONS,
@@ -90,7 +87,7 @@ export function VisitRoutePreviewPanel({
     currentOrderedIds && currentOrderedIds.length > 0 ? currentOrderedIds : null;
   const movableIdSet = movableIds ? new Set(movableIds) : null;
   const currentOrderIndexById = new Map(
-    (resolvedCurrentOrderedIds ?? []).map((id, index) => [id, index])
+    (resolvedCurrentOrderedIds ?? []).map((id, index) => [id, index]),
   );
   const optimizedIds =
     plan?.orderedScheduleIds.length && plan.orderedScheduleIds.length > 0
@@ -168,13 +165,19 @@ export function VisitRoutePreviewPanel({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4" aria-busy={loading}>
         {loading ? (
-          <p className="text-sm text-muted-foreground">ルートを計算中...</p>
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+            ルートを計算中...
+          </p>
         ) : errorMessage ? (
-          <p className="text-sm text-destructive">{errorMessage}</p>
+          <p role="alert" className="text-sm text-destructive">
+            {errorMessage}
+          </p>
         ) : points.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+            {emptyMessage}
+          </p>
         ) : (
           <>
             <div className="flex flex-wrap gap-2 text-sm">
@@ -207,64 +210,66 @@ export function VisitRoutePreviewPanel({
                 <p className="text-sm font-medium text-foreground">訪問順</p>
                 <Separator className="my-3" />
                 <div className="space-y-3">
-                  {orderedStops.map(({ point, optimizedOrder, currentOrder, isCurrentDiff }, index) => (
-                    <div
-                      key={point.scheduleId}
-                      className="rounded-xl border border-border/60 bg-background px-3 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {optimizedOrder}. {point.patientName}
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            {point.address}
-                          </p>
-                        </div>
-                        {point.pointKind ? (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">
-                              {point.pointKind === 'proposal' ? '候補' : '確定予定'}
-                            </Badge>
-                            {isCurrentDiff && currentOrder ? (
-                              <Badge
-                                variant="outline"
-                                className="border-sky-200 bg-sky-50 text-sky-800"
-                              >
-                                現順 {currentOrder}
+                  {orderedStops.map(
+                    ({ point, optimizedOrder, currentOrder, isCurrentDiff }, index) => (
+                      <div
+                        key={point.scheduleId}
+                        className="rounded-xl border border-border/60 bg-background px-3 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {optimizedOrder}. {point.patientName}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {point.address}
+                            </p>
+                          </div>
+                          {point.pointKind ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">
+                                {point.pointKind === 'proposal' ? '候補' : '確定予定'}
                               </Badge>
-                            ) : null}
+                              {isCurrentDiff && currentOrder ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-sky-200 bg-sky-50 text-sky-800"
+                                >
+                                  現順 {currentOrder}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {point.timeLabel ? <span>時間 {point.timeLabel}</span> : null}
+                          {point.etaLabel ? <span>ETA {point.etaLabel}</span> : null}
+                        </div>
+                        {onMoveItem && (!movableIdSet || movableIdSet.has(point.scheduleId)) ? (
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={index === 0}
+                              onClick={() => onMoveItem(point.scheduleId, 'up')}
+                            >
+                              前へ
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={index === orderedStops.length - 1}
+                              onClick={() => onMoveItem(point.scheduleId, 'down')}
+                            >
+                              後ろへ
+                            </Button>
                           </div>
                         ) : null}
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {point.timeLabel ? <span>時間 {point.timeLabel}</span> : null}
-                        {point.etaLabel ? <span>ETA {point.etaLabel}</span> : null}
-                      </div>
-                      {onMoveItem && (!movableIdSet || movableIdSet.has(point.scheduleId)) ? (
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={index === 0}
-                            onClick={() => onMoveItem(point.scheduleId, 'up')}
-                          >
-                            前へ
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={index === orderedStops.length - 1}
-                            onClick={() => onMoveItem(point.scheduleId, 'down')}
-                          >
-                            後ろへ
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                    ),
+                  )}
                 </div>
               </div>
             </div>
