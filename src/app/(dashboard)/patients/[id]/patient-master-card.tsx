@@ -15,7 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ShieldCheck } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ActionRail } from '@/components/ui/action-rail';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -208,7 +209,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <CardTitle className="text-base">患者マスタ</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">患者マスタ</h2>
         {intakeBadges.length > 0 && (
           <div className="flex flex-wrap gap-1.5" aria-label="インテーク情報サマリ">
             {intakeBadges.map((badge) => (
@@ -559,11 +560,11 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </Field>
         </fieldset>
 
-        <div className="flex justify-end">
+        <ActionRail>
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
-        </div>
+        </ActionRail>
       </CardContent>
     </Card>
   );

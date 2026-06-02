@@ -71,6 +71,8 @@ describe('PatientMasterCard', () => {
   it('groups patient master fields by information type with bordered sections', () => {
     render(<PatientMasterCard orgId="org_1" patient={buildPatient()} />);
 
+    expect(screen.getByRole('heading', { level: 2, name: '患者マスタ' }).tagName).toBe('H2');
+
     for (const name of [
       'A. 基本属性',
       'B. 連絡・住所',

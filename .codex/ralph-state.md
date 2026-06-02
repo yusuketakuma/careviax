@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-174835
+
+- current task: improve patient master card semantic heading and action grouping before switching tasks
+- files inspected: `git status --short`, `git log --oneline -10`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient master card used a decorative `CardTitle` for the main master-data group and a hand-built submit action wrapper. This weakened heading navigation and diverged from the shared action layout used by adjacent patient panels
+- security risks found: no patient master API path, org header, save payload, qualification check, allergy edit state, facility/unit lookup, auth, authorization, or data handling changed
+- performance issues found: no query key, mutation function, invalidation flow, intake badge derivation, facility unit lookup, list rendering, or render-loop behavior changed. The slice only changes heading markup, action layout, and focused test coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient master card Vitest passed with 1 file / 1 test after replacing a non-available jest-dom matcher with a standard tag assertion; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: the new user request has shifted priority to researching the latest 2026 dispensing fee revision notices and checking/implementing support. Runtime/browser proof for the broader UI/refactor goal remains blocked until local app `localhost:3012` and DB `localhost:5433` are available
+- next action: commit this patient master card group, then start official 2026 dispensing fee revision research with latest notices before touching implementation
+
 ### 20260602-174503
 
 - current task: post-patient-insurance and facility-card UI/refactor runtime preflight audit
