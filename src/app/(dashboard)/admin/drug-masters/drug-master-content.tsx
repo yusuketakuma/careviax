@@ -3494,8 +3494,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               </p>
             ) : detailQuery.data ? (
               <>
-                <section className="space-y-3">
-                  <h2 className="text-sm font-semibold text-foreground">採用品設定</h2>
+                <PageSection
+                  title="採用品設定"
+                  description="対象拠点での採用状態、優先後発薬、フォローアップ、在庫下限を確認します。"
+                >
                   {!effectiveSelectedSiteId ? (
                     <p className="text-sm text-muted-foreground">
                       先に対象拠点を選択してください。
@@ -3825,14 +3827,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       </div>
                     </div>
                   )}
-                </section>
+                </PageSection>
 
                 {ingredientGroup?.summary && (
-                  <section className="space-y-3">
-                    <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <Pill className="size-4" aria-hidden="true" />
-                      同一成分グループ
-                    </h2>
+                  <PageSection
+                    title="同一成分グループ"
+                    description="同一一般名の薬剤、後発品、採用済み数、薬価帯を比較します。"
+                  >
                     <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
                       <div className="grid gap-2 sm:grid-cols-4">
                         <div className="rounded-md border border-border/60 bg-background px-3 py-2">
@@ -3895,14 +3896,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         ))}
                       </div>
                     </div>
-                  </section>
+                  </PageSection>
                 )}
 
-                <section className="space-y-3">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <History className="size-4" aria-hidden="true" />
-                    採用品変更履歴
-                  </h2>
+                <PageSection
+                  title="採用品変更履歴"
+                  description="対象拠点での採用品変更、CSV反映、承認操作の直近履歴を確認します。"
+                >
                   {!effectiveSelectedSiteId ? (
                     <p className="text-sm text-muted-foreground">
                       対象拠点を選択すると採用品の変更履歴を確認できます。
@@ -3956,9 +3956,19 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       })}
                     </div>
                   )}
-                </section>
+                </PageSection>
 
-                <section className="space-y-3">
+                <PageSection
+                  title="薬剤基本情報・安全属性"
+                  description="YJ/HOTコード、薬価、経過措置、高リスク・LASA属性を確認します。"
+                  tone={
+                    detailQuery.data.is_high_risk ||
+                    detailQuery.data.is_lasa_risk ||
+                    detailQuery.data.is_narcotic
+                      ? 'warning'
+                      : 'default'
+                  }
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">YJ {detailQuery.data.yj_code}</Badge>
                     {detailQuery.data.hot_code && (
@@ -4072,10 +4082,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       </dd>
                     </div>
                   </dl>
-                </section>
+                </PageSection>
 
-                <section className="space-y-3">
-                  <h2 className="text-sm font-semibold text-foreground">添付文書詳細</h2>
+                <PageSection
+                  title="添付文書詳細"
+                  description="禁忌、重大な副作用、腎機能別用量調整、高齢者への注意を確認します。"
+                >
                   <div className="grid gap-4">
                     <div className="rounded-lg border border-border/60 p-4">
                       <h3 className="mb-2 text-sm font-medium text-foreground">禁忌</h3>
@@ -4094,10 +4106,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       <StructuredPayload value={latestPackageInsert?.precautions_elderly} />
                     </div>
                   </div>
-                </section>
+                </PageSection>
 
-                <section className="space-y-3">
-                  <h2 className="text-sm font-semibold text-foreground">相互作用一覧</h2>
+                <PageSection
+                  title="相互作用一覧"
+                  description="相互作用の重症度、対象薬剤、機序、臨床影響を確認します。"
+                >
                   {relatedInteractions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       直近の相互作用データはまだ登録されていません。
@@ -4143,7 +4157,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       ))}
                     </div>
                   )}
-                </section>
+                </PageSection>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">一覧から医薬品を選択してください。</p>

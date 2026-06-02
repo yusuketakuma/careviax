@@ -10329,6 +10329,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include deeper drug-master safety/detail sections, optional schedule proposal header/action extraction, and DB-backed browser proof
 - next action: run post-append whitespace/status checks, commit this slice, then inspect drug-master safety/detail sections or retry browser proof when the local e2e DB is available
 
+### 20260602-161421
+
+- current task: align drug-master detail sheet sections with shared PageSection boundaries
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, shared `PageSection`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no drug-master API, stock mutation, preferred generic selection, follow-up mutation, reorder threshold parsing, package insert payload, or interaction rendering bug was targeted. The detail sheet still used raw sections for adoption settings, same-ingredient comparison, stock history, safety attributes, package insert details, and interactions
+- security risks found: no medication safety data source, site selection, mutation payload, audit history, package insert content, interaction content, or PHI/PII behavior changed. High-risk/LASA/narcotic safety attributes remain visible and now use a warning section tone
+- performance issues found: no query, mutation, or detail computation behavior changed. The refactor only delegates section shell and heading rendering to the shared component
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`; `rg -n "<section className=\"space-y-3\"|採用品設定|添付文書詳細|相互作用一覧" 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 4 files / 9 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append; raw `space-y-3` sections in the drug-master detail sheet were removed
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining work includes optional deeper extraction of drug-master display subcomponents, optional schedule proposal header/action extraction, DB-backed browser proof, and final completion audit
+- next action: run post-append whitespace/status checks, commit this slice, then reassess remaining code-level cleanup versus browser proof availability
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
