@@ -367,91 +367,82 @@ function SecurityTab() {
   return (
     <div className="flex flex-col gap-6">
       {/* MFA Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
-            二要素認証（MFA）
-          </CardTitle>
-          <CardDescription>認証アプリによる二要素認証の設定状況を確認できます</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {securityError && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{securityError}</AlertDescription>
-            </Alert>
-          )}
+      <PageSection
+        title="二要素認証（MFA）"
+        description="認証アプリによる二要素認証の設定状況を確認できます。"
+        actions={<ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+        contentClassName="space-y-4"
+      >
+        {securityError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{securityError}</AlertDescription>
+          </Alert>
+        )}
 
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="flex items-center gap-3">
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                  mfaEnabled ? 'bg-green-100' : 'bg-amber-100'
-                }`}
-              >
-                <ShieldCheck
-                  className={`h-5 w-5 ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium">TOTP認証（認証アプリ）</p>
-                <p className={`text-xs ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}>
-                  {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}
-                </p>
-              </div>
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                mfaEnabled ? 'bg-green-100' : 'bg-amber-100'
+              }`}
+            >
+              <ShieldCheck
+                className={`h-5 w-5 ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}
+              />
             </div>
-
-            <Link href="/mfa/setup">
-              <Button
-                variant={mfaEnabled ? 'outline' : 'default'}
-                size="sm"
-                className={mfaEnabled ? undefined : 'bg-blue-600 hover:bg-blue-700'}
-                disabled={mfaEnabled === null}
-              >
-                {mfaEnabled ? '再設定' : '設定する'}
-              </Button>
-            </Link>
+            <div>
+              <p className="text-sm font-medium">TOTP認証（認証アプリ）</p>
+              <p className={`text-xs ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}>
+                {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}
+              </p>
+            </div>
           </div>
 
-          {mfaEnabled && (
-            <div className="mt-3 flex justify-end">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => void handleDisableMfa()}
-                disabled={isDisablingMfa}
-              >
-                {isDisablingMfa ? '無効化中...' : 'MFAを無効化'}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <Link href="/mfa/setup">
+            <Button
+              variant={mfaEnabled ? 'outline' : 'default'}
+              size="sm"
+              className={mfaEnabled ? undefined : 'bg-blue-600 hover:bg-blue-700'}
+              disabled={mfaEnabled === null}
+            >
+              {mfaEnabled ? '再設定' : '設定する'}
+            </Button>
+          </Link>
+        </div>
+
+        {mfaEnabled && (
+          <ActionRail>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void handleDisableMfa()}
+              disabled={isDisablingMfa}
+            >
+              {isDisablingMfa ? '無効化中...' : 'MFAを無効化'}
+            </Button>
+          </ActionRail>
+        )}
+      </PageSection>
 
       {/* Password */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-blue-600" aria-hidden="true" />
-            パスワード
-          </CardTitle>
-          <CardDescription>パスワードは定期的に変更することを推奨します</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <p className="text-sm font-medium">パスワード変更</p>
-              <p className="text-xs text-slate-500">現在のパスワードで再認証して変更します</p>
-            </div>
-            <Link href="/password/change">
-              <Button variant="outline" size="sm">
-                変更する
-              </Button>
-            </Link>
+      <PageSection
+        title="パスワード"
+        description="パスワードは定期的に変更することを推奨します。"
+        actions={<KeyRound className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+      >
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div>
+            <p className="text-sm font-medium">パスワード変更</p>
+            <p className="text-xs text-slate-500">現在のパスワードで再認証して変更します</p>
           </div>
-        </CardContent>
-      </Card>
+          <Link href="/password/change">
+            <Button variant="outline" size="sm">
+              変更する
+            </Button>
+          </Link>
+        </div>
+      </PageSection>
     </div>
   );
 }

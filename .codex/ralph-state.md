@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-172230
+
+- current task: organize settings security tab without changing MFA behavior
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/settings/settings-content.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and focused settings/MFA tests
+- files changed: `src/app/(dashboard)/settings/settings-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the security tab used raw cards and decorative card titles for MFA and password settings, and placed the MFA disable action in a local flex row. This made two different security decisions read as generic cards rather than explicit settings sections
+- security risks found: no `/api/me/profile`, `/api/me/mfa/disable`, MFA setup route, password change route, auth, session, sign-out, localStorage, or credential behavior changed. The MFA disable button remains the same explicit destructive action
+- performance issues found: no security-state fetch, MFA disable mutation, toast handling, routing, or render-loop behavior changed. The slice only changes security tab wrappers and action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/settings/settings-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/notifications/user-settings.test.ts src/app/api/settings/route.test.ts src/server/services/mfa-recovery.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/settings/settings-content.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/settings/settings-content.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 11 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. The settings notifications/location/session tabs and schedule proposal workspaces still have dense raw cards/action rows
+- next action: commit this settings security group, then continue with another bounded settings tab or schedule proposal slice
+
 ### 20260602-172057
 
 - current task: organize settings profile tab without changing account behavior
