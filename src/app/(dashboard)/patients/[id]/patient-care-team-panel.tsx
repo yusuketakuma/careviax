@@ -4,8 +4,9 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -167,7 +168,9 @@ export function PatientCareTeamPanel({
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error((payload as { message?: string }).message ?? '他職種マスターの登録に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? '他職種マスターの登録に失敗しました',
+        );
       }
       return payload as { data: ExternalProfessionalOption };
     },
@@ -213,16 +216,15 @@ export function PatientCareTeamPanel({
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((payload as { message?: string }).message ?? '多職種連携先の保存に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? '多職種連携先の保存に失敗しました',
+        );
       }
       return payload;
     },
     onSuccess: async () => {
       toast.success('多職種連携先を更新しました');
-      await invalidateQueryKeys(
-        queryClient,
-        getPatientCareQueryKeys({ orgId, patientId })
-      );
+      await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '多職種連携先の保存に失敗しました');
@@ -299,7 +301,7 @@ export function PatientCareTeamPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">多職種連携先</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">多職種連携先</h2>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           ケース作成後に訪問診療医・訪問看護師・ケアマネジャー等を登録できます。
@@ -311,14 +313,19 @@ export function PatientCareTeamPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">多職種連携先</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">多職種連携先</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">
-            {selectedCase ? `ケース ${selectedCase.id.slice(-6).toUpperCase()} / ${selectedCase.status}` : 'ケース未選択'}
+            {selectedCase
+              ? `ケース ${selectedCase.id.slice(-6).toUpperCase()} / ${selectedCase.status}`
+              : 'ケース未選択'}
           </div>
-          <Select value={selectedCaseId} onValueChange={(value) => setSelectedCaseId(value || defaultCaseId)}>
+          <Select
+            value={selectedCaseId}
+            onValueChange={(value) => setSelectedCaseId(value || defaultCaseId)}
+          >
             <SelectTrigger className="sm:w-[240px]">
               <SelectValue placeholder="ケースを選択" />
             </SelectTrigger>
@@ -350,7 +357,8 @@ export function PatientCareTeamPanel({
                       <SelectItem value="manual">手入力</SelectItem>
                       {professionalOptions.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
-                          {item.name} / {item.organization_name ?? professionLabel(item.profession_type)}
+                          {item.name} /{' '}
+                          {item.organization_name ?? professionLabel(item.profession_type)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -359,7 +367,12 @@ export function PatientCareTeamPanel({
                 <Field label="役割">
                   <Select
                     value={row.role}
-                    onValueChange={(value) => updateRowAt(index, (item) => ({ ...item, role: value as CareTeamRow['role'] }))}
+                    onValueChange={(value) =>
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        role: value as CareTeamRow['role'],
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -382,7 +395,11 @@ export function PatientCareTeamPanel({
                         (item) => item.name === event.target.value,
                       );
                       if (matchedProfessional) {
-                        applyExternalProfessional(index, matchedProfessional.id, matchedProfessional);
+                        applyExternalProfessional(
+                          index,
+                          matchedProfessional.id,
+                          matchedProfessional,
+                        );
                         return;
                       }
                       updateRowAt(index, (item) => ({
@@ -491,7 +508,9 @@ export function PatientCareTeamPanel({
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={row.is_primary}
-                    onCheckedChange={(checked) => updateRowAt(index, (item) => ({ ...item, is_primary: Boolean(checked) }))}
+                    onCheckedChange={(checked) =>
+                      updateRowAt(index, (item) => ({ ...item, is_primary: Boolean(checked) }))
+                    }
                   />
                   <span>主要担当</span>
                 </label>
@@ -520,7 +539,7 @@ export function PatientCareTeamPanel({
           ))}
         </div>
 
-        <div className="flex flex-wrap justify-between gap-2">
+        <ActionRail align="between">
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -550,18 +569,26 @@ export function PatientCareTeamPanel({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => window.open('/admin/external-professionals', '_blank', 'noopener,noreferrer')}
+              onClick={() =>
+                window.open('/admin/external-professionals', '_blank', 'noopener,noreferrer')
+              }
             >
               他職種マスターを開く
             </Button>
           </div>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !selectedCaseId}>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || !selectedCaseId}
+          >
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
-        </div>
+        </ActionRail>
       </CardContent>
 
-      <Dialog open={quickCreateRowIndex != null} onOpenChange={(open) => (!open ? setQuickCreateRowIndex(null) : null)}>
+      <Dialog
+        open={quickCreateRowIndex != null}
+        onOpenChange={(open) => (!open ? setQuickCreateRowIndex(null) : null)}
+      >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>他職種マスターに追加</DialogTitle>
@@ -662,11 +689,7 @@ export function PatientCareTeamPanel({
             </Field>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setQuickCreateRowIndex(null)}
-            >
+            <Button type="button" variant="outline" onClick={() => setQuickCreateRowIndex(null)}>
               キャンセル
             </Button>
             <Button

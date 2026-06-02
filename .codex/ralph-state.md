@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-185620
+
+- current task: improve patient care team panel semantic heading and action grouping
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`, `src/components/ui/action-rail.tsx`, and adjacent patient panel tests
+- files changed: `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the care team panel used decorative `CardTitle` wrappers for the major patient-detail group in both no-case and normal states, and a hand-built add/save action row. This weakened heading navigation for multi-professional coordination and diverged from shared action grouping used by adjacent editable panels
+- security risks found: no care-team API path, org header, PUT payload shape, external professional creation payload, mutation error handling, query invalidation, auth, authorization, or patient/care-team data handling changed
+- performance issues found: no query function, mutation function, draft state initialization, case selection logic, external-professional application logic, or render-loop behavior changed. The slice only changes heading markup, shared action layout, Prettier formatting, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`
+- validation results: Prettier completed successfully; focused patient care team Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Communications, external share, patient detail tabs, medications/prescriptions/detail surfaces, MCS content, cases tab, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient care team heading/action group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-185405
 
 - current task: post-patient-intake-summary runtime/browser preflight audit
