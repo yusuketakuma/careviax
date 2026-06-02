@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { clearOfflineEncryptionKey } from '@/lib/offline/crypto';
 import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
@@ -621,53 +621,47 @@ function LocationTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-blue-600" aria-hidden="true" />
-          訪問位置情報
-        </CardTitle>
-        <CardDescription>
-          訪問記録入力時に開始/終了の位置を記録するかを端末単位で管理します
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {saved && (
-          <Alert className="border-green-200 bg-green-50">
-            <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              位置情報設定を保存しました。
-            </AlertDescription>
-          </Alert>
-        )}
+    <PageSection
+      title="訪問位置情報"
+      description="訪問記録入力時に開始/終了の位置を記録するかを端末単位で管理します。"
+      actions={<MapPin className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+      contentClassName="space-y-4"
+    >
+      {saved && (
+        <Alert className="border-green-200 bg-green-50">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            位置情報設定を保存しました。
+          </AlertDescription>
+        </Alert>
+      )}
 
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-1 pr-4">
-            <p className="text-sm font-medium">開始/終了位置を記録</p>
-            <p className="text-xs text-slate-500">
-              状態: {enabled ? '有効' : '無効'} / ブラウザ権限: {permission}
-            </p>
-          </div>
-          <Switch
-            checked={enabled}
-            onCheckedChange={handleToggle}
-            aria-label={`訪問位置情報の記録を${enabled ? '無効' : '有効'}にする`}
-          />
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          <p className="font-medium">記録内容</p>
-          <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-            <li>- 訪問記録画面を開いた時点の開始位置</li>
-            <li>- 保存時の終了位置</li>
-            <li>- 緯度・経度・推定精度</li>
-          </ul>
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            ブラウザ権限を拒否した場合でも訪問記録の保存自体は継続できます。
+      <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="space-y-1 pr-4">
+          <h3 className="text-sm font-medium">開始/終了位置を記録</h3>
+          <p className="text-xs text-slate-500">
+            状態: {enabled ? '有効' : '無効'} / ブラウザ権限: {permission}
           </p>
         </div>
-      </CardContent>
-    </Card>
+        <Switch
+          checked={enabled}
+          onCheckedChange={handleToggle}
+          aria-label={`訪問位置情報の記録を${enabled ? '無効' : '有効'}にする`}
+        />
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <h3 className="font-medium">記録内容</h3>
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+          <li>- 訪問記録画面を開いた時点の開始位置</li>
+          <li>- 保存時の終了位置</li>
+          <li>- 緯度・経度・推定精度</li>
+        </ul>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          ブラウザ権限を拒否した場合でも訪問記録の保存自体は継続できます。
+        </p>
+      </div>
+    </PageSection>
   );
 }
 
@@ -740,72 +734,68 @@ function SessionTab() {
   const warningMinutes = Math.floor(SESSION_WARNING_BEFORE_MS / 60000);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Clock className="h-5 w-5 text-blue-600" aria-hidden="true" />
-          セッション管理
-        </CardTitle>
-        <CardDescription>タイムアウト方針と再認証導線を確認できます</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 p-4">
-            <p className="text-sm font-medium text-slate-800">現在のログイン状態</p>
-            <p className="mt-2 text-sm text-slate-600">
-              {status === 'loading'
-                ? '確認中'
-                : (session?.user?.email ?? session?.user?.name ?? 'セッションなし')}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              MFA: {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 p-4">
-            <p className="text-sm font-medium text-slate-800">タイムアウト方針</p>
-            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-              <li>- 非操作 {timeoutMinutes} 分で自動ログアウト</li>
-              <li>- 期限 {warningMinutes} 分前に延長モーダルを表示</li>
-              <li>- 延長時は現在のパスワードで再認証</li>
-            </ul>
-          </div>
+    <PageSection
+      title="セッション管理"
+      description="タイムアウト方針と再認証導線を確認できます。"
+      actions={<Clock className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+      contentClassName="space-y-4"
+    >
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 p-4">
+          <h3 className="text-sm font-medium text-slate-800">現在のログイン状態</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            {status === 'loading'
+              ? '確認中'
+              : (session?.user?.email ?? session?.user?.name ?? 'セッションなし')}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            MFA: {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}
+          </p>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          <p className="font-medium">運用メモ</p>
+        <div className="rounded-lg border border-slate-200 p-4">
+          <h3 className="text-sm font-medium text-slate-800">タイムアウト方針</h3>
           <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
-            <li>- 画面右下のセッション警告モーダルからそのまま延長できます</li>
-            <li>- MFA やパスワードの変更は「セキュリティ」タブから行います</li>
-            <li>- 共用端末では作業終了時に明示的にログアウトしてください</li>
+            <li>- 非操作 {timeoutMinutes} 分で自動ログアウト</li>
+            <li>- 期限 {warningMinutes} 分前に延長モーダルを表示</li>
+            <li>- 延長時は現在のパスワードで再認証</li>
           </ul>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => router.refresh()}
-            disabled={isSigningOut || isSigningOutAll}
-          >
-            状態を再読込
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void handleSignOutAll()}
-            disabled={isSigningOut || isSigningOutAll}
-          >
-            {isSigningOutAll ? '全端末からログアウト中...' : '全デバイスからログアウト'}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => void handleSignOut()}
-            disabled={isSigningOut || isSigningOutAll}
-          >
-            {isSigningOut ? 'ログアウト中...' : 'ログアウト'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <h3 className="font-medium">運用メモ</h3>
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+          <li>- 画面右下のセッション警告モーダルからそのまま延長できます</li>
+          <li>- MFA やパスワードの変更は「セキュリティ」タブから行います</li>
+          <li>- 共用端末では作業終了時に明示的にログアウトしてください</li>
+        </ul>
+      </div>
+
+      <ActionRail align="start">
+        <Button
+          variant="outline"
+          onClick={() => router.refresh()}
+          disabled={isSigningOut || isSigningOutAll}
+        >
+          状態を再読込
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void handleSignOutAll()}
+          disabled={isSigningOut || isSigningOutAll}
+        >
+          {isSigningOutAll ? '全端末からログアウト中...' : '全デバイスからログアウト'}
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => void handleSignOut()}
+          disabled={isSigningOut || isSigningOutAll}
+        >
+          {isSigningOut ? 'ログアウト中...' : 'ログアウト'}
+        </Button>
+      </ActionRail>
+    </PageSection>
   );
 }
 
