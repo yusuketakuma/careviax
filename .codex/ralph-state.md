@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-172057
+
+- current task: organize settings profile tab without changing account behavior
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/settings/settings-content.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and focused settings test search output
+- files changed: `src/app/(dashboard)/settings/settings-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the settings profile tab used a raw card for the whole form, a hand-built submit row, and decorative card titles for the pharmacist activity summary. That made profile fields and operational activity summaries read as one flat panel instead of a settings group followed by subordinate summary sections
+- security risks found: no `/api/me/profile`, `/api/me/activity-summary`, MFA, session, notification, location, auth, sign-out, localStorage, or credential behavior changed. Profile PATCH payload and disabled account fields are unchanged
+- performance issues found: no profile fetch, activity summary fetch, notification preference parsing, location permission logic, session handling, or render loop behavior changed. The slice only changes profile tab section wrappers, summary headings, and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/settings/settings-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/notifications/user-settings.test.ts src/app/api/settings/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/settings/settings-content.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/settings/settings-content.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 2 files / 7 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. The settings security/notifications/location/session tabs and schedule proposal workspaces still have dense raw cards/action rows
+- next action: commit this settings profile group, then continue with another bounded settings tab or schedule proposal slice
+
 ### 20260602-171855
 
 - current task: organize QR scan intake sections and action rails

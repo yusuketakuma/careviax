@@ -7,6 +7,8 @@ import { signOut, useSession } from 'next-auth/react';
 import { clearOfflineEncryptionKey } from '@/lib/offline/crypto';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -166,137 +168,133 @@ function ProfileTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <User className="h-5 w-5 text-blue-600" aria-hidden="true" />
-          プロフィール
-        </CardTitle>
-        <CardDescription>表示名と連絡先情報を管理します</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+    <PageSection
+      title="プロフィール"
+      description="表示名、連絡先、権限、所属拠点を確認・更新します。"
+      actions={<User className="h-5 w-5 text-blue-600" aria-hidden="true" />}
+      contentClassName="space-y-6"
+    >
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        {saved && (
-          <Alert className="mb-4 border-green-200 bg-green-50">
-            <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              プロフィールを更新しました。
-            </AlertDescription>
-          </Alert>
-        )}
+      {saved && (
+        <Alert className="border-green-200 bg-green-50">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            プロフィールを更新しました。
+          </AlertDescription>
+        </Alert>
+      )}
 
-        <form onSubmit={handleSave} className="flex flex-col gap-4 max-w-lg">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="profile-email">メールアドレス</Label>
-            <Input id="profile-email" type="email" value={email} disabled className="bg-slate-50" />
-            <p className="text-xs text-slate-500">メールアドレスは管理者のみ変更できます</p>
-          </div>
+      <form onSubmit={handleSave} className="flex max-w-lg flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-email">メールアドレス</Label>
+          <Input id="profile-email" type="email" value={email} disabled className="bg-slate-50" />
+          <p className="text-xs text-slate-500">メールアドレスは管理者のみ変更できます</p>
+        </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="profile-display-name">表示名</Label>
-            <Input
-              id="profile-display-name"
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              required
-              disabled={isLoading || isBootstrapLoading}
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-display-name">表示名</Label>
+          <Input
+            id="profile-display-name"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+            disabled={isLoading || isBootstrapLoading}
+          />
+        </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="profile-role">現在の権限</Label>
-            <Input
-              id="profile-role"
-              type="text"
-              value={currentRole ?? '未設定'}
-              disabled
-              className="bg-slate-50"
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-role">現在の権限</Label>
+          <Input
+            id="profile-role"
+            type="text"
+            value={currentRole ?? '未設定'}
+            disabled
+            className="bg-slate-50"
+          />
+        </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="profile-phone">連絡先電話番号</Label>
-            <Input
-              id="profile-phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="090-XXXX-XXXX"
-              disabled={isLoading || isBootstrapLoading}
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-phone">連絡先電話番号</Label>
+          <Input
+            id="profile-phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="090-XXXX-XXXX"
+            disabled={isLoading || isBootstrapLoading}
+          />
+        </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="profile-site">所属拠点</Label>
-            <Input
-              id="profile-site"
-              type="text"
-              value={currentSiteName ?? '未設定'}
-              disabled
-              className="bg-slate-50"
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-site">所属拠点</Label>
+          <Input
+            id="profile-site"
+            type="text"
+            value={currentSiteName ?? '未設定'}
+            disabled
+            className="bg-slate-50"
+          />
+        </div>
 
-          <div className="mt-2">
-            <Button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700"
-              disabled={isLoading || isBootstrapLoading}
-              aria-busy={isLoading}
-            >
-              {isLoading ? '保存中...' : '変更を保存'}
-            </Button>
-          </div>
-        </form>
+        <ActionRail align="start">
+          <Button
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700"
+            disabled={isLoading || isBootstrapLoading}
+            aria-busy={isLoading}
+          >
+            {isLoading ? '保存中...' : '変更を保存'}
+          </Button>
+        </ActionRail>
+      </form>
 
-        {currentRole?.includes('pharmacist') && activitySummary && (
-          <div className="mt-8 grid gap-3 md:grid-cols-2">
-            <Card size="sm" className="border border-slate-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  今月の訪問実績
-                </CardTitle>
-                <CardDescription>完了した訪問記録の件数</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold text-slate-800">
-                  {activitySummary.currentMonthVisitCount}件
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  直近30日: {activitySummary.last30DaysVisitCount}件
-                </p>
-              </CardContent>
-            </Card>
+      {currentRole?.includes('pharmacist') && activitySummary && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card size="sm" className="border border-slate-200">
+            <CardHeader>
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <ClipboardList className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                今月の訪問実績
+              </h3>
+              <CardDescription>完了した訪問記録の件数</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-slate-800">
+                {activitySummary.currentMonthVisitCount}件
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                直近30日: {activitySummary.last30DaysVisitCount}件
+              </p>
+            </CardContent>
+          </Card>
 
-            <Card size="sm" className="border border-slate-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  担当予定
-                </CardTitle>
-                <CardDescription>割り当て済みの訪問件数</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold text-slate-800">
-                  今日 {activitySummary.todayAssignedCount}件
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  今月の残り予定: {activitySummary.upcomingAssignedCount}件
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          <Card size="sm" className="border border-slate-200">
+            <CardHeader>
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <CalendarDays className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                担当予定
+              </h3>
+              <CardDescription>割り当て済みの訪問件数</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-slate-800">
+                今日 {activitySummary.todayAssignedCount}件
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                今月の残り予定: {activitySummary.upcomingAssignedCount}件
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </PageSection>
   );
 }
 
