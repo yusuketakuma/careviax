@@ -10108,6 +10108,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-value surfaces include workflow inquiry pages, admin/operations dashboards, drug-master surfaces, visit day-view/schedule pages, and browser proof for changed dense UI flows
 - next action: run post-append whitespace/status checks, commit this slice, then continue Ralph loop with the next highest-value UI/refactor target
 
+### 20260602-153112
+
+- current task: apply shared UI section primitives to communication requests
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `src/app/(dashboard)/communications/requests/requests-query-state.test.ts`, subagent UI/UX and implementation-planning findings for dense surfaces
+- files changed: `src/app/(dashboard)/communications/requests/requests-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no data/API bug was targeted. The communication requests surface had separate intro text, naked filter/export rail, context chips, request table, timeline card, and log table at the same visual level, making the workflow order harder to scan
+- security risks found: no communication request API, export parameters, query keys, auth, PHI storage, or logging behavior changed. The status-change dialog continues to require a reason before mutating
+- performance issues found: no data fetching or table behavior changed. The refactor removes local section/card duplication and reuses `PageSection`, `ActionRail`, and `FilterSummaryBar` without adding new queries or computations
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/communications/requests/requests-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/communications/requests/requests-query-state.test.ts' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/communications/requests/requests-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/communications/requests/requests-content.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 5 files / 7 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Subagents prioritized drug-master/formulary, schedule proposals, prescription workspace, audit logs, tasks, workflow dashboard, and visits as next high-value surfaces
+- next action: run post-append whitespace/status checks, commit this slice, then start the drug-master/formulary slice with medical/privacy review constraints
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

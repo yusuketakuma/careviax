@@ -7,8 +7,8 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Clock, AlertTriangle } from 'lucide-react';
+import { PageSection } from '@/components/layout/page-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ActionRail } from '@/components/ui/action-rail';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,7 +32,6 @@ import {
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
 import { toast } from 'sonner';
-import { SectionIntro } from '@/components/ui/section-intro';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type CommunicationRequestRow = {
@@ -599,12 +600,19 @@ export function CommunicationRequestsContent({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
-      <SectionIntro
+      <PageSection
         title="絞り込みと文脈"
         description="返信待ち、対応中、患者文脈を先に絞り込み、確認すべき依頼だけに集中できるようにします。"
-      />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex flex-wrap gap-2">
+        tone="subtle"
+        actions={
+          <ActionRail>
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              CSVエクスポート
+            </Button>
+          </ActionRail>
+        }
+      >
+        <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3">
           {FILTER_TABS.map((tab) => (
             <Button
               key={tab.value}
@@ -619,115 +627,117 @@ export function CommunicationRequestsContent({
             </Button>
           ))}
         </div>
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          CSVエクスポート
-        </Button>
-      </div>
 
-      {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
-          <span className="font-medium text-foreground">適用中の文脈:</span>
-          {patientFilter ? (
-            <Link
-              href={`/patients/${patientFilter}`}
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              <Badge variant="outline">患者詳細</Badge>
-            </Link>
-          ) : null}
-          {relatedEntityTypeFilter ? (
-            <Badge variant="outline">関連種別 {relatedEntityTypeFilter}</Badge>
-          ) : null}
-          {relatedEntityIdFilter ? (
-            <Badge variant="outline">関連ID {relatedEntityIdFilter}</Badge>
-          ) : null}
-          {relatedEntityLink ? (
-            <Link
-              href={relatedEntityLink.href}
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              {relatedEntityLink.label}
-            </Link>
-          ) : null}
-          <Link
-            href={buildCommunicationRequestsHref({ status: statusFilter || null })}
-            className="text-primary underline-offset-4 hover:underline"
-          >
-            文脈をクリア
-          </Link>
-        </div>
-      ) : null}
-
-      <SectionIntro
-        title="依頼・照会一覧"
-        description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
-      />
-      <DataTable
-        columns={columns}
-        data={data?.data ?? []}
-        isLoading={isLoading}
-        caption="依頼・照会一覧"
-      />
-
-      <SectionIntro
-        title="連携タイムライン"
-        description="主要イベントを時系列で追い、直近の動きと患者影響を把握する補助グループです。"
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">連携タイムライン</CardTitle>
-          <CardDescription>
-            訪問予定変更、報告送付、送達失敗・再送など主要な連携イベントを時系列で確認します。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {isEventsLoading ? (
-            <p className="text-sm text-muted-foreground">連携タイムラインを読み込み中...</p>
-          ) : (eventData?.data.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">連携イベントはまだありません。</p>
-          ) : (
-            eventData?.data.slice(0, 6).map((item) => (
-              <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {EVENT_TYPE_LABELS[item.event_type] ?? item.event_type}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.counterpart_name ?? '相手先未設定'} / {item.channel}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {format(parseISO(item.occurred_at), 'M/d HH:mm', { locale: ja })}
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {item.subject ?? item.content ?? '詳細なし'}
-                </p>
-                {item.patient_id ? (
+        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
+          <FilterSummaryBar
+            items={[
+              {
+                label: '患者',
+                value: patientFilter ? (
                   <Link
-                    href={`/patients/${item.patient_id}`}
-                    className="mt-2 inline-flex text-xs text-primary underline-offset-4 hover:underline"
+                    href={`/patients/${patientFilter}`}
+                    className="text-primary underline-offset-4 hover:underline"
                   >
-                    患者詳細へ
+                    詳細
+                  </Link>
+                ) : (
+                  'なし'
+                ),
+              },
+              ...(relatedEntityTypeFilter
+                ? [{ label: '関連種別', value: relatedEntityTypeFilter }]
+                : []),
+              ...(relatedEntityIdFilter ? [{ label: '関連ID', value: relatedEntityIdFilter }] : []),
+            ]}
+            actions={
+              <ActionRail>
+                {relatedEntityLink ? (
+                  <Link
+                    href={relatedEntityLink.href}
+                    className="text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    {relatedEntityLink.label}
                   </Link>
                 ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+                <Link
+                  href={buildCommunicationRequestsHref({ status: statusFilter || null })}
+                  className="text-sm text-primary underline-offset-4 hover:underline"
+                >
+                  文脈をクリア
+                </Link>
+              </ActionRail>
+            }
+          />
+        ) : null}
+      </PageSection>
 
-      <SectionIntro
+      <PageSection
+        title="依頼・照会一覧"
+        description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
+        tone="subtle"
+      >
+        <DataTable
+          columns={columns}
+          data={data?.data ?? []}
+          isLoading={isLoading}
+          caption="依頼・照会一覧"
+        />
+      </PageSection>
+
+      <PageSection
+        title="連携タイムライン"
+        description="訪問予定変更、報告送付、送達失敗・再送など主要な連携イベントを時系列で確認します。"
+        tone="subtle"
+        contentClassName="space-y-3"
+      >
+        {isEventsLoading ? (
+          <p className="text-sm text-muted-foreground">連携タイムラインを読み込み中...</p>
+        ) : (eventData?.data.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">連携イベントはまだありません。</p>
+        ) : (
+          eventData?.data.slice(0, 6).map((item) => (
+            <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-foreground">
+                    {EVENT_TYPE_LABELS[item.event_type] ?? item.event_type}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.counterpart_name ?? '相手先未設定'} / {item.channel}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {format(parseISO(item.occurred_at), 'M/d HH:mm', { locale: ja })}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {item.subject ?? item.content ?? '詳細なし'}
+              </p>
+              {item.patient_id ? (
+                <Link
+                  href={`/patients/${item.patient_id}`}
+                  className="mt-2 inline-flex text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  患者詳細へ
+                </Link>
+              ) : null}
+            </div>
+          ))
+        )}
+      </PageSection>
+
+      <PageSection
         title="連携ログ一覧"
         description="タイムラインより広い履歴を一覧で確認するための履歴グループです。"
-      />
-      <DataTable
-        columns={eventColumns}
-        data={eventData?.data ?? []}
-        isLoading={isEventsLoading}
-        caption="連携ログ一覧"
-      />
+        tone="subtle"
+      >
+        <DataTable
+          columns={eventColumns}
+          data={eventData?.data ?? []}
+          isLoading={isEventsLoading}
+          caption="連携ログ一覧"
+        />
+      </PageSection>
 
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <DialogContent>
