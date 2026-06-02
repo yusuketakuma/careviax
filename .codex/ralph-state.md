@@ -10225,6 +10225,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Browser proof for dashboard routes must be rerun after local e2e Postgres on port 5433 is available or another DB-backed test environment is provided
 - next action: run post-append whitespace/status checks, commit this verification record, then continue with code-level UI/refactor slices or restore DB-backed browser proof when environment allows
 
+### 20260602-155931
+
+- current task: organize drug-master status, import history, and search filters with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, shared `PageSection`, `FilterSummaryBar`, and `ActionRail`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no drug-master API, import, or formulary mutation bug was targeted. The master freshness status, import history filters, and search/filter controls were still generic Card blocks, so status, active filter context, and list narrowing were harder to scan than the already-cleaned top controls
+- security risks found: no medication data, import endpoint, site selection, formulary stock setting, query parameter, or audit behavior changed. The refactor only displays active source/status/category/safety-filter context from existing state
+- performance issues found: no query, table, or mutation behavior changed. The added summary labels are derived from existing query results and local state without additional requests or expensive computation
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`
+- validation results: target Prettier passed unchanged after the final fix; initial focused Vitest/TypeScript exposed `FilterSummaryBar` item typing and the existing colon-based test expectation, both corrected; final focused Vitest passed with 4 files / 9 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining work includes deeper drug-master detail/safety queue extraction, schedule-proposal card cleanup, visit record form cleanup, workflow raw section cleanup, and browser proof after the local e2e DB is available
+- next action: run post-append whitespace/status checks, commit this slice, then continue with the next highest-value dense UI/refactor surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

@@ -1868,6 +1868,21 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       .length ?? 0;
   const agingSourceCount =
     masterStatusData?.sources.filter((source) => source.freshness === 'aging').length ?? 0;
+  const selectedImportLogSourceLabel =
+    IMPORT_LOG_SOURCE_OPTIONS.find((option) => option.value === importLogSourceFilter)?.label ??
+    'すべてのソース';
+  const selectedImportLogStatusLabel =
+    IMPORT_LOG_STATUS_OPTIONS.find((option) => option.value === importLogStatusFilter)?.label ??
+    'すべての状態';
+  const selectedCategoryLabel =
+    CATEGORY_OPTIONS.find((option) => option.value === category)?.label ?? '全薬効分類';
+  const activeSafetyFilterCount = [
+    genericOnly,
+    narcoticOnly,
+    highRiskOnly,
+    lasaOnly,
+    stockedOnly,
+  ].filter(Boolean).length;
   const bulkPreviewStatusLabel = (
     status: BulkPreviewResponse['preview']['rows'][number]['status'],
   ) => {
@@ -3139,17 +3154,43 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       )}
 
       {masterStatusData && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">マスター更新ステータス</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              総品目数: {masterStatusData.totals.drug_master_count.toLocaleString()}件 ・ 添付文書:{' '}
-              {masterStatusData.totals.package_insert_count.toLocaleString()}件 ・ 相互作用:{' '}
-              {masterStatusData.totals.interaction_count.toLocaleString()}件 ・ アラートルール:{' '}
-              {masterStatusData.totals.active_alert_rule_count}件
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <PageSection
+          title="マスター更新ステータス"
+          description="医薬品マスター、添付文書、相互作用、アラートルールの鮮度を確認します。"
+          actions={
+            <LoadingButton
+              type="button"
+              size="sm"
+              variant="outline"
+              loading={freshnessCheckMutation.isPending}
+              loadingLabel="確認中"
+              onClick={() => freshnessCheckMutation.mutate()}
+            >
+              鮮度チェック
+            </LoadingButton>
+          }
+        >
+          <div className="space-y-3">
+            <FilterSummaryBar
+              items={[
+                {
+                  label: '総品目:',
+                  value: `${masterStatusData.totals.drug_master_count.toLocaleString()}件`,
+                },
+                {
+                  label: '添付文書:',
+                  value: `${masterStatusData.totals.package_insert_count.toLocaleString()}件`,
+                },
+                {
+                  label: '相互作用:',
+                  value: `${masterStatusData.totals.interaction_count.toLocaleString()}件`,
+                },
+                {
+                  label: 'アラートルール:',
+                  value: `${masterStatusData.totals.active_alert_rule_count}件`,
+                },
+              ]}
+            />
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={staleSourceCount > 0 ? 'destructive' : 'outline'}>
@@ -3159,16 +3200,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   更新推奨 {agingSourceCount}件
                 </Badge>
               </div>
-              <LoadingButton
-                type="button"
-                size="sm"
-                variant="outline"
-                loading={freshnessCheckMutation.isPending}
-                loadingLabel="確認中"
-                onClick={() => freshnessCheckMutation.mutate()}
-              >
-                鮮度チェック
-              </LoadingButton>
             </div>
             {masterStatusData.sources.map((source) => (
               <div
@@ -3241,18 +3272,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 ? 'フリーマスター一括更新中…'
                 : 'フリーマスター一括更新（SSK→MHLW）'}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </PageSection>
       )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <History className="size-4" aria-hidden="true" />
-            取込履歴
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <PageSection
+        title="取込履歴"
+        description="取込ソースと実行状態を絞り込み、直近のマスター更新結果を確認します。"
+      >
+        <div className="space-y-3">
+          <FilterSummaryBar
+            items={[
+              { label: '表示:', value: `${importLogs.length.toLocaleString()}件` },
+              { label: 'ソース:', value: selectedImportLogSourceLabel },
+              { label: '状態:', value: selectedImportLogStatusLabel },
+            ]}
+          />
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="space-y-1">
               <span className="text-xs font-medium text-muted-foreground">ソース</span>
@@ -3324,15 +3359,23 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               </div>
             ))
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </PageSection>
 
       {/* Search & Filters */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">検索・フィルタ</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <PageSection
+        title="検索・フィルタ"
+        description="一覧に表示する医薬品を名称、薬効分類、安全性属性、採用品状態で絞り込みます。"
+      >
+        <div className="space-y-3">
+          <FilterSummaryBar
+            items={[
+              { label: '検索:', value: searchQuery.trim() || 'なし' },
+              { label: '薬効分類:', value: selectedCategoryLabel },
+              { label: '有効フィルタ:', value: `${activeSafetyFilterCount}件` },
+              { label: '採用品:', value: stockedOnly ? '採用品のみ' : '条件なし' },
+            ]}
+          />
           <div className="flex flex-wrap items-end gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search
@@ -3407,8 +3450,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               採用品のみ
             </label>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </PageSection>
 
       {/* Table */}
       <DataTable
