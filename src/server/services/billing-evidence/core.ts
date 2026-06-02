@@ -1386,6 +1386,8 @@ export async function upsertBillingEvidenceForVisit(
       ? {
           dispensing_base_up_evaluation: config.dispensing_base_up_evaluation === true,
           dispensing_price_response: config.dispensing_price_response === true,
+          electronic_dispensing_info_collaboration:
+            config.electronic_dispensing_info_collaboration === true,
         }
       : {};
   const candidateSpecs = await buildBillingCandidateSpecs(tx, {

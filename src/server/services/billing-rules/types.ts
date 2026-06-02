@@ -20,7 +20,7 @@ export type BillingRuleConditions = {
   /** 薬剤師1人あたりの週上限 (通常40回) */
   weekly_pharmacist_cap?: number;
   /** 算定頻度制限 */
-  frequency_limit?: 'monthly_once' | 'quarterly_once' | 'biannual_once';
+  frequency_limit?: 'monthly_once' | 'quarterly_once' | 'biannual_once' | 'once_per_6_months';
   /** 処方箋受付ごとに算定する項目 */
   per_prescription_acceptance?: boolean;
   /** 同一患者・処方箋受付等に依存しない薬局単位の受付料 */
@@ -121,9 +121,27 @@ export type BillingRuleConditions = {
   /** 医師との同時訪問（ポリファーマシー・残薬対策） */
   requires_physician_simultaneous?: boolean;
   /** 薬学的有害事象等防止の対象（処方提案反映/疑義照会） */
-  adverse_event_prevention_type?: 'proposal_reflected' | 'consultation_change';
+  adverse_event_prevention_type?:
+    | 'proposal_reflected'
+    | 'consultation_change'
+    | 'kakaritsuke_consultation_change'
+    | 'other_consultation_change';
+  /** 残薬調整の区分（7日分以上の投薬変更） */
+  residual_adjustment_type?:
+    | 'home_proposal_reflected'
+    | 'home_adjustment'
+    | 'kakaritsuke_adjustment'
+    | 'other_adjustment';
   /** 残薬調整の対象（7日分以上の投薬変更） */
   requires_residual_adjustment_home?: boolean;
+  /** かかりつけ薬剤師による算定が必要 */
+  requires_kakaritsuke_pharmacist?: boolean;
+  /** かかりつけ薬剤師の訪問介入が必要 */
+  requires_kakaritsuke_visit?: boolean;
+  /** かかりつけ薬剤師による継続的な電話等フォローアップが必要 */
+  requires_kakaritsuke_followup?: boolean;
+  /** 服用薬剤調整支援料2の包括的介入が必要 */
+  requires_medication_adjustment_support2?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -238,6 +256,14 @@ export type BillingEvidenceContext = {
   multiStaffVisitEligible?: boolean;
   /** 訪問薬剤管理医師同時指導料の対象 */
   physicianSimultaneousEligible?: boolean;
+  /** かかりつけ薬剤師による算定対象 */
+  kakaritsukePharmacistEligible?: boolean;
+  /** かかりつけ薬剤師訪問加算の対象 */
+  kakaritsukeVisitEligible?: boolean;
+  /** かかりつけ薬剤師フォローアップ加算の対象 */
+  kakaritsukeFollowupEligible?: boolean;
+  /** 服用薬剤調整支援料2の対象 */
+  medicationAdjustmentSupport2Eligible?: boolean;
   /** Pharmacy-site facility standards resolved from the active site config */
   facilityStandards?: Record<string, boolean>;
 };

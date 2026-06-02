@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-184520
+
+- current task: investigate latest 2026 dispensing fee revision notices and implement missing billing SSOT items
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-rules/revisions/medical/site-config-2026.ts`, `src/server/services/billing-rules/revisions/medical/official-2026.ts`, `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/rule-engine.test.ts`, `src/server/services/billing-rules/__tests__/medical-2026.test.ts`, `src/server/services/billing-rules/__tests__/official-medical-2026.test.ts`, `src/server/services/billing-evidence/core.ts`, and latest MHLW official pages/documents for 2026 revision notices through 2026-05-29
+- files changed: `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/rule-engine.test.ts`, `src/server/services/billing-rules/revisions/index.ts`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-rules/revisions/medical/site-config-2026.ts`, `src/server/services/billing-rules/revisions/medical/official-2026.ts`, `src/server/services/billing-rules/__tests__/medical-2026.test.ts`, `src/server/services/billing-rules/__tests__/official-medical-2026.test.ts`, `src/server/services/billing-evidence/core.ts`, `.codex/ralph-state.md`
+- bugs found: 2026 medical/dispensing SSOT was missing several official modeled items from the 2026 dispensing revision summary and latest MHLW notice set, including 調剤時残薬調整加算 イ/ハ/ニ, 薬学的有害事象等防止加算 ハ/ニ, かかりつけ薬剤師訪問加算, かかりつけ薬剤師フォローアップ加算, 服用薬剤調整支援料2, and 電子的調剤情報連携体制整備加算. The new electronic dispensing information fee also lacked a pharmacy-site facility-standard gate
+- security risks found: no auth, authorization, tenant boundary, DB mutation, migration, external request, secret, export, or patient data disclosure behavior changed. Newly added rules are gated by explicit context/facility-standard conditions and do not create broad automatic candidates
+- performance issues found: no additional DB query, network request, unbounded loop, or expensive computation added. Candidate filtering adds constant-size boolean checks on existing rule conditions/context
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write ...`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/billing-rules/__tests__/medical-2026.test.ts src/server/services/billing-rules/__tests__/official-medical-2026.test.ts src/server/services/billing-rules/rule-engine.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint ... --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- ...`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 51 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: full DB-backed/browser proof remains unavailable until local app `localhost:3012` and DB `localhost:5433` are running. Additional official 2026 items outside the current home-care/dispensing SSOT surface, such as broader drug-specific guidance, may need separate workflow support if the product scope expands beyond the modeled billing candidate engine
+- next action: commit this 2026 dispensing revision implementation group, then run the existing runtime preflight audit if needed
+
 ### 20260602-183629
 
 - current task: post-patient-packaging runtime/browser preflight audit

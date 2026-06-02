@@ -146,6 +146,7 @@ function manualRuleCandidates(
     if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
     if (
       typeof conditions.adverse_event_prevention_type === 'string' ||
+      typeof conditions.residual_adjustment_type === 'string' ||
       conditions.requires_residual_adjustment_home === true
     ) {
       return false;
@@ -255,6 +256,17 @@ export async function buildBillingCandidateSpecs(
     const physicianSimultaneousMatch =
       conditions.requires_physician_simultaneous !== true ||
       context.physicianSimultaneousEligible === true;
+    const kakaritsukePharmacistMatch =
+      conditions.requires_kakaritsuke_pharmacist !== true ||
+      context.kakaritsukePharmacistEligible === true;
+    const kakaritsukeVisitMatch =
+      conditions.requires_kakaritsuke_visit !== true || context.kakaritsukeVisitEligible === true;
+    const kakaritsukeFollowupMatch =
+      conditions.requires_kakaritsuke_followup !== true ||
+      context.kakaritsukeFollowupEligible === true;
+    const medicationAdjustmentSupport2Match =
+      conditions.requires_medication_adjustment_support2 !== true ||
+      context.medicationAdjustmentSupport2Eligible === true;
     const requiredFacilityStandard =
       typeof conditions.facility_standard_required === 'string'
         ? conditions.facility_standard_required
@@ -275,6 +287,10 @@ export async function buildBillingCandidateSpecs(
       specialCapMatch &&
       multiStaffVisitMatch &&
       physicianSimultaneousMatch &&
+      kakaritsukePharmacistMatch &&
+      kakaritsukeVisitMatch &&
+      kakaritsukeFollowupMatch &&
+      medicationAdjustmentSupport2Match &&
       facilityStandardMatch &&
       buildingTierMatch;
 

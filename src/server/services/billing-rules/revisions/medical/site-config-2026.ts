@@ -79,6 +79,7 @@ export const HOME_COMPREHENSIVE_POINTS_2026: Record<
 // ── 連携強化加算・医療DX推進体制整備加算・その他 ──
 export const COOPERATION_ENHANCEMENT_POINTS_2026 = 5;
 export const MEDICAL_DX_PROMOTION_POINTS_2026 = 8;
+export const ELECTRONIC_DISPENSING_INFO_COLLABORATION_POINTS_2026 = 8;
 export const DISPENSING_BASE_UP_EVALUATION_POINTS_2026 = {
   until20270531: 4,
   from20270601: 8,
@@ -98,6 +99,7 @@ export type MedicalSiteConfig2026 = {
   generic_dispensing_level?: GenericDispensingLevel2026;
   cooperation_enhancement?: boolean; // 連携強化加算
   medical_dx_promotion?: boolean; // 医療DX推進体制整備加算
+  electronic_dispensing_info_collaboration?: boolean; // 電子的調剤情報連携体制整備加算
   dispensing_base_up_evaluation?: boolean; // 調剤ベースアップ評価料
   dispensing_price_response?: boolean; // 調剤物価対応料
 

@@ -19,8 +19,8 @@ describe('MEDICAL_RULES_2026', () => {
     expect(new Set(codes).size).toBe(codes.length);
   });
 
-  it('35ルールが定義されていること', () => {
-    expect(MEDICAL_RULES_2026).toHaveLength(35);
+  it('44ルールが定義されていること', () => {
+    expect(MEDICAL_RULES_2026).toHaveLength(44);
   });
 
   it('全ルールの source_note が令和8年度を含むこと', () => {
@@ -73,6 +73,17 @@ describe('MEDICAL_RULES_2026 — 第5節 その他', () => {
       amount: 2,
     });
   });
+
+  it('電子的調剤情報連携体制整備加算 8点と施設基準要件を保持する', () => {
+    const rule = ruleByKey('medical.electronic_dispensing_info_collaboration');
+    expect(rule).toBeDefined();
+    expect(rule!.code).toBe('MED_ELECTRONIC_DISPENSING_INFO_COLLABORATION');
+    expect(rule!.amount).toBe(8);
+    expect(rule!.conditions.frequency_limit).toBe('monthly_once');
+    expect(rule!.conditions.facility_standard_required).toBe(
+      'electronic_dispensing_info_collaboration',
+    );
+  });
 });
 
 describe('MEDICAL_RULES_2026 — 2026年新設ルール', () => {
@@ -97,6 +108,23 @@ describe('MEDICAL_RULES_2026 — 2026年新設ルール', () => {
     expect(rule).toBeDefined();
     expect(rule!.code).toBe('MED_RESIDUAL_ADJUSTMENT_HOME');
     expect(rule!.amount).toBe(50);
+  });
+
+  it('調剤時残薬調整加算 イ・ハ・ニを保持する', () => {
+    expect(ruleByKey('medical.residual_adjustment.home_proposal')!.amount).toBe(50);
+    expect(ruleByKey('medical.residual_adjustment.kakaritsuke')!.amount).toBe(50);
+    expect(ruleByKey('medical.residual_adjustment.other')!.amount).toBe(30);
+  });
+
+  it('薬学的有害事象等防止加算 ハ・ニを保持する', () => {
+    expect(ruleByKey('medical.adverse_event_prevention.kakaritsuke_change')!.amount).toBe(50);
+    expect(ruleByKey('medical.adverse_event_prevention.other_change')!.amount).toBe(30);
+  });
+
+  it('かかりつけ薬剤師訪問加算・フォローアップ加算・服用薬剤調整支援料2を保持する', () => {
+    expect(ruleByKey('medical.kakaritsuke_visit_addition')!.amount).toBe(230);
+    expect(ruleByKey('medical.kakaritsuke_followup_addition')!.amount).toBe(50);
+    expect(ruleByKey('medical.medication_adjustment_support_2')!.amount).toBe(1000);
   });
 
   it('複数名薬剤管理指導訪問料 300点', () => {

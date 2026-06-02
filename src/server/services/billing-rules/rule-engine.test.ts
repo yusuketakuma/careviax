@@ -513,6 +513,125 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     );
   });
 
+  it('requires pharmacy-site facility standard before suggesting electronic dispensing info collaboration fee', async () => {
+    const singleRule = makeBaseRule();
+    const electronicInfoRule = makeAdditionRule({
+      ssot_key: 'medical.electronic_dispensing_info_collaboration',
+      code: 'MED_ELECTRONIC_DISPENSING_INFO_COLLABORATION',
+      name: '電子的調剤情報連携体制整備加算',
+      amount: 8,
+      service_type: 'generic',
+      conditions: {
+        per_prescription_acceptance: true,
+        pharmacy_acceptance_fee: true,
+        facility_standard_required: 'electronic_dispensing_info_collaboration',
+      },
+    });
+    const tx = makeTx([singleRule, electronicInfoRule]);
+
+    const withoutStandard = await buildBillingCandidateSpecs(tx, makeContext());
+    expect(
+      withoutStandard.find((s) => s.code === 'MED_ELECTRONIC_DISPENSING_INFO_COLLABORATION')
+        ?.status,
+    ).toBe('excluded');
+
+    const withStandard = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({
+        facilityStandards: { electronic_dispensing_info_collaboration: true },
+      }),
+    );
+    expect(
+      withStandard.find((s) => s.code === 'MED_ELECTRONIC_DISPENSING_INFO_COLLABORATION')?.status,
+    ).toBe('candidate');
+  });
+
+  it('requires explicit kakaritsuke eligibility before suggesting kakaritsuke visit and follow-up fees', async () => {
+    const singleRule = makeBaseRule();
+    const visitRule = makeAdditionRule({
+      ssot_key: 'medical.kakaritsuke_visit_addition',
+      code: 'MED_KAKARITSUKE_VISIT_ADDITION',
+      name: 'かかりつけ薬剤師訪問加算',
+      amount: 230,
+      service_type: 'generic',
+      conditions: {
+        requires_kakaritsuke_pharmacist: true,
+        requires_kakaritsuke_visit: true,
+      },
+    });
+    const followupRule = makeAdditionRule({
+      ssot_key: 'medical.kakaritsuke_followup_addition',
+      code: 'MED_KAKARITSUKE_FOLLOWUP_ADDITION',
+      name: 'かかりつけ薬剤師フォローアップ加算',
+      amount: 50,
+      service_type: 'generic',
+      conditions: {
+        requires_kakaritsuke_pharmacist: true,
+        requires_kakaritsuke_followup: true,
+      },
+    });
+    const tx = makeTx([singleRule, visitRule, followupRule]);
+
+    const withoutEligibility = await buildBillingCandidateSpecs(tx, makeContext());
+    expect(
+      withoutEligibility.find((s) => s.code === 'MED_KAKARITSUKE_VISIT_ADDITION')?.status,
+    ).toBe('excluded');
+    expect(
+      withoutEligibility.find((s) => s.code === 'MED_KAKARITSUKE_FOLLOWUP_ADDITION')?.status,
+    ).toBe('excluded');
+
+    const withVisitEligibility = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ kakaritsukePharmacistEligible: true, kakaritsukeVisitEligible: true }),
+    );
+    expect(
+      withVisitEligibility.find((s) => s.code === 'MED_KAKARITSUKE_VISIT_ADDITION')?.status,
+    ).toBe('candidate');
+    expect(
+      withVisitEligibility.find((s) => s.code === 'MED_KAKARITSUKE_FOLLOWUP_ADDITION')?.status,
+    ).toBe('excluded');
+
+    const withFollowupEligibility = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ kakaritsukePharmacistEligible: true, kakaritsukeFollowupEligible: true }),
+    );
+    expect(
+      withFollowupEligibility.find((s) => s.code === 'MED_KAKARITSUKE_FOLLOWUP_ADDITION')?.status,
+    ).toBe('candidate');
+  });
+
+  it('requires explicit medication adjustment support2 eligibility before suggesting support fee 2', async () => {
+    const singleRule = makeBaseRule();
+    const supportRule = makeAdditionRule({
+      ssot_key: 'medical.medication_adjustment_support_2',
+      code: 'MED_MEDICATION_ADJUSTMENT_SUPPORT_2',
+      name: '服用薬剤調整支援料2',
+      amount: 1000,
+      service_type: 'generic',
+      conditions: {
+        requires_kakaritsuke_pharmacist: true,
+        requires_medication_adjustment_support2: true,
+      },
+    });
+    const tx = makeTx([singleRule, supportRule]);
+
+    const withoutEligibility = await buildBillingCandidateSpecs(tx, makeContext());
+    expect(
+      withoutEligibility.find((s) => s.code === 'MED_MEDICATION_ADJUSTMENT_SUPPORT_2')?.status,
+    ).toBe('excluded');
+
+    const withEligibility = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({
+        kakaritsukePharmacistEligible: true,
+        medicationAdjustmentSupport2Eligible: true,
+      }),
+    );
+    expect(
+      withEligibility.find((s) => s.code === 'MED_MEDICATION_ADJUSTMENT_SUPPORT_2')?.status,
+    ).toBe('candidate');
+  });
+
   // ── 14. exclusion_rules same_month_exclusive ──
   it('includes addition candidates regardless of exclusion_rules (enforcement is downstream)', async () => {
     const singleRule = makeBaseRule();

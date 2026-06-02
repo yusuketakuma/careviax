@@ -465,9 +465,68 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     source_note:
       '令和8年度診療報酬改定（2026年6月施行） 薬学的有害事象等防止加算 ロ 50点（在宅患者・疑義照会により処方変更）',
   },
+  {
+    ssot_key: 'medical.adverse_event_prevention.kakaritsuke_change',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 465,
+    name: '薬学的有害事象等防止加算 ハ（かかりつけ薬剤師）',
+    code: 'MED_ADVERSE_EVENT_KAKARITSUKE_CHANGE',
+    amount: 50,
+    conditions: {
+      adverse_event_prevention_type: 'kakaritsuke_consultation_change',
+      requires_kakaritsuke_pharmacist: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 薬学的有害事象等防止加算 ハ 50点（かかりつけ薬剤師による照会で処方変更）',
+  },
+  {
+    ssot_key: 'medical.adverse_event_prevention.other_change',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 466,
+    name: '薬学的有害事象等防止加算 ニ（その他）',
+    code: 'MED_ADVERSE_EVENT_OTHER_CHANGE',
+    amount: 30,
+    conditions: {
+      adverse_event_prevention_type: 'other_consultation_change',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 薬学的有害事象等防止加算 ニ 30点（イからハ以外）',
+  },
 
   // ── 調剤時残薬調整加算（在宅） ──
   // 2026年新設: 旧「在宅患者重複投薬・相互作用等防止管理料」残薬部分を統合
+  {
+    ssot_key: 'medical.residual_adjustment.home_proposal',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 468,
+    name: '調剤時残薬調整加算 イ（在宅・処方提案反映）',
+    code: 'MED_RESIDUAL_ADJUSTMENT_HOME_PROPOSAL',
+    amount: 50,
+    conditions: {
+      residual_adjustment_type: 'home_proposal_reflected',
+      requires_residual_adjustment_home: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 調剤時残薬調整加算 イ 50点（在宅患者・処方提案が処方箋発行前に反映）',
+  },
   {
     ssot_key: 'medical.residual_adjustment.home',
     rule_type: 'addition',
@@ -481,11 +540,51 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     code: 'MED_RESIDUAL_ADJUSTMENT_HOME',
     amount: 50,
     conditions: {
+      residual_adjustment_type: 'home_adjustment',
       requires_residual_adjustment_home: true,
     },
     source_url: MEDICAL_TABLE_URL,
     source_note:
       '令和8年度診療報酬改定（2026年6月施行） 調剤時残薬調整加算 ロ 50点（在宅患者・7日分以上の投薬変更）',
+  },
+  {
+    ssot_key: 'medical.residual_adjustment.kakaritsuke',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 471,
+    name: '調剤時残薬調整加算 ハ（かかりつけ薬剤師）',
+    code: 'MED_RESIDUAL_ADJUSTMENT_KAKARITSUKE',
+    amount: 50,
+    conditions: {
+      residual_adjustment_type: 'kakaritsuke_adjustment',
+      requires_kakaritsuke_pharmacist: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 調剤時残薬調整加算 ハ 50点（かかりつけ薬剤師による調剤日数変更）',
+  },
+  {
+    ssot_key: 'medical.residual_adjustment.other',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 472,
+    name: '調剤時残薬調整加算 ニ（その他）',
+    code: 'MED_RESIDUAL_ADJUSTMENT_OTHER',
+    amount: 30,
+    conditions: {
+      residual_adjustment_type: 'other_adjustment',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 調剤時残薬調整加算 ニ 30点（イからハ以外）',
   },
 
   // ── 在宅中心静脈栄養法加算 ──
@@ -632,6 +731,69 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     },
     source_url: MEDICAL_TABLE_URL,
     source_note: '令和8年度診療報酬改定（2026年6月施行） 経管投薬支援料 100点（初回のみ）',
+  },
+  {
+    ssot_key: 'medical.kakaritsuke_visit_addition',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 390,
+    name: 'かかりつけ薬剤師訪問加算',
+    code: 'MED_KAKARITSUKE_VISIT_ADDITION',
+    amount: 230,
+    conditions: {
+      requires_kakaritsuke_pharmacist: true,
+      requires_kakaritsuke_visit: true,
+    },
+    evidence_requirements: {
+      requires_visit_documentation: true,
+      requires_written_report: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '令和8年度診療報酬改定（2026年6月施行・新設） かかりつけ薬剤師訪問加算 230点',
+  },
+  {
+    ssot_key: 'medical.kakaritsuke_followup_addition',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 391,
+    name: 'かかりつけ薬剤師フォローアップ加算',
+    code: 'MED_KAKARITSUKE_FOLLOWUP_ADDITION',
+    amount: 50,
+    conditions: {
+      requires_kakaritsuke_pharmacist: true,
+      requires_kakaritsuke_followup: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行・新設） かかりつけ薬剤師フォローアップ加算 50点',
+  },
+  {
+    ssot_key: 'medical.medication_adjustment_support_2',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 392,
+    name: '服用薬剤調整支援料2',
+    code: 'MED_MEDICATION_ADJUSTMENT_SUPPORT_2',
+    amount: 1000,
+    conditions: {
+      requires_kakaritsuke_pharmacist: true,
+      requires_medication_adjustment_support2: true,
+      frequency_limit: 'quarterly_once',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服用薬剤調整支援料2 1,000点',
   },
 
   // ── 在宅患者緊急訪問薬剤管理指導料 ──
@@ -900,5 +1062,27 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     source_url: MEDICAL_TABLE_URL,
     source_note:
       '令和8年度診療報酬改定（2026年6月施行） 調剤物価対応料 1点（3月に1回、2027年6月以降2点）',
+  },
+  {
+    ssot_key: 'medical.electronic_dispensing_info_collaboration',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 920,
+    name: '電子的調剤情報連携体制整備加算',
+    code: 'MED_ELECTRONIC_DISPENSING_INFO_COLLABORATION',
+    amount: 8,
+    conditions: {
+      per_prescription_acceptance: true,
+      pharmacy_acceptance_fee: true,
+      frequency_limit: 'monthly_once',
+      facility_standard_required: 'electronic_dispensing_info_collaboration',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note:
+      '令和8年度診療報酬改定（2026年6月施行） 電子的調剤情報連携体制整備加算 8点（月1回）',
   },
 ];
