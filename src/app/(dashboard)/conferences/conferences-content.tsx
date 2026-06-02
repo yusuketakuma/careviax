@@ -56,6 +56,8 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
 import { SectionIntro } from '@/components/ui/section-intro';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
 import type { ConferencesFocus } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
@@ -1046,27 +1048,17 @@ export function ConferencesContent({
         </div>
       ) : null}
 
-      <SectionIntro
+      <PageSection
         title="カンファレンス記録"
         description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
-      />
-      <section
-        className={cn(
-          'space-y-4',
-          initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null,
-        )}
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">カンファレンス記録</h2>
-            <p className="text-sm text-muted-foreground">
-              {noteViewMode === 'calendar' ? `${calendarNotes.length}件` : `${notes.length}件`}
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:items-end">
+        className={cn(initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null)}
+        contentClassName="space-y-4"
+        actions={
+          <ActionRail>
             <div className="flex rounded-lg border border-border bg-background p-1">
               <button
                 type="button"
+                aria-pressed={noteViewMode === 'list'}
                 className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
                   noteViewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
@@ -1081,6 +1073,7 @@ export function ConferencesContent({
               </button>
               <button
                 type="button"
+                aria-pressed={noteViewMode === 'calendar'}
                 className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
                   noteViewMode === 'calendar'
                     ? 'bg-primary text-primary-foreground'
@@ -1094,6 +1087,16 @@ export function ConferencesContent({
                 カレンダー
               </button>
             </div>
+          </ActionRail>
+        }
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {noteViewMode === 'calendar' ? `${calendarNotes.length}件` : `${notes.length}件`}
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:items-end">
             <Tabs
               value={selectedNoteType}
               onValueChange={(value) => {
@@ -1273,7 +1276,7 @@ export function ConferencesContent({
             ) : null}
           </div>
         )}
-      </section>
+      </PageSection>
 
       <SectionIntro
         title="地域活動と紹介導線"

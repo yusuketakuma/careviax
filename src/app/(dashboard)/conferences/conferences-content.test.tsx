@@ -65,14 +65,16 @@ describe('ConferencesContent', () => {
   });
 
   it('shows the home context banner for notes focus', () => {
-    render(
-      <ConferencesContent
-        initialFocus="notes"
-        initialContext="dashboard_home"
-      />,
-    );
+    render(<ConferencesContent initialFocus="notes" initialContext="dashboard_home" />);
 
     expect(screen.getByTestId('conferences-context-banner')).toBeTruthy();
-    expect(screen.getByText('ホームからカンファレンス記録にフォーカスして開いています。')).toBeTruthy();
+    expect(
+      screen.getByText('ホームからカンファレンス記録にフォーカスして開いています。'),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'カンファレンス記録' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '一覧' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'カレンダー' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
   });
 });

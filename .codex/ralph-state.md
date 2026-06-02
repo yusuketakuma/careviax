@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-170500
+
+- current task: organize conference note view controls with shared section and action primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/conferences/conferences-content.tsx`, `src/app/(dashboard)/conferences/conferences-content.test.tsx`, `src/components/layout/page-section.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/conferences/conferences-content.tsx`, `src/app/(dashboard)/conferences/conferences-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: conference note display used a `SectionIntro` followed by a hand-built section with a repeated heading, while list/calendar state was indicated visually but not exposed with `aria-pressed`
+- security risks found: no conference API, auth, authorization, patient scoping, report generation, task conversion, community activity, query, or mutation behavior changed
+- performance issues found: no query, calendar calculation, list rendering, mutation, or URL sync behavior changed. The slice only replaces local layout wrappers and adds ARIA state
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 4 tests after restoring the still-needed `SectionIntro` import for other page sections; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: code-mapper's listed clutter candidates have now been addressed at least once, but completion still needs a broader current-state audit and browser proof remains blocked by local app/db availability
+- next action: run a current-state audit for remaining dense hand-built UI patterns and retry medical UI preflight to confirm whether browser proof is still blocked
+
 ### 20260602-170000
 
 - current task: organize external viewer summary and follow-up groups around the external sharing boundary
