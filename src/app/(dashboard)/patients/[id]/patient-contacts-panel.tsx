@@ -4,8 +4,9 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -147,10 +148,7 @@ export function PatientContactsPanel({
     },
     onSuccess: async () => {
       toast.success('連絡先を更新しました');
-      await invalidateQueryKeys(
-        queryClient,
-        getPatientCareQueryKeys({ orgId, patientId })
-      );
+      await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '連絡先の保存に失敗しました');
@@ -160,7 +158,7 @@ export function PatientContactsPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">患者・家族連絡先</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">患者・家族連絡先</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -350,7 +348,7 @@ export function PatientContactsPanel({
           </div>
         ))}
 
-        <div className="flex flex-wrap justify-between gap-2">
+        <ActionRail align="between">
           <Button
             type="button"
             variant="outline"
@@ -379,7 +377,7 @@ export function PatientContactsPanel({
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
-        </div>
+        </ActionRail>
       </CardContent>
     </Card>
   );

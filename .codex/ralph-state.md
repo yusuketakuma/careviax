@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-183223
+
+- current task: improve patient contacts panel semantic heading and action grouping
+- files inspected: `git status --short`, `git log --oneline -12`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`, `src/components/ui/action-rail.tsx`, and focused contact/packaging UI scans
+- files changed: `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient/family contacts panel used a decorative `CardTitle` for a major patient-detail group and a hand-built add/save action row. This weakened heading navigation and diverged from the shared action layout used by adjacent editable panels
+- security risks found: no patient contacts API path, org header, PUT payload shape, mutation error handling, toast behavior, query invalidation, contact row state, auth, authorization, or patient/contact data handling changed
+- performance issues found: no state initialization, row mapping, filtering, mutation function, invalidation flow, or render-loop behavior changed. The slice only changes heading markup, shared action layout, and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`
+- validation results: Prettier completed successfully; focused patient contacts Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. External share, care team, communications, packaging, visit constraints, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient contacts heading/action group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-183037
 
 - current task: post-patient-documents runtime/browser preflight audit
