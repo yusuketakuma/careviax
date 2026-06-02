@@ -255,6 +255,13 @@ export async function buildBillingCandidateSpecs(
     const physicianSimultaneousMatch =
       conditions.requires_physician_simultaneous !== true ||
       context.physicianSimultaneousEligible === true;
+    const requiredFacilityStandard =
+      typeof conditions.facility_standard_required === 'string'
+        ? conditions.facility_standard_required
+        : null;
+    const facilityStandardMatch =
+      requiredFacilityStandard == null ||
+      context.facilityStandards?.[requiredFacilityStandard] === true;
     const buildingTierMatch = manualRuleBuildingTier == null || manualRuleBuildingTier === tier;
     const patientConditionsMet =
       narcoticMatch &&
@@ -268,6 +275,7 @@ export async function buildBillingCandidateSpecs(
       specialCapMatch &&
       multiStaffVisitMatch &&
       physicianSimultaneousMatch &&
+      facilityStandardMatch &&
       buildingTierMatch;
 
     const suggested =
@@ -291,7 +299,9 @@ export async function buildBillingCandidateSpecs(
       exclusionReason:
         context.claimable && suggested
           ? 'SSOT上の追加算定候補です。要件確認後に採否を確定してください'
-          : (context.exclusionReason ?? '基礎算定が成立していないため候補化しません'),
+          : context.claimable && !facilityStandardMatch && requiredFacilityStandard
+            ? `薬局施設基準 ${requiredFacilityStandard} が未届出のため候補化しません`
+            : (context.exclusionReason ?? '基礎算定が成立していないため候補化しません'),
       calculationBreakdown: {
         calculation_unit: manualRule.calculation_unit,
         rate_percent: ratePercent,

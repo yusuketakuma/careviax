@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-181939
+
+- current task: gate 2026 dispensing Section 5 candidate generation by pharmacy facility standards
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/rule-engine.test.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/batch.ts`, `src/server/services/billing-runtime-context.ts`, and 2026 dispensing fee implementation diffs
+- files changed: `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/rule-engine.test.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/batch.ts`, `.codex/ralph-state.md`
+- bugs found: the newly registered 2026 Section 5 dispensing base-up fee rule used `facility_standard_required`, but the billing candidate rule engine did not evaluate that condition. Generic manual rules could therefore be suggested from visit evidence without confirming the active pharmacy-site facility standard
+- security risks found: no auth, authorization, tenant boundary, DB schema, external request, secret, export, or mutation permission behavior changed. The change only carries already-resolved pharmacy-site facility standard booleans into candidate evaluation and persists them in calculation context
+- performance issues found: no additional DB query or unbounded loop added. Candidate evaluation now performs constant-size boolean checks on existing calculation context / runtime site config
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write src/server/services/billing-rules/types.ts src/server/services/billing-rules/rule-engine.ts src/server/services/billing-rules/rule-engine.test.ts src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/batch.ts`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/billing-rules/rule-engine.test.ts src/server/services/billing-evidence.test.ts src/server/services/billing-rules/__tests__/medical-2026.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/server/services/billing-rules/types.ts src/server/services/billing-rules/rule-engine.ts src/server/services/billing-rules/rule-engine.test.ts src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/batch.ts --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- ...`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 51 tests; targeted ESLint passed with zero warnings; TypeScript passed without output after facility standard context typing was tightened; whitespace diff check passed
+- remaining work: full DB-backed browser/runtime proof remains unavailable until local app `localhost:3012` and DB `localhost:5433` are running. Broader UI/refactor work remains active
+- next action: commit this 2026 dispensing facility-standard candidate gate group, then retry runtime preflight or continue a static UI/refactor slice
+
 ### 20260602-181258
 
 - current task: post-patient-conditions runtime/browser preflight audit

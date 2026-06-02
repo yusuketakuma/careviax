@@ -482,6 +482,37 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     );
   });
 
+  it('requires pharmacy-site facility standard before suggesting dispensing base-up fee', async () => {
+    const singleRule = makeBaseRule();
+    const baseUpRule = makeAdditionRule({
+      ssot_key: 'medical.dispensing_base_up_evaluation',
+      code: 'MED_DISPENSING_BASE_UP_EVALUATION',
+      name: '調剤ベースアップ評価料',
+      amount: 4,
+      service_type: 'generic',
+      conditions: {
+        per_prescription_acceptance: true,
+        pharmacy_acceptance_fee: true,
+        facility_standard_required: 'dispensing_base_up_evaluation',
+      },
+    });
+    const tx = makeTx([singleRule, baseUpRule]);
+
+    const withoutStandard = await buildBillingCandidateSpecs(tx, makeContext());
+    const excluded = withoutStandard.find((s) => s.code === 'MED_DISPENSING_BASE_UP_EVALUATION');
+    expect(excluded).toBeDefined();
+    expect(excluded!.status).toBe('excluded');
+    expect(excluded!.exclusionReason).toContain('dispensing_base_up_evaluation');
+
+    const withStandard = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ facilityStandards: { dispensing_base_up_evaluation: true } }),
+    );
+    expect(withStandard.find((s) => s.code === 'MED_DISPENSING_BASE_UP_EVALUATION')?.status).toBe(
+      'candidate',
+    );
+  });
+
   // ── 14. exclusion_rules same_month_exclusive ──
   it('includes addition candidates regardless of exclusion_rules (enforcement is downstream)', async () => {
     const singleRule = makeBaseRule();

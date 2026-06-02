@@ -1381,6 +1381,13 @@ export async function upsertBillingEvidenceForVisit(
     if (config.region_small_office_10) regionAddOnEligible.push('small_office_10');
     if (config.region_resident_5) regionAddOnEligible.push('resident_5');
   }
+  const facilityStandards: Record<string, boolean> =
+    payerBasis === 'medical'
+      ? {
+          dispensing_base_up_evaluation: config.dispensing_base_up_evaluation === true,
+          dispensing_price_response: config.dispensing_price_response === true,
+        }
+      : {};
   const candidateSpecs = await buildBillingCandidateSpecs(tx, {
     orgId: args.orgId,
     asOfDate: visitDate,
@@ -1409,6 +1416,7 @@ export async function upsertBillingEvidenceForVisit(
     initialTransitionEligible: homeVisit2026Eligibility.initialTransitionEligible,
     multiStaffVisitEligible: homeVisit2026Eligibility.multiStaffVisitEligible,
     physicianSimultaneousEligible: homeVisit2026Eligibility.physicianSimultaneousEligible,
+    facilityStandards,
   });
 
   // ── 薬局情報から体制加算を判定 ──
@@ -1553,6 +1561,7 @@ export async function upsertBillingEvidenceForVisit(
     special_cap_eligible: specialCapEligible,
     online_eligible: emergencyCategory === 'online',
     region_add_on_eligible: regionAddOnEligible,
+    facility_standards: facilityStandards,
     visit_type: visitRecord.schedule.visit_type,
     emergency_category: emergencyCategory,
     after_hours_visit: afterHoursVisit,

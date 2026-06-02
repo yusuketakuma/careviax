@@ -238,6 +238,8 @@ export type BillingEvidenceContext = {
   multiStaffVisitEligible?: boolean;
   /** 訪問薬剤管理医師同時指導料の対象 */
   physicianSimultaneousEligible?: boolean;
+  /** Pharmacy-site facility standards resolved from the active site config */
+  facilityStandards?: Record<string, boolean>;
 };
 
 export type BillingCandidateSpec = {

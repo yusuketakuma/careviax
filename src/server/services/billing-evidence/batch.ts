@@ -42,6 +42,18 @@ function toPayerBasis(value: string): 'medical' | 'care' {
   return value === 'care' ? 'care' : 'medical';
 }
 
+function readFacilityStandards(context: Record<string, unknown>): Record<string, boolean> {
+  const raw =
+    typeof context.facility_standards === 'object' &&
+    context.facility_standards !== null &&
+    !Array.isArray(context.facility_standards)
+      ? context.facility_standards
+      : {};
+  return Object.fromEntries(
+    Object.entries(raw).filter((entry): entry is [string, boolean] => entry[1] === true),
+  );
+}
+
 type GenerateBillingCandidatesTx =
   InformationProvisionCandidatesTx
       & HomeDuplicateInteractionCandidatesTx
@@ -192,6 +204,7 @@ export async function generateBillingCandidatesForMonth(
       calculationContext.care_level_category === 'support_required'
         ? calculationContext.care_level_category
         : null;
+    const facilityStandards = readFacilityStandards(calculationContext);
 
     const visitRecordId =
       typeof evidence.visit_record_id === 'string' ? evidence.visit_record_id : null;
@@ -224,6 +237,7 @@ export async function generateBillingCandidatesForMonth(
       centralVenousRequired: calculationContext.central_venous_required === true,
       enteralRequired: calculationContext.enteral_required === true,
       careLevelCategory,
+      facilityStandards,
     });
 
     for (const spec of specs) {
