@@ -20,7 +20,9 @@ import {
 import { getQrScanShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/loading';
 import {
@@ -486,134 +488,126 @@ export default function QRScanPage() {
 
       {/* ── スキャン完了 — 続行 or 終了 ── */}
       {phase === 'scanned' && (
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <ScanLine className="h-4 w-4 text-primary" />
-              {progressLabel}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-4">
-            <p className="text-sm text-muted-foreground">
-              {totalQRCount != null
-                ? `このお薬手帳はQRコードが${totalQRCount}枚あります。残りをスキャンするか、この内容で送信してください。`
-                : '続けて別のQRコードをスキャンするか、この内容で送信してください。'}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button className="min-h-[44px] flex-1" variant="outline" onClick={continueScanning}>
-                <Camera className="mr-1.5 h-4 w-4" />
-                次のQRをスキャン
-              </Button>
-              <Button className="min-h-[44px] flex-1" onClick={() => finalizeScan(scannedTexts)}>
-                <CheckCircle className="mr-1.5 h-4 w-4" />
-                スキャン完了
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <PageSection
+          title={progressLabel}
+          description={
+            totalQRCount != null
+              ? `このお薬手帳はQRコードが${totalQRCount}枚あります。残りをスキャンするか、この内容で送信してください。`
+              : '続けて別のQRコードをスキャンするか、この内容で送信してください。'
+          }
+          actions={<ScanLine className="h-5 w-5 text-primary" aria-hidden="true" />}
+          contentClassName="space-y-3"
+        >
+          <ActionRail align="between">
+            <Button className="min-h-[44px] flex-1" variant="outline" onClick={continueScanning}>
+              <Camera className="mr-1.5 h-4 w-4" />
+              次のQRをスキャン
+            </Button>
+            <Button className="min-h-[44px] flex-1" onClick={() => finalizeScan(scannedTexts)}>
+              <CheckCircle className="mr-1.5 h-4 w-4" />
+              スキャン完了
+            </Button>
+          </ActionRail>
+        </PageSection>
       )}
 
       {/* ── パース結果 + 患者照合 ── */}
       {mergedQRData && phase !== 'camera' && phase !== 'scanned' && (
         <>
           {/* QR 読取結果 */}
-          <Card>
-            <CardHeader className="border-b">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ScanLine className="h-4 w-4 text-primary" />
-                読取結果
-                <Badge variant="secondary">{scannedCount}枚</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-4">
-              {/* 患者情報 */}
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  患者情報
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">氏名: </span>
-                    <span className="font-medium">{mergedQRData.patient.name || '---'}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">カナ: </span>
-                    <span className="font-medium">{mergedQRData.patient.nameKana || '---'}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">生年月日: </span>
-                    <span className="font-medium">{mergedQRData.patient.birthDate || '---'}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">性別: </span>
-                    <span className="font-medium">
-                      {mergedQRData.patient.gender === 'male'
-                        ? '男性'
-                        : mergedQRData.patient.gender === 'female'
-                          ? '女性'
-                          : '---'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 医療機関情報 */}
-              {(mergedQRData.prescribingInstitution.name || mergedQRData.prescribingDoctor) && (
+          <PageSection
+            title="読取結果"
+            description="QRから読み取った患者情報、処方元、薬剤を確認します。"
+            actions={<Badge variant="secondary">{scannedCount}枚</Badge>}
+            contentClassName="space-y-4"
+          >
+            {/* 患者情報 */}
+            <div>
+              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                患者情報
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    処方元
-                  </p>
-                  <div className="text-sm">
-                    {mergedQRData.prescribingInstitution.name && (
-                      <p>
-                        <span className="text-muted-foreground">医療機関: </span>
-                        <span className="font-medium">
-                          {mergedQRData.prescribingInstitution.name}
-                        </span>
-                      </p>
-                    )}
-                    {mergedQRData.prescribingDoctor && (
-                      <p>
-                        <span className="text-muted-foreground">処方医: </span>
-                        <span className="font-medium">{mergedQRData.prescribingDoctor}</span>
-                      </p>
-                    )}
-                  </div>
+                  <span className="text-muted-foreground">氏名: </span>
+                  <span className="font-medium">{mergedQRData.patient.name || '---'}</span>
                 </div>
-              )}
-
-              {/* 薬剤一覧 */}
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  薬剤 ({mergedQRData.medications.length}件)
-                </p>
-                {mergedQRData.medications.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">薬剤情報が読み取れませんでした</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {mergedQRData.medications.map((med, i) => (
-                      <li
-                        key={i}
-                        className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
-                      >
-                        <p className="font-medium">{med.drugName}</p>
-                        <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {med.dose && (
-                            <span>
-                              {med.dose}
-                              {med.unit || ''}
-                            </span>
-                          )}
-                          {med.usage && <span>{med.usage}</span>}
-                          {med.daysOrTimes && <span>{med.daysOrTimes}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <div>
+                  <span className="text-muted-foreground">カナ: </span>
+                  <span className="font-medium">{mergedQRData.patient.nameKana || '---'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">生年月日: </span>
+                  <span className="font-medium">{mergedQRData.patient.birthDate || '---'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">性別: </span>
+                  <span className="font-medium">
+                    {mergedQRData.patient.gender === 'male'
+                      ? '男性'
+                      : mergedQRData.patient.gender === 'female'
+                        ? '女性'
+                        : '---'}
+                  </span>
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            {/* 医療機関情報 */}
+            {(mergedQRData.prescribingInstitution.name || mergedQRData.prescribingDoctor) && (
+              <div>
+                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  処方元
+                </h3>
+                <div className="text-sm">
+                  {mergedQRData.prescribingInstitution.name && (
+                    <p>
+                      <span className="text-muted-foreground">医療機関: </span>
+                      <span className="font-medium">
+                        {mergedQRData.prescribingInstitution.name}
+                      </span>
+                    </p>
+                  )}
+                  {mergedQRData.prescribingDoctor && (
+                    <p>
+                      <span className="text-muted-foreground">処方医: </span>
+                      <span className="font-medium">{mergedQRData.prescribingDoctor}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 薬剤一覧 */}
+            <div>
+              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                薬剤 ({mergedQRData.medications.length}件)
+              </h3>
+              {mergedQRData.medications.length === 0 ? (
+                <p className="text-sm text-muted-foreground">薬剤情報が読み取れませんでした</p>
+              ) : (
+                <ul className="space-y-2">
+                  {mergedQRData.medications.map((med, i) => (
+                    <li
+                      key={i}
+                      className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium">{med.drugName}</p>
+                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {med.dose && (
+                          <span>
+                            {med.dose}
+                            {med.unit || ''}
+                          </span>
+                        )}
+                        {med.usage && <span>{med.usage}</span>}
+                        {med.daysOrTimes && <span>{med.daysOrTimes}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </PageSection>
 
           {/* 患者照合 — 検索中 */}
           {phase === 'parsed' && (
@@ -627,84 +621,76 @@ export default function QRScanPage() {
 
           {/* 患者照合 — 結果 */}
           {phase === 'matched' && (
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <UserSearch className="h-4 w-4 text-primary" />
-                  患者照合
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-4">
-                {selectedPatient ? (
-                  <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 p-3">
-                    <div>
-                      <p className="font-medium">{selectedPatient.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedPatient.name_kana} / {selectedPatient.birth_date}
-                      </p>
-                    </div>
-                    <Badge variant="default">選択済み</Badge>
-                  </div>
-                ) : patients.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      {patients.length}件の候補が見つかりました。患者を選択してください。
-                    </p>
-                    {patients.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors',
-                          'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          'min-h-[44px]',
-                        )}
-                        onClick={() => setSelectedPatient(p)}
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {p.name_kana} / {p.birth_date}
-                          </p>
-                        </div>
-                        {mergedQRData.patient.birthDate &&
-                          p.birth_date?.startsWith(mergedQRData.patient.birthDate) && (
-                            <Badge variant="secondary">生年月日一致</Badge>
-                          )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3 py-4 text-center">
-                    <AlertTriangle className="h-8 w-8 text-amber-500" />
-                    <p className="text-sm text-muted-foreground">
-                      該当する患者が見つかりませんでした。
+            <PageSection
+              title="患者照合"
+              description="読み取った患者情報を既存患者に紐づけ、下書き送信または新規登録へ進みます。"
+              actions={<UserSearch className="h-5 w-5 text-primary" aria-hidden="true" />}
+              contentClassName="space-y-3"
+            >
+              {selectedPatient ? (
+                <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 p-3">
+                  <div>
+                    <p className="font-medium">{selectedPatient.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPatient.name_kana} / {selectedPatient.birth_date}
                     </p>
                   </div>
-                )}
-
-                {/* アクションボタン */}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  {selectedPatient && (
-                    <Button
-                      className="min-h-[44px] flex-1"
-                      onClick={() => sendToDraft(selectedPatient.id)}
-                    >
-                      <Send className="mr-1.5 h-4 w-4" />
-                      PCに送信
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    className="min-h-[44px] flex-1"
-                    onClick={goToNewPatient}
-                  >
-                    <UserPlus className="mr-1.5 h-4 w-4" />
-                    新規患者登録
-                  </Button>
+                  <Badge variant="default">選択済み</Badge>
                 </div>
-              </CardContent>
-            </Card>
+              ) : patients.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {patients.length}件の候補が見つかりました。患者を選択してください。
+                  </p>
+                  {patients.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors',
+                        'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        'min-h-[44px]',
+                      )}
+                      onClick={() => setSelectedPatient(p)}
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {p.name_kana} / {p.birth_date}
+                        </p>
+                      </div>
+                      {mergedQRData.patient.birthDate &&
+                        p.birth_date?.startsWith(mergedQRData.patient.birthDate) && (
+                          <Badge variant="secondary">生年月日一致</Badge>
+                        )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                  <p className="text-sm text-muted-foreground">
+                    該当する患者が見つかりませんでした。
+                  </p>
+                </div>
+              )}
+
+              <ActionRail align="between">
+                {selectedPatient && (
+                  <Button
+                    className="min-h-[44px] flex-1"
+                    onClick={() => sendToDraft(selectedPatient.id)}
+                  >
+                    <Send className="mr-1.5 h-4 w-4" />
+                    PCに送信
+                  </Button>
+                )}
+                <Button variant="outline" className="min-h-[44px] flex-1" onClick={goToNewPatient}>
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                  新規患者登録
+                </Button>
+              </ActionRail>
+            </PageSection>
           )}
 
           {/* 送信中 */}
@@ -763,12 +749,12 @@ export default function QRScanPage() {
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <ActionRail>
                   <Button onClick={resetScan}>
                     <Camera className="mr-1.5 h-4 w-4" />
                     次のQRをスキャン
                   </Button>
-                </div>
+                </ActionRail>
               </CardContent>
             </Card>
           )}
@@ -779,7 +765,7 @@ export default function QRScanPage() {
               <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
                 <AlertTriangle className="h-10 w-10 text-destructive" />
                 <p className="text-sm text-destructive">{sendError}</p>
-                <div className="flex gap-2">
+                <ActionRail>
                   {selectedPatient && (
                     <Button onClick={() => sendToDraft(selectedPatient.id)}>
                       <Send className="mr-1.5 h-4 w-4" />
@@ -790,7 +776,7 @@ export default function QRScanPage() {
                     <RotateCcw className="mr-1.5 h-4 w-4" />
                     やり直す
                   </Button>
-                </div>
+                </ActionRail>
               </CardContent>
             </Card>
           )}

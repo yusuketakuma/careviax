@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-171855
+
+- current task: organize QR scan intake sections and action rails
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/qr-scan/page.tsx`, `src/components/layout/page-section.tsx`, `src/components/ui/action-rail.tsx`, and focused QR scan test search output
+- files changed: `src/app/(dashboard)/qr-scan/page.tsx`, `.codex/ralph-state.md`
+- bugs found: QR scan completion, read result, and patient matching states used raw cards and decorative `CardTitle` wrappers, while action rows were hand-built flex blocks. The read result subgroups for patient information, prescription source, and medications were plain text labels rather than semantic section headings
+- security risks found: no QR parsing, camera/file decoding, patient search API path, org header, new-patient URL parameter mapping, qr-scan-drafts mutation payload, session handling, or send/retry behavior changed
+- performance issues found: no camera lifecycle, dynamic QR reader import, parsing/merge logic, patient matching, API fetch, or render-loop behavior changed. The slice only changes semantic section wrappers, subgroup headings, and shared action layout
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/qr-scan/page.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/qr-scan-drafts/route.test.ts' 'src/app/api/qr-scan-drafts/[id]/route.test.ts' 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/qr-scan/page.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/qr-scan/page.tsx'`
+- validation results: Prettier completed successfully; focused QR draft API Vitest passed with 3 files / 39 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: runtime/browser proof remains blocked until local app `localhost:3012` and DB `localhost:5433` are available. Additional dense UI/refactor surfaces remain, including settings and schedule proposal workspaces
+- next action: commit this QR scan group, then run runtime preflight and continue with the next high-value UI/refactor surface if local services are still unavailable
+
 ### 20260602-171605
 
 - current task: improve dispensing form semantic headings and action grouping
