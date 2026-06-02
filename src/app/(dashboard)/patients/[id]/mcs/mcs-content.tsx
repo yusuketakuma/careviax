@@ -17,14 +17,7 @@ import { toast } from 'sonner';
 import { PatientMcsSummaryCard } from '@/components/patient-mcs/patient-mcs-summary-card';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
@@ -35,10 +28,7 @@ import {
   type PatientMcsViewLink,
   type PatientMcsViewMessage,
 } from '@/lib/patient-mcs/dto';
-import {
-  groupPatientMcsMessagesByDay,
-  orderPatientMcsMessages,
-} from '@/lib/patient-mcs/messages';
+import { groupPatientMcsMessagesByDay, orderPatientMcsMessages } from '@/lib/patient-mcs/messages';
 import {
   createPatientMcsQueryKey,
   createPatientMcsQueryKeyPrefix,
@@ -113,10 +103,10 @@ function PatientMcsSyncPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
           <Link2 className="size-4" aria-hidden="true" />
           MCS 連携状況
-        </CardTitle>
+        </h2>
         <CardDescription>{status.description}</CardDescription>
         <CardAction>
           <Button
@@ -124,7 +114,9 @@ function PatientMcsSyncPanel({
             variant="outline"
             size="sm"
             onClick={() => onSync(resolvedSourceUrl ?? undefined)}
-            disabled={isSyncing || isLoading || resolvedSourceUrl === null || !!sourceValidationError}
+            disabled={
+              isSyncing || isLoading || resolvedSourceUrl === null || !!sourceValidationError
+            }
           >
             <RefreshCw
               className={cn('mr-1.5 size-4', isSyncing && 'animate-spin')}
@@ -192,7 +184,9 @@ function PatientMcsSyncPanel({
               <p className="text-xs text-muted-foreground">連携先プロジェクト</p>
               <p className="text-sm font-medium">{link?.projectTitle ?? '未設定'}</p>
             </div>
-            {link?.projectMemo ? <p className="text-xs text-muted-foreground">{link.projectMemo}</p> : null}
+            {link?.projectMemo ? (
+              <p className="text-xs text-muted-foreground">{link.projectMemo}</p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               {openTargets.mcsUrl ? (
                 <Link
@@ -227,7 +221,8 @@ function PatientMcsSyncPanel({
             </div>
             {needsSetup ? (
               <p className="text-xs text-muted-foreground">
-                URL を入力するとボタンが有効になり、同期後にメッセージ時系列と AI 要約が表示されます。
+                URL を入力するとボタンが有効になり、同期後にメッセージ時系列と AI
+                要約が表示されます。
               </p>
             ) : sourceValidationError ? (
               <p className="text-xs text-destructive">
@@ -246,16 +241,14 @@ function PatientMcsSyncPanel({
               <div className="space-y-1.5">
                 <p className="text-sm font-semibold text-foreground">最初に必要な設定</p>
                 <ol className="space-y-1 text-sm text-muted-foreground">
-                  <li>1. MCS の患者ページ URL か医療・介護側タイムライン URL を上に貼り付けます。</li>
+                  <li>
+                    1. MCS の患者ページ URL か医療・介護側タイムライン URL を上に貼り付けます。
+                  </li>
                   <li>2. 「今すぐ同期」を押して、患者との連携先を保存します。</li>
                   <li>3. 同期完了後、このページに時系列メッセージと AI 要約が表示されます。</li>
                 </ol>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => inputRef.current?.focus()}
-              >
+              <Button type="button" size="sm" onClick={() => inputRef.current?.focus()}>
                 URL を入力する
               </Button>
             </div>
@@ -295,12 +288,13 @@ function PatientMcsMessagesPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
           <MessageSquareText className="size-4" aria-hidden="true" />
           取り込み済みメッセージ
-        </CardTitle>
+        </h2>
         <CardDescription>
-          他職種からの MCS 投稿の直近30件を、保存済みデータから古い順に並べています。現在 {messages.length} 件を表示中です。
+          他職種からの MCS 投稿の直近30件を、保存済みデータから古い順に並べています。現在{' '}
+          {messages.length} 件を表示中です。
         </CardDescription>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">古い順</Badge>
@@ -400,10 +394,10 @@ function PatientMcsSummaryPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
             <Sparkles className="size-4" aria-hidden="true" />
             MCS要点サマリー
-          </CardTitle>
+          </h2>
           <CardDescription>
             同期に成功すると、他職種発信の要点をここに保存して表示します。
           </CardDescription>
@@ -465,7 +459,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
                 otherProfessionalMessageCount: result.summary.otherProfessionalMessageCount,
               }
             : null,
-        })
+        }),
       );
     },
     onError: async (error: Error) => {

@@ -71,13 +71,19 @@ describe('PatientMcsContent', () => {
 
     render(<PatientMcsContent patientId="patient_1" />);
 
+    expect(screen.getByRole('heading', { level: 2, name: 'MCS 連携状況' }).tagName).toBe('H2');
+    expect(screen.getByRole('heading', { level: 2, name: 'MCS要点サマリー' }).tagName).toBe('H2');
+    expect(screen.getByRole('heading', { level: 2, name: '取り込み済みメッセージ' }).tagName).toBe(
+      'H2',
+    );
+
     fireEvent.change(screen.getByLabelText('MCS 連携元 URL'), {
       target: { value: 'invalid-url' },
     });
 
     await waitFor(() => {
       expect(
-        screen.getByText('MCS の患者 URL または医療・介護側タイムライン URL を入力してください')
+        screen.getByText('MCS の患者 URL または医療・介護側タイムライン URL を入力してください'),
       ).toBeTruthy();
     });
 

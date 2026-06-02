@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-191230
+
+- current task: improve MCS content semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx`, and `src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx`, `src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the MCS sync, summary, and imported-message groups still used decorative `CardTitle` wrappers instead of semantic h2 headings, making the MCS patient workflow less navigable by heading despite being major groups in the tab
+- security risks found: no MCS sync API path, org header, source URL validation, source URL resolution, external link targets, query invalidation, auth, authorization, tenant boundary, MCS data handling, or patient data handling changed
+- performance issues found: no query function, mutation function, message grouping/order logic, sync status description, source validation, or render-loop behavior changed. The slice only changes heading markup and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx' 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx' 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx' 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx'`
+- validation results: Prettier completed successfully; focused MCS Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Medications, prescriptions, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this MCS heading group, then retry runtime preflight or continue another static UI/refactor slice
+
 ### 20260602-191030
 
 - current task: post-patient-labs runtime/browser preflight audit
