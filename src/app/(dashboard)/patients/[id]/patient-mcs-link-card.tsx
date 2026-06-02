@@ -7,7 +7,7 @@ import { ja } from 'date-fns/locale';
 import { Link2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   canOpenPatientMcsPage,
@@ -59,7 +59,7 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">MCS 連携</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">MCS 連携</h2>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -76,7 +76,9 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
             : status.description}
         </p>
         <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
-          <p className="font-medium text-foreground">患者別タイムラインを保存済みデータとして利用</p>
+          <p className="font-medium text-foreground">
+            患者別タイムラインを保存済みデータとして利用
+          </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             看護師やケアマネの投稿を患者詳細から見返せるようにし、システム内の判断材料として残します。
           </p>
