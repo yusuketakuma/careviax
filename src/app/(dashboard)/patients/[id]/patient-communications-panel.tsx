@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -92,7 +93,7 @@ export function PatientCommunicationsPanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">連携</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">連携</h2>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
@@ -189,7 +190,7 @@ function CommunicationQueueCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">連絡キュー</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">連絡キュー</h2>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-2 text-xs">
@@ -226,7 +227,7 @@ function CommunicationQueueCard({
               <div key={draft.id} className="rounded-lg border border-border p-3 text-sm">
                 <p className="font-medium">{draft.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{draft.summary}</p>
-                <div className="mt-3 flex justify-end">
+                <ActionRail className="mt-3">
                   <Button
                     size="sm"
                     variant="outline"
@@ -235,7 +236,7 @@ function CommunicationQueueCard({
                   >
                     下書き作成
                   </Button>
-                </div>
+                </ActionRail>
               </div>
             ))}
           </div>
@@ -257,7 +258,7 @@ function TaskAndIssueCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">運用・請求ステータス</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">運用・請求ステータス</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2 text-xs">
