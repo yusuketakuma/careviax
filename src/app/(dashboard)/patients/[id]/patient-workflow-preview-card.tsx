@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
@@ -83,7 +85,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-base">訪問・報告・連携プレビュー</CardTitle>
-          <div className="flex flex-wrap gap-2">
+          <ActionRail>
             <Link
               href={`/patients/${patientId}/edit`}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
@@ -102,19 +104,23 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
             >
               MCS連携
             </Link>
-          </div>
+          </ActionRail>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 xl:grid-cols-3">
-        <section className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-foreground">訪問準備プレビュー</p>
+        <PageSection
+          title="訪問準備プレビュー"
+          headingLevel={3}
+          tone="subtle"
+          contentClassName="space-y-3"
+          actions={
             <Badge
               variant={preview.visit_preparation.blockers.length === 0 ? 'default' : 'secondary'}
             >
               {preview.visit_preparation.blockers.length === 0 ? '準備良好' : '要確認'}
             </Badge>
-          </div>
+          }
+        >
           <dl className="space-y-2 text-sm">
             <div className="grid gap-1 sm:grid-cols-[130px_minmax(0,1fr)]">
               <dt className="text-muted-foreground">希望曜日</dt>
@@ -187,18 +193,22 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
               ))}
             </div>
           ) : null}
-        </section>
+        </PageSection>
 
-        <section className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-foreground">報告先マトリクス</p>
+        <PageSection
+          title="報告先マトリクス"
+          headingLevel={3}
+          tone="subtle"
+          contentClassName="space-y-3"
+          actions={
             <Link
               href={`/patients/${patientId}/share`}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               共有設定
             </Link>
-          </div>
+          }
+        >
           <div className="space-y-3">
             {preview.report_targets.map((target) => (
               <div
@@ -227,18 +237,22 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
               </div>
             ))}
           </div>
-        </section>
+        </PageSection>
 
-        <section className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-foreground">連携優先順位プレビュー</p>
+        <PageSection
+          title="連携優先順位プレビュー"
+          headingLevel={3}
+          tone="subtle"
+          contentClassName="space-y-3"
+          actions={
             <Link
               href={`/patients/${patientId}/mcs`}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               連携先確認
             </Link>
-          </div>
+          }
+        >
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant="outline">
               優先手段 {preview.communication_priority.preferred_contact_method ?? '未設定'}
@@ -280,7 +294,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
               ))}
             </div>
           ) : null}
-        </section>
+        </PageSection>
       </CardContent>
     </Card>
   );

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-165500
+
+- current task: organize patient workflow preview sections with shared layout primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`, `src/components/layout/page-section.tsx`, and `src/components/ui/action-rail.tsx`
+- files changed: `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient workflow preview card kept visit preparation, report targets, and communication priority as hand-built internal sections with action links mixed into local headers, making consent/readiness/reporting/coordination status harder to scan inside patient details
+- security risks found: no API, auth, authorization, patient scoping, query, PHI logging, external sharing, or mutation behavior changed. Existing patient edit, consent, MCS, share, and link destinations were preserved
+- performance issues found: no query, fetch, memo, or data transformation behavior changed. The slice only swaps duplicated layout wrappers for shared `PageSection` and `ActionRail`
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`
+- validation results: Prettier completed with no changes after formatting; focused Vitest passed with 3 files / 4 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: code-mapper still identified `external-viewer-content.tsx` and `conferences-content.tsx` as remaining cluttered surfaces. Browser proof remains blocked by local app/db availability
+- next action: inspect `external/external-viewer-content.tsx` for a focused privacy boundary UI grouping slice
+
 ### 20260602-164950
 
 - current task: organize medication set planning and audit queue panels with shared layout primitives
