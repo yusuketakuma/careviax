@@ -70,7 +70,7 @@ function parseSecretString(raw: string) {
   const trimmed = raw.trim();
 
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw);
     if (typeof parsed === 'string') return parsed;
 
     const record = readJsonObject(parsed);
@@ -167,8 +167,8 @@ export async function issueCollaborationRoomToken(args: {
 }
 
 function isCollaborationRoomTokenPayload(value: unknown): value is CollaborationRoomTokenPayload {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const payload = value as Record<string, unknown>;
+  const payload = readJsonObject(value);
+  if (!payload) return false;
   return (
     typeof payload.sub === 'string' &&
     payload.purpose === 'collaboration_room' &&
@@ -178,7 +178,9 @@ function isCollaborationRoomTokenPayload(value: unknown): value is Collaboration
     typeof payload.entity_id === 'string' &&
     typeof payload.room === 'string' &&
     typeof payload.exp === 'number' &&
+    Number.isFinite(payload.exp) &&
     typeof payload.iat === 'number' &&
+    Number.isFinite(payload.iat) &&
     payload.sub === payload.user_id
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     tx.notificationRule.findMany({
       where: { org_id: ctx.orgId },
       orderBy: { created_at: 'desc' },
-    })
+    }),
   );
 
   return success({ data: rules });
@@ -37,10 +38,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = createRuleSchema.safeParse(body);
+  const parsed = createRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
           ? toPrismaJsonInput(parsed.data.conditions)
           : Prisma.JsonNull,
       },
-    })
+    }),
   );
 
   return success(rule, 201);

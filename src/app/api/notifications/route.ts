@@ -3,6 +3,7 @@ import { getMembership, isAdmin } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, forbidden } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -31,7 +32,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { created_at: 'desc' },
-    })
+    }),
   );
 
   const hasMore = notifications.length > limit;
@@ -42,23 +43,36 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 });
 
 export const PATCH = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const { ids, all } = body as { ids?: string[]; all?: boolean };
-
-  if (all) {
+  if (payload.all === true) {
     // Mark all as read for the current user
     await withOrgContext(req.orgId, (tx) =>
       tx.notification.updateMany({
         where: { org_id: req.orgId, user_id: req.userId, is_read: false },
         data: { is_read: true, read_at: new Date() },
-      })
+      }),
     );
     return success({ message: '全て既読にしました' });
   }
 
-  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+  if (payload.all !== undefined && payload.all !== false) {
+    return validationError('ids または all が必要です');
+  }
+
+  const ids = Array.isArray(payload.ids)
+    ? Array.from(
+        new Set(
+          payload.ids.flatMap((id) => {
+            if (typeof id !== 'string') return [];
+            const trimmed = id.trim();
+            return trimmed ? [trimmed] : [];
+          }),
+        ),
+      )
+    : null;
+  if (!ids || ids.length === 0) {
     return validationError('ids または all が必要です');
   }
 
@@ -70,7 +84,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest) => {
         user_id: req.userId,
       },
       data: { is_read: true, read_at: new Date() },
-    })
+    }),
   );
 
   return success({ message: `${ids.length}件を既読にしました` });

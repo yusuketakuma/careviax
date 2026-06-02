@@ -14,7 +14,7 @@ import {
   type AuthenticationResultType,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { encodeCognitoChallenge, type CognitoChallengePayload } from '@/lib/auth/cognito-challenge';
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonObjectOrNull } from '@/lib/db/json';
 
 const DEFAULT_REGION = 'ap-northeast-1';
 
@@ -60,14 +60,7 @@ export function parseCognitoIdTokenPayload(token: string) {
     throw new Error('COGNITO_ID_TOKEN_INVALID');
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
-  } catch {
-    throw new Error('COGNITO_ID_TOKEN_INVALID');
-  }
-
-  const object = readJsonObject(parsed);
+  const object = parseJsonObjectOrNull(Buffer.from(payload, 'base64url').toString('utf8'));
   if (!object) {
     throw new Error('COGNITO_ID_TOKEN_INVALID');
   }

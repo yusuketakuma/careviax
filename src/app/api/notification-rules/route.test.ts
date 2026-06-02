@@ -37,6 +37,14 @@ function createPostRequest(body: unknown) {
   } satisfies NextRequestInit);
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/notification-rules', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  } satisfies NextRequestInit);
+}
+
 describe('/api/notification-rules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,5 +103,24 @@ describe('/api/notification-rules', () => {
         },
       }),
     });
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    const response = (await POST(createPostRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notificationRuleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before opening an org transaction', async () => {
+    const response = (await POST(createMalformedJsonPostRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notificationRuleCreateMock).not.toHaveBeenCalled();
   });
 });

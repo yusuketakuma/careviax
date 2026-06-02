@@ -58,6 +58,16 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/presence', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+}
+
 const authCtx = {
   ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
 };
@@ -125,6 +135,29 @@ describe('/api/presence', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(400);
+      expect(setPresenceMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed JSON before access checks or broadcasting', async () => {
+      const res = await POST(createMalformedPostRequest());
+
+      expect(res!.status).toBe(400);
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+      expect(userFindUniqueMock).not.toHaveBeenCalled();
+      expect(setPresenceMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-object update payloads before access checks or broadcasting', async () => {
+      const req = createRequest('http://localhost/api/presence', []);
+      const res = await POST(req);
+
+      expect(res!.status).toBe(400);
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+      expect(userFindUniqueMock).not.toHaveBeenCalled();
       expect(setPresenceMock).not.toHaveBeenCalled();
       expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
     });

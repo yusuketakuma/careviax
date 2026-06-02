@@ -61,6 +61,19 @@ describe('external access scope validation', () => {
     });
   });
 
+  it('rejects non-object scope roots before key validation', () => {
+    expect(normalizeExternalAccessScope(['medication_list'])).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      details: { scope: ['共有範囲はオブジェクトで指定してください'] },
+    });
+    expect(normalizeStoredExternalAccessScope(['care_reports'])).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      details: { scope: ['共有範囲はオブジェクトで指定してください'] },
+    });
+  });
+
   it('requires visit permission for medication and allergy scopes', () => {
     const clerkResult = validateExternalAccessScopeForRole(
       {
@@ -195,6 +208,20 @@ describe('external access scope validation', () => {
     expect(externalAccessGrantVisibleForCaseIds(result.ok ? result.scope : null, ['case_3'])).toBe(
       false,
     );
+  });
+
+  it('rejects malformed stored case boundaries', () => {
+    expect(
+      normalizeStoredExternalAccessScope({
+        care_reports: true,
+        allowed_case_ids: ['case_1', '  '],
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_case_ids: ['許可ケースIDの形式が不正です'] },
+    });
   });
 
   it('builds DB visibility predicates for assignment-scoped grants', () => {
@@ -394,6 +421,23 @@ describe('buildExternalAccessPayload', () => {
     expect(payload).toBeNull();
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.patientSelfReport.findMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for malformed stored grant scope roots before patient lookup', async () => {
+    const payload = await buildExternalAccessPayload({
+      id: 'grant_malformed_scope',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'otp_hash',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: ['allergy_info'] as unknown as Parameters<
+        typeof buildExternalAccessPayload
+      >[0]['scope'],
+    });
+
+    expect(payload).toBeNull();
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
   });
 
   it('limits case-backed payload reads to the stored grant case boundary', async () => {

@@ -47,6 +47,14 @@ vi.mock('@/server/services/cognito-admin', () => ({
 
 import { GET, PATCH } from './route';
 
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/me/profile', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"name":',
+  });
+}
+
 describe('/api/me/profile', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -111,18 +119,116 @@ describe('/api/me/profile', () => {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-        name: '更新後 名前',
-        phone: '090-9999-0000',
-      }),
+          name: ' 更新後 名前 ',
+          phone: ' 090-9999-0000 ',
+        }),
       }),
     );
 
     expect(response.status).toBe(200);
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      data: {
+        name: '更新後 名前',
+        phone: '090-9999-0000',
+      },
+    });
     expect(updateCognitoUserProfileMock).toHaveBeenCalledWith({
       username: 'cognito-user',
       email: 'user@example.com',
       name: '更新後 名前',
       phone: '090-9999-0000',
     });
+  });
+
+  it('rejects non-object profile updates before local or Cognito mutation', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(['unexpected']),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(userUpdateMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before local or Cognito mutation', async () => {
+    const response = await PATCH(createMalformedPatchRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(userUpdateMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('clears blank phone values before syncing Cognito', async () => {
+    userUpdateMock.mockResolvedValueOnce({
+      id: 'user_1',
+      email: 'user@example.com',
+      cognito_username: 'cognito-user',
+      name: '更新後 名前',
+      phone: null,
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: '更新後 名前',
+          phone: '   ',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      data: {
+        name: '更新後 名前',
+        phone: null,
+      },
+    });
+    expect(updateCognitoUserProfileMock).toHaveBeenCalledWith({
+      username: 'cognito-user',
+      email: 'user@example.com',
+      name: '更新後 名前',
+      phone: null,
+    });
+  });
+
+  it('rejects malformed phone numbers before local or Cognito mutation', async () => {
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: '更新後 名前',
+          phone: '090-ABCD-1234',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        phone: ['電話番号形式が不正です'],
+      },
+    });
+    expect(userUpdateMock).not.toHaveBeenCalled();
+    expect(updateCognitoUserProfileMock).not.toHaveBeenCalled();
   });
 });

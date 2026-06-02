@@ -18,6 +18,26 @@ vi.mock('@/server/services/cognito-auth', () => ({
 
 import { PATCH } from './route';
 
+function createPasswordPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/me/password', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function createMalformedPasswordPatchRequest() {
+  return new NextRequest('http://localhost/api/me/password', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+}
+
 describe('/api/me/password PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -28,16 +48,10 @@ describe('/api/me/password PATCH', () => {
 
   it('changes the password when the payload is valid', async () => {
     const response = await PATCH(
-      new NextRequest('http://localhost/api/me/password', {
-        method: 'PATCH',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: 'old-password-value',
-          newPassword: 'new-password-12345',
-        }),
-      })
+      createPasswordPatchRequest({
+        currentPassword: 'old-password-value',
+        newPassword: 'new-password-12345',
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -46,5 +60,22 @@ describe('/api/me/password PATCH', () => {
       currentPassword: 'old-password-value',
       newPassword: 'new-password-12345',
     });
+  });
+
+  it('rejects non-object request bodies before Cognito password change', async () => {
+    const response = await PATCH(createPasswordPatchRequest(['unexpected']));
+
+    expect(response.status).toBe(400);
+    expect(changePasswordWithAccessTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON bodies before Cognito password change', async () => {
+    const response = await PATCH(createMalformedPasswordPatchRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(changePasswordWithAccessTokenMock).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { success, error } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { success, error, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import {
   checkMedicationDeadlines,
@@ -81,7 +82,7 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ jobType: string }> }) {
-  const { jobType } = await params;
+  const { jobType: rawJobType } = await params;
 
   const authResult = await requireApiKeyOrAuthContext(req, {
     apiKey: process.env.JOB_API_KEY,
@@ -89,6 +90,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     message: 'ジョブ実行には管理者権限またはAPIキーが必要です',
   });
   if ('response' in authResult) return authResult.response as NextResponse;
+
+  const jobType = normalizeRequiredRouteParam(rawJobType);
+  if (!jobType) return validationError('ジョブタイプが不正です') as NextResponse;
 
   const handler = JOB_HANDLERS[jobType];
   if (!handler) {

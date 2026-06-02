@@ -55,6 +55,16 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/collaboration/room-token', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+}
+
 const authCtx = {
   ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
 };
@@ -177,6 +187,27 @@ describe('/api/collaboration/room-token', () => {
 
     expect(res.status).toBe(400);
     expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+    expect(issueCollaborationRoomTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object token payloads before provider or access checks', async () => {
+    const res = await POST(createRequest([]));
+
+    expect(res.status).toBe(400);
+    expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+    expect(buildCollaborationRoomNameMock).not.toHaveBeenCalled();
+    expect(issueCollaborationRoomTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON token payloads before provider or access checks', async () => {
+    const res = await POST(createMalformedJsonRequest());
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+    expect(buildCollaborationRoomNameMock).not.toHaveBeenCalled();
     expect(issueCollaborationRoomTokenMock).not.toHaveBeenCalled();
   });
 });

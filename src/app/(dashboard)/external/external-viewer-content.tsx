@@ -40,9 +40,10 @@ type SelfReport = {
   category: string;
   subject: string;
   status: string;
-  reported_by_name: string;
+  reported_by_name: string | null;
   requested_callback: boolean;
   created_at: string;
+  updated_at: string;
 };
 
 type CommunityActivity = {
@@ -126,9 +127,11 @@ export function ExternalViewerContent({
     mutationFn: async ({
       id,
       status,
+      updated_at,
     }: {
       id: string;
       status: 'triaged' | 'resolved' | 'dismissed' | 'converted_to_task';
+      updated_at: string;
     }) => {
       const response = await fetch(`/api/patient-self-reports/${id}`, {
         method: 'PATCH',
@@ -136,7 +139,7 @@ export function ExternalViewerContent({
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, updated_at }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -161,7 +164,7 @@ export function ExternalViewerContent({
         body: JSON.stringify({
           task_type: 'patient_self_report_followup',
           title: `${report.patient_name ?? '患者'}: ${report.subject}`,
-          description: `${report.category}\n${report.reported_by_name}${report.requested_callback ? '\n折返し希望あり' : ''}`,
+          description: `${report.category}\n${report.reported_by_name ?? '報告者非表示'}${report.requested_callback ? '\n折返し希望あり' : ''}`,
           priority: report.requested_callback ? 'high' : 'normal',
           related_entity_type: 'patient_self_report',
           related_entity_id: report.id,
@@ -180,6 +183,7 @@ export function ExternalViewerContent({
       await updateSelfReportMutation.mutateAsync({
         id: report.id,
         status: 'converted_to_task',
+        updated_at: report.updated_at,
       });
     },
     onSuccess: async () => {
@@ -192,7 +196,10 @@ export function ExternalViewerContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="external-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="external-context-banner"
+        >
           <HeartHandshake className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -308,7 +315,8 @@ export function ExternalViewerContent({
                       <div>
                         <p className="font-medium text-foreground">{report.subject}</p>
                         <p className="text-sm text-muted-foreground">
-                          {report.patient_name ?? '患者不明'} / {report.reported_by_name}
+                          {report.patient_name ?? '患者不明'} /{' '}
+                          {report.reported_by_name ?? '報告者非表示'}
                         </p>
                       </div>
                       <Badge variant="outline">{report.status}</Badge>
@@ -322,7 +330,11 @@ export function ExternalViewerContent({
                         size="sm"
                         variant="outline"
                         onClick={() =>
-                          updateSelfReportMutation.mutate({ id: report.id, status: 'triaged' })
+                          updateSelfReportMutation.mutate({
+                            id: report.id,
+                            status: 'triaged',
+                            updated_at: report.updated_at,
+                          })
                         }
                         disabled={
                           updateSelfReportMutation.isPending || createTaskMutation.isPending
@@ -343,7 +355,11 @@ export function ExternalViewerContent({
                         size="sm"
                         variant="ghost"
                         onClick={() =>
-                          updateSelfReportMutation.mutate({ id: report.id, status: 'resolved' })
+                          updateSelfReportMutation.mutate({
+                            id: report.id,
+                            status: 'resolved',
+                            updated_at: report.updated_at,
+                          })
                         }
                         disabled={
                           updateSelfReportMutation.isPending || createTaskMutation.isPending

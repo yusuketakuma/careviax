@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, success } from '@/lib/api/response';
+import { error, success, validationError } from '@/lib/api/response';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createPresignedDownload, FileStorageError } from '@/server/services/file-storage';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -9,18 +10,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const fileId = normalizeRequiredRouteParam(id);
+  if (!fileId) return validationError('ファイルIDが不正です');
 
   try {
     const data = await createPresignedDownload({
       orgId: ctx.orgId,
-      fileId: id,
+      fileId,
       accessContext: {
         userId: ctx.userId,
         role: ctx.role,
       },
     });
 
-    const shouldRedirect = new URL(req.url).searchParams.get('download') === '1';
+    const shouldRedirect = new URL(req.url).searchParams.get('download')?.trim() === '1';
     if (shouldRedirect) {
       const response = NextResponse.redirect(data.downloadUrl);
       response.headers.set('Cache-Control', 'private, no-store, max-age=0');

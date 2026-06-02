@@ -384,6 +384,37 @@ describe('file-storage', () => {
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
   });
 
+  it('falls back to the default bulk export retention when the configured value is unsafe', async () => {
+    process.env.BULK_EXPORT_FILE_RETENTION_HOURS =
+      '999999999999999999999999999999999999999999999999999999999999';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+
+    try {
+      await storeGeneratedFile({
+        orgId: 'org_1',
+        purpose: 'bulk-export',
+        fileName: 'medication-history.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from('zip-bytes'),
+        uploadedBy: 'user_1',
+        jobId: 'job_1',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            expiresAt: '2026-03-31T00:00:00.000Z',
+          }),
+        }),
+      }),
+    );
+  });
+
   it('cleans up the S3 object when generated file metadata cannot be written', async () => {
     settingUpsertMock.mockRejectedValueOnce(new Error('metadata unavailable'));
 
@@ -437,6 +468,31 @@ describe('file-storage', () => {
     });
     expect(s3SendMock).not.toHaveBeenCalled();
     expect(settingDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['array metadata', []],
+    ['unsupported purpose', { ...buildStoredFileRecord(), purpose: 'unknown-purpose' }],
+    ['unsupported status', { ...buildStoredFileRecord(), status: 'deleted' }],
+    ['non-finite file size', { ...buildStoredFileRecord(), sizeBytes: Number.NaN }],
+  ])('rejects malformed stored metadata before S3 access: %s', async (_caseName, value) => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value,
+    });
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_METADATA_NOT_FOUND',
+      status: 404,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(s3SendMock).not.toHaveBeenCalled();
   });
 
   it('rejects expired generated bulk export downloads before signing', async () => {
@@ -579,6 +635,73 @@ describe('file-storage', () => {
         skip: 1,
       }),
     );
+    expect(settingDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        scope: 'organization',
+        scope_id: 'org_1',
+        key: 'file_asset:expired_file',
+      },
+    });
+  });
+
+  it('uses the default cleanup batch size when the supplied batch size is non-finite', async () => {
+    settingFindManyMock.mockResolvedValueOnce([]);
+
+    const result = await cleanupExpiredGeneratedFiles({
+      batchSize: Number.NaN,
+      maxPages: 1,
+    });
+
+    expect(result).toEqual({ processedCount: 0, scannedCount: 0, errors: [] });
+    expect(settingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+  });
+
+  it('uses the default cleanup max pages when the supplied max pages value is non-finite', async () => {
+    const activeRecord = buildStoredFileRecord({
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/active_file-medication-history.zip',
+      jobId: 'job_1',
+      expiresAt: '2026-03-28T00:00:01.000Z',
+    });
+    for (let page = 0; page < 10; page += 1) {
+      settingFindManyMock.mockResolvedValueOnce([
+        { id: `setting_${page}`, value: { ...activeRecord, id: `active_file_${page}` } },
+      ]);
+    }
+    settingFindManyMock.mockResolvedValue([]);
+
+    const result = await cleanupExpiredGeneratedFiles({
+      now: new Date('2026-03-28T00:00:00.000Z'),
+      batchSize: 1,
+      maxPages: Number.POSITIVE_INFINITY,
+    });
+
+    expect(result).toEqual({ processedCount: 0, scannedCount: 10, errors: [] });
+    expect(settingFindManyMock).toHaveBeenCalledTimes(10);
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('still scans generated files when the supplied max pages value is NaN', async () => {
+    const expiredRecord = buildStoredFileRecord({
+      id: 'expired_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/expired_file-medication-history.zip',
+      jobId: 'job_1',
+      expiresAt: '2026-03-27T23:59:59.000Z',
+    });
+    settingFindManyMock
+      .mockResolvedValueOnce([{ id: 'setting_1', value: expiredRecord }])
+      .mockResolvedValueOnce([]);
+
+    const result = await cleanupExpiredGeneratedFiles({
+      now: new Date('2026-03-28T00:00:00.000Z'),
+      batchSize: 1,
+      maxPages: Number.NaN,
+    });
+
+    expect(result).toEqual({ processedCount: 1, scannedCount: 1, errors: [] });
+    expect(settingFindManyMock).toHaveBeenCalledTimes(2);
     expect(settingDeleteManyMock).toHaveBeenCalledWith({
       where: {
         scope: 'organization',
@@ -1001,6 +1124,32 @@ describe('file-storage', () => {
       }),
     );
     expect(result.etag).toBe('etag-123');
+  });
+
+  it('keeps completed file metadata unchanged when completion is retried', async () => {
+    mockStoredFile({
+      status: 'uploaded',
+      uploadedBy: 'original_user',
+      etag: 'etag-123',
+      completedAt: '2026-03-28T00:00:00.000Z',
+    });
+
+    const result = await completeUploadedFile({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      uploadedBy: 'retry_user',
+      accessContext: assignedAccessContext,
+      etag: '"different-etag"',
+    });
+
+    expect(result).toMatchObject({
+      status: 'uploaded',
+      uploadedBy: 'original_user',
+      etag: 'etag-123',
+      completedAt: '2026-03-28T00:00:00.000Z',
+    });
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects completion when the uploaded object size does not match metadata', async () => {

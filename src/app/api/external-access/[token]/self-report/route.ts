@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { success, notFound, validationError, error } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { validateExternalAccessGrant } from '@/server/services/external-access';
 import { z } from 'zod';
@@ -22,11 +24,15 @@ const createSelfReportSchema = z.object({
   preferred_contact_time: z.string().trim().max(200).optional(),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
-) {
-  const { token } = await params;
+function containsBodyOtp(payload: Record<string, unknown>) {
+  return Object.prototype.hasOwnProperty.call(payload, 'otp');
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token: rawToken } = await params;
+  const token = normalizeRequiredRouteParam(rawToken);
+  if (!token) return validationError('共有リンクトークンが不正です');
+
   const ip = getClientIp(req) ?? 'unknown';
   const rateLimit = await checkAuthRateLimit(
     createExternalAccessOtpRateLimitIdentifier(token, ip),
@@ -36,17 +42,21 @@ export async function POST(
     return error(
       'RATE_LIMIT_EXCEEDED',
       'リクエストが多すぎます。しばらく待ってから再試行してください。',
-      429
+      429,
     );
   }
 
-  const body = await req.json().catch(() => null);
+  const payload = await readJsonObjectRequestBody(req);
 
-  if (!body) {
+  if (!payload) {
     return validationError('リクエストボディが不正です');
   }
 
-  const parsed = createSelfReportSchema.safeParse(body);
+  if (containsBodyOtp(payload)) {
+    return validationError('OTPはリクエストボディではなくヘッダーで送信してください');
+  }
+
+  const parsed = createSelfReportSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

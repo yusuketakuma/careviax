@@ -203,4 +203,36 @@ describe('/api/jobs GET', () => {
     expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('input');
     expect(bulkExportEntry?.latest_export_run?.output).not.toHaveProperty('errors');
   });
+
+  it('drops non-object bulk export output before exposing latest export run', async () => {
+    integrationJobFindManyMock.mockResolvedValue([
+      {
+        id: 'export_bad',
+        job_type: 'medication-history-bulk-export',
+        status: 'failed',
+        org_id: 'org_1',
+        output: ['unexpected'],
+        error_log: 'raw export diagnostic',
+        created_at: new Date('2026-03-28T02:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    const entries = payload.data as Array<{
+      job_type: string;
+      latest_export_run: Record<string, unknown> | null;
+    }>;
+    const bulkExportEntry = entries.find(
+      (entry) => entry.job_type === 'medication-history-bulk-export-drain',
+    );
+
+    expect(bulkExportEntry?.latest_export_run).toMatchObject({
+      id: 'export_bad',
+      output: null,
+      error_log: 'エラーが記録されています',
+    });
+  });
 });

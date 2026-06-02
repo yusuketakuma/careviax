@@ -9,7 +9,9 @@ vi.mock('@/server/services/cognito-auth', () => ({
 }));
 
 vi.mock('@/lib/api/rate-limit', () => ({
-  checkAuthRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
+  checkAuthRateLimit: vi
+    .fn()
+    .mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
 }));
 
 import { POST } from './route';
@@ -23,19 +25,33 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedRequest() {
+  return new Request('http://localhost/api/auth/password/reset/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/auth/password/reset/confirm POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     confirmForgotPasswordMock.mockResolvedValue(undefined);
-    vi.mocked(checkAuthRateLimit).mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 });
+    vi.mocked(checkAuthRateLimit).mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      resetAt: Date.now() + 60000,
+    });
   });
 
   it('confirms password reset for a valid payload', async () => {
-    const response = await POST(createRequest({
-      email: 'user@example.com',
-      code: '123456',
-      newPassword: 'New-Password-12345!',
-    }));
+    const response = await POST(
+      createRequest({
+        email: 'user@example.com',
+        code: '123456',
+        newPassword: 'New-Password-12345!',
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
@@ -46,11 +62,13 @@ describe('/api/auth/password/reset/confirm POST', () => {
   });
 
   it('trims surrounding whitespace before confirming the password reset', async () => {
-    const response = await POST(createRequest({
-      email: ' user@example.com ',
-      code: ' 123456 ',
-      newPassword: ' New-Password-12345! ',
-    }));
+    const response = await POST(
+      createRequest({
+        email: ' user@example.com ',
+        code: ' 123456 ',
+        newPassword: ' New-Password-12345! ',
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
@@ -60,16 +78,40 @@ describe('/api/auth/password/reset/confirm POST', () => {
     });
   });
 
+  it('rejects non-object JSON payloads before confirming the password reset', async () => {
+    const response = await POST(createRequest([]));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(confirmForgotPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON payloads before confirming the password reset', async () => {
+    const response = await POST(createMalformedRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(confirmForgotPasswordMock).not.toHaveBeenCalled();
+  });
+
   it('returns a client error when the confirmation code is incorrect', async () => {
     const error = new Error('mismatch');
     error.name = 'CodeMismatchException';
     confirmForgotPasswordMock.mockRejectedValueOnce(error);
 
-    const response = await POST(createRequest({
-      email: 'user@example.com',
-      code: '123456',
-      newPassword: 'New-Password-12345!',
-    }));
+    const response = await POST(
+      createRequest({
+        email: 'user@example.com',
+        code: '123456',
+        newPassword: 'New-Password-12345!',
+      }),
+    );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -83,11 +125,13 @@ describe('/api/auth/password/reset/confirm POST', () => {
     error.name = 'InternalErrorException';
     confirmForgotPasswordMock.mockRejectedValueOnce(error);
 
-    const response = await POST(createRequest({
-      email: 'user@example.com',
-      code: '123456',
-      newPassword: 'New-Password-12345!',
-    }));
+    const response = await POST(
+      createRequest({
+        email: 'user@example.com',
+        code: '123456',
+        newPassword: 'New-Password-12345!',
+      }),
+    );
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({

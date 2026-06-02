@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  lookupMock,
-  webhookRegistrationFindManyMock,
-  fetchMock,
-} = vi.hoisted(() => ({
+const { lookupMock, webhookRegistrationFindManyMock, fetchMock } = vi.hoisted(() => ({
   lookupMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
   fetchMock: vi.fn(),
@@ -22,10 +18,7 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import {
-  dispatchWebhookEventForOrg,
-  isAllowedWebhookUrl,
-} from './outbound-webhook';
+import { dispatchWebhookEventForOrg, isAllowedWebhookUrl } from './outbound-webhook';
 
 describe('outbound-webhook', () => {
   beforeEach(() => {
@@ -41,6 +34,33 @@ describe('outbound-webhook', () => {
     lookupMock.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
 
     await expect(isAllowedWebhookUrl('https://partner.example.com/webhook')).resolves.toBe(false);
+  });
+
+  it('rejects direct IPv4 hosts that normalize to unsafe local addresses', async () => {
+    await expect(isAllowedWebhookUrl('https://127.1/webhook')).resolves.toBe(false);
+    await expect(isAllowedWebhookUrl('https://0177.0.0.1/webhook')).resolves.toBe(false);
+    await expect(isAllowedWebhookUrl('https://2130706433/webhook')).resolves.toBe(false);
+    expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reserved and multicast IPv4 destinations', async () => {
+    for (const address of ['192.0.2.1', '198.51.100.1', '203.0.113.1', '224.0.0.1']) {
+      lookupMock.mockResolvedValueOnce([{ address, family: 4 }]);
+      await expect(isAllowedWebhookUrl('https://partner.example.com/webhook')).resolves.toBe(false);
+    }
+  });
+
+  it('rejects IPv4-mapped IPv6 addresses that point to unsafe IPv4 ranges', async () => {
+    await expect(isAllowedWebhookUrl('https://[::ffff:127.0.0.1]/webhook')).resolves.toBe(false);
+    await expect(isAllowedWebhookUrl('https://[::ffff:7f00:1]/webhook')).resolves.toBe(false);
+    expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects private, documentation, and multicast IPv6 destinations', async () => {
+    for (const address of ['fc00::1', 'fe80::1', '2001:db8::1', 'ff02::1']) {
+      lookupMock.mockResolvedValueOnce([{ address, family: 6 }]);
+      await expect(isAllowedWebhookUrl('https://partner.example.com/webhook')).resolves.toBe(false);
+    }
   });
 
   it('accepts hostnames that resolve only to public IP addresses', async () => {
@@ -97,7 +117,7 @@ describe('outbound-webhook', () => {
         headers: expect.objectContaining({
           'X-PH-OS-Event': 'patient.created',
         }),
-      })
+      }),
     );
     expect(result).toMatchObject([
       {

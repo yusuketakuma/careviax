@@ -1,19 +1,32 @@
 import { NextRequest } from 'next/server';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { success, validationError } from '@/lib/api/response';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
 
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+const httpsEndpointSchema = z.string().trim().url().refine(isHttpsUrl, {
+  message: 'HTTPS endpoint is required',
+});
+
 const subscribeSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: httpsEndpointSchema,
   keys: z.object({
-    p256dh: z.string().min(1),
-    auth: z.string().min(1),
+    p256dh: z.string().trim().min(1),
+    auth: z.string().trim().min(1),
   }),
 });
 
 const unsubscribeSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: httpsEndpointSchema,
 });
 
 export async function POST(req: NextRequest) {
@@ -24,10 +37,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = subscribeSchema.safeParse(body);
+  const parsed = subscribeSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -62,10 +75,10 @@ export async function DELETE(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = unsubscribeSchema.safeParse(body);
+  const parsed = unsubscribeSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }

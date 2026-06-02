@@ -80,6 +80,28 @@ describe('/api/health GET', () => {
     expect(runBackupMonitorChecksMock).toHaveBeenCalledOnce();
   });
 
+  it('drops non-object backup details for authenticated admins', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+    runBackupMonitorChecksMock.mockResolvedValue({
+      overall: 'warning',
+      checks: ['unexpected'],
+    });
+
+    const response = await GET(healthRequest());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: {
+        backups: { status: 'warning', details: {} },
+      },
+    });
+  });
+
   it('returns down for authenticated admins when the database check fails', async () => {
     getAuthContextMock.mockResolvedValue({
       userId: 'user_1',

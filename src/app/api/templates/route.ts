@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const templateTypeSchema = z.enum([
@@ -36,9 +38,7 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const templateTypeRaw = searchParams.get('template_type');
     const targetRole = searchParams.get('target_role');
-    const parsedType = templateTypeRaw
-      ? templateTypeSchema.safeParse(templateTypeRaw)
-      : null;
+    const parsedType = templateTypeRaw ? templateTypeSchema.safeParse(templateTypeRaw) : null;
 
     if (parsedType && !parsedType.success) {
       return validationError('クエリパラメータが不正です', {
@@ -52,7 +52,12 @@ export const GET = withAuthContext(
         ...(parsedType?.success ? { template_type: parsedType.data } : {}),
         ...(targetRole ? { target_role: targetRole } : {}),
       },
-      orderBy: [{ is_default: 'desc' }, { template_type: 'asc' }, { version: 'desc' }, { updated_at: 'desc' }],
+      orderBy: [
+        { is_default: 'desc' },
+        { template_type: 'asc' },
+        { version: 'desc' },
+        { updated_at: 'desc' },
+      ],
       select: {
         id: true,
         name: true,
@@ -71,15 +76,15 @@ export const GET = withAuthContext(
 
     return success({ data: templates });
   },
-  { permission: 'canAdmin', message: '文書テンプレートの閲覧権限がありません' }
+  { permission: 'canAdmin', message: '文書テンプレートの閲覧権限がありません' },
 );
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createTemplateSchema.safeParse(body);
+    const parsed = createTemplateSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -110,15 +115,15 @@ export const POST = withAuthContext(
             version: parsed.data.version,
             effective_from: parseEffectiveDate(parsed.data.effective_from),
             effective_to: parseEffectiveDate(parsed.data.effective_to),
-            content: parsed.data.content as import('@prisma/client').Prisma.InputJsonValue,
+            content: toPrismaJsonInput(parsed.data.content),
             is_default: parsed.data.is_default,
           },
         });
       },
-      { requestContext: authCtx }
+      { requestContext: authCtx },
     );
 
     return success({ data: template }, 201);
   },
-  { permission: 'canAdmin', message: '文書テンプレートの作成権限がありません' }
+  { permission: 'canAdmin', message: '文書テンプレートの作成権限がありません' },
 );

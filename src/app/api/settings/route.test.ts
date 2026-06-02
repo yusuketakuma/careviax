@@ -71,6 +71,14 @@ function createRequest(url: string, method: 'GET' | 'PATCH', body?: unknown) {
   });
 }
 
+function createMalformedPatchRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{"scope":',
+  });
+}
+
 describe('/api/settings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,7 +96,7 @@ describe('/api/settings', () => {
           create: settingCreateMock,
           update: settingUpdateMock,
         },
-      })
+      }),
     );
   });
 
@@ -98,10 +106,9 @@ describe('/api/settings', () => {
       { key: 'mfa_required', value: false },
     ]);
 
-    const response = await GET(
-      createRequest('http://localhost/api/settings?scope=system', 'GET'),
-      { params: Promise.resolve({}) },
-    );
+    const response = await GET(createRequest('http://localhost/api/settings?scope=system', 'GET'), {
+      params: Promise.resolve({}),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -123,6 +130,39 @@ describe('/api/settings', () => {
     });
   });
 
+  it('rejects non-object update payloads before resolving the settings target', async () => {
+    const response = await PATCH(createRequest('http://localhost/api/settings', 'PATCH', []), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(organizationFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before resolving the settings target', async () => {
+    const response = await PATCH(createMalformedPatchRequest('http://localhost/api/settings'), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(organizationFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
   it('updates site-backed fields and setting-backed values for the selected site scope', async () => {
     pharmacySiteFindFirstMock.mockResolvedValue({
       id: 'site_1',
@@ -131,9 +171,7 @@ describe('/api/settings', () => {
       is_health_support_pharmacy: false,
     });
     settingFindFirstMock.mockResolvedValue(null);
-    settingFindManyMock.mockResolvedValue([
-      { key: 'opening_hours', value: '08:30-18:30' },
-    ]);
+    settingFindManyMock.mockResolvedValue([{ key: 'opening_hours', value: '08:30-18:30' }]);
 
     const response = await PATCH(
       createRequest('http://localhost/api/settings', 'PATCH', {
@@ -146,7 +184,7 @@ describe('/api/settings', () => {
           opening_hours: '08:30-18:30',
         },
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');

@@ -16,7 +16,11 @@ const {
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' }, routeContext);
+      handler(
+        req,
+        { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+        routeContext,
+      );
   },
 }));
 
@@ -67,7 +71,13 @@ describe('/api/comments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     taskCommentFindManyMock.mockResolvedValue([
-      { id: 'comment_1', author_id: 'user_1', content: 'test', entity_type: 'dispense_task', entity_id: 'dt_1' },
+      {
+        id: 'comment_1',
+        author_id: 'user_1',
+        content: 'test',
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+      },
     ]);
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: 'テスト薬剤師' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -97,10 +107,7 @@ describe('/api/comments', () => {
     });
 
     it('returns 400 when entity_type or entity_id is missing', async () => {
-      const response = (await GET(
-        createGetRequest(),
-        emptyRouteContext,
-      ))!;
+      const response = (await GET(createGetRequest(), emptyRouteContext))!;
 
       expect(response.status).toBe(400);
     });
@@ -121,13 +128,22 @@ describe('/api/comments', () => {
       expect(response.status).toBe(201);
     });
 
-    it('returns 400 with invalid body', async () => {
-      const response = (await POST(
-        createInvalidJsonPostRequest(),
-        emptyRouteContext,
-      ))!;
+    it('rejects malformed JSON before opening an org transaction', async () => {
+      const response = (await POST(createInvalidJsonPostRequest(), emptyRouteContext))!;
 
       expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.code).toBe('VALIDATION_ERROR');
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-object create payloads before opening an org transaction', async () => {
+      const response = (await POST(createPostRequest([]), emptyRouteContext))!;
+
+      expect(response.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     });
   });
 });

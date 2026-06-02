@@ -67,4 +67,35 @@ describe('/api/files/[id]/download GET', () => {
       },
     });
   });
+
+  it('normalizes padded file ids before signing the download redirect', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '  file_1  ' }),
+    });
+
+    if (!response) {
+      throw new Error('Expected a response from file download GET');
+    }
+    expect(response.status).toBe(307);
+    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
+      },
+    });
+  });
+
+  it('rejects blank file ids before signing a download redirect', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) {
+      throw new Error('Expected a response from file download GET');
+    }
+    expect(response.status).toBe(400);
+    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+  });
 });

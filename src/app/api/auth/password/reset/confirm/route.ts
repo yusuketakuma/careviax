@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { externalError, validationError, error, success } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { confirmForgotPassword } from '@/server/services/cognito-auth';
 
 const schema = z.object({
@@ -22,7 +23,10 @@ function classifyPasswordResetConfirmError(error: unknown) {
 
   if (name === 'CodeMismatchException' || name === 'ExpiredCodeException') {
     return {
-      message: name === 'ExpiredCodeException' ? '確認コードの有効期限が切れています' : '確認コードが正しくありません',
+      message:
+        name === 'ExpiredCodeException'
+          ? '確認コードの有効期限が切れています'
+          : '確認コードが正しくありません',
       status: 400,
     };
   }
@@ -54,13 +58,15 @@ export async function POST(req: Request) {
     return error('RATE_LIMIT_EXCEEDED', 'Too many requests', 429);
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = schema.safeParse(payload);
 
   if (!parsed.success) {
     return validationError(
       'メールアドレス、確認コード、新しいパスワードを入力してください',
-      parsed.error.flatten().fieldErrors
+      parsed.error.flatten().fieldErrors,
     );
   }
 
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
     return externalError(
       'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
       classified.message,
-      classified.status
+      classified.status,
     );
   }
 

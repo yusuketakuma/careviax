@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -59,15 +60,15 @@ export const GET = withAuthContext(
   {
     permission: 'canDispense',
     message: 'コメントの閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuthContext(
   async (req, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createCommentSchema.safeParse(body);
+    const parsed = createCommentSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -90,11 +91,8 @@ export const POST = withAuthContext(
           select: { name: true },
         });
         const authorName = author?.name ?? '不明';
-        const linkPrefix =
-          ENTITY_TYPE_LINK_PREFIX[parsed.data.entity_type] ?? '';
-        const link = linkPrefix
-          ? `${linkPrefix}/${parsed.data.entity_id}`
-          : null;
+        const linkPrefix = ENTITY_TYPE_LINK_PREFIX[parsed.data.entity_type] ?? '';
+        const link = linkPrefix ? `${linkPrefix}/${parsed.data.entity_id}` : null;
 
         await dispatchNotificationEvent(tx, {
           orgId: ctx.orgId,
@@ -115,5 +113,5 @@ export const POST = withAuthContext(
   {
     permission: 'canDispense',
     message: 'コメントの投稿権限がありません',
-  }
+  },
 );

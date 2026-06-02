@@ -53,17 +53,17 @@ export type WebhookDeliveryResult = {
 };
 
 function normalizeHostname(hostname: string) {
-  return hostname.startsWith('[') && hostname.endsWith(']')
-    ? hostname.slice(1, -1)
-    : hostname;
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 }
 
-function isUnsafeIpv4(ip: string) {
+function readIpv4Octets(ip: string) {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) return null;
   const octets = ip.split('.').map((part) => Number(part));
-  if (octets.length !== 4 || octets.some((value) => Number.isNaN(value) || value < 0 || value > 255)) {
-    return true;
-  }
+  if (octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return null;
+  return octets as [number, number, number, number];
+}
 
+function isUnsafeIpv4Octets(octets: [number, number, number, number]) {
   const [first, second] = octets;
   return (
     first === 0 ||
@@ -72,25 +72,112 @@ function isUnsafeIpv4(ip: string) {
     (first === 100 && second >= 64 && second <= 127) ||
     (first === 169 && second === 254) ||
     (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 0 && (octets[2] === 0 || octets[2] === 2)) ||
     (first === 192 && second === 168) ||
-    (first === 198 && (second === 18 || second === 19))
+    (first === 198 && (second === 18 || second === 19 || (second === 51 && octets[2] === 100))) ||
+    (first === 203 && second === 0 && octets[2] === 113) ||
+    first >= 224
   );
 }
 
-function isUnsafeIpv6(ip: string) {
+function isUnsafeIpv4(ip: string) {
+  const octets = readIpv4Octets(ip);
+  return !octets || isUnsafeIpv4Octets(octets);
+}
+
+function ipv4OctetsToHextets(octets: [number, number, number, number]) {
+  return [
+    ((octets[0] << 8) | octets[1]).toString(16),
+    ((octets[2] << 8) | octets[3]).toString(16),
+  ] as const;
+}
+
+function normalizeIpv6Ipv4Tail(ip: string) {
+  const ipv4Tail = ip.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (!ipv4Tail) return ip;
+
+  const octets = readIpv4Octets(ipv4Tail[2]);
+  if (!octets) return null;
+
+  const [first, second] = ipv4OctetsToHextets(octets);
+  return `${ipv4Tail[1]}${first}:${second}`;
+}
+
+function readIpv6Hextets(ip: string) {
   const normalized = ip.toLowerCase();
-  if (normalized === '::' || normalized === '::1') return true;
+  const ipv6 = normalizeIpv6Ipv4Tail(normalized);
+  if (!ipv6) return null;
 
-  const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mappedIpv4) return isUnsafeIpv4(mappedIpv4[1]);
+  const doubleColonParts = ipv6.split('::');
+  if (doubleColonParts.length > 2) return null;
 
-  const firstSegment = normalized.split(':').find((segment) => segment.length > 0);
-  if (!firstSegment) return true;
+  const left = doubleColonParts[0] ? doubleColonParts[0].split(':') : [];
+  const right = doubleColonParts[1] ? doubleColonParts[1].split(':') : [];
+  const missing = doubleColonParts.length === 2 ? 8 - left.length - right.length : 0;
+  if (missing < 0 || (doubleColonParts.length === 1 && left.length !== 8)) return null;
 
-  const firstHextet = Number.parseInt(firstSegment, 16);
-  if (Number.isNaN(firstHextet)) return true;
+  const segments = [...left, ...Array.from({ length: missing }, () => '0'), ...right];
+  if (segments.length !== 8) return null;
+
+  const hextets = segments.map((segment) => {
+    if (!/^[0-9a-f]{1,4}$/.test(segment)) return null;
+    const value = Number.parseInt(segment, 16);
+    return Number.isInteger(value) && value >= 0 && value <= 0xffff ? value : null;
+  });
+
+  return hextets.every((value): value is number => value !== null)
+    ? (hextets as [number, number, number, number, number, number, number, number])
+    : null;
+}
+
+function readMappedIpv4Octets(
+  hextets: [number, number, number, number, number, number, number, number],
+) {
+  const isMapped =
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0xffff;
+  if (!isMapped) return null;
+
+  return [hextets[6] >> 8, hextets[6] & 0xff, hextets[7] >> 8, hextets[7] & 0xff] as [
+    number,
+    number,
+    number,
+    number,
+  ];
+}
+
+function isUnsafeIpv6(ip: string) {
+  const hextets = readIpv6Hextets(ip);
+  if (!hextets) return true;
+
+  const mappedIpv4 = readMappedIpv4Octets(hextets);
+  if (mappedIpv4) return isUnsafeIpv4Octets(mappedIpv4);
+
+  const [firstHextet, secondHextet, thirdHextet, fourthHextet] = hextets;
+  const isUnspecifiedOrLoopback =
+    hextets.slice(0, 7).every((value) => value === 0) && hextets[7] <= 1;
+  if (isUnspecifiedOrLoopback) return true;
   if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
-  if (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) return true; // fe80::/10 link-local
+  if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((firstHextet & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
+  if ((firstHextet & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  if (
+    firstHextet === 0x0064 &&
+    secondHextet === 0xff9b &&
+    thirdHextet === 0 &&
+    fourthHextet === 0
+  ) {
+    return true;
+  }
+  if (firstHextet === 0x0100 && secondHextet === 0 && thirdHextet === 0 && fourthHextet === 0) {
+    return true;
+  }
+  if (firstHextet === 0x2001 && secondHextet === 0x0db8) return true; // documentation
+  if (firstHextet === 0x2002) return true; // 6to4
   return false;
 }
 
@@ -177,7 +264,7 @@ function buildSignatureHeader(secret: string, body: string): string {
  */
 async function dispatchToEndpoint(
   registration: WebhookRegistration,
-  payload: WebhookPayload
+  payload: WebhookPayload,
 ): Promise<WebhookDeliveryResult> {
   const body = JSON.stringify(payload);
   const base: WebhookDeliveryResult = {
@@ -229,10 +316,10 @@ export async function dispatchWebhookEvent(
   registrations: WebhookRegistration[],
   event: WebhookEventType,
   orgId: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ): Promise<WebhookDeliveryResult[]> {
   const active = registrations.filter(
-    (registration) => registration.isActive && registration.events.includes(event)
+    (registration) => registration.isActive && registration.events.includes(event),
   );
 
   if (active.length === 0) return [];
@@ -251,7 +338,7 @@ export async function dispatchWebhookEvent(
 export async function dispatchWebhookEventForOrg(
   orgId: string,
   event: WebhookEventType,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ) {
   const registrations = await loadWebhookRegistrationsForOrg(orgId);
   return dispatchWebhookEvent(registrations, event, orgId, data);
@@ -260,7 +347,7 @@ export async function dispatchWebhookEventForOrg(
 export async function notifyWebhookEventForOrg(
   orgId: string,
   event: WebhookEventType,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ) {
   try {
     return await dispatchWebhookEventForOrg(orgId, event, data);

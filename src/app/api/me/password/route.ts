@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { externalError, unauthorized, validationError } from '@/lib/api/response';
 import { changePasswordWithAccessToken } from '@/server/services/cognito-auth';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 export async function PATCH(req: NextRequest) {
   const session = await auth();
@@ -10,15 +11,14 @@ export async function PATCH(req: NextRequest) {
     return unauthorized();
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | { currentPassword?: string; newPassword?: string }
-    | null;
-  if (!body) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) {
     return validationError('リクエストボディが不正です');
   }
 
-  const currentPassword = body.currentPassword?.trim();
-  const newPassword = body.newPassword?.trim();
+  const currentPassword =
+    typeof payload.currentPassword === 'string' ? payload.currentPassword.trim() : '';
+  const newPassword = typeof payload.newPassword === 'string' ? payload.newPassword.trim() : '';
 
   if (!currentPassword || !newPassword) {
     return validationError('現在のパスワードと新しいパスワードを入力してください');
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest) {
       (error as Error).name === 'NotAuthorizedException'
         ? '現在のパスワードが正しくありません'
         : 'パスワードの変更に失敗しました',
-      400
+      400,
     );
   }
 

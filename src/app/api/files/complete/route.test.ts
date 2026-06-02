@@ -34,6 +34,14 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/files/complete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/files/complete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,5 +77,55 @@ describe('/api/files/complete', () => {
       },
       etag: 'etag-1',
     });
+  });
+
+  it('normalizes padded file ids and blank etags before completing file state', async () => {
+    const response = (await POST(
+      createRequest({
+        file_id: '  11111111-1111-4111-8111-111111111111  ',
+        etag: '   ',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(completeUploadedFileMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      fileId: '11111111-1111-4111-8111-111111111111',
+      uploadedBy: 'user_1',
+      accessContext: {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+      etag: undefined,
+    });
+  });
+
+  it('rejects blank file ids before updating file state', async () => {
+    const response = (await POST(
+      createRequest({
+        file_id: '   ',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(completeUploadedFileMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object completion payloads before updating file state', async () => {
+    const response = (await POST(createRequest([])))!;
+
+    expect(response.status).toBe(400);
+    expect(completeUploadedFileMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON completion bodies before updating file state', async () => {
+    const response = (await POST(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(completeUploadedFileMock).not.toHaveBeenCalled();
   });
 });

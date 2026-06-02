@@ -5,6 +5,7 @@ import {
   markExternalAccessViewed,
   validateExternalAccessGrant,
 } from '@/server/services/external-access';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import {
@@ -18,7 +19,10 @@ import {
  * OTP is read from the `x-otp` request header (not a URL query param).
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = normalizeRequiredRouteParam(rawToken);
+  if (!token) return validationError('共有リンクトークンが不正です');
+
   const ip = getClientIp(req) ?? 'unknown';
   const rateLimit = await checkAuthRateLimit(
     createExternalAccessOtpRateLimitIdentifier(token, ip),

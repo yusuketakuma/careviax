@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
@@ -20,14 +21,19 @@ const updateSettingsSchema = z.object({
   values: z.record(z.string(), z.string()),
 });
 
+type ScopeTarget = {
+  scopeId: string | null;
+  entityValues: Record<string, unknown>;
+};
+
 async function resolveScopeTarget(
   orgId: string,
   userId: string,
   scope: SettingScope,
-  scopeIdRaw: string | null | undefined
-) {
+  scopeIdRaw: string | null | undefined,
+): Promise<ScopeTarget | null> {
   if (scope === 'system') {
-    return { scopeId: null, entityValues: {} as Record<string, unknown> };
+    return { scopeId: null, entityValues: {} };
   }
 
   if (scope === 'organization') {
@@ -83,13 +89,13 @@ async function resolveScopeTarget(
   });
 
   if (!user) return null;
-  return { scopeId: user.id, entityValues: {} as Record<string, unknown> };
+  return { scopeId: user.id, entityValues: {} };
 }
 
 function buildSettingItems(
   scope: SettingScope,
   entityValues: Record<string, unknown>,
-  storedValues: Map<string, Prisma.JsonValue>
+  storedValues: Map<string, Prisma.JsonValue>,
 ): SettingValueItem[] {
   return SETTING_CATALOG[scope].map((item) => {
     const rawValue =
@@ -120,7 +126,7 @@ export const GET = withAuthContext(
       ctx.orgId,
       ctx.userId,
       parsedScope.data,
-      searchParams.get('scope_id')
+      searchParams.get('scope_id'),
     );
     if (!resolved) {
       return notFound('設定対象が見つかりません');
@@ -152,7 +158,7 @@ export const GET = withAuthContext(
         items: buildSettingItems(
           parsedScope.data,
           resolved.entityValues,
-          new Map(rows.map((row) => [row.key, row.value]))
+          new Map(rows.map((row) => [row.key, row.value])),
         ),
       },
     });
@@ -160,15 +166,15 @@ export const GET = withAuthContext(
   {
     permission: 'canAdmin',
     message: '管理設定の閲覧権限がありません',
-  }
+  },
 );
 
 export const PATCH = withAuthContext(
   async (req: NextRequest, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = updateSettingsSchema.safeParse(body);
+    const parsed = updateSettingsSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -177,7 +183,7 @@ export const PATCH = withAuthContext(
       ctx.orgId,
       ctx.userId,
       parsed.data.scope,
-      parsed.data.scope_id
+      parsed.data.scope_id,
     );
     if (!resolved) {
       return notFound('設定対象が見つかりません');
@@ -185,7 +191,7 @@ export const PATCH = withAuthContext(
 
     const catalogItems = SETTING_CATALOG[parsed.data.scope];
     const unknownKeys = Object.keys(parsed.data.values).filter(
-      (key) => !catalogItems.some((item) => item.key === key)
+      (key) => !catalogItems.some((item) => item.key === key),
     );
     if (unknownKeys.length > 0) {
       return validationError('未定義の設定キーがあります', {
@@ -237,7 +243,7 @@ export const PATCH = withAuthContext(
           .map(async (item) => {
             const value = parseSettingInputValue(
               item.type,
-              parsed.data.values[item.key] ?? item.defaultValue
+              parsed.data.values[item.key] ?? item.defaultValue,
             );
             const existing = await tx.setting.findFirst({
               where: {
@@ -263,7 +269,7 @@ export const PATCH = withAuthContext(
                 value,
               },
             });
-          })
+          }),
       );
     });
 
@@ -275,7 +281,9 @@ export const PATCH = withAuthContext(
               scope: parsed.data.scope,
               scope_id: resolved.scopeId,
               key: {
-                in: catalogItems.filter((item) => item.storage === 'setting').map((item) => item.key),
+                in: catalogItems
+                  .filter((item) => item.storage === 'setting')
+                  .map((item) => item.key),
               },
             },
             select: {
@@ -288,7 +296,7 @@ export const PATCH = withAuthContext(
       ctx.orgId,
       ctx.userId,
       parsed.data.scope,
-      resolved.scopeId
+      resolved.scopeId,
     );
     if (!refreshed) {
       return notFound('設定対象が見つかりません');
@@ -301,7 +309,7 @@ export const PATCH = withAuthContext(
         items: buildSettingItems(
           parsed.data.scope,
           refreshed.entityValues,
-          new Map(rows.map((row) => [row.key, row.value]))
+          new Map(rows.map((row) => [row.key, row.value])),
         ),
       },
     });
@@ -309,5 +317,5 @@ export const PATCH = withAuthContext(
   {
     permission: 'canAdmin',
     message: '管理設定の更新権限がありません',
-  }
+  },
 );

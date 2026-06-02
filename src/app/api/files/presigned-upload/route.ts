@@ -9,17 +9,43 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
-import { createPresignedUpload, FileStorageError } from '@/server/services/file-storage';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import {
+  assertFileUploadConstraints,
+  createPresignedUpload,
+  FileStorageError,
+} from '@/server/services/file-storage';
+
+function trimStringOrUndefined(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const optionalTrimmedStringSchema = z.preprocess(
+  trimStringOrUndefined,
+  z.string().min(1).optional(),
+);
 
 const presignedUploadSchema = z
   .object({
     purpose: z.enum(['prescription', 'visit-photo', 'report']),
-    file_name: z.string().min(1, 'ファイル名は必須です'),
-    mime_type: z.string().min(1, 'MIME タイプは必須です'),
+    file_name: z
+      .string()
+      .trim()
+      .min(1, 'ファイル名は必須です')
+      .max(255, 'ファイル名は255文字以内で指定してください'),
+    mime_type: z
+      .string()
+      .trim()
+      .min(1, 'MIME タイプは必須です')
+      .max(100, 'MIME タイプは100文字以内で指定してください')
+      .transform((value) => value.toLowerCase()),
     size_bytes: z.number().int().positive('ファイルサイズは正の整数で指定してください'),
-    patient_id: z.string().optional(),
-    visit_record_id: z.string().optional(),
-    report_id: z.string().optional(),
+    patient_id: optionalTrimmedStringSchema,
+    visit_record_id: optionalTrimmedStringSchema,
+    report_id: optionalTrimmedStringSchema,
   })
   .superRefine((value, ctx) => {
     if (value.purpose === 'prescription' && !value.patient_id) {
@@ -177,12 +203,26 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = presignedUploadSchema.safeParse(body);
+  const parsed = presignedUploadSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  try {
+    assertFileUploadConstraints({
+      purpose: parsed.data.purpose,
+      mimeType: parsed.data.mime_type,
+      sizeBytes: parsed.data.size_bytes,
+    });
+  } catch (cause) {
+    if (cause instanceof FileStorageError) {
+      return error(cause.code, cause.message, cause.status);
+    }
+
+    return error('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました', 502);
   }
 
   if (parsed.data.purpose === 'report') {

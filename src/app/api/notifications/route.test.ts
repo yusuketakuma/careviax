@@ -22,9 +22,7 @@ vi.mock('@/lib/auth/config', () => ({
 }));
 
 vi.mock('@/lib/auth/context', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/auth/context')>(
-    '@/lib/auth/context'
-  );
+  const actual = await vi.importActual<typeof import('@/lib/auth/context')>('@/lib/auth/context');
   return {
     ...actual,
     getMembership: getMembershipMock,
@@ -43,10 +41,26 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET } from './route';
+import { GET, PATCH } from './route';
 
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
+}
+
+function createPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/notifications', {
+    method: 'PATCH',
+    headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/notifications', {
+    method: 'PATCH',
+    headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+    body: '{bad json',
+  });
 }
 
 describe('/api/notifications GET', () => {
@@ -60,7 +74,7 @@ describe('/api/notifications GET', () => {
           findMany: findManyMock,
           updateMany: updateManyMock,
         },
-      })
+      }),
     );
   });
 
@@ -107,5 +121,55 @@ describe('/api/notifications GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
+  });
+
+  it('marks only valid unique notification ids as read', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+
+    const response = await PATCH(
+      createPatchRequest({ ids: ['notice_1', '', 'notice_1', 123, ' notice_2 '] }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['notice_1', 'notice_2'] },
+        org_id: 'org_1',
+        user_id: 'user_1',
+      },
+      data: { is_read: true, read_at: expect.any(Date) },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      message: '2件を既読にしました',
+    });
+  });
+
+  it('rejects malformed patch bodies before updating notifications', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+
+    for (const body of [{ ids: [123, ''] }, { ids: 'notice_1' }, { all: 'true' }, []]) {
+      const response = await PATCH(createPatchRequest(body));
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+    }
+
+    expect(updateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON patch bodies before updating notifications', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+
+    const response = await PATCH(createMalformedJsonPatchRequest());
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 });

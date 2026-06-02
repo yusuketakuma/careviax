@@ -78,6 +78,22 @@ describe('/api/external-access/[token]', () => {
     expect(markExternalAccessViewedMock).toHaveBeenCalledWith('grant_1');
   });
 
+  it('rejects blank tokens before rate limiting or validating the grant', async () => {
+    const response = await GET(makeRequest('1234'), {
+      params: Promise.resolve({ token: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '共有リンクトークンが不正です',
+    });
+    expect(getClientIpMock).not.toHaveBeenCalled();
+    expect(checkAuthRateLimitMock).not.toHaveBeenCalled();
+    expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
+    expect(buildExternalAccessPayloadMock).not.toHaveBeenCalled();
+    expect(markExternalAccessViewedMock).not.toHaveBeenCalled();
+  });
+
   it('does not accept OTP values from query params', async () => {
     validateExternalAccessGrantMock.mockResolvedValue({
       ok: false,

@@ -4,14 +4,12 @@ import { verifyTotpForAccessToken } from '@/server/services/cognito-auth';
 import { issueMfaRecoveryCodes } from '@/server/services/mfa-recovery';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import type { NextRequest } from 'next/server';
 
-async function resolveCurrentUserId() {
-  const session = await auth();
-  if (!session) {
-    return { session, userId: null as string | null };
-  }
+type AuthSession = NonNullable<Awaited<ReturnType<typeof auth>>>;
 
+async function resolveCurrentUserId(session: AuthSession) {
   const sessionUserId = session.user?.id?.trim();
   const directUser = sessionUserId
     ? await prisma.user.findUnique({
@@ -21,7 +19,7 @@ async function resolveCurrentUserId() {
     : null;
 
   if (directUser?.id) {
-    return { session, userId: directUser.id };
+    return directUser.id;
   }
 
   const resolvedUser = await resolveLocalUserByIdentity({
@@ -29,21 +27,27 @@ async function resolveCurrentUserId() {
     email: session.user?.email,
   });
 
-  return { session, userId: resolvedUser?.id ?? null };
+  return resolvedUser?.id ?? null;
 }
 
 export async function POST(req: NextRequest) {
-  const { session, userId } = await resolveCurrentUserId();
+  const session = await auth();
   const accessToken = await getAuthAccessToken(req);
   if (!session || !accessToken) {
     return unauthorized();
   }
 
-  const body = (await req.json().catch(() => null)) as { code?: string } | null;
-  const code = body?.code?.trim();
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) {
+    return validationError('リクエストボディが不正です');
+  }
+
+  const code = typeof payload?.code === 'string' ? payload.code.trim() : '';
   if (!code) {
     return validationError('確認コードを入力してください');
   }
+
+  const userId = await resolveCurrentUserId(session);
 
   try {
     await verifyTotpForAccessToken({

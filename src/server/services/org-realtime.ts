@@ -64,22 +64,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isOrgRealtimeEventType(value: unknown): value is OrgRealtimeEventType {
+  return typeof value === 'string' && ORG_REALTIME_EVENT_TYPE_SET.has(value);
+}
+
+function isWorkflowRealtimeSource(value: unknown): value is WorkflowRealtimeSource {
+  return typeof value === 'string' && WORKFLOW_REALTIME_SOURCE_SET.has(value);
+}
+
 export function buildOrgRealtimeChannel(orgId: string) {
   return `org:${orgId}`;
 }
 
 export function sanitizeWorkflowRealtimeSource(value: unknown): WorkflowRealtimeSource | null {
-  if (typeof value !== 'string') return null;
-  return WORKFLOW_REALTIME_SOURCE_SET.has(value) ? (value as WorkflowRealtimeSource) : null;
+  return isWorkflowRealtimeSource(value) ? value : null;
 }
 
 export function sanitizeOrgRealtimeEvent(data: unknown): OrgRealtimeEvent {
   if (!isRecord(data)) return { type: 'workflow_refresh' };
 
-  const type =
-    typeof data.type === 'string' && ORG_REALTIME_EVENT_TYPE_SET.has(data.type)
-      ? (data.type as OrgRealtimeEventType)
-      : 'workflow_refresh';
+  const type = isOrgRealtimeEventType(data.type) ? data.type : 'workflow_refresh';
   const payload = isRecord(data.payload) ? data.payload : null;
   const source = sanitizeWorkflowRealtimeSource(payload?.source);
 

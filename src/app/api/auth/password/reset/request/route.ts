@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { error, externalError, validationError } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { startForgotPassword } from '@/server/services/cognito-auth';
 
 const requestPasswordResetSchema = z.object({
@@ -11,8 +12,7 @@ const requestPasswordResetSchema = z.object({
 function successResponse() {
   return Response.json({
     ok: true,
-    message:
-      'アカウントが存在する場合、確認コードの案内を送信しました。',
+    message: 'アカウントが存在する場合、確認コードの案内を送信しました。',
   });
 }
 
@@ -23,8 +23,10 @@ export async function POST(req: Request) {
     return error('RATE_LIMIT_EXCEEDED', 'Too many requests', 429);
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = requestPasswordResetSchema.safeParse(body);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = requestPasswordResetSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('メールアドレスを入力してください', parsed.error.flatten().fieldErrors);
   }
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
     return externalError(
       'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
       '確認コードの送信に失敗しました',
-      502
+      502,
     );
   }
 

@@ -58,13 +58,8 @@ describe('dispatchNotificationEvent', () => {
   it('delivers to explicit users when no notification rules exist', async () => {
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      notificationCreate,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
     membershipFindMany.mockResolvedValue([]);
@@ -90,20 +85,15 @@ describe('dispatchNotificationEvent', () => {
           user_id: 'user_1',
           event_type: 'visit_schedule_reschedule_requested',
         }),
-      })
+      }),
     );
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
   });
 
   it('suppresses explicit notifications when in-app rules exist but are all disabled', async () => {
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      notificationCreate,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -132,13 +122,8 @@ describe('dispatchNotificationEvent', () => {
   });
 
   it('includes explicit and rule-based recipients when an enabled rule exists', async () => {
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      notificationCreate,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -172,19 +157,14 @@ describe('dispatchNotificationEvent', () => {
     expect(notifications).toHaveLength(3);
     expect(notificationCreate).toHaveBeenCalledTimes(3);
     const userIds = notificationCreate.mock.calls.map(
-      ([args]) => (args as { data: { user_id: string } }).data.user_id
+      ([args]) => (args as { data: { user_id: string } }).data.user_id,
     );
     expect(userIds).toEqual(['user_1', 'user_2', 'user_3']);
   });
 
   it('ignores unsupported role recipients before querying memberships', async () => {
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      notificationCreate,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -221,24 +201,60 @@ describe('dispatchNotificationEvent', () => {
         where: expect.objectContaining({
           role: { in: ['admin'] },
         }),
-      })
+      }),
     );
     const userIds = notificationCreate.mock.calls.map(
-      ([args]) => (args as { data: { user_id: string } }).data.user_id
+      ([args]) => (args as { data: { user_id: string } }).data.user_id,
     );
     expect(userIds).toEqual(['user_1', 'user_2', 'user_3']);
+  });
+
+  it('ignores malformed recipient configs while keeping enabled explicit recipients', async () => {
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_1',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'in_app',
+        recipients: ['admin'],
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(membershipFindMany).not.toHaveBeenCalled();
+    expect(notificationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          user_id: 'user_1',
+        }),
+      }),
+    );
   });
 
   it('routes sms notifications to users with phone numbers when sms rules are enabled', async () => {
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      notificationCreate,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -275,12 +291,12 @@ describe('dispatchNotificationEvent', () => {
     expect(sendSmsMock).toHaveBeenNthCalledWith(
       1,
       '09000000001',
-      '承認待ち\n通知を確認してください'
+      '承認待ち\n通知を確認してください',
     );
     expect(sendSmsMock).toHaveBeenNthCalledWith(
       2,
       '09000000003',
-      '承認待ち\n通知を確認してください'
+      '承認待ち\n通知を確認してください',
     );
     expect(sendLineMessageMock).not.toHaveBeenCalled();
   });
@@ -288,12 +304,7 @@ describe('dispatchNotificationEvent', () => {
   it('routes line notifications to explicit and rule-based user ids', async () => {
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const {
-      tx,
-      notificationRuleFindMany,
-      membershipFindMany,
-      userFindMany,
-    } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, userFindMany } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -326,12 +337,12 @@ describe('dispatchNotificationEvent', () => {
     expect(sendLineMessageMock).toHaveBeenNthCalledWith(
       1,
       'user_1',
-      '折り返し依頼\n至急対応してください'
+      '折り返し依頼\n至急対応してください',
     );
     expect(sendLineMessageMock).toHaveBeenNthCalledWith(
       2,
       'user_2',
-      '折り返し依頼\n至急対応してください'
+      '折り返し依頼\n至急対応してください',
     );
     expect(sendSmsMock).not.toHaveBeenCalled();
   });

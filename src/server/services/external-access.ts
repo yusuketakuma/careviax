@@ -5,6 +5,7 @@ import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 type ExternalGrantRecord = {
   id: string;
@@ -63,14 +64,15 @@ const SENSITIVE_SCOPE_PERMISSIONS = {
   care_reports: 'canSendCareReport',
   self_report_history: 'canSendCareReport',
   visit_schedule: 'canVisit',
-} satisfies Partial<Record<ExternalAccessScopeKey, PermissionKey>>;
+} satisfies Record<ExternalAccessScopeKey, PermissionKey>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function isExternalAccessScopeKey(value: string): value is ExternalAccessScopeKey {
+  return EXTERNAL_ACCESS_SCOPE_KEY_SET.has(value);
 }
 
 export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScopeCheckResult {
-  if (!isRecord(scope)) {
+  const scopeObject = readJsonObject(scope);
+  if (!scopeObject) {
     return {
       ok: false,
       kind: 'validation',
@@ -83,8 +85,8 @@ export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScop
   const unknownKeys: string[] = [];
   const invalidKeys: string[] = [];
 
-  for (const [key, value] of Object.entries(scope)) {
-    if (!EXTERNAL_ACCESS_SCOPE_KEY_SET.has(key)) {
+  for (const [key, value] of Object.entries(scopeObject)) {
+    if (!isExternalAccessScopeKey(key)) {
       unknownKeys.push(key);
       continue;
     }
@@ -94,7 +96,7 @@ export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScop
       continue;
     }
 
-    normalized[key as ExternalAccessScopeKey] = value;
+    normalized[key] = value;
   }
 
   if (unknownKeys.length > 0 || invalidKeys.length > 0) {
@@ -123,7 +125,7 @@ export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScop
 
 function normalizeAllowedCaseIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
-  if (!value.every((item): item is string => typeof item === 'string' && item.length > 0)) {
+  if (!value.every((item): item is string => typeof item === 'string' && item.trim().length > 0)) {
     return null;
   }
   return Array.from(new Set(value));
@@ -132,7 +134,8 @@ function normalizeAllowedCaseIds(value: unknown): string[] | null {
 export function normalizeStoredExternalAccessScope(
   scope: unknown,
 ): ExternalAccessScopeCheckResult & { scope?: StoredExternalAccessScope } {
-  if (!isRecord(scope)) {
+  const scopeObject = readJsonObject(scope);
+  if (!scopeObject) {
     return {
       ok: false,
       kind: 'validation',
@@ -142,12 +145,12 @@ export function normalizeStoredExternalAccessScope(
   }
 
   const publicScope = Object.fromEntries(
-    Object.entries(scope).filter(([key]) => key !== EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY),
+    Object.entries(scopeObject).filter(([key]) => key !== EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY),
   );
   const normalized = normalizeExternalAccessScope(publicScope);
   if (!normalized.ok) return normalized;
 
-  const rawAllowedCaseIds = scope[EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY];
+  const rawAllowedCaseIds = scopeObject[EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY];
   if (rawAllowedCaseIds === undefined) return normalized;
 
   const allowedCaseIds = normalizeAllowedCaseIds(rawAllowedCaseIds);
@@ -274,10 +277,9 @@ export function validateExternalAccessScopeForRole(
     };
   }
 
-  const deniedScopes = Object.entries(SENSITIVE_SCOPE_PERMISSIONS)
-    .filter(([scopeKey]) => normalized.scope[scopeKey as ExternalAccessScopeKey] === true)
-    .filter(([, permission]) => !hasPermission(role, permission))
-    .map(([scopeKey]) => scopeKey);
+  const deniedScopes = EXTERNAL_ACCESS_SCOPE_KEYS.filter(
+    (scopeKey) => normalized.scope[scopeKey] === true,
+  ).filter((scopeKey) => !hasPermission(role, SENSITIVE_SCOPE_PERMISSIONS[scopeKey]));
 
   if (deniedScopes.length > 0) {
     return {
@@ -365,12 +367,13 @@ function readRequiredTokenString(payload: Record<string, unknown>, key: string) 
 }
 
 function normalizeExternalAccessTokenPayload(payload: unknown): ExternalAccessTokenPayload | null {
-  if (!isRecord(payload)) return null;
-  if (payload.purpose !== 'external_access_grant') return null;
+  const payloadObject = readJsonObject(payload);
+  if (!payloadObject) return null;
+  if (payloadObject.purpose !== 'external_access_grant') return null;
 
-  const grantId = readRequiredTokenString(payload, 'grant_id');
-  const orgId = readRequiredTokenString(payload, 'org_id');
-  const patientId = readRequiredTokenString(payload, 'patient_id');
+  const grantId = readRequiredTokenString(payloadObject, 'grant_id');
+  const orgId = readRequiredTokenString(payloadObject, 'org_id');
+  const patientId = readRequiredTokenString(payloadObject, 'patient_id');
   if (!grantId || !orgId || !patientId) return null;
 
   return {
@@ -606,9 +609,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   }
 
   const allergyInfoValue =
-    scope.allergy_info === true
-      ? ((patient as Record<string, unknown>).allergy_info ?? null)
-      : null;
+    scope.allergy_info === true ? (readJsonObject(patient)?.allergy_info ?? null) : null;
   const allergyInfo =
     allergyInfoValue == null
       ? null
@@ -704,7 +705,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   }
 
   let selfReportHistory: Array<Record<string, unknown>> = [];
-  if ((scope as Record<string, unknown>).self_report_history === true) {
+  if (scope.self_report_history === true) {
     selfReportHistory = allowedCaseIds
       ? []
       : await prisma.patientSelfReport.findMany({

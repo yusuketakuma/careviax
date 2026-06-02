@@ -181,11 +181,32 @@ describe('/api/jobs/[jobType] POST', () => {
     authMock.mockResolvedValue(null);
 
     const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
-      params: Promise.resolve({ jobType: 'daily-medication-check' }),
+      params: Promise.resolve({ jobType: '  daily-medication-check  ' }),
     });
 
     expect(response.status).toBe(200);
     expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'daily-medication-check',
+      processedCount: 3,
+    });
+  });
+
+  it('rejects blank job types before running a handler', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ジョブタイプが不正です',
+    });
+    expect(checkMedicationDeadlinesMock).not.toHaveBeenCalled();
+    expect(runDailyOperationsMock).not.toHaveBeenCalled();
+    expect(cleanupExpiredBulkExportArtifactsMock).not.toHaveBeenCalled();
   });
 
   it('returns 200 when authenticated admin executes the job', async () => {

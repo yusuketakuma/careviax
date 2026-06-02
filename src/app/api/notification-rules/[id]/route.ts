@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -18,20 +20,19 @@ const updateRuleSchema = z.object({
   conditions: z.record(z.string(), z.unknown()).optional(),
 });
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('通知ルールIDが不正です');
 
   const rule = await withOrgContext(ctx.orgId, (tx) =>
     tx.notificationRule.findFirst({
-      where: { id, org_id: ctx.orgId },
-    })
+      where: { id: ruleId, org_id: ctx.orgId },
+    }),
   );
 
   if (!rule) return notFound('通知ルールが見つかりません');
@@ -39,62 +40,58 @@ export async function GET(
   return success(rule);
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('通知ルールIDが不正です');
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateRuleSchema.safeParse(body);
+  const parsed = updateRuleSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.notificationRule.findFirst({ where: { id, org_id: ctx.orgId } })
+    tx.notificationRule.findFirst({ where: { id: ruleId, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('通知ルールが見つかりません');
 
   const { conditions, recipients, ...rest } = parsed.data;
   const updated = await withOrgContext(ctx.orgId, (tx) =>
     tx.notificationRule.update({
-      where: { id },
+      where: { id: ruleId },
       data: {
         ...rest,
         ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
         ...(recipients !== undefined ? { recipients: toPrismaJsonInput(recipients) } : {}),
       },
-    })
+    }),
   );
 
   return success(updated);
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return validationError('通知ルールIDが不正です');
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.notificationRule.findFirst({ where: { id, org_id: ctx.orgId } })
+    tx.notificationRule.findFirst({ where: { id: ruleId, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('通知ルールが見つかりません');
 
-  await withOrgContext(ctx.orgId, (tx) =>
-    tx.notificationRule.delete({ where: { id } })
-  );
+  await withOrgContext(ctx.orgId, (tx) => tx.notificationRule.delete({ where: { id: ruleId } }));
 
   return success({ message: '通知ルールを削除しました' });
 }

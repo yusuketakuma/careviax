@@ -1,23 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  withOrgContextMock,
-  templateFindManyMock,
-  templateCreateMock,
-  templateUpdateManyMock,
-} = vi.hoisted(() => ({
-  withOrgContextMock: vi.fn(),
-  templateFindManyMock: vi.fn(),
-  templateCreateMock: vi.fn(),
-  templateUpdateManyMock: vi.fn(),
-}));
+const { withOrgContextMock, templateFindManyMock, templateCreateMock, templateUpdateManyMock } =
+  vi.hoisted(() => ({
+    withOrgContextMock: vi.fn(),
+    templateFindManyMock: vi.fn(),
+    templateCreateMock: vi.fn(),
+    templateUpdateManyMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext:
-    (handler: (req: NextRequest, ctx: { orgId: string; userId: string; role: string }, routeContext: { params: Promise<Record<string, string>> }) => Promise<Response>) =>
-      (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext),
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+    ) =>
+    (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -41,6 +43,14 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function createMalformedJsonPostRequest() {
+  return new NextRequest('http://localhost/api/templates', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  });
+}
+
 describe('/api/templates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,14 +63,14 @@ describe('/api/templates', () => {
           create: templateCreateMock,
           updateMany: templateUpdateManyMock,
         },
-      })
+      }),
     );
   });
 
   it('lists templates filtered by org and template_type', async () => {
     const response = await GET(
       createRequest('http://localhost/api/templates?template_type=care_report'),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -71,7 +81,7 @@ describe('/api/templates', () => {
           org_id: 'org_1',
           template_type: 'care_report',
         }),
-      })
+      }),
     );
   });
 
@@ -83,7 +93,7 @@ describe('/api/templates', () => {
         content: { sections: ['summary'] },
         is_default: true,
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -95,7 +105,7 @@ describe('/api/templates', () => {
           template_type: 'care_report',
           is_default: true,
         }),
-      })
+      }),
     );
     expect(templateCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -103,11 +113,12 @@ describe('/api/templates', () => {
           org_id: 'org_1',
           name: '主治医報告 基本',
           template_type: 'care_report',
+          content: { sections: ['summary'] },
           format: 'html',
           version: 1,
           is_default: true,
         }),
-      })
+      }),
     );
   });
 
@@ -122,7 +133,7 @@ describe('/api/templates', () => {
         effective_from: '2026-04-01',
         content: { blocks: ['signature'] },
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -136,14 +147,41 @@ describe('/api/templates', () => {
           version: 2,
           effective_from: new Date('2026-04-01T00:00:00.000Z'),
         }),
-      })
+      }),
     );
+  });
+
+  it('rejects non-object create payloads before opening an org transaction', async () => {
+    const response = await POST(createRequest('http://localhost/api/templates', []), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+    expect(templateCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON create payloads before opening an org transaction', async () => {
+    const response = await POST(createMalformedJsonPostRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+    expect(templateCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns validation error for unsupported template_type query', async () => {
     const response = await GET(
       createRequest('http://localhost/api/templates?template_type=unknown'),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');

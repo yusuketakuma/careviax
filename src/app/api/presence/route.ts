@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { setPresence, getPresence } from '@/server/services/presence-store';
@@ -25,10 +26,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = postBodySchema.safeParse(body);
+  const parsed = postBodySchema.safeParse(payload);
   if (!parsed.success) return validationError('パラメータが不正です', parsed.error.flatten());
 
   const { entity_type, entity_id, active_field } = parsed.data;

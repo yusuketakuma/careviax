@@ -1,6 +1,7 @@
 import { Prisma, type MemberRole, type NotificationType } from '@prisma/client';
 import webpush from 'web-push';
 import { isMemberRole } from '@/lib/auth/member-roles';
+import { readJsonObject } from '@/lib/db/json';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
@@ -46,10 +47,7 @@ function uniqueMemberRoles(values: MemberRole[]) {
 }
 
 function getRecipientConfig(recipients: Prisma.JsonValue) {
-  if (!recipients || typeof recipients !== 'object' || Array.isArray(recipients)) {
-    return {};
-  }
-  return recipients as Record<string, Prisma.JsonValue>;
+  return readJsonObject(recipients) ?? {};
 }
 
 function readRecipientRoles(recipients: Prisma.JsonValue) {
@@ -59,7 +57,9 @@ function readRecipientRoles(recipients: Prisma.JsonValue) {
 
 function readRecipientUserIds(recipients: Prisma.JsonValue) {
   const userIds = getRecipientConfig(recipients).user_ids;
-  return Array.isArray(userIds) ? userIds.filter((userId): userId is string => typeof userId === 'string') : [];
+  return Array.isArray(userIds)
+    ? userIds.filter((userId): userId is string => typeof userId === 'string')
+    : [];
 }
 
 const smsAdapter = new SmsNotificationAdapter();
@@ -71,7 +71,7 @@ function getEnabledRulesForChannel(
     enabled: boolean;
     recipients: Prisma.JsonValue;
   }>,
-  channel: NotificationChannel
+  channel: NotificationChannel,
 ) {
   return rules.filter((rule) => rule.channel === channel && rule.enabled);
 }
@@ -84,7 +84,7 @@ async function resolveTargetUserIds(
     enabled: boolean;
     recipients: Prisma.JsonValue;
   }>,
-  channel: NotificationChannel
+  channel: NotificationChannel,
 ) {
   const channelRules = rules.filter((rule) => rule.channel === channel);
   const enabledRules = getEnabledRulesForChannel(rules, channel);
@@ -93,10 +93,10 @@ async function resolveTargetUserIds(
   }
 
   const roleRecipients = uniqueMemberRoles(
-    enabledRules.flatMap((rule) => readRecipientRoles(rule.recipients))
+    enabledRules.flatMap((rule) => readRecipientRoles(rule.recipients)),
   );
   const userRecipients = uniqueStrings(
-    enabledRules.flatMap((rule) => readRecipientUserIds(rule.recipients))
+    enabledRules.flatMap((rule) => readRecipientUserIds(rule.recipients)),
   );
 
   const membershipRecipients =
@@ -128,10 +128,7 @@ async function resolveTargetUserIds(
   ]);
 }
 
-export async function dispatchNotificationEvent(
-  tx: Tx,
-  input: DispatchNotificationEventInput
-) {
+export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificationEventInput) {
   const rules = await tx.notificationRule.findMany({
     where: {
       org_id: input.orgId,
@@ -194,7 +191,7 @@ export async function dispatchNotificationEvent(
           metadata: input.metadata ?? Prisma.JsonNull,
         },
       });
-    })
+    }),
   );
 
   const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
@@ -203,7 +200,12 @@ export async function dispatchNotificationEvent(
     resolveTargetUserIds(tx, input, rules, 'fax'),
     resolveTargetUserIds(tx, input, rules, 'mcs'),
   ]);
-  const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds, ...faxUserIds, ...mcsUserIds]);
+  const externalUserIds = uniqueStrings([
+    ...smsUserIds,
+    ...lineUserIds,
+    ...faxUserIds,
+    ...mcsUserIds,
+  ]);
 
   // Web Push — send to all subscriptions for in-app notification recipients
   if (getWebPushEnabled() && targetUserIds.length > 0) {
@@ -222,9 +224,9 @@ export async function dispatchNotificationEvent(
       pushSubscriptions.map((sub) =>
         webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          pushPayload
-        )
-      )
+          pushPayload,
+        ),
+      ),
     );
   }
 
@@ -246,13 +248,11 @@ export async function dispatchNotificationEvent(
       ...smsUserIds
         .filter((userId) => usersById.get(userId)?.phone)
         .map((userId) =>
-          smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`)
+          smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`),
         ),
       ...lineUserIds
         .filter((userId) => usersById.has(userId))
-        .map((userId) =>
-          lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)
-        ),
+        .map((userId) => lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)),
     ]);
   }
 

@@ -1,10 +1,18 @@
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
 import { updateCognitoUserProfile } from '@/server/services/cognito-admin';
 import { getUserMfaState } from '@/server/services/cognito-auth';
+import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
+
+const profileUpdateSchema = z.object({
+  name: z.string().trim().min(1, '表示名は必須です'),
+  phone: optionalPhoneNumberSchema,
+});
 
 async function resolveCurrentUser() {
   const session = await auth();
@@ -54,7 +62,7 @@ async function resolveCurrentUser() {
               },
             },
           })
-        : null
+        : null,
     ));
 
   if (!user) return null;
@@ -106,24 +114,22 @@ export async function PATCH(req: NextRequest) {
     return unauthorized();
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | { name?: string; phone?: string | null }
-    | null;
-  if (!body) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) {
     return validationError('リクエストボディが不正です');
   }
 
-  const name = body.name?.trim();
-  const phone = body.phone?.trim() || null;
-
-  if (!name) {
-    return validationError('表示名は必須です');
+  const parsed = profileUpdateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+
+  const phone = parsed.data.phone ?? null;
 
   const user = await prisma.user.update({
     where: { id: resolved.user.id },
     data: {
-      name,
+      name: parsed.data.name,
       phone,
     },
   });
@@ -140,7 +146,7 @@ export async function PATCH(req: NextRequest) {
       return externalError(
         'EXTERNAL_COGNITO_UPDATE_FAILED',
         'プロフィールの同期に失敗しました',
-        502
+        502,
       );
     }
   }

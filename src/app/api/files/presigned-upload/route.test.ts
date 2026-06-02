@@ -8,7 +8,9 @@ const {
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
   careReportFindFirstMock,
+  assertFileUploadConstraintsMock,
   createPresignedUploadMock,
+  FileStorageErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -16,7 +18,17 @@ const {
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
+  assertFileUploadConstraintsMock: vi.fn(),
   createPresignedUploadMock: vi.fn(),
+  FileStorageErrorMock: class FileStorageError extends Error {
+    constructor(
+      readonly code: string,
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -44,15 +56,8 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 vi.mock('@/server/services/file-storage', () => ({
-  FileStorageError: class FileStorageError extends Error {
-    constructor(
-      readonly code: string,
-      message: string,
-      readonly status: number,
-    ) {
-      super(message);
-    }
-  },
+  FileStorageError: FileStorageErrorMock,
+  assertFileUploadConstraints: assertFileUploadConstraintsMock,
   createPresignedUpload: createPresignedUploadMock,
 }));
 
@@ -69,6 +74,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/files/presigned-upload', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{',
+  });
+}
+
 describe('/api/files/presigned-upload POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,6 +98,7 @@ describe('/api/files/presigned-upload POST', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
     careCaseFindFirstMock.mockResolvedValue(null);
+    assertFileUploadConstraintsMock.mockImplementation(() => undefined);
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       schedule: {
@@ -117,6 +134,138 @@ describe('/api/files/presigned-upload POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+  });
+
+  it('rejects non-object upload payloads before entity lookup or presign', async () => {
+    const response = await POST(createRequest([]));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON upload bodies before validation or presign', async () => {
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank upload fields before entity lookup or presign', async () => {
+    const response = await POST(
+      createRequest({
+        purpose: 'prescription',
+        file_name: '   ',
+        mime_type: '   ',
+        size_bytes: 1024,
+        patient_id: '   ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        file_name: ['ファイル名は必須です'],
+        mime_type: ['MIME タイプは必須です'],
+        patient_id: ['処方箋アップロードには patient_id が必要です'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes padded filenames, MIME types, and entity ids before lookup or presign', async () => {
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: '  report.pdf  ',
+        mime_type: '  Application/PDF  ',
+        size_bytes: 1024,
+        report_id: '  report_1  ',
+        patient_id: '   ',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(assertFileUploadConstraintsMock).toHaveBeenCalledWith({
+      purpose: 'report',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    });
+    expect(careReportFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        visit_record_id: true,
+      },
+    });
+    expect(createPresignedUploadMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      patientId: undefined,
+      visitRecordId: undefined,
+      reportId: 'report_1',
+    });
+  });
+
+  it('rejects unsupported upload constraints before entity lookup or presign', async () => {
+    assertFileUploadConstraintsMock.mockImplementationOnce(() => {
+      throw new FileStorageErrorMock(
+        'FILE_UPLOAD_INVALID_MIME',
+        '許可されていない MIME タイプです',
+        400,
+      );
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.svg',
+        mime_type: 'image/svg+xml',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'FILE_UPLOAD_INVALID_MIME',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
   it('rejects entity ids that do not belong to the selected purpose', async () => {

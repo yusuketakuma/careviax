@@ -3,7 +3,9 @@ import { createHash, randomInt, randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { error, forbidden, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
@@ -24,15 +26,23 @@ import { hasPermission } from '@/lib/auth/permissions';
 import { canAccessPatient, listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 import { z } from 'zod';
 
+const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
+
 const createGrantSchema = z.object({
-  patient_id: z.string().min(1),
-  granted_to_name: z.string().min(1, '共有先氏名は必須です'),
+  patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
+  granted_to_name: requiredTrimmedStringSchema('共有先氏名は必須です'),
   granted_to_contact: z.string().trim().optional().nullable(),
   scope: z.unknown(),
   expires_hours: z.number().int().min(1).max(720).default(72),
 });
 
 const EXTERNAL_ACCESS_LIST_PAGE_SIZE = 200;
+function optionalTrimmedSearchParam(value: string | null) {
+  if (value === null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function looksLikePhoneNumber(value: string | null | undefined) {
   if (!value) return false;
   const normalized = value.replace(/[^\d+]/g, '');
@@ -197,7 +207,7 @@ async function listExternalGrantsForContext(args: {
 export const GET = withAuthContext(
   async (req: NextRequest, ctx) => {
     const { searchParams } = new URL(req.url);
-    const patientId = searchParams.get('patient_id') ?? undefined;
+    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
     const grants = await listExternalGrantsForContext({
       orgId: ctx.orgId,
       patientId,
@@ -285,10 +295,10 @@ export const GET = withAuthContext(
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
 
-    const parsed = createGrantSchema.safeParse(body);
+    const parsed = createGrantSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
@@ -351,7 +361,7 @@ export const POST = withAuthContext(
             otp_hash: otpHash,
             granted_to_name,
             granted_to_contact: normalizedGrantedToContact,
-            scope: storedScope as import('@prisma/client').Prisma.InputJsonValue,
+            scope: toPrismaJsonInput(storedScope),
             expires_at: expiresAt,
           },
           select: {
@@ -417,7 +427,7 @@ export const POST = withAuthContext(
         data: {
           ...grant,
           scope: toPublicExternalAccessScope(grant.scope),
-          otp: rawOtp,
+          ...(otpDelivery === 'manual' ? { otp: rawOtp } : {}),
           otp_delivery: otpDelivery,
           otp_delivery_destination: otpDeliveryDestination,
         },

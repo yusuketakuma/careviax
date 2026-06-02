@@ -54,6 +54,16 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedRequest() {
+  return new NextRequest('http://localhost/api/me/mfa/verify', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+}
+
 describe('/api/me/mfa/verify POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +93,37 @@ describe('/api/me/mfa/verify POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+  });
+
+  it('rejects non-object request bodies before local user lookup or MFA verification', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'user_1', email: 'pharmacist@example.com' },
+    });
+
+    const response = await POST(createRequest(['unexpected']));
+
+    expect(response.status).toBe(400);
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(resolveLocalUserByIdentityMock).not.toHaveBeenCalled();
+    expect(verifyTotpForAccessTokenMock).not.toHaveBeenCalled();
+    expect(issueMfaRecoveryCodesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON bodies before local user lookup or MFA verification', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'user_1', email: 'pharmacist@example.com' },
+    });
+
+    const response = await POST(createMalformedRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(resolveLocalUserByIdentityMock).not.toHaveBeenCalled();
+    expect(verifyTotpForAccessTokenMock).not.toHaveBeenCalled();
+    expect(issueMfaRecoveryCodesMock).not.toHaveBeenCalled();
   });
 
   it('verifies totp and returns recovery codes for the current user', async () => {

@@ -41,7 +41,9 @@ vi.mock('@/server/services/cognito-admin', () => ({
 }));
 
 vi.mock('@/lib/api/rate-limit', () => ({
-  checkAuthRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
+  checkAuthRateLimit: vi
+    .fn()
+    .mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
 }));
 
 import { POST } from './route';
@@ -57,10 +59,24 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedRequest() {
+  return new Request('http://localhost/api/auth/mfa/recovery', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+}
+
 describe('/api/auth/mfa/recovery POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(checkAuthRateLimit).mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 });
+    vi.mocked(checkAuthRateLimit).mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      resetAt: Date.now() + 60000,
+    });
     userFindUniqueMock.mockResolvedValue({
       id: 'user_1',
       email: 'pharmacist@example.com',
@@ -85,6 +101,32 @@ describe('/api/auth/mfa/recovery POST', () => {
     });
   });
 
+  it('rejects non-object request bodies before user lookup or recovery side effects', async () => {
+    const response = await POST(createRequest(['unexpected']));
+
+    expect(response.status).toBe(400);
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(takeMfaRecoveryCodesForRecoveryMock).not.toHaveBeenCalled();
+    expect(disableCognitoTotpForUserMock).not.toHaveBeenCalled();
+    expect(clearMfaRecoveryCodesMock).not.toHaveBeenCalled();
+    expect(restoreMfaRecoveryCodesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON bodies before user lookup or recovery side effects', async () => {
+    const response = await POST(createMalformedRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(takeMfaRecoveryCodesForRecoveryMock).not.toHaveBeenCalled();
+    expect(disableCognitoTotpForUserMock).not.toHaveBeenCalled();
+    expect(clearMfaRecoveryCodesMock).not.toHaveBeenCalled();
+    expect(restoreMfaRecoveryCodesMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when the recovery code does not match', async () => {
     takeMfaRecoveryCodesForRecoveryMock.mockResolvedValue(null);
 
@@ -92,7 +134,7 @@ describe('/api/auth/mfa/recovery POST', () => {
       createRequest({
         email: 'pharmacist@example.com',
         recoveryCode: 'ABCD-EFGH',
-      })
+      }),
     );
 
     expect(response.status).toBe(400);
@@ -109,7 +151,7 @@ describe('/api/auth/mfa/recovery POST', () => {
       createRequest({
         email: 'pharmacist@example.com',
         recoveryCode: 'ABCD-EFGH',
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -127,7 +169,7 @@ describe('/api/auth/mfa/recovery POST', () => {
       createRequest({
         email: ' Pharmacist@Example.com ',
         recoveryCode: ' ABCD-EFGH ',
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -149,7 +191,7 @@ describe('/api/auth/mfa/recovery POST', () => {
       createRequest({
         email: 'pharmacist@example.com',
         recoveryCode: 'ABCD-EFGH',
-      })
+      }),
     );
 
     expect(response.status).toBe(502);
@@ -174,7 +216,7 @@ describe('/api/auth/mfa/recovery POST', () => {
       createRequest({
         email: 'pharmacist@example.com',
         recoveryCode: 'ABCD-EFGH',
-      })
+      }),
     );
 
     expect(response.status).toBe(503);

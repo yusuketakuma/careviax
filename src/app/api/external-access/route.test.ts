@@ -124,6 +124,14 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/external-access', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"patient_id":',
+  });
+}
+
 function createGetRequest(url = 'http://localhost/api/external-access') {
   return new NextRequest(url);
 }
@@ -256,7 +264,7 @@ describe('/api/external-access GET', () => {
     currentRole.value = 'pharmacist';
 
     const response = await GET(
-      createGetRequest('http://localhost/api/external-access?patient_id=patient_1'),
+      createGetRequest('http://localhost/api/external-access?patient_id=%20patient_1%20'),
       routeContext,
     );
 
@@ -565,6 +573,77 @@ describe('/api/external-access POST', () => {
     },
   );
 
+  it('rejects non-object JSON payloads before scope validation, patient lookup, or grant creation', async () => {
+    const response = await POST(createRequest([]), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before scope validation, patient lookup, or grant creation', async () => {
+    const response = await POST(createMalformedJsonRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank grant identity fields before scope validation, patient lookup, or grant creation', async () => {
+    const response = await POST(
+      createRequest({
+        patient_id: '   ',
+        granted_to_name: '\t',
+        granted_to_contact: null,
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['患者IDは必須です'],
+        granted_to_name: ['共有先氏名は必須です'],
+      },
+    });
+    expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
   it('allows a pharmacist trainee to create a medication-list grant through per-scope validation', async () => {
     currentRole.value = 'pharmacist_trainee';
 
@@ -629,9 +708,9 @@ describe('/api/external-access POST', () => {
   it('issues a JWT-backed grant and sends the OTP by SMS when the contact is a phone number', async () => {
     const response = await POST(
       createRequest({
-        patient_id: 'patient_1',
-        granted_to_name: '田中ケアマネ',
-        granted_to_contact: '090-1234-5678',
+        patient_id: ' patient_1 ',
+        granted_to_name: ' 田中ケアマネ ',
+        granted_to_contact: ' 090-1234-5678 ',
         scope: { medication_list: true },
         expires_hours: 72,
       }),
@@ -640,6 +719,21 @@ describe('/api/external-access POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      patient_id: 'patient_1',
+    });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: expectPharmacistPatientAssignmentWhere('patient_1'),
+      select: { id: true },
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+      }),
+      select: expect.any(Object),
+    });
     expect(issueExternalAccessTokenMock).toHaveBeenCalledWith({
       grantId: 'grant_1',
       orgId: 'org_1',
@@ -660,13 +754,15 @@ describe('/api/external-access POST', () => {
       { medication_list: true },
       'pharmacist',
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
         token: 'jwt-token',
         otp_delivery: 'sms',
         otp_delivery_destination: '090****5678',
       },
     });
+    expect(body.data).not.toHaveProperty('otp');
   });
 
   it('stores a hidden case boundary for case-backed external sharing scopes', async () => {
@@ -761,6 +857,7 @@ describe('/api/external-access POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         token: 'jwt-token',
+        otp: expect.any(String),
         otp_delivery: 'manual',
         otp_delivery_destination: null,
       },

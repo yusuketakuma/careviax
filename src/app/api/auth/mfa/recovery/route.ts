@@ -3,6 +3,7 @@ import { externalError, validationError, error } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import {
   clearMfaRecoveryCodes,
   MfaRecoveryConfigError,
@@ -23,14 +24,12 @@ export async function POST(req: Request) {
     return error('RATE_LIMIT_EXCEEDED', 'Too many requests', 429);
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | { email?: string; recoveryCode?: string }
-    | null;
-  if (!body) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) {
     return validationError('リクエストボディが不正です');
   }
 
-  const parsed = recoverySchema.safeParse(body);
+  const parsed = recoverySchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -50,10 +49,7 @@ export async function POST(req: Request) {
 
   let recoverySnapshot;
   try {
-    recoverySnapshot = await takeMfaRecoveryCodesForRecovery(
-      user.id,
-      parsed.data.recoveryCode,
-    );
+    recoverySnapshot = await takeMfaRecoveryCodesForRecovery(user.id, parsed.data.recoveryCode);
   } catch (error) {
     if (error instanceof MfaRecoveryConfigError) {
       return externalError('EXTERNAL_MFA_RECOVERY_FAILED', 'MFAリカバリー設定が未完了です', 503);
@@ -69,7 +65,10 @@ export async function POST(req: Request) {
     await clearMfaRecoveryCodes(user.id);
   } catch {
     await restoreMfaRecoveryCodes(user.id, recoverySnapshot).catch((restoreError) => {
-      console.error('[mfa-recovery] Failed to restore recovery codes after Cognito error', restoreError);
+      console.error(
+        '[mfa-recovery] Failed to restore recovery codes after Cognito error',
+        restoreError,
+      );
     });
     return externalError('EXTERNAL_MFA_RECOVERY_FAILED', 'MFAリカバリー処理に失敗しました', 502);
   }

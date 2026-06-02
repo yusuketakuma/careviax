@@ -1,5 +1,6 @@
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
   AdminGetUserCommand,
@@ -32,18 +33,11 @@ function getClient() {
   return cachedClient;
 }
 
-function getAttributeValue(
-  attributes: AttributeType[] | undefined,
-  name: string
-) {
+function getAttributeValue(attributes: AttributeType[] | undefined, name: string) {
   return attributes?.find((attribute) => attribute.Name === name)?.Value;
 }
 
-function buildAttributes(args: {
-  email: string;
-  name: string;
-  phone?: string | null;
-}) {
+function buildAttributes(args: { email: string; name: string; phone?: string | null }) {
   const attributes: AttributeType[] = [
     { Name: 'email', Value: args.email },
     { Name: 'email_verified', Value: 'true' },
@@ -62,7 +56,7 @@ async function resolveSub(userPoolId: string, username: string) {
     new AdminGetUserCommand({
       UserPoolId: userPoolId,
       Username: username,
-    })
+    }),
   );
 
   const sub = getAttributeValue(output.UserAttributes, 'sub');
@@ -90,12 +84,11 @@ export async function inviteCognitoUser(args: {
       Username: username,
       DesiredDeliveryMediums: ['EMAIL'],
       UserAttributes: buildAttributes(args),
-    })
+    }),
   );
 
   const sub =
-    getAttributeValue(output.User?.Attributes, 'sub') ??
-    (await resolveSub(userPoolId, username));
+    getAttributeValue(output.User?.Attributes, 'sub') ?? (await resolveSub(userPoolId, username));
 
   return { username, sub };
 }
@@ -107,7 +100,17 @@ export async function resendCognitoInvite(username: string) {
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(username),
       MessageAction: 'RESEND',
-    })
+    }),
+  );
+}
+
+export async function deleteCognitoUser(username: string) {
+  const { userPoolId } = getRequiredCognitoConfig();
+  await getClient().send(
+    new AdminDeleteUserCommand({
+      UserPoolId: userPoolId,
+      Username: normalizeCognitoUsername(username),
+    }),
   );
 }
 
@@ -123,7 +126,7 @@ export async function updateCognitoUserProfile(args: {
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(args.username),
       UserAttributes: buildAttributes(args),
-    })
+    }),
   );
 }
 
@@ -133,7 +136,7 @@ export async function disableCognitoUser(username: string) {
     new AdminDisableUserCommand({
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(username),
-    })
+    }),
   );
 }
 
@@ -143,7 +146,7 @@ export async function enableCognitoUser(username: string) {
     new AdminEnableUserCommand({
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(username),
-    })
+    }),
   );
 }
 
@@ -157,6 +160,6 @@ export async function disableCognitoTotpForUser(username: string) {
         Enabled: false,
         PreferredMfa: false,
       },
-    })
+    }),
   );
 }

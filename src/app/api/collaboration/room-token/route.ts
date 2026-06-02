@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, validationError } from '@/lib/api/response';
+import { requireAuthContext } from '@/lib/auth/context';
 import { isYjsProviderConfigured } from '@/lib/collaboration/yjs-config';
 import {
   buildCollaborationRoomName,
@@ -44,10 +45,10 @@ export async function POST(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = collaborationEntityRefSchema.safeParse(body);
+  const parsed = collaborationEntityRefSchema.safeParse(payload);
   if (!parsed.success) return validationError('パラメータが不正です', parsed.error.flatten());
 
   if (!isYjsProviderConfigured()) {

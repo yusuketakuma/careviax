@@ -9,6 +9,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { MemberRole } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { hasPermission } from '@/lib/auth/permissions';
 import {
   canAccessVisitScheduleAssignment,
@@ -23,17 +24,31 @@ const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_MAX_BYTES = 50 * 1024 * 1024;
 const DEFAULT_BULK_EXPORT_RETENTION_HOURS = 72;
 const MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE = 100;
+const DEFAULT_BULK_EXPORT_CLEANUP_MAX_PAGES = 10;
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
 const VISIT_ATTACHMENT_MIME_TYPES = new Set([...DOCUMENT_MIME_TYPES]);
 
-type FilePurpose = 'prescription' | 'visit-photo' | 'report';
+export type FilePurpose = 'prescription' | 'visit-photo' | 'report';
 type GeneratedFilePurpose = 'bulk-export';
 type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
 type DownloadDisposition = 'inline' | 'attachment';
 type SupportedServerSideEncryption = 'AES256' | 'aws:kms';
+
+function isAnyFilePurpose(value: unknown): value is AnyFilePurpose {
+  return (
+    value === 'prescription' ||
+    value === 'visit-photo' ||
+    value === 'report' ||
+    value === 'bulk-export'
+  );
+}
+
+function isStoredFileStatus(value: unknown): value is StoredFileStatus {
+  return value === 'pending_upload' || value === 'uploaded';
+}
 
 type FileAccessContext = {
   userId: string;
@@ -153,11 +168,28 @@ function getServerSideEncryptionMode(): SupportedServerSideEncryption {
 
 function resolveBulkExportRetentionHours() {
   const configured = Number.parseInt(process.env.BULK_EXPORT_FILE_RETENTION_HOURS ?? '', 10);
-  if (Number.isFinite(configured) && configured > 0) {
+  if (Number.isSafeInteger(configured) && configured > 0) {
     return configured;
   }
 
   return DEFAULT_BULK_EXPORT_RETENTION_HOURS;
+}
+
+function normalizeCleanupPositiveInteger(value: number | undefined, fallback: number) {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value)) return fallback;
+
+  const normalized = Math.trunc(value);
+  if (!Number.isSafeInteger(normalized)) return fallback;
+
+  return Math.max(normalized, 1);
+}
+
+function normalizeCleanupBatchSize(value: number | undefined) {
+  return Math.min(
+    normalizeCleanupPositiveInteger(value, MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE),
+    MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE,
+  );
 }
 
 function resolveBulkExportExpiresAt(base: Date) {
@@ -278,6 +310,14 @@ function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; siz
   }
 }
 
+export function assertFileUploadConstraints(args: {
+  purpose: FilePurpose;
+  mimeType: string;
+  sizeBytes: number;
+}) {
+  assertAllowedUpload(args);
+}
+
 function buildStorageKey(args: {
   orgId: string;
   purpose: AnyFilePurpose;
@@ -307,21 +347,19 @@ function toSettingKey(fileId: string) {
 }
 
 function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
+  const record = readJsonObject(value);
+  if (!record) return null;
   if (
     record.version !== 1 ||
     typeof record.id !== 'string' ||
     typeof record.orgId !== 'string' ||
-    typeof record.purpose !== 'string' ||
+    !isAnyFilePurpose(record.purpose) ||
     typeof record.storageKey !== 'string' ||
     typeof record.originalName !== 'string' ||
     typeof record.mimeType !== 'string' ||
     typeof record.sizeBytes !== 'number' ||
-    typeof record.status !== 'string' ||
+    !Number.isFinite(record.sizeBytes) ||
+    !isStoredFileStatus(record.status) ||
     typeof record.createdAt !== 'string' ||
     typeof record.updatedAt !== 'string'
   ) {
@@ -332,12 +370,12 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
     version: 1,
     id: record.id,
     orgId: record.orgId,
-    purpose: record.purpose as AnyFilePurpose,
+    purpose: record.purpose,
     storageKey: record.storageKey,
     originalName: record.originalName,
     mimeType: record.mimeType,
     sizeBytes: record.sizeBytes,
-    status: record.status as StoredFileStatus,
+    status: record.status,
     patientId: typeof record.patientId === 'string' ? record.patientId : null,
     visitRecordId: typeof record.visitRecordId === 'string' ? record.visitRecordId : null,
     reportId: typeof record.reportId === 'string' ? record.reportId : null,
@@ -352,7 +390,10 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
   };
 }
 
-function resolveStoredFileExpiresAt(record: StoredFileRecord, opts?: { includeLegacyFallback?: boolean }) {
+function resolveStoredFileExpiresAt(
+  record: StoredFileRecord,
+  opts?: { includeLegacyFallback?: boolean },
+) {
   if (record.purpose !== 'bulk-export') return null;
 
   const explicitExpiry = record.expiresAt ? new Date(record.expiresAt) : null;
@@ -917,11 +958,11 @@ export async function cleanupExpiredGeneratedFiles(args?: {
   maxPages?: number;
 }) {
   const now = args?.now ?? new Date();
-  const batchSize = Math.min(
-    Math.max(args?.batchSize ?? MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE, 1),
-    MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE,
+  const batchSize = normalizeCleanupBatchSize(args?.batchSize);
+  const maxPages = normalizeCleanupPositiveInteger(
+    args?.maxPages,
+    DEFAULT_BULK_EXPORT_CLEANUP_MAX_PAGES,
   );
-  const maxPages = Math.max(args?.maxPages ?? 10, 1);
 
   const errors: string[] = [];
   let processedCount = 0;
@@ -983,6 +1024,11 @@ export async function completeUploadedFile({
   const { bucketName } = getRequiredStorageConfig();
   const { settingId, record } = await readStoredFileRecord(orgId, fileId);
   await assertStoredFileAccess({ orgId, record, accessContext, mode: 'complete' });
+
+  if (record.status === 'uploaded') {
+    return record;
+  }
+
   const requestedEtag = normalizeEtag(etag ?? record.etag ?? null);
 
   let uploadedEtag: string | null = requestedEtag;

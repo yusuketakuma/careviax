@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
 
 export async function GET(req: NextRequest) {
@@ -16,9 +17,7 @@ export async function GET(req: NextRequest) {
   > = {};
   let overall: 'ok' | 'degraded' | 'down' = 'ok';
   const authContext = await getAuthContext(req).catch(() => null);
-  const includeDetailedChecks = Boolean(
-    authContext && hasPermission(authContext.role, 'canAdmin'),
-  );
+  const includeDetailedChecks = Boolean(authContext && hasPermission(authContext.role, 'canAdmin'));
 
   if (includeDetailedChecks) {
     // DB readiness is admin-only; public liveness must remain cheap.
@@ -37,7 +36,7 @@ export async function GET(req: NextRequest) {
         const backupResult = await runBackupMonitorChecks();
         checks.backups = {
           status: backupResult.overall,
-          details: backupResult.checks as Record<string, unknown>,
+          details: readJsonObject(backupResult.checks) ?? {},
         };
 
         if (backupResult.overall !== 'ok') {

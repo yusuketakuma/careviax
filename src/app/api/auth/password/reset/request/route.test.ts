@@ -27,6 +27,22 @@ function createPasswordResetRequest(email: string) {
   });
 }
 
+function createRawPasswordResetRequest(body: unknown) {
+  return new Request('http://localhost/api/auth/password/reset/request', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function createMalformedPasswordResetRequest() {
+  return new Request('http://localhost/api/auth/password/reset/request', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/auth/password/reset/request POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,6 +60,28 @@ describe('/api/auth/password/reset/request POST', () => {
 
     expect(response.status).toBe(200);
     expect(startForgotPasswordMock).toHaveBeenCalledWith('user@example.com');
+  });
+
+  it('rejects non-object JSON payloads before starting forgot-password flow', async () => {
+    const response = await POST(createRawPasswordResetRequest([]));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(startForgotPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON payloads before starting forgot-password flow', async () => {
+    const response = await POST(createMalformedPasswordResetRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(startForgotPasswordMock).not.toHaveBeenCalled();
   });
 
   it('returns a generic success response when the email does not exist', async () => {

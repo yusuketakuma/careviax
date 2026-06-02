@@ -76,9 +76,36 @@ describe('/api/files/[id]/presigned-download GET', () => {
     });
   });
 
+  it('normalizes padded file ids before creating a presigned download', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '  file_1  ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(createPresignedDownloadMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
+      },
+    });
+  });
+
+  it('rejects blank file ids before creating a presigned download', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+  });
+
   it('redirects to the presigned url when download=1 is specified', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/files/file_1/presigned-download?download=1'),
+      createRequest('http://localhost/api/files/file_1/presigned-download?download=%201%20'),
       {
         params: Promise.resolve({ id: 'file_1' }),
       },

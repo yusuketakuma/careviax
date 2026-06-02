@@ -43,6 +43,14 @@ function createRequest(body?: unknown) {
   });
 }
 
+function createMalformedJsonPatchRequest() {
+  return new NextRequest('http://localhost/api/templates/template_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: '{bad json',
+  });
+}
+
 describe('/api/templates/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,7 +71,7 @@ describe('/api/templates/[id]', () => {
           update: templateUpdateMock,
           delete: templateDeleteMock,
         },
-      })
+      }),
     );
   });
 
@@ -73,7 +81,7 @@ describe('/api/templates/[id]', () => {
         name: '更新版',
         is_default: true,
       }),
-      { params: Promise.resolve({ id: 'template_1' }) }
+      { params: Promise.resolve({ id: '  template_1  ' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -85,7 +93,7 @@ describe('/api/templates/[id]', () => {
           template_type: 'care_report',
           id: { not: 'template_1' },
         }),
-      })
+      }),
     );
     expect(templateUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -94,7 +102,7 @@ describe('/api/templates/[id]', () => {
           name: '更新版',
           is_default: true,
         }),
-      })
+      }),
     );
   });
 
@@ -105,8 +113,9 @@ describe('/api/templates/[id]', () => {
         format: 'pdf',
         version: 3,
         effective_to: '2026-12-31',
+        content: { blocks: ['summary', 'signature'] },
       }),
-      { params: Promise.resolve({ id: 'template_1' }) }
+      { params: Promise.resolve({ id: 'template_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -118,21 +127,81 @@ describe('/api/templates/[id]', () => {
           format: 'pdf',
           version: 3,
           effective_to: new Date('2026-12-31T00:00:00.000Z'),
+          content: { blocks: ['summary', 'signature'] },
         }),
-      })
+      }),
     );
   });
 
+  it('rejects non-object update payloads before loading the template', async () => {
+    const response = await PATCH(createRequest([]), {
+      params: Promise.resolve({ id: 'template_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+    expect(templateUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON update payloads before loading the template', async () => {
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'template_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+    expect(templateUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank patch route ids before parsing or loading the template', async () => {
+    const response = await PATCH(createRequest({ name: '更新版' }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '文書テンプレートIDが不正です',
+    });
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+    expect(templateUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('deletes an existing template', async () => {
-    const response = await DELETE(
-      createRequest(),
-      { params: Promise.resolve({ id: 'template_1' }) }
-    );
+    const response = await DELETE(createRequest(), {
+      params: Promise.resolve({ id: '  template_1  ' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(templateDeleteMock).toHaveBeenCalledWith({
       where: { id: 'template_1' },
     });
+  });
+
+  it('rejects blank delete route ids before loading the template', async () => {
+    const response = await DELETE(createRequest(), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '文書テンプレートIDが不正です',
+    });
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(templateDeleteMock).not.toHaveBeenCalled();
   });
 });
