@@ -15,4 +15,13 @@ describe('admin JSON editor helpers', () => {
     expect(() => parseJsonObjectText('null', '不正です')).toThrow('不正です');
     expect(() => parseJsonObjectText('"string"', '不正です')).toThrow('不正です');
   });
+
+  it('can distinguish parse errors from non-object JSON roots', () => {
+    expect(() => parseJsonObjectText('{bad-json', '構文エラー', 'オブジェクト必須')).toThrow(
+      '構文エラー',
+    );
+    expect(() => parseJsonObjectText('[]', '構文エラー', 'オブジェクト必須')).toThrow(
+      'オブジェクト必須',
+    );
+  });
 });

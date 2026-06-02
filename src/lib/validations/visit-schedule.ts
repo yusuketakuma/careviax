@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import { dateKeySchema } from '@/lib/validations/date-key';
+
+export function visitScheduleDateKeySchema(message: string) {
+  return dateKeySchema(message);
+}
 
 const timeWindowSchema = z
   .string()
@@ -64,7 +69,7 @@ const createVisitScheduleBaseSchema = z.object({
   site_id: z.string().optional(),
   visit_type: z.enum(visitTypeValues, { error: '訪問タイプを選択してください' }),
   priority: z.enum(visitPriorityValues).optional(),
-  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
+  scheduled_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
   time_window_start: timeWindowSchema.optional(),
   time_window_end: timeWindowSchema.optional(),
   pharmacist_id: z.string().min(1, '薬剤師IDは必須です'),
@@ -90,8 +95,8 @@ export const generateVisitSchedulesSchema = z
     pharmacist_id: z.string().min(1, '薬剤師IDは必須です'),
     recurrence_rule: z.string().min(1, 'RRULEは必須です'),
     insurance_type: z.enum(['medical', 'care']).optional(),
-    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
+    start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
+    end_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
     time_window_start: timeWindowSchema.optional(),
     time_window_end: timeWindowSchema.optional(),
   })

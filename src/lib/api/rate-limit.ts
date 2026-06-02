@@ -1,5 +1,7 @@
 import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
 import { readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { readJsonResponseBody } from './response-body';
 /**
  * Rate limiting module.
  *
@@ -182,9 +184,15 @@ function resolveContainerCredentialsUrl(): string | null {
   }
 }
 
-function parseOptionalString(value: unknown) {
+function parseRequiredTrimmedString(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function parseOptionalTrimmedString(value: unknown) {
   if (value === undefined || value === null) return undefined;
-  return typeof value === 'string' ? value : null;
+  return parseRequiredTrimmedString(value);
 }
 
 function parseContainerCredentials(payload: unknown): {
@@ -194,31 +202,34 @@ function parseContainerCredentials(payload: unknown): {
   const object = readJsonObject(payload);
   if (!object) return null;
 
-  const accessKeyId = typeof object.AccessKeyId === 'string' ? object.AccessKeyId : null;
-  const secretAccessKey =
-    typeof object.SecretAccessKey === 'string' ? object.SecretAccessKey : null;
-  const sessionToken = parseOptionalString(object.Token);
-  const expiration = parseOptionalString(object.Expiration);
-  if (!accessKeyId || !secretAccessKey || sessionToken === null || expiration === null) {
+  const accessKeyId = parseRequiredTrimmedString(object.AccessKeyId);
+  const secretAccessKey = parseRequiredTrimmedString(object.SecretAccessKey);
+  const sessionToken = parseOptionalTrimmedString(object.Token);
+  const expiration = parseRequiredTrimmedString(object.Expiration);
+  if (!accessKeyId || !secretAccessKey || sessionToken === null || !expiration) {
     return null;
   }
 
-  const expiresAt = expiration ? Date.parse(expiration) : Number.NaN;
+  const expiresAt = Date.parse(expiration);
+  if (!Number.isFinite(expiresAt)) {
+    return null;
+  }
+
   return {
     credentials: {
       accessKeyId,
       secretAccessKey,
       sessionToken,
     },
-    expiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+    expiresAt,
   };
 }
 
-function parseDynamoNumberAttribute(value: unknown) {
+function parseDynamoPositiveIntegerAttribute(value: unknown) {
   const object = readJsonObject(value);
   if (!object || typeof object.N !== 'string') return null;
-  const parsed = Number(object.N);
-  return Number.isFinite(parsed) ? parsed : null;
+  const parsed = Number(object.N.trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetAt: number } | null {
@@ -226,8 +237,8 @@ function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetA
   const attributes = readJsonObject(object?.Attributes);
   if (!attributes) return null;
 
-  const count = parseDynamoNumberAttribute(attributes.hit_count);
-  const resetAt = parseDynamoNumberAttribute(attributes.reset_at);
+  const count = parseDynamoPositiveIntegerAttribute(attributes.hit_count);
+  const resetAt = parseDynamoPositiveIntegerAttribute(attributes.reset_at);
   if (count === null || resetAt === null) return null;
 
   return { count, resetAt };
@@ -261,7 +272,7 @@ async function resolveAwsCredentials(): Promise<AwsCredentials> {
       if (!response.ok) {
         throw new Error(`AWS container credentials request failed: ${response.status}`);
       }
-      const parsed = parseContainerCredentials((await response.json()) as unknown);
+      const parsed = parseContainerCredentials(await readJsonResponseBody(response));
       if (!parsed) {
         throw new Error('AWS container credentials response is missing required fields');
       }
@@ -279,12 +290,9 @@ async function resolveAwsCredentials(): Promise<AwsCredentials> {
 }
 
 function resolveDynamoTimeoutMs() {
-  const configured = Number.parseInt(process.env.RATE_LIMIT_DDB_TIMEOUT_MS ?? '', 10);
-  if (Number.isFinite(configured) && configured > 0) {
-    return configured;
-  }
-
-  return RATE_LIMIT_DDB_TIMEOUT_MS;
+  return normalizePositiveTimeoutMs(process.env.RATE_LIMIT_DDB_TIMEOUT_MS, {
+    fallbackMs: RATE_LIMIT_DDB_TIMEOUT_MS,
+  });
 }
 
 function isProductionRuntime() {
@@ -350,7 +358,7 @@ class DynamoRateLimitStore implements RateLimitStore {
         throw new Error(`DynamoDB rate limit request failed: ${response.status}`);
       }
 
-      const parsed = parseDynamoRateLimitResponse((await response.json()) as unknown);
+      const parsed = parseDynamoRateLimitResponse(await readJsonResponseBody(response));
       if (!parsed) {
         throw new Error('DynamoDB rate limit response is missing required counters');
       }

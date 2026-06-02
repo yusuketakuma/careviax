@@ -164,7 +164,7 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
   }
 
   async exportClaims(payload: ClaimsExportPayload): Promise<ClaimsExportResult> {
-    const { status, data } = await fetchJson<ClaimsExportResult>(
+    const { status, data } = await fetchJson(
       `${this.config.baseUrl!.replace(/\/$/, '')}/claims/export`,
       {
         method: 'POST',

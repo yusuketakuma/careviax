@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { allergyEntrySchema } from './patient-allergy';
+import { optionalFaxNumberSchema, optionalPhoneNumberSchema } from '@/lib/validations/phone';
 
 export const PATIENT_GENDERS = ['male', 'female', 'other'] as const;
 export const patientGenderSchema = z.enum(PATIENT_GENDERS, { error: '性別を選択してください' });
@@ -32,9 +33,9 @@ export const patientContactSchema = z.object({
     'facility_staff',
     'other',
   ]),
-  phone: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
   email: z.string().email('メールアドレス形式が不正です').optional().or(z.literal('')),
-  fax: z.string().optional(),
+  fax: optionalFaxNumberSchema,
   organization_name: z.string().optional(),
   department: z.string().optional(),
   address: z.string().optional(),
@@ -50,9 +51,9 @@ export const careTeamLinkSchema = z.object({
   name: z.string().min(1, '氏名は必須です'),
   organization_name: z.string().optional(),
   department: z.string().optional(),
-  phone: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
   email: z.string().email('メールアドレス形式が不正です').optional().or(z.literal('')),
-  fax: z.string().optional(),
+  fax: optionalFaxNumberSchema,
   address: z.string().optional(),
   is_primary: z.boolean().default(false),
   notes: z.string().optional(),
@@ -63,8 +64,8 @@ export const intakeRequesterSchema = z.object({
   profession: z.string().optional(),
   contact_name: z.string().optional(),
   contact_name_kana: z.string().optional(),
-  phone: z.string().optional(),
-  fax: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
+  fax: optionalFaxNumberSchema,
   pharmacy_decision_due_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
@@ -77,24 +78,24 @@ export const intakeCareManagerSchema = z.object({
   name: z.string().optional(),
   name_kana: z.string().optional(),
   organization_name: z.string().optional(),
-  phone: z.string().optional(),
-  fax: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
+  fax: optionalFaxNumberSchema,
 });
 
 export const intakeVisitingNurseSchema = z.object({
   name: z.string().optional(),
   name_kana: z.string().optional(),
   organization_name: z.string().optional(),
-  phone: z.string().optional(),
-  fax: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
+  fax: optionalFaxNumberSchema,
 });
 
 export const patientIntakeSchema = z
   .object({
     age: z.number().int().min(0).max(150).optional(),
     primary_disease: z.string().optional(),
-    contact_phone: z.string().optional(),
-    contact_mobile: z.string().optional(),
+    contact_phone: optionalPhoneNumberSchema,
+    contact_mobile: optionalPhoneNumberSchema,
     primary_contact_preference: z.string().optional(),
     visit_before_contact_required: z.boolean().optional(),
     first_visit_preferred_date: z
@@ -140,7 +141,7 @@ export const patientIntakeSchema = z
       .object({
         name: z.string().optional(),
         relation: z.string().optional(),
-        phone: z.string().optional(),
+        phone: optionalPhoneNumberSchema,
       })
       .optional(),
     initial_transition_management_expected: z.boolean().optional(),
@@ -175,7 +176,7 @@ export const createPatientSchema = z.object({
   name_kana: z.string().min(1, 'フリガナは必須です'),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
   gender: patientGenderSchema,
-  phone: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
   medical_insurance_number: z.string().optional(),
   care_insurance_number: z.string().optional(),
   billing_support_flag: z.boolean().optional(),
@@ -209,3 +210,4 @@ export const updatePatientCareTeamSchema = z.object({
 
 export type CreatePatientInput = z.input<typeof createPatientSchema>;
 export type UpdatePatientInput = z.input<typeof updatePatientSchema>;
+export type UpdatePatientData = z.infer<typeof updatePatientSchema>;

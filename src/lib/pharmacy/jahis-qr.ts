@@ -324,7 +324,7 @@ const SUPPLEMENTAL_RECORD_FIELD_LABELS: Record<JahisSupplementalRecordType, stri
   ],
 };
 
-function isSupplementalRecordType(value: string): value is JahisSupplementalRecordType {
+export function isSupplementalRecordType(value: string): value is JahisSupplementalRecordType {
   return value in SUPPLEMENTAL_RECORD_LABELS;
 }
 

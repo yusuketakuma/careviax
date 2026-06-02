@@ -14,6 +14,7 @@ describe('redis realtime adapter message parsing', () => {
     expect(parseRedisRealtimeMessage('[]')).toBeNull();
     expect(parseRedisRealtimeMessage('null')).toBeNull();
     expect(parseRedisRealtimeMessage('"presence_update"')).toBeNull();
+    expect(parseRedisRealtimeMessage('false')).toBeNull();
     expect(parseRedisRealtimeMessage('123')).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 'use client';
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
-import { readJsonObject } from '@/lib/db/json';
+import { readJsonResponseBody } from '@/lib/api/response-body';
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
 const MAX_RETRIES = 3;
@@ -44,15 +45,6 @@ export type SyncQueueItemSummary = Omit<OfflineSyncQueue, 'payload' | 'conflict_
   payload: Record<string, unknown>;
   conflict: VisitRecordConflictSnapshot | null;
 };
-
-function parseJson(value: string | null | undefined): unknown {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value : null;
@@ -189,13 +181,15 @@ function readExistingRecordFromConflictResponse(
 async function readSyncPayload(payload: string | null | undefined) {
   const raw = (await decryptOfflinePayload(payload)) ?? payload;
   if (!raw) return null;
-  const parsed = parseJson(raw);
+  const parsed = parseJsonOrNull(raw);
   const object = readJsonObject(parsed);
   return object ? { object, body: JSON.stringify(object) } : null;
 }
 
 async function readSyncConflictPayload(payload: string | null | undefined) {
-  return normalizeVisitRecordConflictSnapshot(parseJson(await decryptOfflinePayload(payload)));
+  return normalizeVisitRecordConflictSnapshot(
+    parseJsonOrNull(await decryptOfflinePayload(payload)),
+  );
 }
 
 /**
@@ -248,7 +242,7 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
         }
         synced++;
       } else if (res.status === 409) {
-        const server = readExistingRecordFromConflictResponse(await res.json().catch(() => null));
+        const server = readExistingRecordFromConflictResponse(await readJsonResponseBody(res));
         // Keep the draft in queue so the user can resolve the conflict later.
         await offlineDb.syncQueue.update(item.id!, {
           retryCount: MAX_RETRIES,
@@ -415,7 +409,7 @@ export async function overwriteVisitRecordConflict(
   }
 
   if (res.status === 409) {
-    const server = readExistingRecordFromConflictResponse(await res.json().catch(() => null));
+    const server = readExistingRecordFromConflictResponse(await readJsonResponseBody(res));
     await offlineDb.syncQueue.update(itemId, {
       retryCount: MAX_RETRIES,
       lastError: 'HTTP 409 conflict',

@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import { offlineDb, type OfflineVisitDraft } from '@/lib/stores/offline-db';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonOrNull, parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
 import type {
   VisitGeoLog,
@@ -68,14 +68,6 @@ function purgeLegacyPlaintextSoapDraftFields(
   delete draft.soapPlan;
 }
 
-function parseJsonPayload(value: string) {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-}
-
 function readStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
@@ -88,6 +80,14 @@ function readOptionalString(value: unknown) {
 
 function readOptionalNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readCurrentStep(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function readNullableString(value: unknown) {
+  return typeof value === 'string' ? value : null;
 }
 
 function readSoapSubjective(value: unknown): StructuredSoap['subjective'] | null {
@@ -144,7 +144,7 @@ function readSoapPlan(value: unknown): StructuredSoap['plan'] | null {
 }
 
 function readStructuredSoapPayload(payload: string): StructuredSoap | null {
-  const object = readJsonObject(parseJsonPayload(payload));
+  const object = parseJsonObjectOrNull(payload);
   if (!object) return null;
 
   const subjective = readSoapSubjective(object.subjective);
@@ -186,7 +186,7 @@ function readResidualMedication(value: unknown): SoapDraftResidualMedication | n
 
 function readResidualMedicationsPayload(payload: string | null | undefined) {
   if (!payload) return [];
-  const parsed = parseJsonPayload(payload);
+  const parsed = parseJsonOrNull(payload);
   if (!Array.isArray(parsed)) return [];
   return parsed.flatMap((item) => {
     const medication = readResidualMedication(item);
@@ -194,13 +194,18 @@ function readResidualMedicationsPayload(payload: string | null | undefined) {
   });
 }
 
-const VISIT_LOCATION_PERMISSION_STATES = new Set<VisitLocationPermissionState>([
-  'granted',
-  'prompt',
-  'denied',
-  'unsupported',
-  'unavailable',
-]);
+function readVisitLocationPermissionState(value: unknown): VisitLocationPermissionState | null {
+  switch (value) {
+    case 'granted':
+    case 'prompt':
+    case 'denied':
+    case 'unsupported':
+    case 'unavailable':
+      return value;
+    default:
+      return null;
+  }
+}
 
 function readVisitGeoPoint(value: unknown): VisitGeoPoint | null {
   if (value === null) return null;
@@ -224,19 +229,15 @@ function readVisitGeoPoint(value: unknown): VisitGeoPoint | null {
 
 function readVisitGeoLogPayload(payload: string | null | undefined): VisitGeoLog | null {
   if (!payload) return null;
-  const object = readJsonObject(parseJsonPayload(payload));
+  const object = parseJsonObjectOrNull(payload);
   if (!object) return null;
   if (typeof object.enabled !== 'boolean') return null;
-  if (
-    typeof object.permission !== 'string' ||
-    !VISIT_LOCATION_PERMISSION_STATES.has(object.permission as VisitLocationPermissionState)
-  ) {
-    return null;
-  }
+  const permission = readVisitLocationPermissionState(object.permission);
+  if (!permission) return null;
 
   return {
     enabled: object.enabled,
-    permission: object.permission as VisitLocationPermissionState,
+    permission,
     start: readVisitGeoPoint(object.start),
     end: readVisitGeoPoint(object.end),
   };
@@ -267,16 +268,16 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
 
     return {
       structuredSoap,
-      currentStep: draft.currentStep ?? 0,
-      visitDate: draft.visitDate ?? null,
-      outcomeStatus: draft.outcomeStatus ?? null,
-      receiptPersonName: draft.receiptPersonName ?? null,
-      receiptPersonRelation: draft.receiptPersonRelation ?? null,
-      receiptAt: draft.receiptAt ?? null,
-      nextVisitSuggestionDate: draft.nextVisitSuggestionDate ?? null,
-      cancellationReason: draft.cancellationReason ?? null,
-      postponeReason: draft.postponeReason ?? null,
-      revisitReason: draft.revisitReason ?? null,
+      currentStep: readCurrentStep(draft.currentStep),
+      visitDate: readNullableString(draft.visitDate),
+      outcomeStatus: readNullableString(draft.outcomeStatus),
+      receiptPersonName: readNullableString(draft.receiptPersonName),
+      receiptPersonRelation: readNullableString(draft.receiptPersonRelation),
+      receiptAt: readNullableString(draft.receiptAt),
+      nextVisitSuggestionDate: readNullableString(draft.nextVisitSuggestionDate),
+      cancellationReason: readNullableString(draft.cancellationReason),
+      postponeReason: readNullableString(draft.postponeReason),
+      revisitReason: readNullableString(draft.revisitReason),
       residualMedications: readResidualMedicationsPayload(residualPayload),
       visitGeoLog: readVisitGeoLogPayload(visitGeoLogPayload),
     };

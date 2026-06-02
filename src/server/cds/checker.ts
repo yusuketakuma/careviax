@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { Prisma, type LabAnalyteCode } from '@prisma/client';
 import { differenceInYears } from 'date-fns';
 
@@ -68,13 +69,195 @@ function allergyAlertSeverity(severity?: string): CdsAlert['severity'] {
 type RenalDoseEntry = {
   egfr_min?: number;
   egfr_max?: number;
-  recommendation?: string;
+  recommendation: string;
+};
+
+type PackageInsertTextEntry = {
+  text: string;
+  severity?: string;
+};
+
+type ParsedClinicalJsonEntries<T> = {
+  entries: T[];
+  malformedCount: number;
 };
 
 type AlertRuleCondition = {
   yj_codes?: string[];
   therapeutic_categories?: string[];
 };
+
+function buildCdsDataQualityAlert(args: {
+  source: 'drug_alert_rule' | 'drug_package_insert';
+  section: string;
+  malformedCount: number;
+  drugName?: string;
+  drugCode?: string | null;
+  ruleId?: string;
+}): CdsAlert {
+  const target = args.drugName ? `${args.drugName}の` : '';
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message: `CDSデータ形式確認: ${target}${args.section}に解析できない項目があります`,
+    details: {
+      source: args.source,
+      section: args.section,
+      malformed_count: args.malformedCount,
+      ...(args.drugCode ? { drug_code: args.drugCode } : {}),
+      ...(args.drugName ? { drug_display_name: args.drugName } : {}),
+      ...(args.ruleId ? { rule_id: args.ruleId } : {}),
+      recommendation: '薬剤マスター/臨床ルールの取込データを確認してください',
+    },
+  };
+}
+
+function readNonEmptyText(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function readPackageInsertObjectText(object: Record<string, unknown>) {
+  return (
+    readNonEmptyText(object.text) ??
+    readNonEmptyText(object.name) ??
+    readNonEmptyText(object.description)
+  );
+}
+
+function readPackageInsertTextEntry(item: unknown): PackageInsertTextEntry | null {
+  const text = readNonEmptyText(item);
+  if (text) return { text };
+
+  const object = readJsonObject(item);
+  if (!object) return null;
+
+  const objectText = readPackageInsertObjectText(object);
+  if (!objectText) return null;
+
+  const severity = typeof object.severity === 'string' ? object.severity : undefined;
+  return { text: objectText, ...(severity !== undefined ? { severity } : {}) };
+}
+
+function readPackageInsertTextEntries(
+  value: unknown,
+): ParsedClinicalJsonEntries<PackageInsertTextEntry> {
+  if (value === null || value === undefined) return { entries: [], malformedCount: 0 };
+
+  if (!Array.isArray(value)) {
+    const object = readJsonObject(value);
+    if (!object) {
+      const entry = readPackageInsertTextEntry(value);
+      return entry ? { entries: [entry], malformedCount: 0 } : { entries: [], malformedCount: 1 };
+    }
+
+    const entries = Object.entries(object).flatMap(([key, item]): PackageInsertTextEntry[] => {
+      const text = readNonEmptyText(item) ?? (readJsonObject(item) ? JSON.stringify(item) : null);
+      return text ? [{ text: `${key}: ${text}` }] : [];
+    });
+    return { entries, malformedCount: entries.length === 0 ? 1 : 0 };
+  }
+
+  let malformedCount = 0;
+  const entries = value.flatMap((item): PackageInsertTextEntry[] => {
+    const entry = readPackageInsertTextEntry(item);
+    if (!entry) {
+      malformedCount += 1;
+      return [];
+    }
+    return [entry];
+  });
+  return { entries, malformedCount };
+}
+
+function readOptionalFiniteNumber(value: unknown) {
+  return value === undefined || value === null
+    ? undefined
+    : typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : null;
+}
+
+function readRenalDoseEntries(value: unknown): ParsedClinicalJsonEntries<RenalDoseEntry> {
+  if (value === null || value === undefined) return { entries: [], malformedCount: 0 };
+  if (!Array.isArray(value)) return { entries: [], malformedCount: 1 };
+
+  let malformedCount = 0;
+  const entries = value.flatMap((item): RenalDoseEntry[] => {
+    const object = readJsonObject(item);
+    if (!object) {
+      malformedCount += 1;
+      return [];
+    }
+
+    const egfrMin = readOptionalFiniteNumber(object.egfr_min);
+    const egfrMax = readOptionalFiniteNumber(object.egfr_max);
+    const recommendation =
+      typeof object.recommendation === 'string' && object.recommendation.trim().length > 0
+        ? object.recommendation
+        : null;
+
+    if (egfrMin === null || egfrMax === null || !recommendation) {
+      malformedCount += 1;
+      return [];
+    }
+
+    return [
+      {
+        ...(egfrMin !== undefined ? { egfr_min: egfrMin } : {}),
+        ...(egfrMax !== undefined ? { egfr_max: egfrMax } : {}),
+        recommendation,
+      },
+    ];
+  });
+  return { entries, malformedCount };
+}
+
+function readAlertRuleStringArray(
+  condition: Record<string, unknown>,
+  key: keyof AlertRuleCondition,
+): ParsedClinicalJsonEntries<string> {
+  const value = condition[key];
+  if (value === undefined || value === null) return { entries: [], malformedCount: 0 };
+  if (!Array.isArray(value)) return { entries: [], malformedCount: 1 };
+
+  let malformedCount = 0;
+  const entries = value.flatMap((item): string[] => {
+    const text = readNonEmptyText(item);
+    if (!text) {
+      malformedCount += 1;
+      return [];
+    }
+    return [text.trim()];
+  });
+  return { entries, malformedCount };
+}
+
+function matchesAlertRuleCondition(
+  condition: unknown,
+  drugCode: string,
+  therapeuticCategory?: string | null,
+): { matched: boolean; malformedCount: number } {
+  const conditionObject = readJsonObject(condition);
+  if (!conditionObject) {
+    return {
+      matched: false,
+      malformedCount: condition === null || condition === undefined ? 0 : 1,
+    };
+  }
+
+  const yjCodes = readAlertRuleStringArray(conditionObject, 'yj_codes');
+  const therapeuticCategories = readAlertRuleStringArray(conditionObject, 'therapeutic_categories');
+  const hasValidCriteria = yjCodes.entries.length > 0 || therapeuticCategories.entries.length > 0;
+  const malformedCount =
+    yjCodes.malformedCount + therapeuticCategories.malformedCount + (hasValidCriteria ? 0 : 1);
+
+  if (yjCodes.entries.includes(drugCode)) return { matched: true, malformedCount };
+  if (!therapeuticCategory) return { matched: false, malformedCount };
+  return {
+    matched: therapeuticCategories.entries.includes(therapeuticCategory),
+    malformedCount,
+  };
+}
 
 type ManagedAlertType =
   | 'interaction'
@@ -427,54 +610,71 @@ async function checkPackageInsertAudit(
 
     const drugName = pi.drug_master.drug_name;
 
-    // Check contraindications
-    if (pi.contraindications && Array.isArray(pi.contraindications)) {
-      const items = pi.contraindications as Array<{ text?: string; severity?: string }>;
-      for (const item of items.slice(0, 3)) {
-        if (item.text) {
-          alerts.push({
-            type: 'package_insert_contraindication',
-            severity: 'info',
-            message: `【禁忌】${drugName}: ${item.text.slice(0, 100)}`,
-            details: { drug_code: line.drug_code, section: 'contraindication' },
-          });
-        }
-      }
+    const contraindications = readPackageInsertTextEntries(pi.contraindications);
+    if (contraindications.malformedCount > 0) {
+      alerts.push(
+        buildCdsDataQualityAlert({
+          source: 'drug_package_insert',
+          section: '禁忌',
+          malformedCount: contraindications.malformedCount,
+          drugName,
+          drugCode: line.drug_code,
+        }),
+      );
+    }
+    for (const item of contraindications.entries.slice(0, 3)) {
+      alerts.push({
+        type: 'package_insert_contraindication',
+        severity: 'info',
+        message: `【禁忌】${drugName}: ${item.text.slice(0, 100)}`,
+        details: { drug_code: line.drug_code, section: 'contraindication' },
+      });
     }
 
-    // Check serious adverse effects
-    if (pi.adverse_effects && Array.isArray(pi.adverse_effects)) {
-      const items = pi.adverse_effects as Array<{ text?: string; severity?: string }>;
-      const serious = items.filter((a) => a.severity === 'serious' || a.severity === '重大');
-      for (const item of serious.slice(0, 2)) {
-        if (item.text) {
-          alerts.push({
-            type: 'package_insert_adverse_effect',
-            severity: 'info',
-            message: `【重大な副作用】${drugName}: ${item.text.slice(0, 100)}`,
-            details: { drug_code: line.drug_code, section: 'adverse_effect' },
-          });
-        }
-      }
+    const adverseEffects = readPackageInsertTextEntries(pi.adverse_effects);
+    if (adverseEffects.malformedCount > 0) {
+      alerts.push(
+        buildCdsDataQualityAlert({
+          source: 'drug_package_insert',
+          section: '重大な副作用',
+          malformedCount: adverseEffects.malformedCount,
+          drugName,
+          drugCode: line.drug_code,
+        }),
+      );
+    }
+    const seriousAdverseEffects = adverseEffects.entries.filter(
+      (item) => item.severity === 'serious' || item.severity === '重大',
+    );
+    for (const item of seriousAdverseEffects.slice(0, 2)) {
+      alerts.push({
+        type: 'package_insert_adverse_effect',
+        severity: 'info',
+        message: `【重大な副作用】${drugName}: ${item.text.slice(0, 100)}`,
+        details: { drug_code: line.drug_code, section: 'adverse_effect' },
+      });
     }
 
-    // Check elderly precautions (only for patients >= 65)
-    if (
-      patientAge !== null &&
-      patientAge >= 65 &&
-      pi.precautions_elderly &&
-      Array.isArray(pi.precautions_elderly)
-    ) {
-      const items = pi.precautions_elderly as Array<{ text?: string }>;
-      for (const item of items.slice(0, 2)) {
-        if (item.text) {
-          alerts.push({
-            type: 'package_insert_elderly',
-            severity: 'warning',
-            message: `【高齢者注意】${drugName}（${patientAge}歳）: ${item.text.slice(0, 100)}`,
-            details: { drug_code: line.drug_code, section: 'elderly', patient_age: patientAge },
-          });
-        }
+    if (patientAge !== null && patientAge >= 65) {
+      const elderlyPrecautions = readPackageInsertTextEntries(pi.precautions_elderly);
+      if (elderlyPrecautions.malformedCount > 0) {
+        alerts.push(
+          buildCdsDataQualityAlert({
+            source: 'drug_package_insert',
+            section: '高齢者注意',
+            malformedCount: elderlyPrecautions.malformedCount,
+            drugName,
+            drugCode: line.drug_code,
+          }),
+        );
+      }
+      for (const item of elderlyPrecautions.entries.slice(0, 2)) {
+        alerts.push({
+          type: 'package_insert_elderly',
+          severity: 'warning',
+          message: `【高齢者注意】${drugName}（${patientAge}歳）: ${item.text.slice(0, 100)}`,
+          details: { drug_code: line.drug_code, section: 'elderly', patient_age: patientAge },
+        });
       }
     }
   }
@@ -595,6 +795,7 @@ async function checkAllergyReactions(
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
+  const reportedMalformedRuleIds = new Set<string>();
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
     const drugInfo = drugByCode.get(line.drug_code);
@@ -636,15 +837,26 @@ async function checkAllergyReactions(
 
     // Check against DrugAlertRule allergy_cross rules
     for (const rule of allergyRules) {
-      const condition = rule.condition as AlertRuleCondition | null;
-      if (!condition) continue;
+      const conditionMatch = matchesAlertRuleCondition(
+        rule.condition,
+        line.drug_code,
+        drugInfo?.therapeutic_category,
+      );
+      if (conditionMatch.malformedCount > 0 && !reportedMalformedRuleIds.has(rule.id)) {
+        alerts.push(
+          buildCdsDataQualityAlert({
+            source: 'drug_alert_rule',
+            section: 'アレルギー交差ルール',
+            malformedCount: conditionMatch.malformedCount,
+            drugName: line.drug_name,
+            drugCode: line.drug_code,
+            ruleId: rule.id,
+          }),
+        );
+        reportedMalformedRuleIds.add(rule.id);
+      }
 
-      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
-      const matchByCategory =
-        drugInfo?.therapeutic_category &&
-        (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
-
-      if (matchByCode || matchByCategory) {
+      if (conditionMatch.matched) {
         alerts.push({
           type: 'allergy_cross',
           severity: 'critical',
@@ -768,6 +980,7 @@ async function checkHighRiskDrugs(
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
+  const reportedMalformedRuleIds = new Set<string>();
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
     const drugInfo = drugByCode.get(line.drug_code);
@@ -792,15 +1005,26 @@ async function checkHighRiskDrugs(
     }
 
     for (const rule of highRiskRules) {
-      const condition = rule.condition as AlertRuleCondition | null;
-      if (!condition) continue;
+      const conditionMatch = matchesAlertRuleCondition(
+        rule.condition,
+        line.drug_code,
+        drugInfo?.therapeutic_category,
+      );
+      if (conditionMatch.malformedCount > 0 && !reportedMalformedRuleIds.has(rule.id)) {
+        alerts.push(
+          buildCdsDataQualityAlert({
+            source: 'drug_alert_rule',
+            section: '高リスク薬ルール',
+            malformedCount: conditionMatch.malformedCount,
+            drugName: displayName,
+            drugCode: line.drug_code,
+            ruleId: rule.id,
+          }),
+        );
+        reportedMalformedRuleIds.add(rule.id);
+      }
 
-      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
-      const matchByCategory =
-        drugInfo?.therapeutic_category &&
-        (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
-
-      if (matchByCode || matchByCategory) {
+      if (conditionMatch.matched) {
         alerts.push({
           type: 'high_risk',
           severity: 'warning',
@@ -988,20 +1212,32 @@ async function checkElderlyPIM(
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
+  const reportedMalformedRuleIds = new Set<string>();
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
     const drugInfo = drugByCode.get(line.drug_code);
 
     for (const rule of pimRules) {
-      const condition = rule.condition as AlertRuleCondition | null;
-      if (!condition) continue;
+      const conditionMatch = matchesAlertRuleCondition(
+        rule.condition,
+        line.drug_code,
+        drugInfo?.therapeutic_category,
+      );
+      if (conditionMatch.malformedCount > 0 && !reportedMalformedRuleIds.has(rule.id)) {
+        alerts.push(
+          buildCdsDataQualityAlert({
+            source: 'drug_alert_rule',
+            section: '高齢者PIMルール',
+            malformedCount: conditionMatch.malformedCount,
+            drugName: line.drug_name,
+            drugCode: line.drug_code,
+            ruleId: rule.id,
+          }),
+        );
+        reportedMalformedRuleIds.add(rule.id);
+      }
 
-      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
-      const matchByCategory =
-        drugInfo?.therapeutic_category &&
-        (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
-
-      if (matchByCode || matchByCategory) {
+      if (conditionMatch.matched) {
         alerts.push({
           type: 'pim_elderly',
           severity: 'warning',
@@ -1062,16 +1298,24 @@ async function checkRenalDoseAdjustment(
     const pi = insertByCode.get(line.drug_code);
     if (!pi?.dosage_adjustment_renal) continue;
 
-    // dosage_adjustment_renal is expected to be an array of { egfr_min, egfr_max, recommendation }
-    const adjustments = (
-      Array.isArray(pi.dosage_adjustment_renal) ? pi.dosage_adjustment_renal : []
-    ) as RenalDoseEntry[];
+    const adjustments = readRenalDoseEntries(pi.dosage_adjustment_renal);
+    if (adjustments.malformedCount > 0) {
+      alerts.push(
+        buildCdsDataQualityAlert({
+          source: 'drug_package_insert',
+          section: '腎機能用量調整',
+          malformedCount: adjustments.malformedCount,
+          drugName: line.drug_name,
+          drugCode: line.drug_code,
+        }),
+      );
+    }
 
-    for (const adj of adjustments) {
+    for (const adj of adjustments.entries) {
       const min = adj.egfr_min ?? 0;
       const max = adj.egfr_max ?? Infinity;
 
-      if (egfr >= min && egfr < max && adj.recommendation) {
+      if (egfr >= min && egfr < max) {
         alerts.push({
           type: 'renal_dose',
           severity: 'warning',

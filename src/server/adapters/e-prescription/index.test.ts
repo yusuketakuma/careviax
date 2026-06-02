@@ -141,10 +141,19 @@ describe('EPrescriptionAdapter', () => {
       ...validRecord,
       items: [{ ...validRecord.items[0], notes: null }],
     });
+    expect(normalizeEPrescriptionRecord({ ...validRecord, status: 'dispensed' })).toMatchObject({
+      status: 'dispensed',
+    });
 
     expect(normalizeEPrescriptionRecord(['unexpected'])).toBeNull();
     expect(normalizeEPrescriptionRecord({ ...validRecord, status: 'draft' })).toBeNull();
     expect(normalizeEPrescriptionRecord({ ...validRecord, issuedAt: 'not-a-date' })).toBeNull();
+    expect(
+      normalizeEPrescriptionRecord({
+        ...validRecord,
+        items: [{ ...validRecord.items[0], dose: '' }],
+      }),
+    ).toBeNull();
     expect(
       normalizeEPrescriptionRecord({
         ...validRecord,

@@ -148,4 +148,69 @@ describe('patient-mcs dto', () => {
       sourceRefs: [],
     });
   });
+
+  it('rejects malformed overview payloads before mapping message rows', () => {
+    expect(() =>
+      parsePatientMcsViewData({
+        data: {
+          patient: { id: 'patient_1', name: '青葉 花子' },
+          link: null,
+          summary: null,
+          messages: [
+            {
+              id: 'message_1',
+              source_message_id: '68409128',
+              author_name: '看護師 篠原 陽子',
+              author_role: '看護師',
+              author_organization: null,
+              author_descriptor: null,
+              posted_at: null,
+              posted_at_label: '4/2 12:12',
+              body: '食欲低下が継続しています。',
+              reaction_count: '1',
+              reply_count: 0,
+              sort_order: 0,
+              source_url: 'https://www.medical-care.net/projects/medical/57886227#message-68409128',
+              synced_at: '2026-04-02T08:00:00.000Z',
+            },
+          ],
+        },
+      }),
+    ).toThrow('MCS レスポンス形式が不正です');
+
+    expect(() =>
+      parsePatientMcsViewData({
+        data: {
+          patient: { id: 'patient_1', name: '青葉 花子' },
+          link: null,
+          summary: null,
+          messages: { id: 'message_1' },
+        },
+      }),
+    ).toThrow('MCS レスポンス形式が不正です');
+  });
+
+  it('rejects malformed sync result payloads before updating cached summaries', () => {
+    expect(() =>
+      parsePatientMcsSyncResult({
+        data: {
+          importedCount: '4',
+          latestMessageAt: '2026-04-02T08:00:00.000Z',
+          link: { project_title: '青葉 花子：年長者の里' },
+          summary: null,
+        },
+      }),
+    ).toThrow('MCS レスポンス形式が不正です');
+
+    expect(() =>
+      parsePatientMcsSyncResult({
+        data: {
+          importedCount: 4,
+          latestMessageAt: '2026-04-02T08:00:00.000Z',
+          link: { project_title: 123 },
+          summary: null,
+        },
+      }),
+    ).toThrow('MCS レスポンス形式が不正です');
+  });
 });

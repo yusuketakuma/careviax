@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { parseJsonObjectOrNull } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
 
 type RealtimeListener = (data: unknown) => void;
@@ -10,16 +11,7 @@ let sub: Redis | null = null;
 const subscribedChannels = new Set<string>();
 
 export function parseRedisRealtimeMessage(message: string): Record<string, unknown> | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(message) as unknown;
-  } catch {
-    return null;
-  }
-
-  return typeof data === 'object' && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : null;
+  return parseJsonObjectOrNull(message);
 }
 
 function getConnections(): { pub: Redis; sub: Redis } {

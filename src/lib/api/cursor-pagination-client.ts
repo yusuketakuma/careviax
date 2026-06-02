@@ -1,4 +1,5 @@
 import { readJsonObject } from '@/lib/db/json';
+import { readJsonResponseBody } from './response-body';
 
 export type CursorPaginatedPage<T> = {
   data: T[];
@@ -13,6 +14,16 @@ type CursorPaginatedResult<T, TPage extends CursorPaginatedPage<T>> = Omit<
   CursorPaginatedPage<T>;
 
 export const CURSOR_PAGINATION_PAGE_LIMIT = 100;
+
+function normalizePageLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) return CURSOR_PAGINATION_PAGE_LIMIT;
+  return Math.min(Math.max(Math.trunc(limit), 1), CURSOR_PAGINATION_PAGE_LIMIT);
+}
+
+function normalizeMaxPages(maxPages: number | undefined) {
+  if (maxPages === undefined || !Number.isFinite(maxPages)) return 20;
+  return Math.max(Math.trunc(maxPages), 1);
+}
 
 function normalizeCursorPage<T, TPage extends CursorPaginatedPage<T>>(
   payload: unknown,
@@ -47,8 +58,8 @@ export async function fetchAllCursorPages<
   errorMessage: string;
 }): Promise<CursorPaginatedResult<T, TPage>> {
   const fetchImpl = args.fetchImpl ?? fetch;
-  const limit = Math.min(args.limit ?? CURSOR_PAGINATION_PAGE_LIMIT, CURSOR_PAGINATION_PAGE_LIMIT);
-  const maxPages = Math.max(args.maxPages ?? 20, 1);
+  const limit = normalizePageLimit(args.limit);
+  const maxPages = normalizeMaxPages(args.maxPages);
   const aggregated: T[] = [];
   let cursor: string | undefined;
   let firstPageMetadata: Omit<TPage, keyof CursorPaginatedPage<T>> | null = null;
@@ -63,7 +74,7 @@ export async function fetchAllCursorPages<
       throw new Error(args.errorMessage);
     }
 
-    const normalized = normalizeCursorPage<T, TPage>((await response.json()) as unknown);
+    const normalized = normalizeCursorPage<T, TPage>(await readJsonResponseBody(response));
     if (!normalized) {
       throw new Error(args.errorMessage);
     }

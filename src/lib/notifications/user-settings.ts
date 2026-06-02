@@ -1,3 +1,5 @@
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
+
 export const USER_NOTIFICATION_SETTINGS_STORAGE_KEY = 'ph-os:user-notification-settings';
 
 export type UserNotificationSetting = {
@@ -59,11 +61,8 @@ export function normalizeUserNotificationSettings(value: unknown): UserNotificat
 
   const enabledById = new Map<string, boolean>();
   for (const item of value) {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-      continue;
-    }
-
-    const candidate = item as Record<string, unknown>;
+    const candidate = readJsonObject(item);
+    if (!candidate) continue;
     if (typeof candidate.id === 'string' && typeof candidate.enabled === 'boolean') {
       enabledById.set(candidate.id, candidate.enabled);
     }
@@ -76,13 +75,5 @@ export function normalizeUserNotificationSettings(value: unknown): UserNotificat
 }
 
 export function parseUserNotificationSettingsStorage(raw: string | null | undefined) {
-  if (!raw) {
-    return DEFAULT_USER_NOTIFICATION_SETTINGS;
-  }
-
-  try {
-    return normalizeUserNotificationSettings(JSON.parse(raw));
-  } catch {
-    return DEFAULT_USER_NOTIFICATION_SETTINGS;
-  }
+  return normalizeUserNotificationSettings(parseJsonOrNull(raw));
 }

@@ -70,6 +70,24 @@ describe('cursor-pagination-client', () => {
     );
   });
 
+  it('floors page size to one when a caller passes a non-positive limit', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [],
+        hasMore: false,
+      }),
+    );
+
+    await fetchAllCursorPages({
+      path: '/api/example',
+      errorMessage: 'failed',
+      fetchImpl,
+      limit: 0,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('limit=1'), undefined);
+  });
+
   it('throws the caller error when a cursor page has malformed shape', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
@@ -86,5 +104,40 @@ describe('cursor-pagination-client', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('failed');
+  });
+
+  it('throws the caller error when a cursor page response is not valid JSON', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('{bad json', {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
+  });
+
+  it('normalizes non-finite max page counts to the default page cap', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_1' }],
+        hasMore: false,
+      }),
+    );
+
+    const payload = await fetchAllCursorPages<{ id: string }>({
+      path: '/api/example',
+      errorMessage: 'failed',
+      fetchImpl,
+      maxPages: Number.NaN,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(payload.data).toEqual([{ id: 'row_1' }]);
   });
 });

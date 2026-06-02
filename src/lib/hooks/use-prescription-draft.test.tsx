@@ -175,6 +175,25 @@ describe('usePrescriptionDraft PHI persistence', () => {
     await expect(result.current.loadDraft()).resolves.toBeNull();
   });
 
+  it('returns null when the encrypted draft JSON root is not an object', async () => {
+    dbMocks.first.mockResolvedValue({
+      id: 6,
+      orgId: 'org-1',
+      payload: 'encv1:prescription-draft',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:prescription-draft') return JSON.stringify(['unexpected']);
+        return null;
+      },
+    );
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    await expect(result.current.loadDraft()).resolves.toBeNull();
+  });
+
   it('ignores malformed prescription lines while restoring valid draft sections', async () => {
     const snapshot = makeSnapshot();
     dbMocks.first.mockResolvedValue({

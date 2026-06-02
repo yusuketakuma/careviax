@@ -90,6 +90,19 @@ vi.mock('@/server/services/visit-schedule-planner', () => ({
 vi.mock('@/server/services/management-plans', () => ({
   scheduleManagementPlanReviewAlert: vi.fn(),
   formatVisitWorkflowGateIssues: vi.fn(),
+  parseVisitWorkflowGateErrorMessage: vi.fn((message: string) =>
+    message
+      .replace('VISIT_WORKFLOW_GATE:', '')
+      .split(',')
+      .filter((issue) =>
+        [
+          'missing_visit_consent',
+          'missing_management_plan',
+          'management_plan_review_overdue',
+        ].includes(issue),
+      ),
+  ),
+  VISIT_WORKFLOW_GATE_ERROR_PREFIX: 'VISIT_WORKFLOW_GATE:',
 }));
 
 vi.mock('@/server/services/notifications', () => ({

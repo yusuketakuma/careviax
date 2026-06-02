@@ -66,12 +66,58 @@ describe('paginated-client', () => {
     );
   });
 
+  it('floors page size and max page count to one', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'item_1' }],
+        hasMore: false,
+      }),
+    );
+
+    const result = await fetchAllCursorPages({
+      path: '/api/example',
+      orgId: 'org_1',
+      fetchImpl,
+      limit: 0,
+      maxPages: 0,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('limit=1'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+      }),
+    );
+    expect(result).toMatchObject({
+      data: [{ id: 'item_1' }],
+      hasMore: false,
+      nextCursor: undefined,
+    });
+  });
+
   it('throws a controlled error when a cursor page has malformed shape', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: { id: 'not-array' },
         hasMore: 'yes',
         nextCursor: 'cursor_1',
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        orgId: 'org_1',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('一覧データの取得に失敗しました');
+  });
+
+  it('throws a controlled error when a cursor page response is not valid JSON', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('{bad json', {
+        headers: { 'content-type': 'application/json' },
       }),
     );
 

@@ -1,9 +1,16 @@
 import { z } from 'zod';
+import { phoneNumberSchema } from '@/lib/validations/phone';
+
+const requiredPhoneNumberSchema = z
+  .string()
+  .trim()
+  .min(1, '電話番号は必須です')
+  .pipe(phoneNumberSchema);
 
 const emergencyContactSchema = z.object({
   name: z.string().min(1, '氏名は必須です'),
   relationship: z.string().min(1, '続柄は必須です'),
-  phone: z.string().min(1, '電話番号は必須です'),
+  phone: requiredPhoneNumberSchema,
 });
 
 export const createFirstVisitDocumentSchema = z.object({
@@ -19,10 +26,7 @@ export type CreateFirstVisitDocumentInput = z.infer<typeof createFirstVisitDocum
 export const updateFirstVisitDocumentSchema = z.object({
   delivered_at: z.string().datetime().optional(),
   delivered_to: z.string().optional(),
-  emergency_contacts: z
-    .array(emergencyContactSchema)
-    .min(1)
-    .optional(),
+  emergency_contacts: z.array(emergencyContactSchema).min(1).optional(),
 });
 
 export type UpdateFirstVisitDocumentInput = z.infer<typeof updateFirstVisitDocumentSchema>;

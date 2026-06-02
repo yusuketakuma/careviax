@@ -1,13 +1,12 @@
 import { z } from 'zod';
+import {
+  optionalFaxNumberSchema,
+  optionalNullableFaxNumberSchema,
+  optionalNullablePhoneNumberSchema,
+  optionalPhoneNumberSchema,
+} from '@/lib/validations/phone';
 
-export const contactMethodSchema = z.enum([
-  'email',
-  'fax',
-  'phone',
-  'in_person',
-  'postal',
-  'ses',
-]);
+export const contactMethodSchema = z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses']);
 
 export const professionTypeSchema = z.enum([
   'physician',
@@ -31,9 +30,9 @@ export const createExternalProfessionalSchema = z.object({
   facility_id: z.string().trim().optional(),
   organization_name: z.string().trim().optional(),
   department: z.string().trim().optional(),
-  phone: z.string().trim().optional(),
+  phone: optionalPhoneNumberSchema,
   email: z.string().trim().email('メール形式が不正です').optional().or(z.literal('')),
-  fax: z.string().trim().optional(),
+  fax: optionalFaxNumberSchema,
   preferred_contact_method: contactMethodSchema.optional(),
   preferred_contact_time: z.string().trim().optional(),
   address: z.string().trim().optional(),
@@ -46,9 +45,9 @@ export const updateExternalProfessionalSchema = z.object({
   facility_id: z.string().trim().nullable().optional(),
   organization_name: z.string().trim().nullable().optional(),
   department: z.string().trim().nullable().optional(),
-  phone: z.string().trim().nullable().optional(),
+  phone: optionalNullablePhoneNumberSchema,
   email: z.string().trim().email('メール形式が不正です').optional().or(z.literal('')).nullable(),
-  fax: z.string().trim().nullable().optional(),
+  fax: optionalNullableFaxNumberSchema,
   preferred_contact_method: contactMethodSchema.nullable().optional(),
   preferred_contact_time: z.string().trim().nullable().optional(),
   address: z.string().trim().nullable().optional(),

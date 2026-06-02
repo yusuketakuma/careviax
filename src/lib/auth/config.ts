@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt';
 import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextRequest } from 'next/server';
+import { readJsonObject } from '@/lib/db/json';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
@@ -87,10 +88,12 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, account, profile, user }) {
+      const profileObject = readJsonObject(profile);
       if (account) {
-        token.cognitoSub = (profile?.sub as string | undefined) ?? token.cognitoSub;
+        token.cognitoSub =
+          typeof profileObject?.sub === 'string' ? profileObject.sub : token.cognitoSub;
         token.sub = token.cognitoSub;
-        token.cognitoGroups = (profile as Record<string, unknown>)?.['cognito:groups'] ?? [];
+        token.cognitoGroups = profileObject?.['cognito:groups'] ?? [];
       }
 
       if (account?.provider === 'credentials' && user) {
@@ -117,8 +120,8 @@ export const authOptions: NextAuthOptions = {
           email:
             typeof token.email === 'string'
               ? token.email
-              : typeof profile?.email === 'string'
-                ? profile.email
+              : typeof profileObject?.email === 'string'
+                ? profileObject.email
                 : undefined,
         });
 

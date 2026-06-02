@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   API_ROUTE_TEMPLATES,
+  RATE_LIMIT_DDB_TIMEOUT_MS,
   SSE_MAX_CONNECTIONS,
   acquireSseConnection,
   canonicalizeRateLimitPath,
@@ -451,6 +452,59 @@ describe('rate-limit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('fails closed in production when container credentials have an invalid expiration', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/rate-limit-role';
+    resetRateLimitStoreForTests();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          AccessKeyId: ' ASIAROLE ',
+          SecretAccessKey: ' role-secret-key ',
+          Token: ' role-session-token ',
+          Expiration: 'not-a-date',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed with a controlled cause when container credentials are not valid JSON', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/rate-limit-role';
+    resetRateLimitStoreForTests();
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{bad json', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[rate-limit] DynamoDB store unavailable; denying request',
+      expect.objectContaining({
+        message: 'AWS container credentials response is missing required fields',
+      }),
+    );
+  });
+
   it('fails closed in production when DynamoDB returns malformed counters', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.RATE_LIMIT_STORE = 'dynamodb';
@@ -465,6 +519,60 @@ describe('rate-limit', () => {
         JSON.stringify({
           Attributes: {
             hit_count: { N: 'not-a-number' },
+            reset_at: { N: '1710000000000' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+  });
+
+  it('fails closed with a controlled cause when DynamoDB returns invalid JSON', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    resetRateLimitStoreForTests();
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{bad json', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+    expect(consoleErrorMock).toHaveBeenCalledWith(
+      '[rate-limit] DynamoDB store unavailable; denying request',
+      expect.objectContaining({
+        message: 'DynamoDB rate limit response is missing required counters',
+      }),
+    );
+  });
+
+  it('fails closed in production when DynamoDB returns non-positive counters', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    resetRateLimitStoreForTests();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          Attributes: {
+            hit_count: { N: '-1' },
             reset_at: { N: '1710000000000' },
           },
         }),
@@ -653,5 +761,32 @@ describe('rate-limit', () => {
       remaining: 0,
       reason: 'store_unavailable',
     });
+  });
+
+  it('uses the default DynamoDB timeout when the configured timeout is malformed', async () => {
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.RATE_LIMIT_DDB_TIMEOUT_MS = '123abc';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    resetRateLimitStoreForTests();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          Attributes: {
+            hit_count: { N: '1' },
+            reset_at: { N: '1710000000000' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: true,
+    });
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), RATE_LIMIT_DDB_TIMEOUT_MS);
   });
 });

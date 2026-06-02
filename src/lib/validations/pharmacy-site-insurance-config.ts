@@ -1,17 +1,16 @@
 import { z } from 'zod';
+import { dateKeySchema } from '@/lib/validations/date-key';
 
 function hasValidEffectiveRange(value: { effective_from: string; effective_to?: string | null }) {
   if (!value.effective_to) return true;
-  return new Date(value.effective_from).getTime() < new Date(value.effective_to).getTime();
+  return value.effective_from < value.effective_to;
 }
 
+const effectiveDateSchema = dateKeySchema('日付形式が不正です');
+
 const effectiveDateFields = {
-  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です'),
-  effective_to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
-    .optional()
-    .nullable(),
+  effective_from: effectiveDateSchema,
+  effective_to: effectiveDateSchema.optional().nullable(),
 };
 
 const configField = {

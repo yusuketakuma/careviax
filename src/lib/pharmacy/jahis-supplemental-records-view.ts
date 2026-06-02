@@ -1,3 +1,5 @@
+import { readJsonObject } from '@/lib/db/json';
+
 export type JahisSupplementalRecordDetailView = {
   label: string;
   value: string;
@@ -23,19 +25,17 @@ export type JahisSupplementalRecordDbView = {
   raw_line: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
 export function readJahisSupplementalDetails(
   payload: unknown,
 ): JahisSupplementalRecordDetailView[] {
-  if (!isRecord(payload) || !Array.isArray(payload.details)) return [];
+  const record = readJsonObject(payload);
+  if (!record || !Array.isArray(record.details)) return [];
 
-  return payload.details.flatMap((detail): JahisSupplementalRecordDetailView[] => {
-    if (!isRecord(detail)) return [];
-    const label = typeof detail.label === 'string' ? detail.label : null;
-    const value = typeof detail.value === 'string' ? detail.value : null;
+  return record.details.flatMap((detail): JahisSupplementalRecordDetailView[] => {
+    const detailRecord = readJsonObject(detail);
+    if (!detailRecord) return [];
+    const label = typeof detailRecord.label === 'string' ? detailRecord.label : null;
+    const value = typeof detailRecord.value === 'string' ? detailRecord.value : null;
     return label && value ? [{ label, value }] : [];
   });
 }

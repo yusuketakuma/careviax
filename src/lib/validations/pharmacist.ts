@@ -1,12 +1,17 @@
 import { z } from 'zod';
 import { MANAGEABLE_MEMBER_ROLES, roleRequiresSite } from '@/lib/auth/member-roles';
+import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
 
-const siteIdField = z.string().trim().optional().transform((value) => value || undefined);
+const siteIdField = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
 
 const baseMemberFields = {
   name: z.string().min(1, '氏名は必須です'),
   name_kana: z.string().min(1, 'フリガナは必須です'),
-  phone: z.string().optional(),
+  phone: optionalPhoneNumberSchema,
   site_id: siteIdField,
   role: z.enum(MANAGEABLE_MEMBER_ROLES),
   max_daily_visits: z.number().int().min(1).max(20).optional(),

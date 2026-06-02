@@ -39,7 +39,8 @@ import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-sch
 import {
   scheduleManagementPlanReviewAlert,
   formatVisitWorkflowGateIssues,
-  type VisitWorkflowGateIssue,
+  parseVisitWorkflowGateErrorMessage,
+  VISIT_WORKFLOW_GATE_ERROR_PREFIX,
 } from '@/server/services/management-plans';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
@@ -577,11 +578,8 @@ export async function generateVisitDemands() {
 
         processedCount += 1;
       } catch (error) {
-        if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
-          const issues = error.message
-            .replace('VISIT_WORKFLOW_GATE:', '')
-            .split(',')
-            .filter(Boolean) as VisitWorkflowGateIssue[];
+        if (error instanceof Error && error.message.startsWith(VISIT_WORKFLOW_GATE_ERROR_PREFIX)) {
+          const issues = parseVisitWorkflowGateErrorMessage(error.message);
 
           await withOrgContext(cycle.org_id, async (tx) => {
             await upsertOperationalTask(tx, {
@@ -851,13 +849,14 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
         slaDueAt: schedule.scheduled_date,
         relatedEntityType: 'visit_schedule',
         relatedEntityId: schedule.id,
-        metadata: normalizeJsonInput({
-          patient_id: patientId,
-          patient_name: patientName,
-          schedule_id: schedule.id,
-          action_href: `/patients/${patientId}`,
-          action_label: '患者記録を確認',
-        }) ?? {},
+        metadata:
+          normalizeJsonInput({
+            patient_id: patientId,
+            patient_name: patientName,
+            schedule_id: schedule.id,
+            action_href: `/patients/${patientId}`,
+            action_label: '患者記録を確認',
+          }) ?? {},
       });
 
       await withOrgContext(schedule.org_id, (tx) =>
@@ -870,10 +869,11 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
           link: `/patients/${patientId}`,
           explicitUserIds: [schedule.pharmacist_id],
           dedupeKey,
-          metadata: normalizeJsonInput({
-            patient_id: patientId,
-            schedule_id: schedule.id,
-          }) ?? {},
+          metadata:
+            normalizeJsonInput({
+              patient_id: patientId,
+              schedule_id: schedule.id,
+            }) ?? {},
         }),
       );
       notificationCount += 1;
@@ -1968,9 +1968,7 @@ export async function runDailyOperations() {
           errors.push(...result.value.errors);
         }
       } else {
-        errors.push(
-          result.reason instanceof Error ? result.reason.message : String(result.reason),
-        );
+        errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
       }
     }
 

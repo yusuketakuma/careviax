@@ -1,72 +1,131 @@
 import { z } from 'zod';
 import { dispensingLineMetadataSchema } from './dispensing-line';
 
-const optionalDateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です');
+function blankStringToUndefined(value: unknown) {
+  return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
+}
+
+function requiredTrimmedStringSchema(message: string) {
+  return z.string().trim().min(1, message);
+}
+
+const optionalTrimmedStringSchema = z.preprocess(
+  blankStringToUndefined,
+  z.string().trim().optional(),
+);
+
+const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateKey(value: string) {
+  if (!dateKeyPattern.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+function dateStringSchema(message: string) {
+  return z.string().trim().regex(dateKeyPattern, message).refine(isValidDateKey, message);
+}
+
+const optionalDateStringSchema = z.preprocess(
+  blankStringToUndefined,
+  dateStringSchema('日付形式が不正です').optional(),
+);
+
+const optionalUrlStringSchema = z.preprocess(
+  blankStringToUndefined,
+  z.string().trim().url().optional(),
+);
 
 /**
  * 処方明細行のコアスキーマ（処方箋記載の医学的情報のみ）。
  * 調剤方法（dispensing_method, packaging_instructions）は含まない。
  */
-export const corePrescriptionLineSchema = z.object({
+const corePrescriptionLineBaseSchema = z.object({
   line_number: z.number().int().min(1, '行番号は1以上です'),
-  drug_name: z.string().min(1, '薬剤名は必須です'),
-  drug_code: z.string().optional(),
-  dosage_form: z.string().optional(),
-  dose: z.string().min(1, '用量は必須です'),
-  frequency: z.string().min(1, '用法は必須です'),
+  drug_name: requiredTrimmedStringSchema('薬剤名は必須です'),
+  drug_code: optionalTrimmedStringSchema,
+  dosage_form: optionalTrimmedStringSchema,
+  dose: requiredTrimmedStringSchema('用量は必須です'),
+  frequency: requiredTrimmedStringSchema('用法は必須です'),
   days: z.number().int().min(1, '投与日数は1以上です'),
   quantity: z.number().positive().optional(),
-  unit: z.string().optional(),
+  unit: optionalTrimmedStringSchema,
   is_generic: z.boolean().default(false),
   is_generic_name_prescription: z.boolean().default(false),
-  notes: z.string().optional(),
+  notes: optionalTrimmedStringSchema,
   route: z.enum(['internal', 'external', 'injection', 'other']).optional(),
-  start_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
-  end_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  start_date: optionalDateStringSchema,
+  end_date: optionalDateStringSchema,
 });
+
+function validatePrescriptionLineDateRange(
+  line: { start_date?: string; end_date?: string },
+  ctx: z.RefinementCtx,
+) {
+  if (line.start_date && line.end_date && line.start_date > line.end_date) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['end_date'],
+      message: '終了日は開始日以降にしてください',
+    });
+  }
+}
+
+export const corePrescriptionLineSchema = corePrescriptionLineBaseSchema.superRefine(
+  validatePrescriptionLineDateRange,
+);
 
 /**
  * 処方明細行の完全スキーマ（コア + 調剤メタデータ）。
  * 処方登録APIの入力として使用。調剤メタデータはドラフト値として扱われる。
  */
-export const prescriptionLineSchema = corePrescriptionLineSchema.merge(
-  dispensingLineMetadataSchema,
-);
+export const prescriptionLineSchema = corePrescriptionLineBaseSchema
+  .merge(dispensingLineMetadataSchema)
+  .superRefine(validatePrescriptionLineDateRange);
 
 export type CorePrescriptionLineInput = z.infer<typeof corePrescriptionLineSchema>;
 
 export const prescriptionInquiryDraftSchema = z.object({
-  reason: z.string().min(1, '照会理由は必須です'),
-  inquiry_to_physician: z.string().min(1, '照会先医師名は必須です'),
-  inquiry_content: z.string().min(1, '照会内容は必須です'),
-  request_due_date: optionalDateStringSchema.optional(),
+  reason: requiredTrimmedStringSchema('照会理由は必須です'),
+  inquiry_to_physician: requiredTrimmedStringSchema('照会先医師名は必須です'),
+  inquiry_content: requiredTrimmedStringSchema('照会内容は必須です'),
+  request_due_date: optionalDateStringSchema,
 });
 
 export const createPrescriptionIntakeSchema = z
   .object({
-    cycle_id: z.string().min(1, 'サイクルIDは必須です').optional(),
-    case_id: z.string().min(1, 'ケースIDは必須です').optional(),
-    patient_id: z.string().min(1, '患者IDは必須です').optional(),
-    qr_draft_id: z.string().min(1, 'QR下書きIDは必須です').optional(),
+    cycle_id: z.preprocess(
+      blankStringToUndefined,
+      requiredTrimmedStringSchema('サイクルIDは必須です').optional(),
+    ),
+    case_id: z.preprocess(
+      blankStringToUndefined,
+      requiredTrimmedStringSchema('ケースIDは必須です').optional(),
+    ),
+    patient_id: z.preprocess(
+      blankStringToUndefined,
+      requiredTrimmedStringSchema('患者IDは必須です').optional(),
+    ),
+    qr_draft_id: z.preprocess(
+      blankStringToUndefined,
+      requiredTrimmedStringSchema('QR下書きIDは必須です').optional(),
+    ),
     source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan'], {
       error: 'ソースタイプを選択してください',
     }),
-    prescribed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-    prescriber_name: z.string().optional(),
-    prescriber_institution_id: z.string().optional(),
-    prescriber_institution: z.string().optional(),
-    original_document_url: z.string().url().optional(),
+    prescribed_date: dateStringSchema('日付形式が不正です（YYYY-MM-DD）'),
+    prescriber_name: optionalTrimmedStringSchema,
+    prescriber_institution_id: optionalTrimmedStringSchema,
+    prescriber_institution: optionalTrimmedStringSchema,
+    original_document_url: optionalUrlStringSchema,
     refill_remaining_count: z.number().int().min(0).optional(),
-    refill_next_dispense_date: optionalDateStringSchema.optional(),
+    refill_next_dispense_date: optionalDateStringSchema,
     split_dispense_total: z.number().int().min(1).optional(),
     split_dispense_current: z.number().int().min(1).optional(),
-    split_next_dispense_date: optionalDateStringSchema.optional(),
+    split_next_dispense_date: optionalDateStringSchema,
     prescription_category: z.enum(['regular', 'emergency']).default('regular'),
     emergency_category: z
       .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
@@ -102,11 +161,11 @@ export const createPrescriptionIntakeSchema = z
 export const createFacilityBatchPrescriptionIntakeSchema = z
   .object({
     source_type: z.literal('facility_batch'),
-    prescribed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-    prescriber_name: z.string().optional(),
-    prescriber_institution_id: z.string().optional(),
-    prescriber_institution: z.string().optional(),
-    original_document_url: z.string().url().optional(),
+    prescribed_date: dateStringSchema('日付形式が不正です（YYYY-MM-DD）'),
+    prescriber_name: optionalTrimmedStringSchema,
+    prescriber_institution_id: optionalTrimmedStringSchema,
+    prescriber_institution: optionalTrimmedStringSchema,
+    original_document_url: optionalUrlStringSchema,
     prescription_category: z.enum(['regular', 'emergency']).default('regular'),
     emergency_category: z
       .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
@@ -114,8 +173,8 @@ export const createFacilityBatchPrescriptionIntakeSchema = z
     entries: z
       .array(
         z.object({
-          case_id: z.string().min(1, 'ケースIDは必須です'),
-          patient_id: z.string().min(1, '患者IDは必須です'),
+          case_id: requiredTrimmedStringSchema('ケースIDは必須です'),
+          patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
           lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
         }),
       )

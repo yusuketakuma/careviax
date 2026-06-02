@@ -1,4 +1,4 @@
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 
 export type FacilityVisitContextPatient = {
   scheduleId: string;
@@ -42,56 +42,8 @@ function decodeFacilityVisitContextRaw(
   raw: string,
   allowUriDecodeRetry: boolean,
 ): FacilityVisitContext | null {
-  try {
-    const parsed = readJsonObject(JSON.parse(raw));
-    if (!parsed || typeof parsed.label !== 'string' || !Array.isArray(parsed.patients)) {
-      return null;
-    }
-
-    const patients = parsed.patients
-      .map((item) => {
-        const record = readJsonObject(item);
-        return {
-          scheduleId: typeof record?.scheduleId === 'string' ? record.scheduleId : '',
-          patientId: typeof record?.patientId === 'string' ? record.patientId : null,
-          patientName: typeof record?.patientName === 'string' ? record.patientName : '',
-          patientNameKana:
-            typeof record?.patientNameKana === 'string' ? record.patientNameKana : null,
-          birthDate: typeof record?.birthDate === 'string' ? record.birthDate : null,
-          gender: typeof record?.gender === 'string' ? record.gender : null,
-          unitName: typeof record?.unitName === 'string' ? record.unitName : null,
-          routeOrder: typeof record?.routeOrder === 'number' ? record.routeOrder : null,
-          scheduleStatus: typeof record?.scheduleStatus === 'string' ? record.scheduleStatus : null,
-          medicationStartDate:
-            typeof record?.medicationStartDate === 'string' ? record.medicationStartDate : null,
-          medicationEndDate:
-            typeof record?.medicationEndDate === 'string' ? record.medicationEndDate : null,
-          preparationBlockersCount:
-            typeof record?.preparationBlockersCount === 'number'
-              ? record.preparationBlockersCount
-              : undefined,
-          visitRecordId: typeof record?.visitRecordId === 'string' ? record.visitRecordId : null,
-          visitOutcomeStatus:
-            typeof record?.visitOutcomeStatus === 'string' ? record.visitOutcomeStatus : null,
-        };
-      })
-      .filter((item) => item.scheduleId && item.patientName);
-
-    if (patients.length === 0) return null;
-
-    return {
-      label: parsed.label,
-      siteName: typeof parsed.siteName === 'string' ? parsed.siteName : null,
-      placeKind:
-        parsed.placeKind === 'facility' ||
-        parsed.placeKind === 'home_group' ||
-        parsed.placeKind === 'address'
-          ? parsed.placeKind
-          : null,
-      commonNotes: typeof parsed.commonNotes === 'string' ? parsed.commonNotes : null,
-      patients,
-    } satisfies FacilityVisitContext;
-  } catch {
+  const parsed = readJsonObject(parseJsonOrNull(raw));
+  if (!parsed || typeof parsed.label !== 'string' || !Array.isArray(parsed.patients)) {
     if (!allowUriDecodeRetry) return null;
     try {
       const decoded = decodeURIComponent(raw);
@@ -100,6 +52,50 @@ function decodeFacilityVisitContextRaw(
       return null;
     }
   }
+
+  const patients = parsed.patients
+    .map((item) => {
+      const record = readJsonObject(item);
+      return {
+        scheduleId: typeof record?.scheduleId === 'string' ? record.scheduleId : '',
+        patientId: typeof record?.patientId === 'string' ? record.patientId : null,
+        patientName: typeof record?.patientName === 'string' ? record.patientName : '',
+        patientNameKana:
+          typeof record?.patientNameKana === 'string' ? record.patientNameKana : null,
+        birthDate: typeof record?.birthDate === 'string' ? record.birthDate : null,
+        gender: typeof record?.gender === 'string' ? record.gender : null,
+        unitName: typeof record?.unitName === 'string' ? record.unitName : null,
+        routeOrder: typeof record?.routeOrder === 'number' ? record.routeOrder : null,
+        scheduleStatus: typeof record?.scheduleStatus === 'string' ? record.scheduleStatus : null,
+        medicationStartDate:
+          typeof record?.medicationStartDate === 'string' ? record.medicationStartDate : null,
+        medicationEndDate:
+          typeof record?.medicationEndDate === 'string' ? record.medicationEndDate : null,
+        preparationBlockersCount:
+          typeof record?.preparationBlockersCount === 'number'
+            ? record.preparationBlockersCount
+            : undefined,
+        visitRecordId: typeof record?.visitRecordId === 'string' ? record.visitRecordId : null,
+        visitOutcomeStatus:
+          typeof record?.visitOutcomeStatus === 'string' ? record.visitOutcomeStatus : null,
+      };
+    })
+    .filter((item) => item.scheduleId && item.patientName);
+
+  if (patients.length === 0) return null;
+
+  return {
+    label: parsed.label,
+    siteName: typeof parsed.siteName === 'string' ? parsed.siteName : null,
+    placeKind:
+      parsed.placeKind === 'facility' ||
+      parsed.placeKind === 'home_group' ||
+      parsed.placeKind === 'address'
+        ? parsed.placeKind
+        : null,
+    commonNotes: typeof parsed.commonNotes === 'string' ? parsed.commonNotes : null,
+    patients,
+  } satisfies FacilityVisitContext;
 }
 
 export function createFacilityVisitRecordHref(scheduleId: string, context: FacilityVisitContext) {

@@ -1,3 +1,5 @@
+import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
+
 type KeysetCursorValue = Date | string;
 
 export type DecodedKeysetCursor<TKey extends string> = {
@@ -8,9 +10,12 @@ function toIsoString(value: KeysetCursorValue) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function readObject(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
+function hasDecodedKeysetValues<TKey extends string>(
+  keys: readonly TKey[],
+  decoded: unknown,
+): decoded is DecodedKeysetCursor<TKey> {
+  const record = readJsonObject(decoded);
+  return typeof record?.id === 'string' && keys.every((key) => record[key] instanceof Date);
 }
 
 export function encodeKeysetCursor<TKey extends string>(
@@ -35,19 +40,19 @@ export function decodeKeysetCursor<TKey extends string>(
   if (!cursor) return null;
 
   try {
-    const parsed = readObject(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')));
-    if (!parsed || typeof parsed.id !== 'string' || !parsed.id) return null;
+    const parsed = parseJsonObjectOrNull(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (!parsed || typeof parsed.id !== 'string' || !parsed.id.trim()) return null;
 
-    const decodedValues = {} as Partial<Record<TKey, Date>>;
+    const decoded: Record<string, unknown> = { id: parsed.id };
     for (const key of keys) {
       const value = parsed[key];
       if (typeof value !== 'string' || !value) return null;
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return null;
-      decodedValues[key] = date;
+      decoded[key] = date;
     }
 
-    return { id: parsed.id, ...decodedValues } as DecodedKeysetCursor<TKey>;
+    return hasDecodedKeysetValues(keys, decoded) ? decoded : null;
   } catch {
     return null;
   }

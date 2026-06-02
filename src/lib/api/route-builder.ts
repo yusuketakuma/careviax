@@ -1,6 +1,7 @@
 import { type ZodType } from 'zod';
 import { type NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { validationError } from '@/lib/api/response';
 import {
   validateOrgReferences,
@@ -40,40 +41,40 @@ const EMPTY_REFERENCES: OrgReferenceData = {
 
 export function withValidatedBody<TBody>(
   options: WithValidatedBodyOptions<TBody>,
-  handler: (
-    req: AuthenticatedRequest,
-    context: RouteContext<TBody>
-  ) => Promise<NextResponse>
+  handler: (req: AuthenticatedRequest, context: RouteContext<TBody>) => Promise<NextResponse>,
 ) {
-  return withAuth(async (req: AuthenticatedRequest) => {
-    const body = await req.json().catch(() => null);
-    if (!body) return validationError('リクエストボディが不正です');
+  return withAuth(
+    async (req: AuthenticatedRequest) => {
+      const body = await readJsonObjectRequestBody(req);
+      if (!body) return validationError('リクエストボディが不正です');
 
-    const parsed = options.bodySchema.safeParse(body);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+      const parsed = options.bodySchema.safeParse(body);
+      if (!parsed.success) {
+        return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      }
 
-    let references = EMPTY_REFERENCES;
-    if (options.references) {
-      const resolvedReferences = Object.fromEntries(
-        Object.entries(options.references).map(([key, resolver]) => [
-          key,
-          resolver(parsed.data as TBody),
-        ])
-      ) as OrgReferenceInput;
+      let references = EMPTY_REFERENCES;
+      if (options.references) {
+        const resolvedReferences = Object.fromEntries(
+          Object.entries(options.references).map(([key, resolver]) => [
+            key,
+            resolver(parsed.data as TBody),
+          ]),
+        ) as OrgReferenceInput;
 
-      const referenceResult = await validateOrgReferences(req.orgId, resolvedReferences);
-      if (!referenceResult.ok) return referenceResult.response;
-      references = referenceResult.data;
-    }
+        const referenceResult = await validateOrgReferences(req.orgId, resolvedReferences);
+        if (!referenceResult.ok) return referenceResult.response;
+        references = referenceResult.data;
+      }
 
-    return handler(req, {
-      body: parsed.data as TBody,
-      references,
-    });
-  }, {
-    permission: options.permission,
-    message: options.message,
-  });
+      return handler(req, {
+        body: parsed.data as TBody,
+        references,
+      });
+    },
+    {
+      permission: options.permission,
+      message: options.message,
+    },
+  );
 }

@@ -26,9 +26,22 @@ export function toPrismaJsonInput(value: unknown) {
   return normalized === undefined || normalized === null ? Prisma.JsonNull : normalized;
 }
 
+export function parseJsonOrNull(value: string | null | undefined): unknown | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export function readJsonObject(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+export function parseJsonObjectOrNull(value: string | null | undefined) {
+  return readJsonObject(parseJsonOrNull(value));
 }
 
 export function readJsonObjectString(input: unknown, key: string) {

@@ -53,6 +53,16 @@ const REQUIRED_SECRET_KEYS = [
   'JOB_API_KEY',
 ] as const satisfies readonly (keyof AppSecrets)[];
 
+function readRequiredSecretString(
+  record: Record<string, unknown>,
+  key: keyof AppSecrets,
+  sourceLabel: string,
+) {
+  const value = record[key];
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  throw new Error(`${sourceLabel} is missing required string keys: ${key}`);
+}
+
 // ---------------------------------------------------------------------------
 // Internal cache
 // ---------------------------------------------------------------------------
@@ -76,7 +86,7 @@ export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName
   let parsed: unknown;
 
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     throw new Error(`${sourceLabel} is not valid JSON`);
   }
@@ -96,11 +106,11 @@ export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName
   }
 
   return {
-    DATABASE_URL: record.DATABASE_URL as string,
-    NEXTAUTH_SECRET: record.NEXTAUTH_SECRET as string,
-    ENCRYPTION_KEY: record.ENCRYPTION_KEY as string,
-    JWT_SIGNING_SECRET: record.JWT_SIGNING_SECRET as string,
-    JOB_API_KEY: record.JOB_API_KEY as string,
+    DATABASE_URL: readRequiredSecretString(record, 'DATABASE_URL', sourceLabel),
+    NEXTAUTH_SECRET: readRequiredSecretString(record, 'NEXTAUTH_SECRET', sourceLabel),
+    ENCRYPTION_KEY: readRequiredSecretString(record, 'ENCRYPTION_KEY', sourceLabel),
+    JWT_SIGNING_SECRET: readRequiredSecretString(record, 'JWT_SIGNING_SECRET', sourceLabel),
+    JOB_API_KEY: readRequiredSecretString(record, 'JOB_API_KEY', sourceLabel),
   };
 }
 

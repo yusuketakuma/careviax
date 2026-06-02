@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalFaxNumberSchema } from '@/lib/validations/phone';
 
 export const conferenceNoteTypeSchema = z.enum([
   'regular',
@@ -17,7 +18,7 @@ export const conferenceParticipantSchema = z.object({
   is_report_recipient: z.boolean().optional().default(false),
   organization_name: z.string().trim().optional(),
   email: z.string().email('メールアドレス形式が不正です').optional().or(z.literal('')),
-  fax: z.string().trim().optional(),
+  fax: optionalFaxNumberSchema,
 });
 
 export const conferenceActionItemSchema = z.object({
@@ -38,24 +39,26 @@ export const conferenceStructuredContentSchema = z.object({
   sections: z.array(conferenceStructuredSectionSchema).min(1),
 });
 
-export const conferenceMetadataSchema = z.object({
-  billing: z
-    .object({
-      link_status: z.enum(['none', 'candidate', 'linked']).optional(),
-      code: z.string().trim().optional(),
-      label: z.string().trim().optional(),
-      points: z.number().int().nonnegative().optional(),
-    })
-    .optional(),
-  visit_brief: z
-    .object({
-      patient_id: z.string().trim().optional(),
-      schedule_id: z.string().trim().optional(),
-      highlighted_risks: z.array(z.string().trim().min(1)).optional(),
-      summary: z.string().trim().optional(),
-    })
-    .optional(),
-}).optional();
+export const conferenceMetadataSchema = z
+  .object({
+    billing: z
+      .object({
+        link_status: z.enum(['none', 'candidate', 'linked']).optional(),
+        code: z.string().trim().optional(),
+        label: z.string().trim().optional(),
+        points: z.number().int().nonnegative().optional(),
+      })
+      .optional(),
+    visit_brief: z
+      .object({
+        patient_id: z.string().trim().optional(),
+        schedule_id: z.string().trim().optional(),
+        highlighted_risks: z.array(z.string().trim().min(1)).optional(),
+        summary: z.string().trim().optional(),
+      })
+      .optional(),
+  })
+  .optional();
 
 type ConferencePayloadWithType = {
   note_type?: z.infer<typeof conferenceNoteTypeSchema>;
@@ -137,7 +140,7 @@ const conferenceStructuredSectionRules: Partial<
 function validateConferenceStructuredContent(
   noteType: z.infer<typeof conferenceNoteTypeSchema>,
   structuredContent: z.infer<typeof conferenceStructuredContentSchema> | undefined,
-  ctx: z.RefinementCtx
+  ctx: z.RefinementCtx,
 ) {
   if (!structuredContent) return;
 
@@ -149,13 +152,16 @@ function validateConferenceStructuredContent(
     });
   }
 
-  const duplicateKeys = structuredContent.sections.reduce<string[]>((keys, section, index, source) => {
-    if (!section.key.trim()) return keys;
-    if (source.findIndex((candidate) => candidate.key === section.key) !== index) {
-      keys.push(section.key);
-    }
-    return keys;
-  }, []);
+  const duplicateKeys = structuredContent.sections.reduce<string[]>(
+    (keys, section, index, source) => {
+      if (!section.key.trim()) return keys;
+      if (source.findIndex((candidate) => candidate.key === section.key) !== index) {
+        keys.push(section.key);
+      }
+      return keys;
+    },
+    [],
+  );
   if (duplicateKeys.length > 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -202,11 +208,7 @@ function validateConferenceStructuredContent(
 }
 
 export function resolveConferenceNoteType(input: ConferencePayloadWithType) {
-  if (
-    input.note_type &&
-    input.conference_type &&
-    input.note_type !== input.conference_type
-  ) {
+  if (input.note_type && input.conference_type && input.note_type !== input.conference_type) {
     return null;
   }
 
@@ -219,7 +221,7 @@ export function buildConferenceContent(
     | {
         sections: Array<{ label: string; body?: string }>;
       }
-    | undefined
+    | undefined,
 ) {
   const normalizedContent = content?.trim();
   if (normalizedContent) return normalizedContent;
@@ -238,7 +240,7 @@ export function buildConferenceContent(
 
 export function buildConferenceMetadata(
   noteType: z.infer<typeof conferenceNoteTypeSchema>,
-  metadata: z.infer<typeof conferenceMetadataSchema>
+  metadata: z.infer<typeof conferenceMetadataSchema>,
 ) {
   const supportsBillingMetadata =
     noteType === 'pre_discharge' ||
@@ -276,7 +278,9 @@ export function buildConferenceMetadata(
     : {};
   const normalizedVisitBrief = {
     ...(metadata?.visit_brief?.patient_id ? { patient_id: metadata.visit_brief.patient_id } : {}),
-    ...(metadata?.visit_brief?.schedule_id ? { schedule_id: metadata.visit_brief.schedule_id } : {}),
+    ...(metadata?.visit_brief?.schedule_id
+      ? { schedule_id: metadata.visit_brief.schedule_id }
+      : {}),
     ...(metadata?.visit_brief?.summary ? { summary: metadata.visit_brief.summary } : {}),
     ...(metadata?.visit_brief?.highlighted_risks?.length
       ? {
@@ -297,7 +301,7 @@ export function buildConferenceMetadata(
 
 export function normalizeConferenceStructuredContent(
   noteType: z.infer<typeof conferenceNoteTypeSchema>,
-  structuredContent: z.infer<typeof conferenceStructuredContentSchema> | undefined
+  structuredContent: z.infer<typeof conferenceStructuredContentSchema> | undefined,
 ) {
   if (!structuredContent) return undefined;
 
@@ -388,7 +392,7 @@ export const updateConferenceNoteSchema = z
   })
   .refine(
     (value) => Object.values(value).some((entry) => entry !== undefined),
-    '更新対象を1件以上指定してください'
+    '更新対象を1件以上指定してください',
   );
 
 export const conferenceNoteQuerySchema = z.object({

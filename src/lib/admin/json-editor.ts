@@ -1,6 +1,9 @@
+import { readJsonObject } from '@/lib/db/json';
+
 export function parseJsonObjectText(
   input: string,
   message = 'JSON はオブジェクト形式で入力してください',
+  rootMessage = message,
 ) {
   let parsed: unknown;
   try {
@@ -9,9 +12,10 @@ export function parseJsonObjectText(
     throw new Error(message);
   }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(message);
+  const object = readJsonObject(parsed);
+  if (!object) {
+    throw new Error(rootMessage);
   }
 
-  return parsed as Record<string, unknown>;
+  return object;
 }

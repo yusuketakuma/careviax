@@ -1,4 +1,5 @@
 import { labelForPath } from '@/lib/navigation/route-labels';
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 
 export const RECENT_OPERATIONS_KEY = 'ph-os:recent-operations';
 
@@ -13,11 +14,8 @@ function isValidVisitedAt(value: string) {
 }
 
 function readRecentOperation(value: unknown): RecentOperation | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-
-  const candidate = value as Record<string, unknown>;
+  const candidate = readJsonObject(value);
+  if (!candidate) return null;
   if (
     typeof candidate.href !== 'string' ||
     !candidate.href.startsWith('/') ||
@@ -48,15 +46,7 @@ export function normalizeRecentOperations(value: unknown): RecentOperation[] {
 }
 
 export function parseRecentOperationsStorage(raw: string | null | undefined) {
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    return normalizeRecentOperations(JSON.parse(raw));
-  } catch {
-    return [];
-  }
+  return normalizeRecentOperations(parseJsonOrNull(raw));
 }
 
 export function prependRecentOperation(

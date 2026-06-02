@@ -62,6 +62,48 @@ describe('getClientIp', () => {
     expect(ip).toBe('203.0.113.11');
   });
 
+  it('rejects invalid IPv6-looking forwarded values', () => {
+    process.env.TRUST_PROXY_HEADERS = 'true';
+
+    for (const forwardedFor of ['::::', '::ffff:999.999.999.999', '[2001:db8::1]']) {
+      const ip = getClientIp({
+        headers: new Headers({
+          'x-forwarded-for': forwardedFor,
+          'x-real-ip': '2001:db8::11',
+        }),
+      });
+
+      expect(ip).toBe('2001:db8::11');
+    }
+  });
+
+  it('accepts valid IPv6 forwarded values', () => {
+    process.env.TRUST_PROXY_HEADERS = 'true';
+
+    const ip = getClientIp({
+      headers: new Headers({
+        'x-forwarded-for': '2001:db8::10',
+      }),
+    });
+
+    expect(ip).toBe('2001:db8::10');
+  });
+
+  it('rejects non-canonical IPv4 forwarded values', () => {
+    process.env.TRUST_PROXY_HEADERS = 'true';
+
+    for (const forwardedFor of ['0177.0.0.1', '127.1', '192.168.001.010']) {
+      const ip = getClientIp({
+        headers: new Headers({
+          'x-forwarded-for': forwardedFor,
+          'x-real-ip': '203.0.113.11',
+        }),
+      });
+
+      expect(ip).toBe('203.0.113.11');
+    }
+  });
+
   it('ignores oversized forwarded-for headers', () => {
     process.env.TRUST_PROXY_HEADERS = 'true';
 

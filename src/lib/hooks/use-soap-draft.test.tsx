@@ -204,6 +204,52 @@ describe('useSoapDraft PHI persistence', () => {
     expect(draft?.structuredSoap.plan.free_text).toBe(plaintextPhi.plan);
   });
 
+  it('sanitizes malformed draft metadata while restoring valid SOAP', async () => {
+    const soap = makeStructuredSoap();
+    dbMocks.first.mockResolvedValue({
+      id: 14,
+      scheduleId: 'schedule-1',
+      patientId: 'patient-1',
+      pharmacistId: '',
+      structuredSoap: 'encv1:structured-soap',
+      currentStep: 'review',
+      visitDate: 20260531,
+      outcomeStatus: { status: 'completed' },
+      receiptPersonName: '山田 花子',
+      receiptPersonRelation: false,
+      receiptAt: ['2026-05-31T09:00:00.000Z'],
+      nextVisitSuggestionDate: null,
+      cancellationReason: 123,
+      postponeReason: undefined,
+      revisitReason: '体調確認',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      synced: false,
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:structured-soap') return JSON.stringify(soap);
+        return null;
+      },
+    );
+    const { result } = renderHook(() => useSoapDraft('schedule-1', 'patient-1'));
+
+    const draft = await result.current.loadDraft();
+
+    expect(draft).toMatchObject({
+      currentStep: 0,
+      visitDate: null,
+      outcomeStatus: null,
+      receiptPersonName: '山田 花子',
+      receiptPersonRelation: null,
+      receiptAt: null,
+      nextVisitSuggestionDate: null,
+      cancellationReason: null,
+      postponeReason: null,
+      revisitReason: '体調確認',
+    });
+  });
+
   it('returns null instead of throwing when encrypted structured SOAP is malformed', async () => {
     dbMocks.first.mockResolvedValue({
       id: 12,
@@ -219,6 +265,29 @@ describe('useSoapDraft PHI persistence', () => {
     cryptoMocks.decryptOfflinePayload.mockImplementation(
       async (value: string | null | undefined) => {
         if (value === 'encv1:structured-soap') return 'not-json';
+        return null;
+      },
+    );
+    const { result } = renderHook(() => useSoapDraft('schedule-1', 'patient-1'));
+
+    await expect(result.current.loadDraft()).resolves.toBeNull();
+  });
+
+  it('returns null when encrypted structured SOAP JSON root is not an object', async () => {
+    dbMocks.first.mockResolvedValue({
+      id: 15,
+      scheduleId: 'schedule-1',
+      patientId: 'patient-1',
+      pharmacistId: '',
+      structuredSoap: 'encv1:structured-soap',
+      currentStep: 2,
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      synced: false,
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:structured-soap') return JSON.stringify(['unexpected']);
         return null;
       },
     );

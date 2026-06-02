@@ -1,4 +1,5 @@
 import { readJsonObject } from '@/lib/db/json';
+import { readJsonResponseBody } from './response-body';
 
 type CursorPaginatedResponse<T, Extra extends object = Record<string, never>> = Extra & {
   data?: T[];
@@ -7,6 +8,16 @@ type CursorPaginatedResponse<T, Extra extends object = Record<string, never>> = 
 };
 
 export const CURSOR_PAGE_LIMIT = 100;
+
+function normalizePageLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) return CURSOR_PAGE_LIMIT;
+  return Math.min(Math.max(Math.trunc(limit), 1), CURSOR_PAGE_LIMIT);
+}
+
+function normalizeMaxPages(maxPages: number | undefined) {
+  if (maxPages === undefined || !Number.isFinite(maxPages)) return 20;
+  return Math.max(Math.trunc(maxPages), 1);
+}
 
 type NormalizedCursorResponse<T, Extra extends object> = {
   page: {
@@ -53,8 +64,8 @@ export async function fetchAllCursorPages<T, Extra extends object = Record<strin
   maxPages?: number;
 }) {
   const fetchImpl = args.fetchImpl ?? fetch;
-  const limit = Math.min(args.limit ?? CURSOR_PAGE_LIMIT, CURSOR_PAGE_LIMIT);
-  const maxPages = args.maxPages ?? 20;
+  const limit = normalizePageLimit(args.limit);
+  const maxPages = normalizeMaxPages(args.maxPages);
   const collected: T[] = [];
   let cursor: string | undefined;
   let extra: Extra | null = null;
@@ -75,7 +86,7 @@ export async function fetchAllCursorPages<T, Extra extends object = Record<strin
       throw new Error('一覧データの取得に失敗しました');
     }
 
-    const normalized = normalizeCursorResponse<T, Extra>((await response.json()) as unknown);
+    const normalized = normalizeCursorResponse<T, Extra>(await readJsonResponseBody(response));
     if (!normalized) {
       throw new Error('一覧データの取得に失敗しました');
     }

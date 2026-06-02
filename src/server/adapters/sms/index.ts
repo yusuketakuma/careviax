@@ -9,6 +9,13 @@ type SmsAdapterConfig =
       fromNumber: string;
     };
 
+export class SmsNotificationAdapterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SmsNotificationAdapterError';
+  }
+}
+
 function resolveSmsConfig(): SmsAdapterConfig {
   if (
     process.env.TWILIO_ACCOUNT_SID &&
@@ -29,6 +36,13 @@ export class SmsNotificationAdapter {
   constructor(private readonly config: SmsAdapterConfig = resolveSmsConfig()) {}
 
   async sendSms(phoneNumber: string, message: string): Promise<void> {
+    if (phoneNumber.trim().length === 0) {
+      throw new SmsNotificationAdapterError('SMS delivery target is required');
+    }
+    if (message.trim().length === 0) {
+      throw new SmsNotificationAdapterError('SMS delivery message is required');
+    }
+
     if (this.config.provider === 'stub') {
       console.warn('[SMS] provider is not configured; skipping delivery');
       return;
@@ -41,7 +55,7 @@ export class SmsNotificationAdapter {
           method: 'POST',
           headers: {
             Authorization: `Basic ${Buffer.from(
-              `${this.config.accountSid}:${this.config.authToken}`
+              `${this.config.accountSid}:${this.config.authToken}`,
             ).toString('base64')}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
@@ -50,7 +64,7 @@ export class SmsNotificationAdapter {
             From: this.config.fromNumber,
             Body: message,
           }).toString(),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -58,6 +72,5 @@ export class SmsNotificationAdapter {
       }
       return;
     }
-
   }
 }

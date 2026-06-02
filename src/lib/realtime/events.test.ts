@@ -16,6 +16,7 @@ describe('realtime event payload parser', () => {
     expect(parseRealtimeEventPayload('[]')).toBeNull();
     expect(parseRealtimeEventPayload('"presence_update"')).toBeNull();
     expect(parseRealtimeEventPayload('null')).toBeNull();
+    expect(parseRealtimeEventPayload('false')).toBeNull();
   });
 
   it('rejects payloads without a usable type', () => {

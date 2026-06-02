@@ -34,12 +34,22 @@ describe('patient-mcs query', () => {
       }),
     } as Response);
 
-    await expect(fetchPatientMcsOverview('patient_1', 'org_1', 0)).rejects.toMatchObject(
-      {
-        code: 'forbidden',
-        message: 'MCS 本文は権限のある担当者のみ表示できます。',
-      } satisfies Partial<PatientMcsOverviewQueryError>
-    );
+    await expect(fetchPatientMcsOverview('patient_1', 'org_1', 0)).rejects.toMatchObject({
+      code: 'forbidden',
+      message: 'MCS 本文は権限のある担当者のみ表示できます。',
+    } satisfies Partial<PatientMcsOverviewQueryError>);
+
+    global.fetch = originalFetch;
+  });
+
+  it('uses the fallback forbidden message when an error response body is not JSON', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue(new Response('{"message":', { status: 403 }));
+
+    await expect(fetchPatientMcsOverview('patient_1', 'org_1', 0)).rejects.toMatchObject({
+      code: 'forbidden',
+      message: 'MCS 連携の閲覧権限がありません',
+    } satisfies Partial<PatientMcsOverviewQueryError>);
 
     global.fetch = originalFetch;
   });
@@ -61,6 +71,29 @@ describe('patient-mcs query', () => {
       headers: { 'x-org-id': 'org_1' },
       cache: 'no-store',
     });
+
+    global.fetch = originalFetch;
+  });
+
+  it('maps malformed successful payloads to a typed failed query error', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        data: {
+          patient: { id: 'patient_1', name: '青葉 花子' },
+          link: null,
+          summary: null,
+          messages: { id: 'message_1' },
+        },
+      }),
+    } as Response);
+
+    await expect(fetchPatientMcsOverview('patient_1', 'org_1', 30)).rejects.toMatchObject({
+      code: 'failed',
+      message: 'MCS 連携情報の取得に失敗しました',
+    } satisfies Partial<PatientMcsOverviewQueryError>);
 
     global.fetch = originalFetch;
   });

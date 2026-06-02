@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import {
-  visitPriorityValues,
-  visitTypeValues,
-} from './visit-schedule';
+import { visitPriorityValues, visitScheduleDateKeySchema, visitTypeValues } from './visit-schedule';
+import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
 
 export const proposalStatusValues = [
   'proposed',
@@ -28,18 +26,10 @@ export const generateVisitScheduleProposalSchema = z.object({
   case_id: z.string().min(1, 'ケースIDは必須です'),
   visit_type: z.enum(visitTypeValues).default('regular'),
   priority: z.enum(visitPriorityValues).default('normal'),
-  start_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
-  locked_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+  locked_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   candidate_count: z.number().int().min(1).max(5).default(3),
-  travel_mode: z
-    .enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'])
-    .default('DRIVE'),
+  travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).default('DRIVE'),
   preferred_time_from: z.string().optional(),
   preferred_time_to: z.string().optional(),
   preferred_pharmacist_id: z.string().optional(),
@@ -62,12 +52,9 @@ export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', 
     outcome: z.enum(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed']),
     contact_method: z.enum(['phone', 'fax', 'email']).default('phone'),
     contact_name: z.string().optional(),
-    contact_phone: z.string().optional(),
+    contact_phone: optionalPhoneNumberSchema,
     note: z.string().optional(),
-    callback_due_at: z
-      .string()
-      .datetime('callback_due_at の日時形式が不正です')
-      .optional(),
+    callback_due_at: z.string().datetime('callback_due_at の日時形式が不正です').optional(),
   }),
 ]);
 
@@ -75,6 +62,4 @@ export type GenerateVisitScheduleProposalInput = z.infer<
   typeof generateVisitScheduleProposalSchema
 >;
 
-export type UpdateVisitScheduleProposalInput = z.infer<
-  typeof updateVisitScheduleProposalSchema
->;
+export type UpdateVisitScheduleProposalInput = z.infer<typeof updateVisitScheduleProposalSchema>;

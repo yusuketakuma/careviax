@@ -1,4 +1,4 @@
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 
 export type NotificationStreamItem = {
   id: string;
@@ -10,23 +10,17 @@ export type NotificationStreamItem = {
   created_at: string;
 };
 
-const NOTIFICATION_TYPES = new Set<NotificationStreamItem['type']>([
-  'urgent',
-  'business',
-  'reminder',
-  'system',
-]);
+const NOTIFICATION_TYPES = new Set<string>(['urgent', 'business', 'reminder', 'system']);
+
+function isNotificationType(value: unknown): value is NotificationStreamItem['type'] {
+  return typeof value === 'string' && NOTIFICATION_TYPES.has(value);
+}
 
 function readNotificationStreamItem(value: unknown): NotificationStreamItem | null {
   const object = readJsonObject(value);
   if (!object) return null;
   if (typeof object.id !== 'string') return null;
-  if (
-    typeof object.type !== 'string' ||
-    !NOTIFICATION_TYPES.has(object.type as NotificationStreamItem['type'])
-  ) {
-    return null;
-  }
+  if (!isNotificationType(object.type)) return null;
   if (typeof object.title !== 'string') return null;
   if (typeof object.message !== 'string') return null;
   if (object.link !== null && typeof object.link !== 'string') return null;
@@ -35,7 +29,7 @@ function readNotificationStreamItem(value: unknown): NotificationStreamItem | nu
 
   return {
     id: object.id,
-    type: object.type as NotificationStreamItem['type'],
+    type: object.type,
     title: object.title,
     message: object.message,
     link: object.link,
@@ -45,13 +39,7 @@ function readNotificationStreamItem(value: unknown): NotificationStreamItem | nu
 }
 
 export function parseNotificationStreamPayload(raw: string): NotificationStreamItem[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return [];
-  }
-
+  const parsed = parseJsonOrNull(raw);
   if (!Array.isArray(parsed)) return [];
   return parsed.flatMap((item) => {
     const notification = readNotificationStreamItem(item);

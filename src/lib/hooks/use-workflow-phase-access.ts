@@ -2,6 +2,8 @@
 
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { readJsonResponseBody } from '@/lib/api/response-body';
+import { readJsonObject } from '@/lib/db/json';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 export type WorkflowPhaseKey =
@@ -46,6 +48,127 @@ type WorkflowWorkbenchItem = {
 
 type WorkflowPreviewItem = WorkflowPhaseAccessItem['preview_items'][number];
 
+function readFiniteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readNumberRecord(value: unknown): Record<string, number> | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  const entries = Object.entries(object);
+  if (!entries.every((entry): entry is [string, number] => readFiniteNumber(entry[1]) !== null)) {
+    return null;
+  }
+  return Object.fromEntries(entries);
+}
+
+function readArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function readRequiredNumberObject<TKey extends string>(
+  value: unknown,
+  keys: readonly TKey[],
+): Record<TKey, number> | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+
+  const normalized = {} as Record<TKey, number>;
+  for (const key of keys) {
+    const numberValue = readFiniteNumber(object[key]);
+    if (numberValue === null) return null;
+    normalized[key] = numberValue;
+  }
+  return normalized;
+}
+
+function readWorkflowWorkbenchItem(value: unknown): WorkflowWorkbenchItem | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (
+    typeof object.id !== 'string' ||
+    typeof object.item_type !== 'string' ||
+    typeof object.title !== 'string' ||
+    typeof object.summary !== 'string' ||
+    typeof object.action_href !== 'string' ||
+    typeof object.action_label !== 'string' ||
+    (typeof object.patient_name !== 'string' && object.patient_name !== null)
+  ) {
+    return null;
+  }
+
+  return {
+    id: object.id,
+    item_type: object.item_type,
+    title: object.title,
+    summary: object.summary,
+    action_href: object.action_href,
+    action_label: object.action_label,
+    patient_name: object.patient_name,
+  };
+}
+
+function normalizeWorkflowWorkbench(value: unknown): WorkflowWorkbenchItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.map(readWorkflowWorkbenchItem);
+  if (items.some((item) => item === null)) return null;
+  return items as WorkflowWorkbenchItem[];
+}
+
+export function normalizeWorkflowDashboardResponse(
+  payload: unknown,
+): WorkflowDashboardResponse | null {
+  const root = readJsonObject(payload);
+  const data = readJsonObject(root?.data);
+  if (!data) return null;
+
+  const cycleStatusCounts = readNumberRecord(data.cycle_status_counts);
+  const operationsQueue = readRequiredNumberObject(data.operations_queue, [
+    'visit_demands',
+    'callback_followups',
+    'management_plan_reviews',
+    'preparation_pending',
+    'geocode_reviews',
+    'intake_linkages',
+    'self_reports_triage',
+  ] as const);
+  const visitOperations = readRequiredNumberObject(data.visit_operations, [
+    'overdue',
+    'awaiting_reports',
+    'missing_visit_consent',
+    'missing_management_plan',
+    'missing_first_visit_doc',
+    'missing_emergency_contact',
+    'missing_primary_physician',
+  ] as const);
+  const unifiedWorkbench = normalizeWorkflowWorkbench(data.unified_workbench);
+  const intakeLinkage = readArray(data.intake_linkage);
+  const refillUpcoming = readArray(data.refill_upcoming);
+
+  if (
+    !cycleStatusCounts ||
+    !operationsQueue ||
+    !visitOperations ||
+    !unifiedWorkbench ||
+    !intakeLinkage ||
+    !refillUpcoming
+  ) {
+    return null;
+  }
+
+  return {
+    data: {
+      ...(data as WorkflowDashboardResponse['data']),
+      cycle_status_counts: cycleStatusCounts,
+      operations_queue: operationsQueue,
+      visit_operations: visitOperations,
+      unified_workbench: unifiedWorkbench as WorkflowDashboardResponse['data']['unified_workbench'],
+      intake_linkage: intakeLinkage,
+      refill_upcoming: refillUpcoming,
+    },
+  };
+}
+
 function previewFromWorkbenchItem(item: WorkflowWorkbenchItem): WorkflowPreviewItem {
   return {
     id: item.id,
@@ -67,26 +190,28 @@ function buildMedicationSetSummary(preparationCount: number, auditCount: number)
 }
 
 export function buildWorkflowPhaseAccess(
-  payload: WorkflowDashboardResponse['data']
+  payload: WorkflowDashboardResponse['data'],
 ): Record<WorkflowPhaseKey, WorkflowPhaseAccessItem> {
-  const workbench = (payload.unified_workbench ?? []) as WorkflowWorkbenchItem[];
+  const workbench = normalizeWorkflowWorkbench(payload.unified_workbench) ?? [];
   const proposals = workbench.filter((item) => item.item_type === 'proposal');
   const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispensing'));
   const auditing = workbench.filter((item) => item.action_href.startsWith('/auditing'));
   const medicationSets = workbench.filter(
     (item) =>
       item.action_href.startsWith('/medication-sets') &&
-      !item.action_href.startsWith('/medication-sets/audit')
+      !item.action_href.startsWith('/medication-sets/audit'),
   );
-  const setAudits = workbench.filter((item) => item.action_href.startsWith('/medication-sets/audit'));
+  const setAudits = workbench.filter((item) =>
+    item.action_href.startsWith('/medication-sets/audit'),
+  );
   const schedules = workbench.filter((item) => item.action_href.startsWith('/schedules'));
   const visits = workbench.filter(
-    (item) =>
-      item.item_type === 'visit' ||
-      item.action_href.startsWith('/visits')
+    (item) => item.item_type === 'visit' || item.action_href.startsWith('/visits'),
   );
   const reports = workbench.filter((item) => item.action_href.startsWith('/reports'));
-  const intakeLinkageCount = Array.isArray(payload.intake_linkage) ? payload.intake_linkage.length : 0;
+  const intakeLinkageCount = Array.isArray(payload.intake_linkage)
+    ? payload.intake_linkage.length
+    : 0;
   const refillUpcomingCount = Array.isArray(payload.refill_upcoming)
     ? payload.refill_upcoming.length
     : 0;
@@ -97,7 +222,7 @@ export function buildWorkflowPhaseAccess(
   const setAuditPendingCount = Math.max(setAudits.length, medicationSetAuditCount);
   const schedulePendingCount = Math.max(
     schedules.length,
-    payload.operations_queue.visit_demands + payload.operations_queue.intake_linkages
+    payload.operations_queue.visit_demands + payload.operations_queue.intake_linkages,
   );
 
   const proposalNext = proposals[0];
@@ -116,7 +241,9 @@ export function buildWorkflowPhaseAccess(
       href: '/schedules/proposals',
       pending_count: proposals.length,
       summary:
-        proposals.length > 0 ? `未確定候補 ${proposals.length}件` : '対応待ちの訪問候補はありません',
+        proposals.length > 0
+          ? `未確定候補 ${proposals.length}件`
+          : '対応待ちの訪問候補はありません',
       tone: proposals.length > 0 ? 'warning' : 'default',
       next_action: proposalNext
         ? { href: proposalNext.action_href, label: proposalNext.action_label }
@@ -133,9 +260,7 @@ export function buildWorkflowPhaseAccess(
           : '処方受付の滞留はありません',
       tone: intakeLinkageCount > 0 ? 'danger' : prescriptionCount > 0 ? 'warning' : 'default',
       next_action:
-        prescriptionCount > 0
-          ? { href: '/prescriptions', label: '処方受付を開く' }
-          : null,
+        prescriptionCount > 0 ? { href: '/prescriptions', label: '処方受付を開く' } : null,
     },
     dispensing: {
       preview_items: dispensingNext ? [previewFromWorkbenchItem(dispensingNext)] : [],
@@ -184,7 +309,9 @@ export function buildWorkflowPhaseAccess(
       href: '/medication-sets',
       pending_count: setAuditPendingCount,
       summary:
-        setAuditPendingCount > 0 ? `セット監査 ${setAuditPendingCount}件` : 'セット監査待ちはありません',
+        setAuditPendingCount > 0
+          ? `セット監査 ${setAuditPendingCount}件`
+          : 'セット監査待ちはありません',
       tone: setAuditPendingCount > 0 ? 'warning' : 'default',
       next_action: setAuditsNext
         ? { href: setAuditsNext.action_href, label: setAuditsNext.action_label }
@@ -214,8 +341,11 @@ export function buildWorkflowPhaseAccess(
       href: '/visits',
       pending_count: visits.length,
       summary: visits.length > 0 ? `訪問時対応 ${visits.length}件` : '訪問時対応の滞留はありません',
-      tone: payload.visit_operations.overdue > 0 ? 'danger' : visits.length > 0 ? 'warning' : 'default',
-      next_action: visitsNext ? { href: visitsNext.action_href, label: visitsNext.action_label } : null,
+      tone:
+        payload.visit_operations.overdue > 0 ? 'danger' : visits.length > 0 ? 'warning' : 'default',
+      next_action: visitsNext
+        ? { href: visitsNext.action_href, label: visitsNext.action_label }
+        : null,
     },
     reports: {
       preview_items: reportsNext ? [previewFromWorkbenchItem(reportsNext)] : [],
@@ -248,7 +378,11 @@ export function useWorkflowPhaseAccess() {
       if (!response.ok) {
         throw new Error('工程ナビゲーションの取得に失敗しました');
       }
-      return response.json() as Promise<WorkflowDashboardResponse>;
+      const payload = normalizeWorkflowDashboardResponse(await readJsonResponseBody(response));
+      if (!payload) {
+        throw new Error('工程ナビゲーションの取得に失敗しました');
+      }
+      return payload;
     },
     enabled: Boolean(orgId),
     staleTime: 30_000,

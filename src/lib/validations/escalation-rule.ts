@@ -15,15 +15,22 @@ export const escalationActionTypes = [
   'admin_alert',
 ] as const;
 
-export const escalationNotifyRoles = [
-  'admin',
-  'manager',
-  'pharmacist',
-  'office_staff',
-] as const;
+export const escalationNotifyRoles = ['admin', 'manager', 'pharmacist', 'office_staff'] as const;
+
+export const ESCALATION_THRESHOLD_HOURS_MAX = 24 * 30;
+
+const thresholdHoursSchema = z.union([
+  z.number().int().min(1).max(ESCALATION_THRESHOLD_HOURS_MAX),
+  z
+    .string()
+    .trim()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(ESCALATION_THRESHOLD_HOURS_MAX)),
+]);
 
 export const escalationConditionSchema = z.object({
-  threshold_hours: z.coerce.number().int().min(1).max(24 * 30),
+  threshold_hours: thresholdHoursSchema,
   severity: z.enum(['normal', 'high', 'urgent']).optional(),
   status_in: z.array(z.string().min(1)).max(10).optional(),
 });

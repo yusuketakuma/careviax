@@ -1,9 +1,10 @@
+import { isIP } from 'node:net';
+
 const MAX_FORWARDED_FOR_LENGTH = 512;
 
 function isProxyHeaderTrusted() {
   const trustProxyHeaders =
-    process.env.TRUST_PROXY_HEADERS === '1' ||
-    process.env.TRUST_PROXY_HEADERS === 'true';
+    process.env.TRUST_PROXY_HEADERS === '1' || process.env.TRUST_PROXY_HEADERS === 'true';
 
   if (!trustProxyHeaders) {
     return false;
@@ -17,19 +18,12 @@ function isValidIpLiteral(value: string) {
     return false;
   }
 
-  if (value.includes(':')) {
-    return /^[0-9A-Fa-f:.]+$/.test(value) && value.includes(':');
-  }
+  const family = isIP(value);
+  if (family === 6) return true;
+  if (family !== 4) return false;
 
   const parts = value.split('.');
-  return (
-    parts.length === 4 &&
-    parts.every((part) => {
-      if (!/^\d{1,3}$/.test(part)) return false;
-      const numeric = Number(part);
-      return numeric >= 0 && numeric <= 255 && String(numeric) === part;
-    })
-  );
+  return parts.every((part) => String(Number(part)) === part);
 }
 
 function readTrustedProxyHops() {
@@ -59,8 +53,7 @@ export function getClientIp(request: { headers: Headers }): string | undefined {
       .map((value) => value.trim())
       .filter(Boolean);
     const trustedProxyHops = readTrustedProxyHops();
-    const index =
-      trustedProxyHops > 0 ? Math.max(0, candidates.length - trustedProxyHops - 1) : 0;
+    const index = trustedProxyHops > 0 ? Math.max(0, candidates.length - trustedProxyHops - 1) : 0;
     const candidate = candidates[index];
     if (candidate && isValidIpLiteral(candidate)) {
       return candidate;

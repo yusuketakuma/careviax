@@ -1,4 +1,4 @@
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonObjectOrNull } from '@/lib/db/json';
 
 export type CognitoChallengeType = 'NEW_PASSWORD_REQUIRED' | 'SOFTWARE_TOKEN_MFA';
 
@@ -16,14 +16,7 @@ export function encodeCognitoChallenge(payload: CognitoChallengePayload): string
 }
 
 function parseCognitoChallengePayload(raw: string): CognitoChallengePayload | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-
-  const object = readJsonObject(parsed);
+  const object = parseJsonObjectOrNull(raw);
   if (!object) return null;
   if (object.type !== 'NEW_PASSWORD_REQUIRED' && object.type !== 'SOFTWARE_TOKEN_MFA') {
     return null;

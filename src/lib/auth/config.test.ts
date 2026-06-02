@@ -37,8 +37,52 @@ vi.mock('@/server/services/cognito-auth', () => ({
 }));
 
 import { authOptions, getAuthAccessToken } from './config';
+import { resolveLocalUserByIdentity } from './user-resolution';
 
 type SessionCallback = NonNullable<NonNullable<typeof authOptions.callbacks>['session']>;
+type JwtCallback = NonNullable<NonNullable<typeof authOptions.callbacks>['jwt']>;
+
+describe('authOptions jwt callback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(resolveLocalUserByIdentity).mockResolvedValue(null);
+  });
+
+  it('reads Cognito profile claims through the guarded profile object', async () => {
+    const jwtCallback = authOptions.callbacks?.jwt;
+    expect(jwtCallback).toBeTypeOf('function');
+    const cognitoProfile = {
+      sub: 'sub_1',
+      email: 'user@example.com',
+      'cognito:groups': ['admin', 'pharmacist'],
+    } as unknown as Parameters<JwtCallback>[0]['profile'];
+
+    const token = await jwtCallback!({
+      token: {},
+      account: {
+        provider: 'cognito',
+        type: 'oauth',
+        providerAccountId: 'sub_1',
+      },
+      profile: cognitoProfile,
+      user: {
+        id: 'user_1',
+        email: 'user@example.com',
+        emailVerified: null,
+      },
+      trigger: 'signIn',
+      isNewUser: false,
+    } satisfies Parameters<JwtCallback>[0]);
+
+    expect(token.cognitoSub).toBe('sub_1');
+    expect(token.sub).toBe('sub_1');
+    expect(token.cognitoGroups).toEqual(['admin', 'pharmacist']);
+    expect(resolveLocalUserByIdentity).toHaveBeenCalledWith({
+      cognitoSub: 'sub_1',
+      email: 'user@example.com',
+    });
+  });
+});
 
 describe('authOptions session callback', () => {
   it('keeps Cognito tokens out of the client session payload', async () => {
@@ -94,7 +138,7 @@ describe('getAuthAccessToken', () => {
     expect(getTokenMock).toHaveBeenCalledWith(
       expect.objectContaining({
         req: request,
-      })
+      }),
     );
   });
 });

@@ -5,12 +5,39 @@ export type PaginatedResponse<T> = {
   totalCount?: number;
 };
 
-function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number) {
+export function parseBoundedInteger(
+  value: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   const normalized = value?.trim() ?? '';
   if (!/^-?\d+$/.test(normalized)) return fallback;
   const parsed = Number(normalized);
   if (!Number.isSafeInteger(parsed)) return fallback;
   return Math.min(Math.max(parsed, min), max);
+}
+
+export type OptionalBoundedIntegerParamResult =
+  | { ok: true; value: number | undefined }
+  | { ok: false };
+
+export function parseOptionalBoundedIntegerParam(
+  value: string | null,
+  min: number,
+  max: number,
+): OptionalBoundedIntegerParamResult {
+  if (value === null) return { ok: true, value: undefined };
+
+  const normalized = value.trim();
+  if (!/^-?\d+$/.test(normalized)) return { ok: false };
+
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    return { ok: false };
+  }
+
+  return { ok: true, value: parsed };
 }
 
 export function parsePaginationParams(searchParams: URLSearchParams) {

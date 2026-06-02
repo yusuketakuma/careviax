@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkflowPhaseAccess } from './use-workflow-phase-access';
+import {
+  buildWorkflowPhaseAccess,
+  normalizeWorkflowDashboardResponse,
+} from './use-workflow-phase-access';
 import { MAIN_WORKFLOW_STEPS } from '@/components/features/workflow/main-workflow-route';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 function createWorkflowPayload(
-  overrides?: Partial<WorkflowDashboardResponse['data']>
+  overrides?: Partial<WorkflowDashboardResponse['data']>,
 ): WorkflowDashboardResponse['data'] {
   return {
     cycle_status_counts: {},
@@ -110,7 +113,7 @@ describe('buildWorkflowPhaseAccess', () => {
           intake_linkages: 1,
           self_reports_triage: 0,
         },
-      })
+      }),
     );
 
     expect(phaseAccess.medication_sets.pending_count).toBe(2);
@@ -126,5 +129,78 @@ describe('buildWorkflowPhaseAccess', () => {
       href: '/schedules',
       label: 'スケジュール登録を開く',
     });
+  });
+
+  it('normalizes dashboard API payloads before phase access uses workbench links', () => {
+    const payload = { data: createWorkflowPayload() };
+
+    expect(normalizeWorkflowDashboardResponse(payload)).toEqual(payload);
+  });
+
+  it('rejects malformed workflow dashboard payloads used by navigation access', () => {
+    expect(
+      normalizeWorkflowDashboardResponse({
+        data: createWorkflowPayload({
+          operations_queue: {
+            visit_demands: '2',
+            callback_followups: 0,
+            management_plan_reviews: 0,
+            preparation_pending: 0,
+            geocode_reviews: 0,
+            intake_linkages: 1,
+            self_reports_triage: 0,
+          } as unknown as WorkflowDashboardResponse['data']['operations_queue'],
+        }),
+      }),
+    ).toBeNull();
+
+    expect(
+      normalizeWorkflowDashboardResponse({
+        data: createWorkflowPayload({
+          unified_workbench: [
+            {
+              id: 'task_1',
+              item_type: 'task',
+              queue_label: '調剤',
+              title: '調剤待ち',
+              summary: '確認してください',
+              priority: 'normal',
+              due_at: null,
+              action_href: 123,
+              action_label: '開く',
+              owner_name: null,
+              patient_name: '青葉 花子',
+              badges: [],
+            },
+          ] as unknown as WorkflowDashboardResponse['data']['unified_workbench'],
+        }),
+      }),
+    ).toBeNull();
+  });
+
+  it('ignores malformed workbench rows when building phase access directly', () => {
+    const phaseAccess = buildWorkflowPhaseAccess(
+      createWorkflowPayload({
+        unified_workbench: [
+          {
+            id: 'task_1',
+            item_type: 'task',
+            queue_label: '調剤',
+            title: '調剤待ち',
+            summary: '確認してください',
+            priority: 'normal',
+            due_at: null,
+            action_href: 123,
+            action_label: '開く',
+            owner_name: null,
+            patient_name: '青葉 花子',
+            badges: [],
+          },
+        ] as unknown as WorkflowDashboardResponse['data']['unified_workbench'],
+      }),
+    );
+
+    expect(phaseAccess.dispensing.pending_count).toBe(0);
+    expect(phaseAccess.dispensing.next_action).toBeNull();
   });
 });

@@ -79,13 +79,18 @@ export class EPrescriptionAdapterError extends Error {
   }
 }
 
-const E_PRESCRIPTION_STATUSES = new Set([
+const E_PRESCRIPTION_STATUSES = [
   'issued',
   'partially_dispensed',
   'dispensed',
   'cancelled',
   'unknown',
-]);
+] as const satisfies readonly EPrescriptionRecord['status'][];
+const E_PRESCRIPTION_STATUS_SET = new Set<string>(E_PRESCRIPTION_STATUSES);
+
+function isEPrescriptionStatus(value: string): value is EPrescriptionRecord['status'] {
+  return E_PRESCRIPTION_STATUS_SET.has(value);
+}
 
 function readNonEmptyString(value: unknown) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
@@ -122,6 +127,9 @@ function readMedicationItem(value: unknown): EPrescriptionMedicationItem | null 
   if (!object) return null;
 
   const drugCode = readNullableString(object.drugCode);
+  const drugName = readNonEmptyString(object.drugName);
+  const dose = readNonEmptyString(object.dose);
+  const frequency = readNonEmptyString(object.frequency);
   const quantity = readNullableFiniteNumber(object.quantity);
   const unit = readNullableString(object.unit);
   const notes = readOptionalNullableString(object.notes);
@@ -131,9 +139,9 @@ function readMedicationItem(value: unknown): EPrescriptionMedicationItem | null 
     !Number.isInteger(object.lineNumber) ||
     object.lineNumber <= 0 ||
     (drugCode === null && object.drugCode !== null) ||
-    !readNonEmptyString(object.drugName) ||
-    !readNonEmptyString(object.dose) ||
-    !readNonEmptyString(object.frequency) ||
+    !drugName ||
+    !dose ||
+    !frequency ||
     typeof object.days !== 'number' ||
     !Number.isFinite(object.days) ||
     object.days <= 0 ||
@@ -147,9 +155,9 @@ function readMedicationItem(value: unknown): EPrescriptionMedicationItem | null 
   return {
     lineNumber: object.lineNumber,
     drugCode,
-    drugName: object.drugName as string,
-    dose: object.dose as string,
-    frequency: object.frequency as string,
+    drugName,
+    dose,
+    frequency,
     days: object.days,
     quantity,
     unit,
@@ -168,6 +176,10 @@ export function normalizeEPrescriptionRecord(value: unknown): EPrescriptionRecor
   const patientName = readNullableString(object.patientName);
   const prescriberName = readNullableString(object.prescriberName);
   const prescriberInstitution = readNullableString(object.prescriberInstitution);
+  const status =
+    typeof object.status === 'string' && isEPrescriptionStatus(object.status)
+      ? object.status
+      : null;
   const refillRemainingCount =
     object.refillRemainingCount === undefined
       ? undefined
@@ -187,8 +199,7 @@ export function normalizeEPrescriptionRecord(value: unknown): EPrescriptionRecor
     (patientName === null && object.patientName !== null) ||
     (prescriberName === null && object.prescriberName !== null) ||
     (prescriberInstitution === null && object.prescriberInstitution !== null) ||
-    typeof object.status !== 'string' ||
-    !E_PRESCRIPTION_STATUSES.has(object.status) ||
+    !status ||
     !Array.isArray(object.items) ||
     (object.refillRemainingCount !== undefined && refillRemainingCount === undefined) ||
     (object.nextDispenseDate !== undefined && nextDispenseDate === undefined) ||
@@ -197,8 +208,11 @@ export function normalizeEPrescriptionRecord(value: unknown): EPrescriptionRecor
     return null;
   }
 
-  const items = object.items.map(readMedicationItem);
-  if (items.some((item) => item === null)) return null;
+  const items = object.items.flatMap((item): EPrescriptionMedicationItem[] => {
+    const medicationItem = readMedicationItem(item);
+    return medicationItem ? [medicationItem] : [];
+  });
+  if (items.length !== object.items.length) return null;
 
   return {
     prescriptionId,
@@ -208,8 +222,8 @@ export function normalizeEPrescriptionRecord(value: unknown): EPrescriptionRecor
     patientName,
     prescriberName,
     prescriberInstitution,
-    status: object.status as EPrescriptionRecord['status'],
-    items: items as EPrescriptionMedicationItem[],
+    status,
+    items,
     ...(refillRemainingCount !== undefined ? { refillRemainingCount } : {}),
     ...(nextDispenseDate !== undefined ? { nextDispenseDate } : {}),
     ...(raw ? { raw } : {}),
@@ -306,7 +320,7 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
   }
 
   async fetchPrescription(prescriptionId: string): Promise<EPrescriptionRecord | null> {
-    const { status, data } = await fetchJson<EPrescriptionRecord | { data?: EPrescriptionRecord }>(
+    const { status, data } = await fetchJson(
       `${this.config.baseUrl!.replace(/\/$/, '')}/prescriptions/${encodeURIComponent(prescriptionId)}`,
       {
         headers: this.headers,
@@ -358,9 +372,7 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
       url.searchParams.set('includeDispensed', params.includeDispensed ? 'true' : 'false');
     }
 
-    const { status, data } = await fetchJson<
-      EPrescriptionRecord[] | { data?: EPrescriptionRecord[] }
-    >(url.toString(), {
+    const { status, data } = await fetchJson(url.toString(), {
       headers: this.headers,
     });
     if (status === 401 || status === 403) {
@@ -381,7 +393,7 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
         data,
       );
     }
-    const unwrapped = unwrapDataEnvelope<unknown>(data);
+    const unwrapped = unwrapDataEnvelope(data);
     if (unwrapped === null) return [];
     if (!Array.isArray(unwrapped)) {
       throw new EPrescriptionAdapterError(
@@ -393,8 +405,11 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
       );
     }
 
-    const records = unwrapped.map(normalizeEPrescriptionRecord);
-    if (records.some((record) => record === null)) {
+    const records = unwrapped.flatMap((value): EPrescriptionRecord[] => {
+      const record = normalizeEPrescriptionRecord(value);
+      return record ? [record] : [];
+    });
+    if (records.length !== unwrapped.length) {
       throw new EPrescriptionAdapterError(
         '電子処方箋検索 API のレスポンス形式が不正です',
         'UPSTREAM_FAILURE',
@@ -404,11 +419,11 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
       );
     }
 
-    return records as EPrescriptionRecord[];
+    return records;
   }
 
   async confirmDispense(payload: EPrescriptionDispenseConfirmation): Promise<void> {
-    const { status, data } = await fetchJson<Record<string, unknown>>(
+    const { status, data } = await fetchJson(
       `${this.config.baseUrl!.replace(/\/$/, '')}/dispenses/confirm`,
       {
         method: 'POST',

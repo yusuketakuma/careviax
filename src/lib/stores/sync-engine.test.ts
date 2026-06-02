@@ -122,6 +122,38 @@ describe('sync-engine PHI persistence', () => {
     });
   });
 
+  it('marks non-object decrypted sync payloads failed without sending them to the server', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 12,
+        entityType: 'visit_record',
+        payload: 'encv1:array-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:array-sync-payload') return JSON.stringify(['unexpected']);
+        return value ?? null;
+      },
+    );
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.update).toHaveBeenCalledWith(12, {
+      retryCount: 1,
+      lastError: 'Invalid sync payload',
+      conflict_state: undefined,
+      conflict_payload: undefined,
+    });
+  });
+
   it('drops malformed server conflict responses before persisting conflict snapshots', async () => {
     dbMocks.toArray.mockResolvedValue([
       {
@@ -173,6 +205,54 @@ describe('sync-engine PHI persistence', () => {
     });
     expect(dbMocks.update).toHaveBeenCalledWith(
       10,
+      expect.objectContaining({
+        retryCount: 3,
+        conflict_state: 'server_conflict',
+      }),
+    );
+  });
+
+  it('drops unparseable server conflict responses before persisting conflict snapshots', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 13,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('{"details":', {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    const conflictEncryptCall = cryptoMocks.encryptOfflinePayloadRequired.mock.calls.find(
+      ([, context]) => context === 'sync queue conflict payload',
+    );
+    expect(conflictEncryptCall).toBeDefined();
+    expect(JSON.parse(conflictEncryptCall![0] as string)).toEqual({
+      local: { schedule_id: 'schedule-1', soap_subjective: '眠気あり' },
+      server: null,
+    });
+    expect(dbMocks.update).toHaveBeenCalledWith(
+      13,
       expect.objectContaining({
         retryCount: 3,
         conflict_state: 'server_conflict',

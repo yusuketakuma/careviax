@@ -34,10 +34,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import { withValidatedBody } from '../route-builder';
 
-function createRequest(
-  body: unknown,
-  headers?: Record<string, string>
-) {
+function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/test-route-builder', {
     method: 'POST',
     headers: {
@@ -66,7 +63,7 @@ describe('withValidatedBody', () => {
         patientId: body.patient_id,
         note: body.note,
         resolvedPatientId: references.patient?.id ?? null,
-      })
+      }),
   );
 
   beforeEach(() => {
@@ -78,7 +75,7 @@ describe('withValidatedBody', () => {
     authMock.mockResolvedValue(null);
 
     const response = await handler(
-      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
+      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');
@@ -90,7 +87,7 @@ describe('withValidatedBody', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'driver' });
 
     const response = await handler(
-      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
+      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');
@@ -102,11 +99,26 @@ describe('withValidatedBody', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const response = await handler(
-      createRequest({ patient_id: '', note: '' }, { 'x-org-id': 'org_1' })
+      createRequest({ patient_id: '', note: '' }, { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when request body is not a JSON object', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await handler(createRequest(['unexpected'], { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when org reference validation fails', async () => {
@@ -115,7 +127,7 @@ describe('withValidatedBody', () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = await handler(
-      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
+      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');
@@ -127,7 +139,7 @@ describe('withValidatedBody', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const response = await handler(
-      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
+      createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');

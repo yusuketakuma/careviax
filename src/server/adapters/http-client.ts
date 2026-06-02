@@ -1,8 +1,10 @@
+import { readJsonObject } from '@/lib/db/json';
+
 export class HttpAdapterError extends Error {
   constructor(
     message: string,
     readonly status?: number,
-    readonly causeDetail?: unknown
+    readonly causeDetail?: unknown,
   ) {
     super(message);
     this.name = 'HttpAdapterError';
@@ -15,10 +17,10 @@ type FetchJsonOptions = {
   body?: unknown;
 };
 
-export async function fetchJson<T>(
+export async function fetchJson(
   url: string,
-  options: FetchJsonOptions = {}
-): Promise<{ status: number; data: T | null }> {
+  options: FetchJsonOptions = {},
+): Promise<{ status: number; data: unknown | null }> {
   const response = await fetch(url, {
     method: options.method ?? 'GET',
     headers: {
@@ -34,10 +36,10 @@ export async function fetchJson<T>(
   }
 
   const text = await response.text();
-  let data: T | null = null;
+  let data: unknown | null = null;
   if (text.length > 0) {
     try {
-      data = JSON.parse(text) as T;
+      data = JSON.parse(text);
     } catch (err) {
       throw new HttpAdapterError(
         `Response body is not valid JSON (HTTP ${response.status})`,
@@ -56,10 +58,11 @@ export function buildBearerHeaders(token?: string, apiKey?: string) {
   };
 }
 
-export function unwrapDataEnvelope<T>(payload: T | { data?: T } | null): T | null {
-  if (!payload) return null;
-  if (typeof payload === 'object' && 'data' in payload) {
-    return (payload as { data?: T }).data ?? null;
+export function unwrapDataEnvelope(payload: unknown): unknown | null {
+  if (payload === null || payload === undefined) return null;
+  const object = readJsonObject(payload);
+  if (object && 'data' in object) {
+    return object.data ?? null;
   }
-  return payload as T;
+  return payload;
 }

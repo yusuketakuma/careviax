@@ -1,7 +1,4 @@
-import { readJsonObject } from '@/lib/db/json';
-
-const VISIT_PRIORITIES = new Set(['normal', 'urgent', 'emergency']);
-const VISIT_BRIEF_PROVIDERS = new Set(['rule', 'openai']);
+import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 
 export type CachedVisitBriefCard = {
   scheduleId: string;
@@ -21,6 +18,12 @@ export type CachedVisitBriefCard = {
   isFallback: boolean;
 };
 
+type CachedVisitBriefPriority = CachedVisitBriefCard['priority'];
+type CachedVisitBriefProvider = CachedVisitBriefCard['provider'];
+
+const VISIT_PRIORITIES = new Set<string>(['normal', 'urgent', 'emergency']);
+const VISIT_BRIEF_PROVIDERS = new Set<string>(['rule', 'openai']);
+
 function readNonEmptyString(value: unknown) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
@@ -38,16 +41,20 @@ function isValidIsoDate(value: string) {
   return Number.isFinite(new Date(value).getTime());
 }
 
-function readPriority(value: unknown): CachedVisitBriefCard['priority'] | null {
-  return typeof value === 'string' && VISIT_PRIORITIES.has(value)
-    ? (value as CachedVisitBriefCard['priority'])
-    : null;
+function isCachedVisitBriefPriority(value: unknown): value is CachedVisitBriefPriority {
+  return typeof value === 'string' && VISIT_PRIORITIES.has(value);
 }
 
-function readProvider(value: unknown): CachedVisitBriefCard['provider'] | null {
-  return typeof value === 'string' && VISIT_BRIEF_PROVIDERS.has(value)
-    ? (value as CachedVisitBriefCard['provider'])
-    : null;
+function isCachedVisitBriefProvider(value: unknown): value is CachedVisitBriefProvider {
+  return typeof value === 'string' && VISIT_BRIEF_PROVIDERS.has(value);
+}
+
+function readPriority(value: unknown): CachedVisitBriefPriority | null {
+  return isCachedVisitBriefPriority(value) ? value : null;
+}
+
+function readProvider(value: unknown): CachedVisitBriefProvider | null {
+  return isCachedVisitBriefProvider(value) ? value : null;
 }
 
 export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefCard | null {
@@ -108,11 +115,5 @@ export function normalizeCachedVisitBriefCard(value: unknown): CachedVisitBriefC
 }
 
 export function parseCachedVisitBriefCardPayload(raw: string | null | undefined) {
-  if (!raw) return null;
-
-  try {
-    return normalizeCachedVisitBriefCard(JSON.parse(raw));
-  } catch {
-    return null;
-  }
+  return normalizeCachedVisitBriefCard(parseJsonOrNull(raw));
 }

@@ -72,6 +72,18 @@ export type VisitWorkflowAction = {
   evidence: string[];
 };
 
+function isVisitWorkflowActionDetail(
+  detail: VisitWorkflowActionDetail | null,
+): detail is VisitWorkflowActionDetail {
+  return detail !== null;
+}
+
+function compactVisitWorkflowActionDetails(
+  details: Array<VisitWorkflowActionDetail | null>,
+): VisitWorkflowActionDetail[] {
+  return details.filter(isVisitWorkflowActionDetail);
+}
+
 function hasText(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -193,7 +205,7 @@ export function buildPostVisitWorkflowActions(args: {
         preferredReport && args.soapComplete
           ? { operation: 'generate_report', label: '別文書を作成', variant: 'outline' }
           : undefined,
-      details: [
+      details: compactVisitWorkflowActionDetails([
         reports.length > 0
           ? {
               label: '作成済み',
@@ -210,7 +222,7 @@ export function buildPostVisitWorkflowActions(args: {
               tone: 'info',
             }
           : null,
-      ].filter(Boolean) as VisitWorkflowActionDetail[],
+      ]),
       href: preferredReport ? `/reports/${preferredReport.id}` : undefined,
       action_label: preferredReport
         ? '報告書を確認'
@@ -276,7 +288,7 @@ export function buildPostVisitWorkflowActions(args: {
                 href: visitBillingCandidatesHref,
               }
             : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
-      details: [
+      details: compactVisitWorkflowActionDetails([
         args.billingMonth
           ? { label: '対象月', value: args.billingMonth.slice(0, 7), tone: 'neutral' }
           : null,
@@ -287,7 +299,7 @@ export function buildPostVisitWorkflowActions(args: {
               tone: 'success',
             }
           : null,
-      ].filter(Boolean) as VisitWorkflowActionDetail[],
+      ]),
       href:
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_href ??

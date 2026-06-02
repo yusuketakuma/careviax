@@ -22,11 +22,6 @@ export interface FhirMedicationRequest {
   }>;
 }
 
-type FhirBundle<T> = {
-  resourceType: 'Bundle';
-  entry?: Array<{ resource?: T }>;
-};
-
 function readNonEmptyString(value: unknown) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
@@ -218,7 +213,7 @@ export class FhirAdapter {
   ) {}
 
   async getPatient(id: string): Promise<FhirPatient | null> {
-    const { status, data } = await fetchJson<FhirPatient | { data?: FhirPatient }>(
+    const { status, data } = await fetchJson(
       `${this.baseUrl.replace(/\/$/, '')}/Patient/${encodeURIComponent(id)}`,
       {
         headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
@@ -238,11 +233,7 @@ export class FhirAdapter {
   }
 
   async getMedicationRequests(patientId: string): Promise<FhirMedicationRequest[]> {
-    const { status, data } = await fetchJson<
-      | FhirBundle<FhirMedicationRequest>
-      | FhirMedicationRequest[]
-      | { data?: FhirMedicationRequest[] }
-    >(
+    const { status, data } = await fetchJson(
       `${this.baseUrl.replace(/\/$/, '')}/MedicationRequest?patient=${encodeURIComponent(patientId)}`,
       {
         headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
@@ -269,14 +260,11 @@ export class FhirAdapter {
   }
 
   async createMedicationDispense(data: Record<string, unknown>): Promise<void> {
-    const result = await fetchJson<Record<string, unknown>>(
-      `${this.baseUrl.replace(/\/$/, '')}/MedicationDispense`,
-      {
-        method: 'POST',
-        headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
-        body: data,
-      },
-    );
+    const result = await fetchJson(`${this.baseUrl.replace(/\/$/, '')}/MedicationDispense`, {
+      method: 'POST',
+      headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+      body: data,
+    });
     if (result.status >= 400) {
       throw new HttpAdapterError(
         'FHIR MedicationDispense 登録に失敗しました',

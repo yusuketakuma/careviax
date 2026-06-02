@@ -1,8 +1,7 @@
 import { z } from 'zod';
+import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
 
-const timeStringSchema = z
-  .string()
-  .regex(/^\d{2}:\d{2}$/, '時刻形式が不正です（HH:mm）');
+const timeStringSchema = z.string().regex(/^\d{2}:\d{2}$/, '時刻形式が不正です（HH:mm）');
 
 export const upsertVisitConstraintsSchema = z.object({
   preferred_weekdays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
@@ -15,7 +14,7 @@ export const upsertVisitConstraintsSchema = z.object({
   family_presence_required: z.boolean().default(false),
   visit_buffer_minutes: z.number().int().min(0).max(240).optional(),
   preferred_contact_name: z.string().optional(),
-  preferred_contact_phone: z.string().optional(),
+  preferred_contact_phone: optionalPhoneNumberSchema,
   notes: z.string().optional(),
   residence_lat: z.number().optional(),
   residence_lng: z.number().optional(),

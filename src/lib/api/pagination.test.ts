@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parsePaginationParams } from './pagination';
+import { parseOptionalBoundedIntegerParam, parsePaginationParams } from './pagination';
 
 describe('parsePaginationParams', () => {
   it('defaults malformed and out-of-range limits to safe Prisma values', () => {
@@ -43,5 +43,25 @@ describe('parsePaginationParams', () => {
       cursor: '25',
       offset: 25,
     });
+  });
+});
+
+describe('parseOptionalBoundedIntegerParam', () => {
+  it('distinguishes omitted values from invalid numeric query strings', () => {
+    expect(parseOptionalBoundedIntegerParam(null, 0, 100)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(parseOptionalBoundedIntegerParam('0', 0, 100)).toEqual({ ok: true, value: 0 });
+    expect(parseOptionalBoundedIntegerParam(' 25 ', 0, 100)).toEqual({ ok: true, value: 25 });
+  });
+
+  it('rejects malformed, unsafe, and out-of-range values without clamping', () => {
+    expect(parseOptionalBoundedIntegerParam('', 0, 100)).toEqual({ ok: false });
+    expect(parseOptionalBoundedIntegerParam('1e2', 0, 100)).toEqual({ ok: false });
+    expect(parseOptionalBoundedIntegerParam('20abc', 0, 100)).toEqual({ ok: false });
+    expect(parseOptionalBoundedIntegerParam('-1', 0, 100)).toEqual({ ok: false });
+    expect(parseOptionalBoundedIntegerParam('101', 0, 100)).toEqual({ ok: false });
+    expect(parseOptionalBoundedIntegerParam('9007199254740992', 0, 100)).toEqual({ ok: false });
   });
 });

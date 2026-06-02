@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
-import { readJsonObject } from '@/lib/db/json';
+import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 
 export type PrescriptionDraftSnapshot = {
   patientSelection: {
@@ -56,14 +56,6 @@ export type PrescriptionDraftSnapshot = {
     residualAdjustment: boolean;
   };
 };
-
-function parseJsonPayload(value: string) {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value : '';
@@ -172,7 +164,7 @@ function readInquiry(value: unknown): PrescriptionDraftSnapshot['inquiry'] | nul
 }
 
 function readPrescriptionDraftSnapshot(payload: string): PrescriptionDraftSnapshot | null {
-  const object = readJsonObject(parseJsonPayload(payload));
+  const object = parseJsonObjectOrNull(payload);
   if (!object) return null;
 
   const patientSelection = readPatientSelection(object.patientSelection);

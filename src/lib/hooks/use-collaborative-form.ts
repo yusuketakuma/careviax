@@ -14,6 +14,7 @@ import { useRealtimeEvents } from './use-realtime-events';
 import { useOrgId } from './use-org-id';
 import { createYjsProvider, isYjsProviderConfigured } from '@/lib/collaboration/yjs-provider';
 import { FormYjsBridge } from '@/lib/collaboration/form-yjs-bridge';
+import { readJsonResponseBody } from '@/lib/api/response-body';
 import type { PresenceUser } from '@/components/features/collaboration/presence-avatars';
 
 interface UseCollaborativeFormOptions<TFieldValues extends FieldValues> {
@@ -56,6 +57,62 @@ const ROOM_TOKEN_REFRESH_RETRY_MAX_MS = 60_000;
 const ROOM_TOKEN_REFRESH_RETRY_JITTER_MS = 1_000;
 const PROVIDER_RENEWAL_CANDIDATE_TIMEOUT_MS = 10_000;
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readNonBlankString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readPresenceUser(value: unknown): PresenceUser | null {
+  const object = readRecord(value);
+  if (!object) return null;
+
+  const userId = readNonBlankString(object.user_id);
+  const displayName = readNonBlankString(object.display_name);
+  const updatedAt = readNonBlankString(object.updated_at);
+  let activeField: string | null | undefined;
+  if (object.active_field == null) {
+    activeField = null;
+  } else if (typeof object.active_field === 'string') {
+    activeField = object.active_field.trim() || null;
+  }
+
+  if (!userId || !displayName || !updatedAt || activeField === undefined) return null;
+  return {
+    user_id: userId,
+    display_name: displayName,
+    active_field: activeField,
+    updated_at: updatedAt,
+  };
+}
+
+function readPresenceUsersResponse(payload: unknown): PresenceUser[] {
+  const object = readRecord(payload);
+  const users = object?.data;
+  if (!Array.isArray(users)) return [];
+  return users.flatMap((user) => {
+    const parsed = readPresenceUser(user);
+    return parsed ? [parsed] : [];
+  });
+}
+
+function readCollaborationRoomTokenResponse(
+  payload: unknown,
+): CollaborationRoomTokenResponse | null {
+  const object = readRecord(payload);
+  if (!object) return null;
+
+  const room = readNonBlankString(object.room);
+  const token = readNonBlankString(object.token);
+  const expiresAt = readNonBlankString(object.expires_at);
+  if (!room || !token || !expiresAt) return null;
+
+  return { room, token, expires_at: expiresAt };
+}
+
 interface UseCollaborativeFormReturn<TFieldValues extends FieldValues> {
   registerCollaborative: (
     name: Path<TFieldValues>,
@@ -92,8 +149,8 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
         { headers: { 'x-org-id': orgId } },
       );
       if (!res.ok) return [];
-      const json = (await res.json()) as { data: PresenceUser[] };
-      return json.data ?? [];
+      const payload = await readJsonResponseBody(res);
+      return readPresenceUsersResponse(payload);
     },
     refetchInterval: 5000,
     enabled: !!orgId && !!entityId && !collaborationAccessDenied,
@@ -216,10 +273,7 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
     function activateCollaborationSurface() {
       if (!bridge) {
         bridge = new FormYjsBridge(doc);
-        bridge.initializeDefaults(
-          form.getValues() as Record<string, unknown>,
-          textFieldNamesRef.current,
-        );
+        bridge.initializeDefaults(readRecord(form.getValues()) ?? {}, textFieldNamesRef.current);
       }
 
       bridgeRef.current = bridge;
@@ -372,10 +426,10 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
           : { kind: 'access-denied' };
       }
 
-      const roomToken = (await tokenResponse
-        .json()
-        .catch(() => null)) as CollaborationRoomTokenResponse | null;
-      if (!roomToken?.room || !roomToken.token) return { kind: 'transient-error' };
+      const roomToken = readCollaborationRoomTokenResponse(
+        await readJsonResponseBody(tokenResponse),
+      );
+      if (!roomToken) return { kind: 'transient-error' };
       const expiresAtMs = Date.parse(roomToken.expires_at);
       if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
         return { kind: 'transient-error' };

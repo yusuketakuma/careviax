@@ -155,6 +155,57 @@ describe('useCollaborativeForm', () => {
     });
   });
 
+  it('ignores malformed presence payloads before exposing active collaborators', async () => {
+    isYjsProviderConfiguredMock.mockReturnValue(false);
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/presence?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                user_id: ' user_1 ',
+                display_name: ' 田中 ',
+                active_field: 'note',
+                updated_at: ' 2026-05-31T00:00:00.000Z ',
+              },
+              {
+                user_id: 123,
+                display_name: 'broken',
+                active_field: null,
+                updated_at: '2026-05-31T00:00:00.000Z',
+              },
+              {
+                user_id: 'user_2',
+                display_name: '佐藤',
+                active_field: { field: 'note' },
+                updated_at: '2026-05-31T00:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const { result } = renderHook(() => useTestCollaborativeForm(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.presenceData).toEqual([
+        {
+          user_id: 'user_1',
+          display_name: '田中',
+          active_field: 'note',
+          updated_at: '2026-05-31T00:00:00.000Z',
+        },
+      ]);
+    });
+    expect(createYjsProviderMock).not.toHaveBeenCalled();
+  });
+
   it('does not create a Yjs provider when room token authorization fails', async () => {
     vi.useFakeTimers();
     let tokenRequestCount = 0;
@@ -819,6 +870,53 @@ describe('useCollaborativeForm', () => {
 
     expect(tokenRequestCount).toBe(2);
     expect(createYjsProviderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats malformed room token payloads as transient failures before provider creation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-21T15:00:00.000Z'));
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    let tokenRequestCount = 0;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/collaboration/room-token') {
+        tokenRequestCount += 1;
+        return new Response(
+          JSON.stringify({
+            room: 123,
+            token: 'room-token',
+            expires_at: futureExpiresAt(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith('/api/presence?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const { result } = renderHook(() => useTestCollaborativeForm(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    });
+
+    expect(tokenRequestCount).toBe(1);
+    expect(createYjsProviderMock).not.toHaveBeenCalled();
+    expect(result.current.yDoc).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.resolve();
+    });
+
+    expect(tokenRequestCount).toBe(2);
+    expect(createYjsProviderMock).not.toHaveBeenCalled();
   });
 
   it('does not request a room token when the Yjs provider config is disabled', async () => {

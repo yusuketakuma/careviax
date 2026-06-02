@@ -184,17 +184,18 @@ class MhlwQualificationCheckAdapter implements QualificationCheckAdapterContract
   async checkInsurance(
     request: QualificationCheckRequest,
   ): Promise<QualificationCheckResult | null> {
-    const { status, data } = await fetchJson<
-      QualificationCheckResult | { data?: QualificationCheckResult }
-    >(`${this.config.baseUrl!.replace(/\/$/, '')}/insurance/check`, {
-      method: 'POST',
-      headers: {
-        ...buildBearerHeaders(this.config.accessToken),
-        ...(this.config.clientId ? { 'x-client-id': this.config.clientId } : {}),
-        ...(this.config.clientSecret ? { 'x-client-secret': this.config.clientSecret } : {}),
+    const { status, data } = await fetchJson(
+      `${this.config.baseUrl!.replace(/\/$/, '')}/insurance/check`,
+      {
+        method: 'POST',
+        headers: {
+          ...buildBearerHeaders(this.config.accessToken),
+          ...(this.config.clientId ? { 'x-client-id': this.config.clientId } : {}),
+          ...(this.config.clientSecret ? { 'x-client-secret': this.config.clientSecret } : {}),
+        },
+        body: request,
       },
-      body: request,
-    });
+    );
 
     if (status === 400) {
       throw new QualificationCheckAdapterError(
@@ -227,7 +228,7 @@ class MhlwQualificationCheckAdapter implements QualificationCheckAdapterContract
       );
     }
 
-    const result = normalizeQualificationCheckResult(unwrapDataEnvelope<unknown>(data));
+    const result = normalizeQualificationCheckResult(unwrapDataEnvelope(data));
     if (!result) {
       throw new QualificationCheckAdapterError(
         '資格確認 API のレスポンス形式が不正です',

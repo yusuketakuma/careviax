@@ -1,9 +1,10 @@
+import { readJsonObjectResponseBody } from '@/lib/api/response-body';
 import { parsePatientMcsViewData } from './dto';
 
 export class PatientMcsOverviewQueryError extends Error {
   constructor(
     readonly code: 'forbidden' | 'failed',
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'PatientMcsOverviewQueryError';
@@ -14,42 +15,34 @@ export function createPatientMcsQueryKeyPrefix(patientId: string, orgId: string)
   return ['patient-mcs', patientId, orgId] as const;
 }
 
-export function createPatientMcsQueryKey(
-  patientId: string,
-  orgId: string,
-  limit: number
-) {
+export function createPatientMcsQueryKey(patientId: string, orgId: string, limit: number) {
   return [...createPatientMcsQueryKeyPrefix(patientId, orgId), limit] as const;
 }
 
-export async function fetchPatientMcsOverview(
-  patientId: string,
-  orgId: string,
-  limit: number
-) {
+export async function fetchPatientMcsOverview(patientId: string, orgId: string, limit: number) {
   const normalizedLimit = Number.isInteger(limit) && limit >= 0 ? limit : 0;
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
   const response = await fetch(`/api/patients/${patientId}/mcs?${params.toString()}`, {
     headers: { 'x-org-id': orgId },
     cache: 'no-store',
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { message?: string; data?: unknown }
-    | null;
+  const payload = await readJsonObjectResponseBody(response);
+  const message = typeof payload?.message === 'string' ? payload.message : undefined;
 
   if (response.status === 403) {
     throw new PatientMcsOverviewQueryError(
       'forbidden',
-      payload?.message ?? 'MCS 連携の閲覧権限がありません'
+      message ?? 'MCS 連携の閲覧権限がありません',
     );
   }
 
   if (!response.ok) {
-    throw new PatientMcsOverviewQueryError(
-      'failed',
-      payload?.message ?? 'MCS 連携情報の取得に失敗しました'
-    );
+    throw new PatientMcsOverviewQueryError('failed', message ?? 'MCS 連携情報の取得に失敗しました');
   }
 
-  return parsePatientMcsViewData(payload as Parameters<typeof parsePatientMcsViewData>[0]);
+  try {
+    return parsePatientMcsViewData(payload);
+  } catch {
+    throw new PatientMcsOverviewQueryError('failed', 'MCS 連携情報の取得に失敗しました');
+  }
 }
