@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-191910
+
+- current task: improve medications content semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`, and focused patient medication references
+- files changed: `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`, `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the medications tab still used decorative `CardTitle` wrappers for medication KPI values and major workflow groups. This made medication review, issue management, allergy/side-effect history, residual proposals, and QR issuance harder to navigate by heading and treated numeric KPI values as card titles
+- security risks found: no medication profile API path, org header, medication issue create/update payload, issue status payload, inquiry/residual fetch, QR generation payload, external route, auth, authorization, tenant boundary, medication data handling, or patient data handling changed
+- performance issues found: no query function, mutation function, data table columns, medication stat calculation, issue/residual/inquiry filtering, QR generation, dynamic import, or render-loop behavior changed. The slice only changes heading markup and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `rg -n "CardTitle" 'src/app/(dashboard)/patients/[id]' -g '*.tsx'`
+- validation results: Prettier completed successfully; focused medications Vitest passed with 1 file / 1 test after adjusting the test to account for expected duplicate drug-name rendering in cards and table; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed; patient detail area `CardTitle` search returned no matches
+- remaining work: broader UI/refactor goal remains active. DB-backed browser proof remains incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable. Further clutter reduction may need rendered-page review once runtime is available
+- next action: commit this medications heading group, then retry runtime preflight and inspect any remaining non-CardTitle clutter/static refactor candidates
+
 ### 20260602-191635
 
 - current task: post-prescription-history runtime/browser preflight audit

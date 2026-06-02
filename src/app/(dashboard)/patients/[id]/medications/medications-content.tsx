@@ -10,7 +10,7 @@ import { ja } from 'date-fns/locale';
 import { CheckCircle2, ClipboardPlus, Edit3, Plus, Printer, QrCode, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import {
@@ -943,7 +943,7 @@ export function MedicationsContent({
                       <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
                       <HelpPopover title={item.label} description={item.description} />
                     </div>
-                    <CardTitle className="text-2xl">{item.value}</CardTitle>
+                    <p className="font-heading text-2xl leading-snug font-medium">{item.value}</p>
                   </CardHeader>
                 </Card>
               ))}
@@ -951,7 +951,9 @@ export function MedicationsContent({
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base">見やすい薬剤一覧</CardTitle>
+                <h3 className="font-heading text-base leading-snug font-medium">
+                  見やすい薬剤一覧
+                </h3>
                 <CardDescription>
                   薬剤名、用量、用法、処方医、開始日をカードでまとめています。
                 </CardDescription>
@@ -1036,7 +1038,7 @@ export function MedicationsContent({
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle className="text-base">薬学的課題と照会</CardTitle>
+              <h2 className="font-heading text-base leading-snug font-medium">薬学的課題と照会</h2>
               <CardDescription>
                 未解決課題の可視化、課題登録、疑義照会の参照を 1 画面にまとめています。
               </CardDescription>
@@ -1203,7 +1205,9 @@ export function MedicationsContent({
         <div className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">アレルギー・副作用歴</CardTitle>
+              <h2 className="font-heading text-base leading-snug font-medium">
+                アレルギー・副作用歴
+              </h2>
               <CardDescription>
                 基本情報の登録内容と、副作用カテゴリの課題履歴をここでまとめて確認します。
               </CardDescription>
@@ -1254,7 +1258,9 @@ export function MedicationsContent({
 
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">残薬管理と次回提案</CardTitle>
+              <h2 className="font-heading text-base leading-snug font-medium">
+                残薬管理と次回提案
+              </h2>
               <CardDescription>
                 残薬の推移、減数候補、減数禁止薬の注意を次回処方へつなげます。
               </CardDescription>
@@ -1303,7 +1309,7 @@ export function MedicationsContent({
 
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">お薬手帳QR発行</CardTitle>
+              <h2 className="font-heading text-base leading-snug font-medium">お薬手帳QR発行</h2>
               <CardDescription>
                 服薬中薬剤から JAHIS Ver.2.5 の QR を生成し、その場で表示と印刷ができます。
               </CardDescription>
