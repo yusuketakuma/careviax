@@ -7,11 +7,13 @@ import { format, parseISO, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Download, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -69,12 +71,18 @@ const ACTION_OPTIONS = [
 
 function actionBadgeClass(action: string): string {
   switch (action) {
-    case 'delete': return 'bg-red-100 text-red-800 border-red-200';
-    case 'create': return 'bg-green-100 text-green-800 border-green-200';
-    case 'approve': return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'reject': return 'bg-orange-100 text-orange-800 border-orange-200';
-    case 'export': return 'bg-purple-100 text-purple-800 border-purple-200';
-    default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    case 'delete':
+      return 'bg-red-100 text-red-800 border-red-200';
+    case 'create':
+      return 'bg-green-100 text-green-800 border-green-200';
+    case 'approve':
+      return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'reject':
+      return 'bg-orange-100 text-orange-800 border-orange-200';
+    case 'export':
+      return 'bg-purple-100 text-purple-800 border-purple-200';
+    default:
+      return 'bg-gray-100 text-gray-700 border-gray-200';
   }
 }
 
@@ -133,10 +141,7 @@ export function AuditLogsContent() {
         accessorKey: 'action',
         header: '操作',
         cell: ({ row }) => (
-          <Badge
-            variant="outline"
-            className={`text-xs ${actionBadgeClass(row.original.action)}`}
-          >
+          <Badge variant="outline" className={`text-xs ${actionBadgeClass(row.original.action)}`}>
             {ACTION_LABEL_MAP[row.original.action] ?? row.original.action}
           </Badge>
         ),
@@ -170,7 +175,7 @@ export function AuditLogsContent() {
         ),
       },
     ],
-    []
+    [],
   );
 
   async function handleExport(format: 'csv' | 'json') {
@@ -210,114 +215,125 @@ export function AuditLogsContent() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Filter className="size-4" aria-hidden="true" />
-            フィルタ
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="actor-filter">操作者</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  id="actor-filter"
-                  value={actorFilter}
-                  onChange={(e) => setActorFilter(e.target.value)}
-                  placeholder="ユーザーIDで検索"
-                  className="pl-8"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="target-type-filter">対象種別</Label>
-              <Select
-                value={targetTypeFilter}
-                onValueChange={(v) => setTargetTypeFilter(v ?? '')}
-              >
-                <SelectTrigger id="target-type-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TARGET_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="action-filter">操作</Label>
-              <Select value={actionFilter} onValueChange={(value) => setActionFilter(value ?? '')}>
-                <SelectTrigger id="action-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACTION_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="date-from">開始日</Label>
-              <Input
-                id="date-from"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+      <PageSection
+        title="絞り込み"
+        description="操作者、対象、操作、期間を指定し、監査ログ一覧と出力対象を同じ条件に揃えます。"
+        tone="subtle"
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="actor-filter">操作者</Label>
+            <div className="relative">
+              <Search
+                className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground"
+                aria-hidden="true"
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="date-to">終了日</Label>
               <Input
-                id="date-to"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                id="actor-filter"
+                value={actorFilter}
+                onChange={(e) => setActorFilter(e.target.value)}
+                placeholder="ユーザーIDで検索"
+                className="pl-8"
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Export + count */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{logs.length}件</p>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
-            <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-            JSON出力
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
-            <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-            CSV出力
-          </Button>
+          <div className="space-y-1.5">
+            <Label htmlFor="target-type-filter">対象種別</Label>
+            <Select value={targetTypeFilter} onValueChange={(v) => setTargetTypeFilter(v ?? '')}>
+              <SelectTrigger id="target-type-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {TARGET_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="action-filter">操作</Label>
+            <Select value={actionFilter} onValueChange={(value) => setActionFilter(value ?? '')}>
+              <SelectTrigger id="action-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="date-from">開始日</Label>
+            <Input
+              id="date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="date-to">終了日</Label>
+            <Input
+              id="date-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      </PageSection>
 
-      {/* Table */}
-      {!isLoading && logs.length === 0 ? (
-        <EmptyState
-          icon={Filter}
-          title="ログがありません"
-          description="フィルタ条件を変更するか、期間を広げてください。"
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={logs}
-          isLoading={isLoading}
-          caption="監査ログ一覧"
-        />
-      )}
+      <PageSection
+        title="監査ログ一覧"
+        description="現在の絞り込み条件に一致する監査ログを確認し、同じ条件で JSON または CSV に出力します。"
+        tone="subtle"
+        actions={
+          <ActionRail>
+            <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
+              <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+              JSON出力
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
+              <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+              CSV出力
+            </Button>
+          </ActionRail>
+        }
+      >
+        <div className="space-y-4">
+          <FilterSummaryBar
+            items={[
+              { label: '表示件数', value: `${logs.length}件` },
+              { label: '期間', value: `${dateFrom || '未指定'} - ${dateTo || '未指定'}` },
+              {
+                label: '対象種別',
+                value:
+                  TARGET_TYPE_OPTIONS.find((opt) => opt.value === targetTypeFilter)?.label ??
+                  'すべて',
+              },
+              {
+                label: '操作',
+                value: ACTION_OPTIONS.find((opt) => opt.value === actionFilter)?.label ?? 'すべて',
+              },
+              ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
+            ]}
+          />
+          {!isLoading && logs.length === 0 ? (
+            <EmptyState
+              icon={Filter}
+              title="ログがありません"
+              description="フィルタ条件を変更するか、期間を広げてください。"
+            />
+          ) : (
+            <DataTable columns={columns} data={logs} isLoading={isLoading} caption="監査ログ一覧" />
+          )}
+        </div>
+      </PageSection>
     </div>
   );
 }

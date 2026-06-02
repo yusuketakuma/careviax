@@ -10134,6 +10134,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Drug Master still has dense formulary operation, master update status, import history, and search/filter sections that can be separated in later slices
 - next action: run post-append whitespace/status checks, commit this slice, then continue with the next high-value dense surface or deeper drug-master subcomponent extraction
 
+### 20260602-153611
+
+- current task: align audit log filters, export actions, and table with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, subagent UI/UX findings for admin audit logs, `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`, shared `PageSection`, `ActionRail`, and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no export/API bug was targeted. Audit log filters, export buttons, count, empty state, and table were split across a Card plus a naked flex row, so it was less clear that JSON/CSV exports use the same active conditions as the visible table
+- security risks found: no audit-log API, export format, query parameter, date default, org header, or log content behavior changed. The UI now shows the active period/action/target/operator summary directly above the table and export buttons, reducing operator ambiguity before export
+- performance issues found: no query behavior changed. The refactor adds only derived labels from existing filter state and keeps the 100-row query limit unchanged
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx'`
+- validation results: target Prettier passed and formatted existing helper/control JSX; shared focused Vitest passed with 3 files / 4 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Browser proof for admin audit export UI remains pending, and subagents still prioritize schedule proposals, prescription workspace, tasks, workflow dashboard, visits, and deeper drug-master subcomponent extraction
+- next action: run post-append whitespace/status checks, commit this slice, then continue with schedule proposals or tasks as the next dense operational surface
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
