@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-175000
+
+- current task: organize referral intake form sections and harden referral date validation
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/referrals/new/referral-form.tsx`, and focused referral test search output
+- files changed: `src/app/(dashboard)/referrals/new/referral-form.tsx`, `.codex/ralph-state.md`
+- bugs found: referral intake form used three raw cards and a hand-built action row for request source, required documents, and patient basics, making the intake order less explicit. `referral_date` only checked `YYYY-MM-DD` shape, so invalid calendar dates could pass the client schema before case creation
+- security risks found: no patient API path, case API path, org header, router destination, toast behavior, submit sequencing, or payload field names changed. Client-side referral date now reuses the shared strict date-key validator before patient/case creation
+- performance issues found: no fetch, form resolver, submit flow, error summary, or render-loop behavior changed. The slice only changes section wrappers/action layout and date-key validation
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/referrals/new/referral-form.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/referrals/new/referral-form.tsx' src/components/layout/page-section.tsx src/components/ui/action-rail.tsx src/lib/validations/date-key.ts --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/referrals/new/referral-form.tsx'`; `rg -n "referrals|referral-form|ReferralForm" src -g '*test*.tsx'`
+- validation results: Prettier completed successfully; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed; focused referral form test search found no existing test file
+- remaining work: runtime/browser proof remains blocked by missing local app/db listeners. Additional dense surfaces remain, including settings, QR scan, schedule proposal workspaces, and patient detail panels
+- next action: commit this referral intake group, then continue with the next high-value UI/refactor surface
+
 ### 20260602-174500
 
 - current task: organize admin dashboard overview groups with shared section boundaries

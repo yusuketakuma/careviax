@@ -12,27 +12,34 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
+import { dateKeySchema } from '@/lib/validations/date-key';
 
-const referralFormSchema = z.object({
-  // Referral-specific fields
-  referral_type: z.enum(['physician', 'care_manager', 'facility', 'family'], {
-    error: '依頼種別を選択してください',
-  }),
-  referral_source: z.string().optional(),
-  referral_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です').optional().or(z.literal('')).transform(v => v === '' ? undefined : v),
-  referral_notes: z.string().optional(),
-  // Documents checklist
-  doc_physician_order: z.boolean(),
-  doc_consent: z.boolean(),
-  doc_health_insurance: z.boolean(),
-  doc_care_insurance: z.boolean(),
-  // Patient fields (from createPatientSchema)
-}).merge(createPatientSchema);
+const referralFormSchema = z
+  .object({
+    // Referral-specific fields
+    referral_type: z.enum(['physician', 'care_manager', 'facility', 'family'], {
+      error: '依頼種別を選択してください',
+    }),
+    referral_source: z.string().optional(),
+    referral_date: dateKeySchema('日付形式が不正です')
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v === '' ? undefined : v)),
+    referral_notes: z.string().optional(),
+    // Documents checklist
+    doc_physician_order: z.boolean(),
+    doc_consent: z.boolean(),
+    doc_health_insurance: z.boolean(),
+    doc_care_insurance: z.boolean(),
+    // Patient fields (from createPatientSchema)
+  })
+  .merge(createPatientSchema);
 
 type ReferralFormValues = z.input<typeof referralFormSchema>;
 type ReferralFormSubmit = z.output<typeof referralFormSchema>;
@@ -140,212 +147,221 @@ export function ReferralForm() {
     <form onSubmit={handleSubmit(onSubmit, scrollToErrorSummary)} noValidate className="space-y-6">
       <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
 
-      {/* 依頼元情報 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">依頼元情報</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <PageSection
+        title="依頼元情報"
+        description="紹介元、紹介日、受付時の補足を先に確認します。"
+        contentClassName="space-y-4"
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="referral_type">
+            依頼種別{' '}
+            <span className="text-destructive" aria-hidden="true">
+              *
+            </span>
+          </Label>
+          <select
+            id="referral_type"
+            {...register('referral_type')}
+            aria-invalid={!!errors.referral_type}
+            aria-describedby={errors.referral_type ? 'referral-type-error' : undefined}
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
+          >
+            <option value="">選択してください</option>
+            {Object.entries(referralTypeLabel).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {errors.referral_type && (
+            <p id="referral-type-error" className="text-xs text-destructive" role="alert">
+              {errors.referral_type.message}
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="referral_type">
-              依頼種別 <span className="text-destructive" aria-hidden="true">*</span>
+            <Label htmlFor="referral_source">依頼元名称</Label>
+            <Input
+              id="referral_source"
+              {...register('referral_source')}
+              placeholder="〇〇クリニック"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="referral_date">紹介日</Label>
+            <Input id="referral_date" type="date" {...register('referral_date')} />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="referral_notes">備考</Label>
+          <Textarea
+            id="referral_notes"
+            {...register('referral_notes')}
+            placeholder="特記事項があれば入力してください"
+            rows={2}
+          />
+        </div>
+      </PageSection>
+
+      <PageSection
+        title="必要書類チェックリスト"
+        description="受付時点で受領済みの書類を確認します。"
+      >
+        <div className="space-y-3">
+          {(
+            [
+              { field: 'doc_physician_order' as const, label: '指示書' },
+              { field: 'doc_consent' as const, label: '同意書' },
+              { field: 'doc_health_insurance' as const, label: '保険証（医療）' },
+              { field: 'doc_care_insurance' as const, label: '介護保険証' },
+            ] as const
+          ).map(({ field, label }) => (
+            <div key={field} className="flex items-center gap-3">
+              <Checkbox
+                id={field}
+                checked={watch(field)}
+                onCheckedChange={(checked) => setValue(field, checked === true)}
+                aria-label={`${label}を受領済み`}
+              />
+              <Label htmlFor={field} className="cursor-pointer font-normal">
+                {label}
+              </Label>
+            </div>
+          ))}
+        </div>
+      </PageSection>
+
+      <PageSection
+        title="患者基本情報"
+        description="患者登録とケース作成に使う基本情報を入力します。"
+        contentClassName="space-y-4"
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="ref-name">
+            氏名{' '}
+            <span className="text-destructive" aria-hidden="true">
+              *
+            </span>
+          </Label>
+          <Input
+            id="ref-name"
+            {...register('name')}
+            placeholder="山田 太郎"
+            aria-invalid={!!errors.name}
+          />
+          {errors.name && (
+            <p className="text-xs text-destructive" role="alert">
+              {errors.name.message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="ref-name-kana">
+            フリガナ{' '}
+            <span className="text-destructive" aria-hidden="true">
+              *
+            </span>
+          </Label>
+          <Input
+            id="ref-name-kana"
+            {...register('name_kana')}
+            placeholder="ヤマダ タロウ"
+            aria-invalid={!!errors.name_kana}
+          />
+          {errors.name_kana && (
+            <p className="text-xs text-destructive" role="alert">
+              {errors.name_kana.message}
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="ref-birth-date">
+              生年月日{' '}
+              <span className="text-destructive" aria-hidden="true">
+                *
+              </span>
             </Label>
-            <select
-              id="referral_type"
-              {...register('referral_type')}
-              aria-invalid={!!errors.referral_type}
-              aria-describedby={errors.referral_type ? 'referral-type-error' : undefined}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
-            >
-              <option value="">選択してください</option>
-              {Object.entries(referralTypeLabel).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-            {errors.referral_type && (
-              <p id="referral-type-error" className="text-xs text-destructive" role="alert">
-                {errors.referral_type.message}
+            <Input
+              id="ref-birth-date"
+              type="date"
+              {...register('birth_date')}
+              aria-invalid={!!errors.birth_date}
+            />
+            {errors.birth_date && (
+              <p className="text-xs text-destructive" role="alert">
+                {errors.birth_date.message}
               </p>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="referral_source">依頼元名称</Label>
-              <Input
-                id="referral_source"
-                {...register('referral_source')}
-                placeholder="〇〇クリニック"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="referral_date">紹介日</Label>
-              <Input
-                id="referral_date"
-                type="date"
-                {...register('referral_date')}
-              />
-            </div>
-          </div>
-
           <div className="space-y-1.5">
-            <Label htmlFor="referral_notes">備考</Label>
-            <Textarea
-              id="referral_notes"
-              {...register('referral_notes')}
-              placeholder="特記事項があれば入力してください"
-              rows={2}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 必要書類チェックリスト */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">必要書類チェックリスト</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {(
-              [
-                { field: 'doc_physician_order' as const, label: '指示書' },
-                { field: 'doc_consent' as const, label: '同意書' },
-                { field: 'doc_health_insurance' as const, label: '保険証（医療）' },
-                { field: 'doc_care_insurance' as const, label: '介護保険証' },
-              ] as const
-            ).map(({ field, label }) => (
-              <div key={field} className="flex items-center gap-3">
-                <Checkbox
-                  id={field}
-                  checked={watch(field)}
-                  onCheckedChange={(checked) => setValue(field, checked === true)}
-                  aria-label={`${label}を受領済み`}
-                />
-                <Label htmlFor={field} className="cursor-pointer font-normal">
-                  {label}
-                </Label>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 患者基本情報 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">患者基本情報</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="ref-name">
-              氏名 <span className="text-destructive" aria-hidden="true">*</span>
+            <Label htmlFor="ref-gender">
+              性別{' '}
+              <span className="text-destructive" aria-hidden="true">
+                *
+              </span>
             </Label>
-            <Input
-              id="ref-name"
-              {...register('name')}
-              placeholder="山田 太郎"
-              aria-invalid={!!errors.name}
-            />
-            {errors.name && (
-              <p className="text-xs text-destructive" role="alert">{errors.name.message}</p>
+            <select
+              id="ref-gender"
+              {...register('gender')}
+              aria-invalid={!!errors.gender}
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
+            >
+              <option value="">選択してください</option>
+              <option value="male">男性</option>
+              <option value="female">女性</option>
+              <option value="other">その他</option>
+            </select>
+            {errors.gender && (
+              <p className="text-xs text-destructive" role="alert">
+                {errors.gender.message}
+              </p>
             )}
           </div>
+        </div>
 
+        <div className="space-y-1.5">
+          <Label htmlFor="ref-phone">電話番号</Label>
+          <Input id="ref-phone" type="tel" {...register('phone')} placeholder="090-0000-0000" />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="ref-address">住所</Label>
+          <Textarea
+            id="ref-address"
+            {...register('address')}
+            placeholder="東京都新宿区..."
+            rows={2}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="ref-name-kana">
-              フリガナ <span className="text-destructive" aria-hidden="true">*</span>
-            </Label>
+            <Label htmlFor="ref-medical-ins">医療保険番号</Label>
             <Input
-              id="ref-name-kana"
-              {...register('name_kana')}
-              placeholder="ヤマダ タロウ"
-              aria-invalid={!!errors.name_kana}
+              id="ref-medical-ins"
+              {...register('medical_insurance_number')}
+              placeholder="12345678"
             />
-            {errors.name_kana && (
-              <p className="text-xs text-destructive" role="alert">{errors.name_kana.message}</p>
-            )}
           </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="ref-birth-date">
-                生年月日 <span className="text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input
-                id="ref-birth-date"
-                type="date"
-                {...register('birth_date')}
-                aria-invalid={!!errors.birth_date}
-              />
-              {errors.birth_date && (
-                <p className="text-xs text-destructive" role="alert">{errors.birth_date.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="ref-gender">
-                性別 <span className="text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <select
-                id="ref-gender"
-                {...register('gender')}
-                aria-invalid={!!errors.gender}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
-              >
-                <option value="">選択してください</option>
-                <option value="male">男性</option>
-                <option value="female">女性</option>
-                <option value="other">その他</option>
-              </select>
-              {errors.gender && (
-                <p className="text-xs text-destructive" role="alert">{errors.gender.message}</p>
-              )}
-            </div>
-          </div>
-
           <div className="space-y-1.5">
-            <Label htmlFor="ref-phone">電話番号</Label>
+            <Label htmlFor="ref-care-ins">介護保険番号</Label>
             <Input
-              id="ref-phone"
-              type="tel"
-              {...register('phone')}
-              placeholder="090-0000-0000"
+              id="ref-care-ins"
+              {...register('care_insurance_number')}
+              placeholder="1234567890"
             />
           </div>
+        </div>
+      </PageSection>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="ref-address">住所</Label>
-            <Textarea
-              id="ref-address"
-              {...register('address')}
-              placeholder="東京都新宿区..."
-              rows={2}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="ref-medical-ins">医療保険番号</Label>
-              <Input
-                id="ref-medical-ins"
-                {...register('medical_insurance_number')}
-                placeholder="12345678"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ref-care-ins">介護保険番号</Label>
-              <Input
-                id="ref-care-ins"
-                {...register('care_insurance_number')}
-                placeholder="1234567890"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end gap-3">
+      <ActionRail>
         <Button
           type="button"
           variant="outline"
@@ -357,7 +373,7 @@ export function ReferralForm() {
         <LoadingButton type="submit" loading={isSubmitting} loadingLabel="受付中...">
           紹介受付を完了する
         </LoadingButton>
-      </div>
+      </ActionRail>
     </form>
   );
 }
