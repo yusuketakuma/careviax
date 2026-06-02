@@ -7,8 +7,10 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { CheckCircle2, AlertCircle, Clock, XCircle, Package, AlertTriangle } from 'lucide-react';
+import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
@@ -253,9 +255,12 @@ export function VisitsTable() {
   const records = useMemo(() => data?.data ?? [], [data]);
 
   return (
-    <div className="space-y-4">
-      {/* Date range filter */}
-      <div className="rounded-lg border border-border/70 bg-card p-4">
+    <div className="space-y-6">
+      <PageSection
+        title="絞り込みと確認方針"
+        description="訪問日で対象を絞り、患者単位の処方歴・訪問歴を合わせて確認します。"
+        tone="subtle"
+      >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
@@ -267,7 +272,7 @@ export function VisitsTable() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="h-8 w-40 text-sm"
+                className="h-10 w-40 text-sm sm:h-8"
               />
             </div>
             <div className="space-y-1">
@@ -279,25 +284,39 @@ export function VisitsTable() {
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="h-8 w-40 text-sm"
+                className="h-10 w-40 text-sm sm:h-8"
               />
             </div>
           </div>
           <div className="max-w-xl rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-            <h2 className="text-sm font-semibold text-foreground">患者ごとの過去歴確認</h2>
+            <h3 className="text-sm font-semibold text-foreground">患者ごとの過去歴確認</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               患者名から患者別の訪問履歴へ、過去歴列から処方歴・訪問歴へ進みます。訪問結果だけで判断せず、処方変更と訪問経過を同じ患者単位で確認します。
             </p>
           </div>
         </div>
-      </div>
+      </PageSection>
 
-      <DataTable
-        columns={columns}
-        data={records}
-        isLoading={isBootstrappingOrg || isLoading}
-        caption="訪問記録一覧"
-      />
+      <PageSection
+        title="訪問記録一覧"
+        description="訪問結果、SOAP有無、患者ごとの過去歴を同じ一覧で確認します。"
+        tone="subtle"
+        contentClassName="space-y-4"
+      >
+        <FilterSummaryBar
+          items={[
+            { label: '表示件数', value: `${records.length}件` },
+            { label: '開始日', value: dateFrom || '未指定' },
+            { label: '終了日', value: dateTo || '未指定' },
+          ]}
+        />
+        <DataTable
+          columns={columns}
+          data={records}
+          isLoading={isBootstrappingOrg || isLoading}
+          caption="訪問記録一覧"
+        />
+      </PageSection>
     </div>
   );
 }

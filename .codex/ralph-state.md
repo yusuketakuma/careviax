@@ -10199,6 +10199,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include visits list/detail, deeper workflow raw sections, deeper drug-master/formulary extraction, and browser proof for changed routes
 - next action: run post-append whitespace/status checks, commit this slice, then continue with visits or browser verification of the accumulated UI slices
 
+### 20260602-154944
+
+- current task: organize visits list filters and record table with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/visits/visits-table.tsx`, `src/app/(dashboard)/visits/visits-table.test.tsx`, shared `PageSection` and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/visits/visits-table.tsx`, `.codex/ralph-state.md`
+- bugs found: no visit-record API bug was targeted. The visits list had the date filter and patient history guidance in a raw card, followed by a naked table, making the filter/table relationship less explicit than the cleaned-up list screens
+- security risks found: no visit record query params, history summary flag, patient links, prescription links, or org header behavior changed
+- performance issues found: no query behavior changed. The refactor adds a small summary bar using already-loaded records and existing filter state
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/visits/visits-table.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/visits/visits-table.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/visits/visits-table.tsx' 'src/app/(dashboard)/visits/visits-table.test.tsx' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/visits/visits-table.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 3 files / 5 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining work includes browser proof for accumulated UI slices, visit detail cleanup, deeper drug-master/formulary extraction, schedule-proposal card extraction, and remaining raw workflow/detail sections
+- next action: run post-append whitespace/status checks, commit this slice, then run browser/dev-server proof for the main changed routes if feasible
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
