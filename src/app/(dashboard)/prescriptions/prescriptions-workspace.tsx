@@ -23,6 +23,7 @@ import { PrescriptionInlineDetail } from './prescription-inline-detail';
 // ---------------------------------------------------------------------------
 
 type FilterKey = 'all' | string;
+type FilterOption = { value: FilterKey; label: string };
 
 const PRESCRIPTION_INTAKE_PAGE_SIZE = 50;
 const REALTIME_INVALIDATE_EVENTS = new Set([
@@ -31,7 +32,7 @@ const REALTIME_INVALIDATE_EVENTS = new Set([
   'qr_draft_confirmed',
 ]);
 
-const STATUS_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
+const STATUS_FILTER_OPTIONS: FilterOption[] = [
   { value: 'all', label: '全' },
   { value: 'intake_received', label: '受付' },
   { value: 'structuring', label: '構造化' },
@@ -42,7 +43,7 @@ const STATUS_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
   { value: 'on_hold', label: '保留' },
 ];
 
-const SOURCE_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
+const SOURCE_FILTER_OPTIONS: FilterOption[] = [
   { value: 'all', label: '全' },
   { value: 'paper', label: '紙' },
   { value: 'fax', label: 'FAX' },
@@ -58,6 +59,75 @@ type PrescriptionIntakesPage = {
   nextCursor?: string;
   totalCount?: number;
 };
+
+function PrescriptionFilterGroup({
+  label,
+  options,
+  activeValue,
+  activeClassName,
+  inactiveClassName,
+  onSelect,
+}: {
+  label: string;
+  options: FilterOption[];
+  activeValue: FilterKey;
+  activeClassName: string;
+  inactiveClassName: string;
+  onSelect: (value: FilterKey) => void;
+}) {
+  return (
+    <>
+      <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{label}</span>
+      {options.map((opt) => {
+        const isActive = activeValue === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onSelect(opt.value)}
+            className={cn(
+              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5',
+              isActive ? activeClassName : inactiveClassName,
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function PrescriptionShortcutRail() {
+  const shortcuts = [
+    { key: 'N', href: '/prescriptions/new', label: '新規受付' },
+    { key: 'D', href: '/dispensing', label: '調剤キュー' },
+    { key: 'Q', href: '/prescriptions/qr-drafts', label: 'QR下書き' },
+  ];
+
+  return (
+    <div className="flex items-center gap-4 border-t bg-muted/30 px-3 py-1">
+      <Keyboard className="size-3 text-muted-foreground" aria-hidden="true" />
+      <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+        <span>
+          <kbd className="rounded border bg-background px-1 font-mono">↑</kbd>
+          <kbd className="ml-0.5 rounded border bg-background px-1 font-mono">↓</kbd> 選択
+        </span>
+        {shortcuts.map((shortcut) => (
+          <span key={shortcut.key}>
+            <kbd className="rounded border bg-background px-1 font-mono">{shortcut.key}</kbd>{' '}
+            <Link
+              href={shortcut.href}
+              className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline sm:min-h-0 sm:min-w-0"
+            >
+              {shortcut.label}
+            </Link>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Workspace (レセコン風 master-detail)
@@ -207,52 +277,27 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
         />
       </div>
 
-      {/* ━━ フィルタバー ━━ */}
       <div className="flex items-center gap-1.5 overflow-x-auto border-b px-3 py-1 scrollbar-hide">
-        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">状態</span>
-        {STATUS_FILTER_OPTIONS.map((opt) => {
-          const isActive = statusFilter === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => handleFilterStatus(opt.value)}
-              className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-0.5 rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5 ${
-                isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-
+        <PrescriptionFilterGroup
+          label="状態"
+          options={STATUS_FILTER_OPTIONS}
+          activeValue={statusFilter}
+          activeClassName="bg-primary text-primary-foreground"
+          inactiveClassName="bg-muted/50 text-muted-foreground hover:bg-muted"
+          onSelect={handleFilterStatus}
+        />
         <div className="mx-1 h-3 w-px shrink-0 bg-border" />
-
-        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">種別</span>
-        {SOURCE_FILTER_OPTIONS.map((opt) => {
-          const isActive = sourceFilter === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => handleFilterSource(opt.value)}
-              className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5 ${
-                isActive
-                  ? 'bg-secondary text-secondary-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+        <PrescriptionFilterGroup
+          label="種別"
+          options={SOURCE_FILTER_OPTIONS}
+          activeValue={sourceFilter}
+          activeClassName="bg-secondary text-secondary-foreground"
+          inactiveClassName="text-muted-foreground hover:bg-muted/50"
+          onSelect={handleFilterSource}
+        />
       </div>
 
-      {/* ━━ メイン: マスタ-ディテール分割 ━━ */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左パネル: 処方一覧 */}
         <div className="flex w-[420px] shrink-0 flex-col overflow-hidden border-r lg:w-[480px]">
           <div className="min-h-0 flex-1 overflow-hidden">
             <PrescriptionsTable
@@ -278,7 +323,6 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
           )}
         </div>
 
-        {/* 右パネル: 詳細 */}
         <div className="flex-1 overflow-hidden">
           {selectedId ? (
             <PrescriptionInlineDetail intakeId={selectedId} />
@@ -294,43 +338,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
         </div>
       </div>
 
-      {/* ━━ キーボードショートカットバー (レセコン下部) ━━ */}
-      <div className="flex items-center gap-4 border-t bg-muted/30 px-3 py-1">
-        <Keyboard className="size-3 text-muted-foreground" aria-hidden="true" />
-        <div className="flex gap-3 text-[10px] text-muted-foreground">
-          <span>
-            <kbd className="rounded border bg-background px-1 font-mono">↑</kbd>
-            <kbd className="ml-0.5 rounded border bg-background px-1 font-mono">↓</kbd> 選択
-          </span>
-          <span>
-            <kbd className="rounded border bg-background px-1 font-mono">N</kbd>{' '}
-            <Link
-              href="/prescriptions/new"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline sm:min-h-0 sm:min-w-0"
-            >
-              新規受付
-            </Link>
-          </span>
-          <span>
-            <kbd className="rounded border bg-background px-1 font-mono">D</kbd>{' '}
-            <Link
-              href="/dispensing"
-              className="inline-flex min-h-[44px] items-center hover:underline sm:min-h-0"
-            >
-              調剤キュー
-            </Link>
-          </span>
-          <span>
-            <kbd className="rounded border bg-background px-1 font-mono">Q</kbd>{' '}
-            <Link
-              href="/prescriptions/qr-drafts"
-              className="inline-flex min-h-[44px] items-center hover:underline sm:min-h-0"
-            >
-              QR下書き
-            </Link>
-          </span>
-        </div>
-      </div>
+      <PrescriptionShortcutRail />
     </div>
   );
 }

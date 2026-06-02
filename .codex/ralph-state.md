@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-173000
+
+- current task: refactor prescription workspace filter and shortcut rails without changing queue behavior
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx`, `src/components/ui/action-rail.tsx`, and code-mapper candidate findings
+- files changed: `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `.codex/ralph-state.md`
+- bugs found: prescription workspace state/source filters duplicated button markup and the bottom shortcut bar repeated link/kbd rows inline, making the queue surface harder to maintain and more visually noisy
+- security risks found: no prescription-intake API, org header, auth, authorization, realtime invalidation, queue selection, detail route, new-intake route, QR draft route, or dispensing route behavior changed
+- performance issues found: no query key, pagination, fetch, memo, selection, realtime event handling, or table/detail rendering behavior changed. The slice only extracts local render helpers and keeps current touch-target sizing
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' src/components/ui/action-rail.test.tsx src/components/ui/filter-summary-bar.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx' 'src/app/(dashboard)/prescriptions/prescriptions-workspace.test.tsx' src/components/ui/action-rail.tsx src/components/ui/filter-summary-bar.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx'`
+- validation results: Prettier completed successfully; focused Vitest passed with 3 files / 6 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: admin alert-rules remains a high-value UI/refactor candidate. Browser proof remains blocked by missing local app/db listeners
+- next action: commit this prescription workspace group, then inspect admin alert-rules or retry runtime preflight
+
 ### 20260602-172500
 
 - current task: organize my-day dashboard into meaningful daily workflow groups
