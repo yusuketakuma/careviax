@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -222,7 +223,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">訪問条件・連絡制約</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">訪問条件・連絡制約</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -468,11 +469,11 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
               />
             </div>
 
-            <div className="flex justify-end">
+            <ActionRail>
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
-            </div>
+            </ActionRail>
           </>
         )}
       </CardContent>
