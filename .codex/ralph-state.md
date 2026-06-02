@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-191600
+
+- current task: improve prescription history semantic headings
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`, `src/app/(dashboard)/patients/[id]/prescriptions/page.test.tsx`, and focused prescription content references
+- files changed: `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`, `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the prescription history tab used decorative `CardTitle` wrappers for the prescription change dashboard and dispensing-method overview major groups, and used `CardTitle` for overview KPI values. This made important prescription review groups harder to navigate by heading and treated numeric KPI values as card titles
+- security risks found: no prescription history API path, org header, original-document link, original collection PATCH payload, drug-master batch request, query invalidation, auth, authorization, tenant boundary, prescription data handling, or patient data handling changed
+- performance issues found: no query function, mutation function, filtering logic, overlap calculation, drug-master map, summary builders, or render-loop behavior changed. The slice only changes heading markup and focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`
+- validation results: Prettier completed successfully; focused prescription history Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Medications content and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this prescription history heading group, then retry runtime preflight or continue the medications static UI/refactor slice
+
 ### 20260602-191300
 
 - current task: post-MCS-content runtime/browser preflight audit

@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Loading } from '@/components/ui/loading';
@@ -1178,10 +1178,10 @@ export function PrescriptionHistoryContent() {
                   <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
                   <HelpPopover title={item.label} description={item.description} />
                 </div>
-                <CardTitle className="flex items-center gap-2 text-xl">
+                <p className="flex items-center gap-2 font-heading text-xl leading-snug font-medium">
                   <CalendarDays className="size-4 text-sky-700" aria-hidden="true" />
                   {item.value}
-                </CardTitle>
+                </p>
               </CardHeader>
             </Card>
           ))}
@@ -1191,7 +1191,9 @@ export function PrescriptionHistoryContent() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">処方変更ダッシュボード</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">
+              処方変更ダッシュボード
+            </h2>
             <CardDescription>最新処方と前回処方の差分を先に確認できます。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1222,7 +1224,7 @@ export function PrescriptionHistoryContent() {
 
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">調剤方法ワンビュー</CardTitle>
+            <h2 className="font-heading text-base leading-snug font-medium">調剤方法ワンビュー</h2>
             <CardDescription>
               最新処方の一包化、粉砕、包装指示、注意事項をまとめています。
             </CardDescription>
