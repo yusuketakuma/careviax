@@ -1,21 +1,17 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import type { PatientOverview } from './patient-detail.types';
 
-export function PatientRiskCard({
-  riskSummary,
-}: {
-  riskSummary: PatientOverview['risk_summary'];
-}) {
+export function PatientRiskCard({ riskSummary }: { riskSummary: PatientOverview['risk_summary'] }) {
   const levelLabel =
     riskSummary?.level === 'high' ? '高' : riskSummary?.level === 'watch' ? '注意' : '安定';
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">患者リスク</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">患者リスク</h2>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="flex items-center justify-between">

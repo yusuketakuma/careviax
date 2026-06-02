@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-180433
+
+- current task: improve patient risk card semantic heading and add focused coverage
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-risk-card.tsx`, and patient risk test search results
+- files changed: `src/app/(dashboard)/patients/[id]/patient-risk-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-risk-card.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the patient risk card used a decorative `CardTitle` for a patient-safety summary group. This weakened heading navigation for immediate risk review
+- security risks found: no patient risk API path, risk_summary data shape, badge level logic, action link, auth, authorization, or patient data handling changed
+- performance issues found: no risk score calculation, reason slicing, grid rendering, or render-loop behavior changed. The slice only changes heading markup and adds focused rendering coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-risk-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-risk-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-risk-card.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-risk-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-risk-card.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-risk-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-risk-card.test.tsx'`
+- validation results: Prettier completed successfully; focused patient risk card Vitest passed with 1 file / 1 test; targeted ESLint passed with zero warnings; TypeScript passed without output after fixture fields were aligned with `PatientOverview['risk_summary']`; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient risk card group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-180226
 
 - current task: post-patient-readiness runtime/browser preflight audit
