@@ -24,6 +24,7 @@ import {
   TriangleAlert,
   UserCheck,
 } from 'lucide-react';
+import { PageSection } from '@/components/layout/page-section';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ActionRail } from '@/components/ui/action-rail';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
   Select,
@@ -48,7 +51,6 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePatientListStore } from '@/lib/stores/patient-list-store';
-import { SectionIntro } from '@/components/ui/section-intro';
 import {
   CASE_STATUS_LABELS,
   CASE_STATUS_VARIANTS,
@@ -659,11 +661,11 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
 
   return (
     <div className="space-y-6">
-      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
-        <SectionIntro
-          title="優先確認"
-          description="まず件数で優先度を掴み、その後に絞り込みと一覧確認へ進める構成にしています。"
-        />
+      <PageSection
+        title="優先確認"
+        description="まず件数で優先度を掴み、その後に絞り込みと一覧確認へ進める構成にしています。"
+        tone="subtle"
+      >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <OverviewMetricCard label="対象患者" value={`${data?.summary.total ?? 0}名`} />
           <OverviewMetricCard
@@ -683,18 +685,15 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
           />
           <OverviewMetricCard label="施設患者" value={`${data?.summary.facility_count ?? 0}名`} />
         </div>
-      </section>
+      </PageSection>
 
-      <section
-        className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4"
+      <PageSection
+        title="絞り込みと対象選定"
+        description="今日優先して見る患者を先に絞り込み、対象を固めてから一覧へ進みます。"
+        tone="subtle"
         data-testid="patients-filter-panel"
-        aria-labelledby="patients-filter-panel-heading"
+        headingId="patients-filter-panel-heading"
       >
-        <SectionIntro
-          id="patients-filter-panel-heading"
-          title="絞り込みと対象選定"
-          description="今日優先して見る患者を先に絞り込み、対象を固めてから一覧へ進みます。"
-        />
         <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.8fr))_auto] xl:grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,0.72fr))_auto]">
           <div className="space-y-1.5">
             <LabelText>患者検索</LabelText>
@@ -955,35 +954,45 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
             </div>
           </div>
         ) : null}
-      </section>
+      </PageSection>
 
-      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <SectionIntro
-            title="現在の状況"
-            description="件数サマリーと一括操作を同じまとまりに置き、絞り込み結果の影響をすぐ確認できるようにしています。"
-          />
-          <LoadingButton
-            type="button"
-            variant="outline"
-            className="shrink-0"
-            loading={bulkExportMutation.isPending}
-            loadingLabel="ZIP生成をキュー登録中..."
-            disabled={selectedPatients.length === 0}
-            onClick={() => bulkExportMutation.mutate(selectedPatients.map((patient) => patient.id))}
-          >
-            <Archive className="size-4" aria-hidden="true" />
-            薬歴PDFを一括出力
-          </LoadingButton>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">適用中フィルタ {activeFilterCount}件</Badge>
-          <Badge variant="outline">対象患者 {data?.summary.total ?? 0}名</Badge>
-          <Badge variant="outline">施設 {data?.summary.facility_count ?? 0}名</Badge>
-          <Badge variant="outline">同意不足 {data?.summary.missing_consent_count ?? 0}名</Badge>
-          <Badge variant="outline">お気に入り {favoritePatientIds.length}名</Badge>
-        </div>
-      </section>
+      <PageSection
+        title="現在の状況"
+        description="件数サマリーと一括操作を同じまとまりに置き、絞り込み結果の影響をすぐ確認できるようにしています。"
+        tone="subtle"
+        actions={
+          <ActionRail>
+            <LoadingButton
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              loading={bulkExportMutation.isPending}
+              loadingLabel="ZIP生成をキュー登録中..."
+              disabled={selectedPatients.length === 0}
+              onClick={() =>
+                bulkExportMutation.mutate(selectedPatients.map((patient) => patient.id))
+              }
+            >
+              <Archive className="size-4" aria-hidden="true" />
+              薬歴PDFを一括出力
+            </LoadingButton>
+          </ActionRail>
+        }
+      >
+        <FilterSummaryBar
+          items={[
+            { label: '適用中フィルタ', value: `${activeFilterCount}件` },
+            { label: '対象患者', value: `${data?.summary.total ?? 0}名` },
+            { label: '施設', value: `${data?.summary.facility_count ?? 0}名` },
+            {
+              label: '同意不足',
+              value: `${data?.summary.missing_consent_count ?? 0}名`,
+              tone: (data?.summary.missing_consent_count ?? 0) > 0 ? 'warning' : 'default',
+            },
+            { label: 'お気に入り', value: `${favoritePatientIds.length}名` },
+          ]}
+        />
+      </PageSection>
 
       {exportFeedback ? (
         <div
@@ -997,11 +1006,11 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
         </div>
       ) : null}
 
-      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
-        <SectionIntro
-          title="患者一覧"
-          description="対象患者の詳細へ進み、薬歴、処方受付、訪問候補へそのまま遷移できます。"
-        />
+      <PageSection
+        title="患者一覧"
+        description="対象患者の詳細へ進み、薬歴、処方受付、訪問候補へそのまま遷移できます。"
+        tone="subtle"
+      >
         <DataTable
           columns={columns}
           data={
@@ -1023,14 +1032,14 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
             exportFileName: 'patients-filtered.csv',
           }}
         />
-      </section>
+      </PageSection>
 
       {(favoritePatients.length > 0 || recentPatients.length > 0) && (
-        <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
-          <SectionIntro
-            title="補助導線"
-            description="よく使う患者と最近見た患者を本文一覧から分離し、再訪問や再確認の導線を短くしています。"
-          />
+        <PageSection
+          title="補助導線"
+          description="よく使う患者と最近見た患者を本文一覧から分離し、再訪問や再確認の導線を短くしています。"
+          tone="subtle"
+        >
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-lg border border-border/70 bg-background p-4">
               <p className="mb-2 text-sm font-medium text-foreground">お気に入り患者</p>
@@ -1073,7 +1082,7 @@ export function PatientsTable({ initialFilters }: { initialFilters?: InitialPati
               </div>
             </div>
           </div>
-        </section>
+        </PageSection>
       )}
     </div>
   );

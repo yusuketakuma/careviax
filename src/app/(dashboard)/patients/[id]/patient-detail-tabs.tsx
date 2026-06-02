@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays, differenceInYears, format } from 'date-fns';
@@ -13,6 +13,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageSection } from '@/components/layout/page-section';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { CasesTab } from './cases-tab';
 import { MedicationsContent } from './medications/medications-content';
@@ -83,21 +84,14 @@ export function PatientDetailInfoGroup({
   description: string;
   children: ReactNode;
 }) {
-  const titleId = useId();
-
   return (
-    <section
-      aria-labelledby={titleId}
-      className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-4"
+    <PageSection
+      title={title}
+      description={description}
+      contentClassName="grid gap-4 lg:grid-cols-2"
     >
-      <div>
-        <h2 id={titleId} className="text-base font-semibold text-foreground">
-          {title}
-        </h2>
-        <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">{children}</div>
-    </section>
+      {children}
+    </PageSection>
   );
 }
 
