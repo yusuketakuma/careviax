@@ -10290,6 +10290,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining workflow raw sections need separate judgment because HomeCareFeatureBoard already owns its heading, and refill-upcoming is a table block. Browser proof remains blocked by local e2e DB unavailability
 - next action: run post-append whitespace/status checks, commit this slice, then continue with schedule-proposal card cleanup or deeper drug-master safety/detail sections
 
+### 20260602-160740
+
+- current task: extract schedule proposal ranking card display component
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`, `src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts`, `src/app/(dashboard)/schedules/proposals/page.test.tsx`
+- files changed: `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no schedule proposal API, bulk mutation, detail selection, contact workflow, route preview, or query-state bug was targeted. The detail sheet's candidate ranking card markup was embedded inline in a large render branch, making the comparison UI harder to scan and maintain
+- security risks found: no proposal IDs, patient/contact fields, route draft payload, approval/rejection action, or patient communication behavior changed. The extracted component renders the same already-loaded candidate fields
+- performance issues found: no query or sorting behavior changed. `ProposalRankingCard` derives the reason chips from a single candidate and does not add requests or expensive cross-list computation
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts' 'src/app/(dashboard)/schedules/proposals/page.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.ts' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`
+- validation results: target Prettier passed after formatting the extracted component; focused Vitest passed with 6 files / 13 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include deeper schedule proposal list-card extraction, deeper drug-master safety/detail sections, final workflow table/board judgment, and DB-backed browser proof
+- next action: run post-append whitespace/status checks, commit this slice, then continue with deeper drug-master safety/detail cleanup or another schedule proposal display extraction
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

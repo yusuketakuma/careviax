@@ -261,6 +261,63 @@ function formatEtaLabel(
   return format(eta, 'HH:mm', { locale: ja });
 }
 
+function ProposalRankingCard({
+  candidate,
+  rank,
+  activeProposalId,
+}: {
+  candidate: Proposal;
+  rank: number;
+  activeProposalId: string;
+}) {
+  const proposalReasons = splitProposalReason(candidate.proposal_reason ?? '');
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border px-4 py-3',
+        candidate.id === activeProposalId
+          ? 'border-primary/40 bg-primary/5'
+          : 'border-border/70 bg-background',
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {rank}位 {formatDateLabel(candidate.proposed_date)}{' '}
+            {timeLabel(candidate.time_window_start, candidate.time_window_end)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            担当 {candidate.proposed_pharmacist?.name ?? '未解決'} /{' '}
+            {candidate.site?.name ?? '拠点未設定'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">
+            移動 {formatDistanceLabel(candidate.route_distance_score)}
+          </Badge>
+          <Badge variant="outline">
+            配置 {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
+          </Badge>
+          <Badge variant="outline">期限 {formatDateLabel(candidate.visit_deadline_date)}</Badge>
+        </div>
+      </div>
+      {proposalReasons.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {proposalReasons.map((reason) => (
+            <span
+              key={`${candidate.id}-${reason}`}
+              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+            >
+              {reason}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function toDashboardTab(status?: string | null): DashboardTab {
   if (status === 'patient_contact_pending') return 'patient_contact_pending';
   if (status === 'confirmed') return 'confirmed';
@@ -1647,45 +1704,12 @@ export function ScheduleProposalsContent({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {rankedCandidates.map((candidate, index) => (
-                    <div
+                    <ProposalRankingCard
                       key={candidate.id}
-                      className={`rounded-2xl border px-4 py-3 ${candidate.id === detail.id ? 'border-primary/40 bg-primary/5' : 'border-border/70 bg-background'}`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {index + 1}位 {formatDateLabel(candidate.proposed_date)}{' '}
-                            {timeLabel(candidate.time_window_start, candidate.time_window_end)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            担当 {candidate.proposed_pharmacist?.name ?? '未解決'} /{' '}
-                            {candidate.site?.name ?? '拠点未設定'}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">
-                            移動 {formatDistanceLabel(candidate.route_distance_score)}
-                          </Badge>
-                          <Badge variant="outline">
-                            配置{' '}
-                            {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
-                          </Badge>
-                          <Badge variant="outline">
-                            期限 {formatDateLabel(candidate.visit_deadline_date)}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {splitProposalReason(candidate.proposal_reason ?? '').map((reason) => (
-                          <span
-                            key={`${candidate.id}-${reason}`}
-                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
-                          >
-                            {reason}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                      candidate={candidate}
+                      rank={index + 1}
+                      activeProposalId={detail.id}
+                    />
                   ))}
                 </CardContent>
               </Card>
