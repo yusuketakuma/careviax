@@ -25,9 +25,7 @@ describe('WorkflowNavigation', () => {
 
     expect(screen.getByText('固定順のメイン導線')).toBeTruthy();
     expect(
-      screen.getByText(
-        '処方登録から報告書まで、主業務フローを固定の 8 ステップで並べています。',
-      ),
+      screen.getByText('処方登録から報告書まで、主業務フローを固定の 8 ステップで並べています。'),
     ).toBeTruthy();
 
     const routeRail = screen.getByTestId('dashboard-main-workflow-route');
@@ -42,18 +40,16 @@ describe('WorkflowNavigation', () => {
     expect(routeLinks[6]?.getAttribute('href')).toBe('/visits');
     expect(routeLinks[7]?.getAttribute('href')).toBe('/reports');
 
-    expect(screen.getByRole('link', { name: /処方登録/ }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: /処方受付/ }).getAttribute('href')).toBe(
       '/prescriptions',
     );
-    expect(screen.getByRole('link', { name: /調剤監査/ }).getAttribute('href')).toBe(
-      '/auditing',
-    );
+    expect(screen.getByRole('link', { name: /調剤監査/ }).getAttribute('href')).toBe('/auditing');
     expect(screen.getByRole('link', { name: /セット監査/ }).getAttribute('href')).toBe(
       '/medication-sets',
     );
-    expect(screen.getByRole('link', { name: /スケジュール登録/ }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: /訪問スケジュール/ }).getAttribute('href')).toBe(
       '/schedules',
     );
-    expect(screen.getByRole('link', { name: /報告書/ }).getAttribute('href')).toBe('/reports');
+    expect(screen.getByRole('link', { name: /報告書一覧/ }).getAttribute('href')).toBe('/reports');
   });
 });

@@ -152,7 +152,7 @@ function MainWorkflowCard({ step, index }: { step: MainWorkflowStep; index: numb
               href={step.href}
               className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-primary transition-colors hover:bg-primary/[0.06]"
             >
-              {step.title}を開く
+              {step.surfaceLabel}を開く
               <ArrowRight className="size-4 text-primary transition-transform" aria-hidden="true" />
             </Link>
           </div>

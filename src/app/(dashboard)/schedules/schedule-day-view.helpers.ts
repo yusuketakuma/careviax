@@ -1,6 +1,16 @@
 import type { Proposal, VisitSchedule } from './day-view.shared';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 
+export type WeekProposalStats = {
+  approvalPending: number;
+  contactPending: number;
+  confirmedSchedules: number;
+  lockedSchedules: number;
+  pendingOverrides: number;
+  emergencyImpacts: number;
+  fallbackAssignments: number;
+};
+
 export type DepartureCarryWarning = {
   title: string;
   description: string;
@@ -50,7 +60,10 @@ export type FacilityTrackableSchedule = {
 export type ScheduleLockState = {
   confirmed_at: VisitSchedule['confirmed_at'];
   applied_override: unknown | null;
-  override_request: Pick<NonNullable<VisitSchedule['override_request']>, 'status' | 'reason'> | null;
+  override_request: Pick<
+    NonNullable<VisitSchedule['override_request']>,
+    'status' | 'reason'
+  > | null;
 };
 
 export type FacilityTrackerSchedule = FacilityTrackableSchedule &
@@ -72,7 +85,7 @@ export type FacilityTrackerGrouping = {
 };
 
 export function getFacilityTrackerGrouping(
-  schedule: FacilityTrackableSchedule
+  schedule: FacilityTrackableSchedule,
 ): FacilityTrackerGrouping | null {
   const visitPlaceGroup = deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null);
   const label = schedule.facility_hint?.label ?? visitPlaceGroup?.label ?? null;
@@ -89,8 +102,36 @@ export function getFacilityTrackerGrouping(
   };
 }
 
+export function buildWeekProposalStats(
+  proposals: Pick<Proposal, 'proposal_status' | 'priority' | 'assignment_mode'>[],
+  schedules: Pick<
+    VisitSchedule,
+    'confirmed_at' | 'override_request' | 'priority' | 'assignment_mode'
+  >[],
+): WeekProposalStats {
+  return {
+    approvalPending: proposals.filter((proposal) =>
+      ['proposed', 'reschedule_pending'].includes(proposal.proposal_status),
+    ).length,
+    contactPending: proposals.filter(
+      (proposal) => proposal.proposal_status === 'patient_contact_pending',
+    ).length,
+    confirmedSchedules: schedules.filter((schedule) => schedule.confirmed_at).length,
+    lockedSchedules: schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length,
+    pendingOverrides: schedules.filter(
+      (schedule) => schedule.override_request?.status === 'pending',
+    ).length,
+    emergencyImpacts:
+      proposals.filter((proposal) => proposal.priority === 'emergency').length +
+      schedules.filter((schedule) => schedule.priority === 'emergency').length,
+    fallbackAssignments:
+      proposals.filter((proposal) => proposal.assignment_mode === 'fallback').length +
+      schedules.filter((schedule) => schedule.assignment_mode === 'fallback').length,
+  };
+}
+
 export function getDepartureCarryWarning(
-  schedule: Pick<VisitSchedule, 'carry_items_status'> | null
+  schedule: Pick<VisitSchedule, 'carry_items_status'> | null,
 ): DepartureCarryWarning | null {
   if (!schedule) return null;
 
@@ -128,9 +169,7 @@ export function splitTrace(reason: string) {
     .filter(Boolean);
 }
 
-export function scheduleLockText(
-  schedule: ScheduleLockState
-): LockBadge {
+export function scheduleLockText(schedule: ScheduleLockState): LockBadge {
   if (schedule.override_request?.status === 'pending') {
     return {
       label: '変更承認待ち',
@@ -160,7 +199,7 @@ export function scheduleLockText(
 }
 
 export function proposalLockText(
-  proposal: Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>
+  proposal: Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>,
 ): LockBadge {
   if (proposal.proposal_status === 'confirmed' || proposal.finalized_schedule_id) {
     return {
@@ -186,9 +225,7 @@ export function proposalLockText(
   };
 }
 
-export function buildFacilityTracker(
-  schedules: FacilityTrackerSchedule[]
-): FacilityTrackerGroup[] {
+export function buildFacilityTracker(schedules: FacilityTrackerSchedule[]): FacilityTrackerGroup[] {
   const groups = new Map<string, FacilityTrackerGroup>();
 
   for (const schedule of schedules) {
@@ -234,7 +271,7 @@ export function buildFacilityTracker(
 }
 
 export function buildFacilityRouteDefaults(
-  groups: FacilityTrackerGroup[]
+  groups: FacilityTrackerGroup[],
 ): Record<string, Record<string, string>> {
   return Object.fromEntries(
     groups.map((group) => [
@@ -243,8 +280,8 @@ export function buildFacilityRouteDefaults(
         group.patients.map((patient, index) => [
           patient.scheduleId,
           String(patient.routeOrder ?? index + 1),
-        ])
+        ]),
       ),
-    ])
+    ]),
   ) as Record<string, Record<string, string>>;
 }

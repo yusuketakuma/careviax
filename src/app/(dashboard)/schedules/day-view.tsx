@@ -6,21 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  AlertTriangle,
-  Building2,
-  CalendarClock,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  CloudOff,
-  PhoneCall,
-  PlayCircle,
-  RefreshCw,
-  Route,
-  Shuffle,
-  Navigation,
-} from 'lucide-react';
+import { Building2, CheckCircle2, CloudOff, PlayCircle, Navigation } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -79,7 +65,6 @@ import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
-import { ScheduleMetricCard } from './schedule-metric-card';
 import { applyVisitScheduleRouteUpdates } from './visit-route-client';
 import { useRouteOrderDraft } from './route-order-draft';
 import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
@@ -126,6 +111,7 @@ import {
 } from './day-view.shared';
 import { OnboardingWarningBadges, ScheduleBoardSkeleton } from './schedule-day-view.chrome';
 import {
+  buildWeekProposalStats,
   buildFacilityRouteDefaults,
   buildFacilityTracker,
   buildDirectionsUrl,
@@ -137,6 +123,12 @@ import {
   scheduleLockText,
   splitTrace,
 } from './schedule-day-view.helpers';
+import {
+  RelatedManagementLinks,
+  RouteBoardSummary,
+  ScheduleBoardMetrics,
+  WeeklyScheduleControls,
+} from './schedule-day-view.sections';
 
 type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
@@ -538,27 +530,10 @@ export function ScheduleDayView({
     [tasks],
   );
 
-  const weekProposalStats = useMemo(() => {
-    return {
-      approvalPending: proposals.filter((proposal) =>
-        ['proposed', 'reschedule_pending'].includes(proposal.proposal_status),
-      ).length,
-      contactPending: proposals.filter(
-        (proposal) => proposal.proposal_status === 'patient_contact_pending',
-      ).length,
-      confirmedSchedules: schedules.filter((schedule) => schedule.confirmed_at).length,
-      lockedSchedules: schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length,
-      pendingOverrides: schedules.filter(
-        (schedule) => schedule.override_request?.status === 'pending',
-      ).length,
-      emergencyImpacts:
-        proposals.filter((proposal) => proposal.priority === 'emergency').length +
-        schedules.filter((schedule) => schedule.priority === 'emergency').length,
-      fallbackAssignments:
-        proposals.filter((proposal) => proposal.assignment_mode === 'fallback').length +
-        schedules.filter((schedule) => schedule.assignment_mode === 'fallback').length,
-    };
-  }, [proposals, schedules]);
+  const weekProposalStats = useMemo(
+    () => buildWeekProposalStats(proposals, schedules),
+    [proposals, schedules],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1830,182 +1805,26 @@ export function ScheduleDayView({
 
   return (
     <div className="space-y-6">
-      <PageSection
-        title="週次訪問の進捗"
-        description="候補、確定、変更待ち、緊急影響を同じ基準で確認します"
-        contentClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-6"
-      >
-        <ScheduleMetricCard
-          title="承認待ち"
-          value={weekProposalStats.approvalPending}
-          description="担当者が候補を確認する必要があります"
-          icon={CalendarClock}
-        />
-        <ScheduleMetricCard
-          title="架電待ち"
-          value={weekProposalStats.contactPending}
-          description="患者連絡で日時を確定させる段階です"
-          icon={PhoneCall}
-        />
-        <ScheduleMetricCard
-          title="確定訪問"
-          value={weekProposalStats.confirmedSchedules}
-          description="電話確定済みで原則変更しない予定です"
-          icon={CheckCircle2}
-        />
-        <ScheduleMetricCard
-          title="代替割当"
-          value={weekProposalStats.fallbackAssignments}
-          description="担当薬剤師不在のため他薬剤師へエスカレーション"
-          icon={Shuffle}
-        />
-        <ScheduleMetricCard
-          title="変更承認待ち"
-          value={weekProposalStats.pendingOverrides}
-          description="確定後の変更は専用リスケで管理します"
-          icon={RefreshCw}
-        />
-        <ScheduleMetricCard
-          title="緊急影響"
-          value={weekProposalStats.emergencyImpacts}
-          description="緊急訪問や割込対応の影響を見える化"
-          icon={AlertTriangle}
-        />
-        <ScheduleMetricCard
-          title="確定ロック"
-          value={weekProposalStats.lockedSchedules}
-          description="電話確定済みで原則変更しません"
-          icon={CheckCircle2}
-        />
-      </PageSection>
+      <ScheduleBoardMetrics stats={weekProposalStats} />
 
-      <PageSection
-        title="週間ルート運用"
-        description="服薬最終日より前の訪問候補を生成し、患者住所と既存訪問順からルート効率を加味して提案します"
-        className="overflow-hidden bg-[linear-gradient(135deg,rgba(245,248,255,1),rgba(248,250,252,1))] ring-1 ring-slate-200"
-        contentClassName="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
-      >
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Weekly Route Board
-          </p>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            電話合意が取れた候補だけを確定し、確定後の変更は専用のリスケジュール操作で扱います。
-          </p>
-        </div>
-        <div className="grid gap-2 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">対象週</span>
-            <span className="font-medium text-slate-900">
-              {format(weekStart, 'M/d', { locale: ja })} - {format(weekEnd, 'M/d', { locale: ja })}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">選択日</span>
-            <span className="font-medium text-slate-900">
-              {format(selectedDay, 'yyyy年M月d日(E)', { locale: ja })}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">担当薬剤師</span>
-            <span className="font-medium text-slate-900">
-              {selectedCase?.primary_pharmacist_name ?? '未設定'}
-            </span>
-          </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            電話で患者合意が取れた候補のみ確定できます。確定後の変更は
-            リスケジュール操作で行います。
-          </div>
-        </div>
-      </PageSection>
+      <RouteBoardSummary
+        weekStart={weekStart}
+        weekEnd={weekEnd}
+        selectedDay={selectedDay}
+        pharmacistName={selectedCase?.primary_pharmacist_name ?? null}
+      />
 
-      <PageSection
-        title="週間スケジュール"
-        description="候補件数と確定件数を見ながら日別に切り替えます"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => setSelectedDate(format(addDays(selectedDay, -7), 'yyyy-MM-dd'))}
-              aria-label="前週"
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Input
-              type="date"
-              className="w-[160px]"
-              value={selectedDate}
-              aria-label="週間スケジュールの対象日"
-              onChange={(event) => setSelectedDate(event.target.value)}
-            />
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => setSelectedDate(format(addDays(selectedDay, 7), 'yyyy-MM-dd'))}
-              aria-label="翌週"
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        }
-      >
-        <div className="flex flex-wrap gap-2">
-          {visibleDays.map((day) => {
-            const dateKey = format(day, 'yyyy-MM-dd');
-            const proposalCount = proposals.filter(
-              (proposal) => toDateKey(proposal.proposed_date) === dateKey,
-            ).length;
-            const scheduleCount = schedules.filter(
-              (schedule) => toDateKey(schedule.scheduled_date) === dateKey,
-            ).length;
-            const isSelected = dateKey === selectedDate;
-            const isBillableHistoryDate = billedDateSet.has(dateKey);
-            const isNextBillableDate = billingCadence?.next_billable_date === dateKey;
-            const isSuggestedBillableDate = suggestedDateSet.has(dateKey);
-
-            return (
-              <button
-                key={dateKey}
-                type="button"
-                onClick={() => setSelectedDate(dateKey)}
-                aria-pressed={isSelected}
-                aria-label={`${format(day, 'yyyy年M月d日(E)', { locale: ja })} 候補${proposalCount}件 確定${scheduleCount}件`}
-                className={[
-                  'min-w-[92px] rounded-xl border px-3 py-2 text-left transition',
-                  isSelected
-                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                    : 'border-border bg-background hover:border-slate-400',
-                ].join(' ')}
-              >
-                <div className="text-xs">{format(day, 'M/d(E)', { locale: ja })}</div>
-                <div className="mt-1 text-[11px] opacity-80">
-                  候補 {proposalCount} / 確定 {scheduleCount}
-                </div>
-                {(isBillableHistoryDate || isNextBillableDate) && (
-                  <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
-                    {isBillableHistoryDate && (
-                      <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-slate-700">
-                        算定済
-                      </span>
-                    )}
-                    {isNextBillableDate && (
-                      <span className="rounded bg-emerald-200/80 px-1.5 py-0.5 text-emerald-900">
-                        次回算定可
-                      </span>
-                    )}
-                    {!isNextBillableDate && isSuggestedBillableDate && (
-                      <span className="rounded bg-sky-200/80 px-1.5 py-0.5 text-sky-900">
-                        候補日
-                      </span>
-                    )}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </PageSection>
+      <WeeklyScheduleControls
+        visibleDays={visibleDays}
+        selectedDate={selectedDate}
+        selectedDay={selectedDay}
+        proposals={proposals}
+        schedules={schedules}
+        billedDateSet={billedDateSet}
+        nextBillableDate={billingCadence?.next_billable_date ?? null}
+        suggestedDateSet={suggestedDateSet}
+        onSelectDate={setSelectedDate}
+      />
 
       <section className="space-y-3 md:hidden" aria-labelledby="mobile-visit-list-heading">
         <div className="flex items-center justify-between">
@@ -2846,51 +2665,7 @@ export function ScheduleDayView({
             )}
           </PageSection>
 
-          <PageSection
-            title="関連管理"
-            description="ケース担当・シフト・休日設定は管理画面で更新します"
-            contentClassName="space-y-3"
-          >
-            <Link
-              href="/admin/shifts"
-              className="flex items-center justify-between rounded-xl border px-3 py-3 transition hover:bg-muted/30"
-            >
-              <div>
-                <p className="font-medium text-foreground">薬剤師・シフト管理</p>
-                <p className="text-xs text-muted-foreground">
-                  薬剤師登録、休日登録、月間シフト編集
-                </p>
-              </div>
-              <Route className="size-4 text-muted-foreground" />
-            </Link>
-            {selectedCase ? (
-              <Link
-                href={`/patients/${selectedCase.patient.id}`}
-                className="flex items-center justify-between rounded-xl border px-3 py-3 transition hover:bg-muted/30"
-              >
-                <div>
-                  <p className="font-medium text-foreground">担当薬剤師の割当</p>
-                  <p className="text-xs text-muted-foreground">
-                    患者ケースで主担当薬剤師を設定します
-                  </p>
-                </div>
-                <Shuffle className="size-4 text-muted-foreground" />
-              </Link>
-            ) : (
-              <div
-                aria-disabled="true"
-                className="flex items-center justify-between rounded-xl border px-3 py-3 opacity-60"
-              >
-                <div>
-                  <p className="font-medium text-foreground">担当薬剤師の割当</p>
-                  <p className="text-xs text-muted-foreground">
-                    対象ケースを選択すると患者ケースへ移動できます
-                  </p>
-                </div>
-                <Shuffle className="size-4 text-muted-foreground" />
-              </div>
-            )}
-          </PageSection>
+          <RelatedManagementLinks selectedCase={selectedCase} />
         </div>
 
         <Tabs defaultValue={initialTab}>

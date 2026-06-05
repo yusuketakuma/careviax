@@ -4,6 +4,7 @@ import {
   buildFacilityTracker,
   buildDirectionsUrl,
   buildMapEmbedUrl,
+  buildWeekProposalStats,
   getDepartureCarryWarning,
   getFacilityTrackerGrouping,
   proposalLockText,
@@ -18,23 +19,89 @@ import type { Proposal, VisitSchedule } from './day-view.shared';
 describe('schedule-day-view.helpers', () => {
   it('returns carry warnings only for blocked or partial schedules', () => {
     expect(
-      getDepartureCarryWarning({ carry_items_status: 'blocked' } as Pick<VisitSchedule, 'carry_items_status'>)
+      getDepartureCarryWarning({ carry_items_status: 'blocked' } as Pick<
+        VisitSchedule,
+        'carry_items_status'
+      >),
     )?.toMatchObject({ title: '持参薬が未確定のままです' });
     expect(
-      getDepartureCarryWarning({ carry_items_status: 'partial' } as Pick<VisitSchedule, 'carry_items_status'>)
+      getDepartureCarryWarning({ carry_items_status: 'partial' } as Pick<
+        VisitSchedule,
+        'carry_items_status'
+      >),
     )?.toMatchObject({ title: '持参物の一部が未確定です' });
     expect(
-      getDepartureCarryWarning({ carry_items_status: 'ready' } as Pick<VisitSchedule, 'carry_items_status'>)
+      getDepartureCarryWarning({ carry_items_status: 'ready' } as Pick<
+        VisitSchedule,
+        'carry_items_status'
+      >),
     ).toBeNull();
   });
 
   it('builds navigation URLs from addresses', () => {
-    expect(buildDirectionsUrl('東京都千代田区1-1')).toContain(encodeURIComponent('東京都千代田区1-1'));
+    expect(buildDirectionsUrl('東京都千代田区1-1')).toContain(
+      encodeURIComponent('東京都千代田区1-1'),
+    );
     expect(buildMapEmbedUrl('大阪市北区2-2')).toContain(encodeURIComponent('大阪市北区2-2'));
   });
 
   it('splits workflow traces into trimmed segments', () => {
     expect(splitTrace('調整中 / 未架電 / 施設依頼')).toEqual(['調整中', '未架電', '施設依頼']);
+  });
+
+  it('builds weekly proposal stats without changing lock semantics', () => {
+    const stats = buildWeekProposalStats(
+      [
+        {
+          proposal_status: 'proposed',
+          priority: 'normal',
+          assignment_mode: 'primary',
+        },
+        {
+          proposal_status: 'reschedule_pending',
+          priority: 'emergency',
+          assignment_mode: 'fallback',
+        },
+        {
+          proposal_status: 'patient_contact_pending',
+          priority: 'urgent',
+          assignment_mode: 'primary',
+        },
+      ] as Pick<Proposal, 'proposal_status' | 'priority' | 'assignment_mode'>[],
+      [
+        {
+          confirmed_at: '2026-04-02T09:00:00.000Z',
+          override_request: null,
+          priority: 'normal',
+          assignment_mode: 'primary',
+        },
+        {
+          confirmed_at: '2026-04-02T10:00:00.000Z',
+          override_request: { status: 'pending' },
+          priority: 'emergency',
+          assignment_mode: 'fallback',
+        },
+        {
+          confirmed_at: null,
+          override_request: null,
+          priority: 'normal',
+          assignment_mode: 'primary',
+        },
+      ] as Pick<
+        VisitSchedule,
+        'confirmed_at' | 'override_request' | 'priority' | 'assignment_mode'
+      >[],
+    );
+
+    expect(stats).toEqual({
+      approvalPending: 2,
+      contactPending: 1,
+      confirmedSchedules: 2,
+      lockedSchedules: 2,
+      pendingOverrides: 1,
+      emergencyImpacts: 2,
+      fallbackAssignments: 2,
+    });
   });
 
   it('resolves schedule lock badges in priority order', () => {
@@ -43,7 +110,7 @@ describe('schedule-day-view.helpers', () => {
         override_request: { status: 'pending', reason: '施設都合' },
         confirmed_at: '2026-04-02T09:00:00.000Z',
         applied_override: null,
-      } satisfies ScheduleLockState)
+      } satisfies ScheduleLockState),
     ).toMatchObject({ label: '変更承認待ち' });
 
     expect(
@@ -51,7 +118,7 @@ describe('schedule-day-view.helpers', () => {
         override_request: null,
         confirmed_at: '2026-04-02T09:00:00.000Z',
         applied_override: null,
-      } satisfies ScheduleLockState)
+      } satisfies ScheduleLockState),
     ).toMatchObject({ label: '運用ロック' });
   });
 
@@ -60,14 +127,14 @@ describe('schedule-day-view.helpers', () => {
       proposalLockText({
         proposal_status: 'patient_contact_pending',
         finalized_schedule_id: null,
-      } as Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>)
+      } as Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>),
     ).toMatchObject({ label: '電話待ち' });
 
     expect(
       proposalLockText({
         proposal_status: 'proposed',
         finalized_schedule_id: 'schedule_1',
-      } as Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>)
+      } as Pick<Proposal, 'proposal_status' | 'finalized_schedule_id'>),
     ).toMatchObject({ label: '確定済み' });
   });
 

@@ -10,7 +10,6 @@ import {
   Car,
   CheckSquare,
   CirclePause,
-  ClipboardList,
   Clock,
   FileWarning,
   Hospital,
@@ -26,7 +25,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
@@ -47,6 +45,15 @@ import type {
   MyDayVisitFilter,
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import {
+  InlineFilterButton,
+  MyDayEmptyAction,
+  MyDayNextStepPanel,
+  MyDaySectionError,
+  QuickStat,
+  SectionSkeleton,
+  UnpreparedVisitLink,
+} from './my-day-sections';
 
 type Task = {
   id: string;
@@ -75,37 +82,12 @@ const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
   paused: CirclePause,
 };
 
-function SectionSkeleton() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <Skeleton key={i} className="h-14 w-full rounded-lg" />
-      ))}
-    </div>
-  );
-}
-
 type MyDayContentProps = {
   initialFocus?: MyDayFocus;
   initialVisitFilter?: MyDayVisitFilter;
   initialTaskFilter?: MyDayTaskFilter;
   initialContext?: string | null;
 };
-
-function InlineFilterButton({ active, label }: { active: boolean; label: string }) {
-  return (
-    <span
-      className={[
-        'inline-flex min-h-[44px] items-center rounded-full border px-3 py-1 text-xs font-medium sm:min-h-[32px]',
-        active
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-border/70 bg-background text-muted-foreground',
-      ].join(' ')}
-    >
-      {label}
-    </span>
-  );
-}
 
 export function MyDayContent({
   initialFocus,
@@ -116,6 +98,7 @@ export function MyDayContent({
   const replaceMyDayUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const userId = useAuthStore((s) => s.currentUser.id);
+  const isUserPending = !!orgId && !userId;
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
   // My visits today
@@ -130,7 +113,7 @@ export function MyDayContent({
       if (!res.ok) throw new Error('訪問スケジュールの取得に失敗しました');
       return res.json() as Promise<{ data: VisitSchedule[] }>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && !!userId,
   });
 
   // My tasks
@@ -145,7 +128,7 @@ export function MyDayContent({
       if (!res.ok) throw new Error('タスクの取得に失敗しました');
       return res.json() as Promise<{ data: Task[] }>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && !!userId,
   });
 
   // Pipeline actions (from dashboard)
@@ -166,7 +149,7 @@ export function MyDayContent({
           headers: { 'x-org-id': orgId },
         },
       );
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error('ステータス変更の取得に失敗しました');
       const json = await res.json();
       return (json.data ?? []) as Array<{
         id: string;
@@ -212,6 +195,73 @@ export function MyDayContent({
   const statusChanges = statusChangesQuery.data ?? [];
 
   const totalPipeline = pipeline.reduce((s, p) => s + p.count, 0);
+  const nextTask = filteredPendingTasks[0] ?? pendingTasks[0] ?? null;
+  const nextTaskPresentation = nextTask ? describeOperationalTask(nextTask) : null;
+  const nextVisit = filteredVisits[0] ?? todayVisits[0] ?? null;
+  const nextVisitWindowLabel = nextVisit
+    ? timeLabel(nextVisit.time_window_start, nextVisit.time_window_end)
+    : null;
+  const hasPrimaryFetchError = actionsQuery.isError || visitsQuery.isError || tasksQuery.isError;
+  const nextStep = hasPrimaryFetchError
+    ? {
+        title: '取得エラーがあります',
+        description:
+          '今日の訪問、タスク、優先対応の一部を取得できません。空状態とは判断せず、各一覧で確認してください。',
+        href: '/workflow',
+        ctaLabel: 'ワークフローを確認',
+        tone: 'danger' as const,
+      }
+    : isUserPending
+      ? {
+          title: '担当者情報を確認中',
+          description:
+            '自分の担当訪問と未完了タスクだけを表示するため、担当者 ID の同期を待っています。',
+          href: '/dashboard',
+          ctaLabel: 'ホームを確認',
+          tone: 'default' as const,
+        }
+      : urgentActions.length > 0
+        ? {
+            title: '緊急・高優先アクションを先に確認',
+            description: `${urgentActions.length}件の優先対応があります。患者・期限・キューを確認してから作業に入ります。`,
+            href: urgentActions[0]?.action_href ?? '/workflow',
+            ctaLabel: urgentActions[0]?.action_label ?? '優先対応を開く',
+            tone: 'danger' as const,
+          }
+        : unpreparedVisits.length > 0
+          ? {
+              title: '訪問前準備を完了',
+              description: `${unpreparedVisits.length}件の訪問で準備が未完了です。訪問前に持参物と連絡事項を確認します。`,
+              href: '/schedules',
+              ctaLabel: '準備一覧を開く',
+              tone: 'warning' as const,
+            }
+          : nextVisit
+            ? {
+                title: `${nextVisit.case_.patient.name}さんの訪問を確認`,
+                description: `${nextVisitWindowLabel ?? '時間未設定'} / ${
+                  VISIT_TYPE_LABELS[nextVisit.visit_type] ?? nextVisit.visit_type
+                }。訪問記録から患者文脈と当日の状態を確認します。`,
+                href: `/visits/${nextVisit.id}/record`,
+                ctaLabel: '訪問記録を開く',
+                tone: 'default' as const,
+              }
+            : nextTask && nextTaskPresentation
+              ? {
+                  title: nextTask.title,
+                  description: `${nextTaskPresentation.queueLabel} / ${nextTaskPresentation.actionLabel}。未完了タスクから今日の作業を進めます。`,
+                  href: nextTaskPresentation.actionHref,
+                  ctaLabel: nextTaskPresentation.actionLabel,
+                  tone: 'default' as const,
+                }
+              : {
+                  title: '今日の確認は落ち着いています',
+                  description:
+                    '担当訪問と未完了タスクに大きな残りはありません。ホームで全体状況を確認できます。',
+                  href: '/dashboard',
+                  ctaLabel: 'ホームに戻る',
+                  tone: 'default' as const,
+                };
   const contextSummary =
     initialContext === 'dashboard_home'
       ? initialFocus === 'visits'
@@ -234,18 +284,38 @@ export function MyDayContent({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+      {isUserPending ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+          <AlertCircle className="size-4 text-amber-700" aria-hidden="true" />
+          <AlertDescription className="text-amber-800">
+            担当者情報を確認中です。担当者が確定するまで、自分の訪問・タスクだけを取得します。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <PageSection
         title="今日の概要"
         description="今日の訪問、タスク、パイプライン、緊急件数を最初に把握する導入グループです。"
         contentClassName="grid grid-cols-4 gap-2"
       >
-        <QuickStat label="訪問" value={todayVisits.length} loading={visitsQuery.isLoading} />
-        <QuickStat label="タスク" value={pendingTasks.length} loading={tasksQuery.isLoading} />
-        <QuickStat label="パイプライン" value={totalPipeline} loading={actionsQuery.isLoading} />
+        <QuickStat
+          label="訪問"
+          value={todayVisits.length}
+          loading={visitsQuery.isLoading || visitsQuery.isError || isUserPending}
+        />
+        <QuickStat
+          label="タスク"
+          value={pendingTasks.length}
+          loading={tasksQuery.isLoading || tasksQuery.isError || isUserPending}
+        />
+        <QuickStat
+          label="パイプライン"
+          value={totalPipeline}
+          loading={actionsQuery.isLoading || actionsQuery.isError}
+        />
         <QuickStat
           label="緊急"
           value={urgentActions.length}
-          loading={actionsQuery.isLoading}
+          loading={actionsQuery.isLoading || actionsQuery.isError}
           urgent={urgentActions.length > 0}
         />
       </PageSection>
@@ -255,7 +325,16 @@ export function MyDayContent({
         description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
         contentClassName="space-y-3"
       >
-        {urgentActions.length > 0 && (
+        <MyDayNextStepPanel {...nextStep} />
+
+        {actionsQuery.isError ? (
+          <MyDaySectionError
+            title="優先アクションを取得できません"
+            description="緊急対応とパイプラインの取得に失敗しました。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
+            href="/workflow"
+            label="ワークフローを確認"
+          />
+        ) : urgentActions.length > 0 ? (
           <Card className="border-red-200 bg-red-50/50">
             <CardHeader className="pb-2">
               <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-red-700">
@@ -268,7 +347,7 @@ export function MyDayContent({
                 <Link
                   key={item.id}
                   href={item.action_href}
-                  className="flex items-center justify-between rounded-md border border-red-200 bg-white p-2.5 transition-colors hover:bg-red-50"
+                  className="flex min-h-[44px] items-center justify-between rounded-md border border-red-200 bg-white p-2.5 transition-colors hover:bg-red-50"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{item.title}</p>
@@ -284,7 +363,7 @@ export function MyDayContent({
               ))}
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         <Card className={initialFocus === 'visits' ? 'ring-2 ring-primary/25' : undefined}>
           <CardHeader className="pb-2">
@@ -292,7 +371,9 @@ export function MyDayContent({
               <Car className="size-4 text-primary" aria-hidden="true" />
               今日の訪問
               <Badge variant="secondary" className="ml-auto text-xs">
-                {visitsQuery.isLoading ? '…' : `${filteredVisits.length}件`}
+                {isUserPending || visitsQuery.isLoading || visitsQuery.isError
+                  ? '…'
+                  : `${filteredVisits.length}件`}
               </Badge>
             </h3>
           </CardHeader>
@@ -300,6 +381,7 @@ export function MyDayContent({
             <div className="mb-2 flex flex-wrap gap-2">
               <button
                 type="button"
+                aria-pressed={initialVisitFilter === 'all'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'visits',
@@ -313,6 +395,7 @@ export function MyDayContent({
               </button>
               <button
                 type="button"
+                aria-pressed={initialVisitFilter === 'unprepared'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'visits',
@@ -329,6 +412,7 @@ export function MyDayContent({
               </button>
               <button
                 type="button"
+                aria-pressed={initialVisitFilter === 'in_progress'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'visits',
@@ -344,12 +428,25 @@ export function MyDayContent({
                 />
               </button>
             </div>
-            {visitsQuery.isLoading ? (
+            {visitsQuery.isError ? (
+              <MyDaySectionError
+                title="本日の訪問を取得できません"
+                description="担当訪問の取得に失敗しました。訪問なしとは判断せず、スケジュール画面で担当予定を確認してください。"
+                href="/schedules"
+                label="スケジュールを確認"
+              />
+            ) : isUserPending || visitsQuery.isLoading ? (
               <SectionSkeleton />
             ) : filteredVisits.length === 0 ? (
-              <p className="py-3 text-center text-sm text-muted-foreground">
-                本日の訪問はありません
-              </p>
+              <MyDayEmptyAction
+                message={
+                  initialVisitFilter === 'all'
+                    ? '本日の訪問はありません'
+                    : 'この条件に一致する本日の訪問はありません'
+                }
+                href="/schedules"
+                label="スケジュールを確認"
+              />
             ) : (
               filteredVisits.map((visit) => {
                 const windowLabel = timeLabel(visit.time_window_start, visit.time_window_end);
@@ -357,7 +454,7 @@ export function MyDayContent({
                   <Link
                     key={visit.id}
                     href={`/visits/${visit.id}/record`}
-                    className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                    className="flex min-h-[44px] items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{visit.case_.patient.name}</p>
@@ -388,16 +485,7 @@ export function MyDayContent({
           </CardContent>
         </Card>
 
-        {unpreparedVisits.length > 0 && (
-          <Link
-            href="/schedules"
-            className="flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-medium text-orange-800 transition-colors hover:bg-orange-100"
-          >
-            <ClipboardList className="size-4 shrink-0" aria-hidden="true" />
-            <span>訪問前準備が未完了 {unpreparedVisits.length}件</span>
-            <ArrowRight className="ml-auto size-4" aria-hidden="true" />
-          </Link>
-        )}
+        {unpreparedVisits.length > 0 && <UnpreparedVisitLink count={unpreparedVisits.length} />}
       </PageSection>
 
       <PageSection
@@ -405,7 +493,14 @@ export function MyDayContent({
         description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
         contentClassName="space-y-3"
       >
-        {pipeline.length > 0 && (
+        {actionsQuery.isError ? (
+          <MyDaySectionError
+            title="パイプラインを取得できません"
+            description="未解決の業務件数を取得できませんでした。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
+            href="/workflow"
+            label="ワークフローを確認"
+          />
+        ) : pipeline.length > 0 ? (
           <Card>
             <CardHeader className="pb-2">
               <h3 className="font-heading text-sm leading-snug font-medium">パイプライン</h3>
@@ -425,7 +520,7 @@ export function MyDayContent({
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         <Card className={initialFocus === 'tasks' ? 'ring-2 ring-primary/25' : undefined}>
           <CardHeader className="pb-2">
@@ -433,7 +528,9 @@ export function MyDayContent({
               <CheckSquare className="size-4 text-primary" aria-hidden="true" />
               未完了タスク
               <Badge variant="secondary" className="ml-auto text-xs">
-                {tasksQuery.isLoading ? '…' : `${filteredPendingTasks.length}件`}
+                {isUserPending || tasksQuery.isLoading || tasksQuery.isError
+                  ? '…'
+                  : `${filteredPendingTasks.length}件`}
               </Badge>
             </h3>
           </CardHeader>
@@ -441,6 +538,7 @@ export function MyDayContent({
             <div className="mb-2 flex flex-wrap gap-2">
               <button
                 type="button"
+                aria-pressed={initialTaskFilter === 'all'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'tasks',
@@ -454,6 +552,7 @@ export function MyDayContent({
               </button>
               <button
                 type="button"
+                aria-pressed={initialTaskFilter === 'urgent'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'tasks',
@@ -467,6 +566,7 @@ export function MyDayContent({
               </button>
               <button
                 type="button"
+                aria-pressed={initialTaskFilter === 'pending'}
                 onClick={() =>
                   replaceMyDayUrl({
                     focus: 'tasks',
@@ -479,12 +579,25 @@ export function MyDayContent({
                 <InlineFilterButton active={initialTaskFilter === 'pending'} label="未着手のみ" />
               </button>
             </div>
-            {tasksQuery.isLoading ? (
+            {tasksQuery.isError ? (
+              <MyDaySectionError
+                title="未完了タスクを取得できません"
+                description="担当タスクの取得に失敗しました。タスクなしとは判断せず、タスク一覧で確認してください。"
+                href="/tasks"
+                label="タスク一覧を確認"
+              />
+            ) : isUserPending || tasksQuery.isLoading ? (
               <SectionSkeleton />
             ) : filteredPendingTasks.length === 0 ? (
-              <p className="py-3 text-center text-sm text-muted-foreground">
-                未完了のタスクはありません
-              </p>
+              <MyDayEmptyAction
+                message={
+                  initialTaskFilter === 'all'
+                    ? '未完了のタスクはありません'
+                    : 'この条件に一致する未完了タスクはありません'
+                }
+                href="/tasks"
+                label="タスク一覧を確認"
+              />
             ) : (
               filteredPendingTasks.slice(0, 8).map((task) => {
                 const presentation = describeOperationalTask(task);
@@ -492,7 +605,7 @@ export function MyDayContent({
                   <Link
                     key={task.id}
                     href={presentation.actionHref}
-                    className="flex items-center justify-between rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+                    className="flex min-h-[44px] items-center justify-between rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{task.title}</p>
@@ -524,7 +637,14 @@ export function MyDayContent({
         description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
         contentClassName="space-y-3"
       >
-        {statusChanges.length > 0 && (
+        {statusChangesQuery.isError ? (
+          <MyDaySectionError
+            title="ステータス変更を取得できません"
+            description="患者ステータスの変更履歴を取得できませんでした。必要に応じて患者一覧または監査ログで確認してください。"
+            href="/patients"
+            label="患者一覧を確認"
+          />
+        ) : statusChanges.length > 0 ? (
           <Card>
             <CardHeader className="pb-2">
               <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
@@ -543,7 +663,7 @@ export function MyDayContent({
                   <Link
                     key={change.id}
                     href={`/patients/${change.target_id}`}
-                    className="flex items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+                    className="flex min-h-[44px] items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
                   >
                     <div className={`shrink-0 rounded-full p-1 ${toCfg.color} ${toCfg.bg}`}>
                       <ToIcon className="size-3.5" aria-hidden="true" />
@@ -559,7 +679,7 @@ export function MyDayContent({
               })}
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           <Link
@@ -600,29 +720,6 @@ export function MyDayContent({
           </Link>
         </div>
       </PageSection>
-    </div>
-  );
-}
-
-function QuickStat({
-  label,
-  value,
-  loading,
-  urgent,
-}: {
-  label: string;
-  value: number;
-  loading: boolean;
-  urgent?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg border p-2.5 text-center ${urgent ? 'border-red-200 bg-red-50' : ''}`}
-    >
-      <p className={`text-xl font-bold ${urgent ? 'text-red-600' : 'text-foreground'}`}>
-        {loading ? '…' : value}
-      </p>
-      <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
     </div>
   );
 }

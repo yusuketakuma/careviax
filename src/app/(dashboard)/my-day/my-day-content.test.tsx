@@ -40,9 +40,10 @@ describe('MyDayContent', () => {
     useRouterMock.mockReturnValue({ replace: vi.fn() });
     usePathnameMock.mockReturnValue('/my-day');
     useSearchParamsMock.mockReturnValue(new URLSearchParams('context=dashboard_home'));
-    useAuthStoreMock.mockImplementation((selector: (state: {
-      currentUser: { id: string };
-    }) => unknown) => selector({ currentUser: { id: 'user_1' } }));
+    useAuthStoreMock.mockImplementation(
+      (selector: (state: { currentUser: { id: string | null } }) => unknown) =>
+        selector({ currentUser: { id: 'user_1' } }),
+    );
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       switch (queryKey[0]) {
         case 'my-day-visits':
@@ -121,13 +122,15 @@ describe('MyDayContent', () => {
     render(<MyDayContent />);
 
     expect(screen.getByRole('link', { name: 'ダッシュボード' }).getAttribute('href')).toEqual(
-      '/dashboard'
+      '/dashboard',
     );
     expect(screen.getByRole('link', { name: 'タスク' }).getAttribute('href')).toEqual('/tasks');
-    expect(screen.getByRole('link', { name: 'ワークフロー' }).getAttribute('href')).toEqual('/workflow');
+    expect(screen.getByRole('link', { name: 'ワークフロー' }).getAttribute('href')).toEqual(
+      '/workflow',
+    );
     expect(screen.getByRole('link', { name: '申し送り' }).getAttribute('href')).toEqual('/handoff');
     expect(screen.getByRole('link', { name: '通知' }).getAttribute('href')).toEqual(
-      '/notifications'
+      '/notifications',
     );
   });
 
@@ -145,8 +148,154 @@ describe('MyDayContent', () => {
     expect(screen.getByText('ホームから担当訪問にフォーカスして開いています。')).toBeTruthy();
     expect(screen.getByText('準備未完了のみ')).toBeTruthy();
     expect(screen.getByText('高優先のみ')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '準備未完了のみ' }).getAttribute('aria-pressed'),
+    ).toEqual('true');
+    expect(screen.getByRole('button', { name: '高優先のみ' }).getAttribute('aria-pressed')).toEqual(
+      'true',
+    );
     expect(screen.getByText('山田花子')).toBeTruthy();
     expect(screen.queryByText('佐藤次郎')).toBeNull();
+  });
+
+  it('shows a visible next step for unprepared visits', () => {
+    render(<MyDayContent />);
+
+    expect(screen.getByText('次にすること')).toBeTruthy();
+    expect(screen.getByText('訪問前準備を完了')).toBeTruthy();
+    expect(screen.getByText(/1件の訪問で準備が未完了です/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /準備一覧を開く/ }).getAttribute('href')).toEqual(
+      '/schedules',
+    );
+  });
+
+  it('waits for the current user before fetching assigned visits and tasks', () => {
+    useAuthStoreMock.mockImplementation(
+      (selector: (state: { currentUser: { id: string | null } }) => unknown) =>
+        selector({ currentUser: { id: null } }),
+    );
+
+    render(<MyDayContent />);
+
+    const visitsCall = useQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'my-day-visits',
+    );
+    const tasksCall = useQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'my-day-tasks',
+    );
+
+    expect(visitsCall?.[0].enabled).toEqual(false);
+    expect(tasksCall?.[0].enabled).toEqual(false);
+    expect(screen.queryByText('2件')).toBeNull();
+    expect(screen.queryByText('1件')).toBeNull();
+    expect(screen.queryByText('0件')).toBeNull();
+    expect(screen.getAllByText('担当者情報を確認中').length).toBeGreaterThan(0);
+  });
+
+  it('shows section errors instead of empty states when assigned visits fail to load', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: undefined, isLoading: false, isError: true };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false, isError: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    expect(screen.getByRole('alert', { name: '' })).toBeTruthy();
+    expect(screen.getByText('本日の訪問を取得できません')).toBeTruthy();
+    expect(screen.queryByText('本日の訪問はありません')).toBeNull();
+    expect(screen.getByRole('link', { name: /スケジュールを確認/ }).getAttribute('href')).toEqual(
+      '/schedules',
+    );
+  });
+
+  it('shows section errors instead of empty states when assigned tasks fail to load', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: undefined, isLoading: false, isError: true };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false, isError: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    expect(screen.getByText('未完了タスクを取得できません')).toBeTruthy();
+    expect(screen.queryByText('未完了のタスクはありません')).toBeNull();
+    expect(screen.getByRole('link', { name: /タスク一覧を確認/ }).getAttribute('href')).toEqual(
+      '/tasks',
+    );
+  });
+
+  it('keeps the next step in error mode when priority actions fail to load', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: undefined, isLoading: false, isError: true };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false, isError: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    expect(screen.getByText('取得エラーがあります')).toBeTruthy();
+    expect(screen.getByText('優先アクションを取得できません')).toBeTruthy();
+    expect(screen.getByText('パイプラインを取得できません')).toBeTruthy();
+    expect(screen.queryByText('今日の確認は落ち着いています')).toBeNull();
+    expect(
+      screen.getAllByRole('link', { name: /ワークフローを確認/ })[0]?.getAttribute('href'),
+    ).toEqual('/workflow');
+  });
+
+  it('shows a supplemental error when status changes fail to load', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: undefined, isLoading: false, isError: true };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    expect(screen.getByText('ステータス変更を取得できません')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /患者一覧を確認/ }).getAttribute('href')).toEqual(
+      '/patients',
+    );
   });
 
   it('syncs visit focus changes back into the URL', async () => {
