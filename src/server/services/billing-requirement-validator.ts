@@ -25,7 +25,9 @@ export type BillingAlertType =
   | 'emergency_regular_concurrent'
   | 'missing_management_plan'
   | 'consent_expired_or_missing'
-  | 'special_patient_weekly_cap';
+  | 'special_patient_weekly_cap'
+  | 'care_insurance_application_pending'
+  | 'public_subsidy_application_pending';
 
 export type BillingAlertSeverity = 'error' | 'warning' | 'info';
 
