@@ -541,6 +541,58 @@ describe('createPrescriptionIntake', () => {
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
   });
 
+  it('blocks self-injection-like pen names even when route and dosage form are missing', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.workflowException.findFirst.mockResolvedValue(null);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: 'インスリン グラルギンBS注ミリオペン',
+            drug_code: undefined,
+            dosage_form: undefined,
+            route: undefined,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: 'インスリン グラルギンBS注ミリオペン',
+          reason: '薬剤コード未設定の注射剤は外来/在宅自己注射対象か確認できません',
+        },
+      ],
+    });
+    expect(tx.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+  });
+
   it('allows outpatient eligible injectable lines resolved by receipt code', async () => {
     const tx = createMockTx();
     tx.medicationCycle.findFirst.mockResolvedValue({

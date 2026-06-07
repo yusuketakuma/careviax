@@ -132,6 +132,20 @@ describe('/api/pca-pump-rentals', () => {
     });
   });
 
+  it('lists only open PCA pump rentals for operational queues', async () => {
+    const response = await GET(createRequest('http://localhost/api/pca-pump-rentals?status=open'));
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: { in: ['scheduled', 'active', 'overdue'] },
+        },
+      }),
+    );
+  });
+
   it('rejects invalid rental status filters', async () => {
     const response = await GET(
       createRequest('http://localhost/api/pca-pump-rentals?status=broken'),

@@ -11,6 +11,7 @@ type RentalStatus = (typeof rentalStatuses)[number];
 
 function parseRentalStatusParam(value: string | undefined) {
   if (!value || value === 'all') return { ok: true as const, status: undefined };
+  if (value === 'open') return { ok: true as const, statuses: [...openRentalStatuses] };
   if (rentalStatuses.includes(value as RentalStatus)) {
     return { ok: true as const, status: value as RentalStatus };
   }
@@ -51,7 +52,11 @@ export const GET = withAuth(
     const rentals = await prisma.pcaPumpRental.findMany({
       where: {
         org_id: req.orgId,
-        ...(parsedStatus.status ? { status: parsedStatus.status } : {}),
+        ...('statuses' in parsedStatus
+          ? { status: { in: parsedStatus.statuses } }
+          : parsedStatus.status
+            ? { status: parsedStatus.status }
+            : {}),
         ...(institutionId ? { institution_id: institutionId } : {}),
       },
       include: {

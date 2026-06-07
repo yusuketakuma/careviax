@@ -193,7 +193,7 @@ export function PcaPumpsContent() {
   const rentalsQuery = useQuery({
     queryKey: ['pca-pump-rentals', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pca-pump-rentals?status=all', {
+      const response = await fetch('/api/pca-pump-rentals?status=open', {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('PCAポンプレンタル履歴の取得に失敗しました');
@@ -220,9 +220,7 @@ export function PcaPumpsContent() {
     () => institutionsQuery.data?.data ?? [],
     [institutionsQuery.data?.data],
   );
-  const openRentals = rentals.filter((rental) =>
-    ['scheduled', 'active', 'overdue'].includes(rental.status),
-  );
+  const openRentals = rentals;
 
   const availablePumps = useMemo(
     () => pumps.filter((pump) => pump.status === 'available' || pump.id === rentalForm.pump_id),

@@ -433,7 +433,8 @@ async function createInquiryArtifactsTx(
   });
 }
 
-const INJECTABLE_TEXT_PATTERN = /注射|注入|点滴|シリンジ|アンプル|バイアル/u;
+const INJECTABLE_TEXT_PATTERN =
+  /注射|注入|点滴|皮下注|筋注|静注|注射液|注射用|注射剤|注ミリ|注キット|注ペン|注カートリッジ|シリンジ|アンプル|バイアル|ミリオペン|フレックスペン|ソロスター|カートリッジ|プレフィルド|自己注/u;
 
 function isInjectablePrescriptionLine(line: CreateIntakeLineInput) {
   if (line.route === 'injection') return true;
