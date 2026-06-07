@@ -39,6 +39,7 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/admin\/facility-standards(\/.*)?$/, label: '施設基準' },
   { pattern: /^\/admin\/formulary(\/.*)?$/, label: '採用薬' },
   { pattern: /^\/admin\/institutions(\/.*)?$/, label: '医療機関' },
+  { pattern: /^\/admin\/pca-pumps(\/.*)?$/, label: 'PCAポンプ' },
   { pattern: /^\/admin\/jobs(\/.*)?$/, label: 'ジョブ監視' },
   { pattern: /^\/admin\/metrics(\/.*)?$/, label: '経営指標' },
   { pattern: /^\/admin\/notification-settings(\/.*)?$/, label: '通知設定' },

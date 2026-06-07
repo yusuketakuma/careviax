@@ -1,0 +1,105 @@
+import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { success, validationError } from '@/lib/api/response';
+import { withOrgContext } from '@/lib/db/rls';
+import { prisma } from '@/lib/db/client';
+import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
+
+function serializePump<
+  T extends { maintenance_due_at: Date | null; created_at: Date; updated_at: Date },
+>(item: T) {
+  return {
+    ...item,
+    maintenance_due_at: item.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
+    created_at: item.created_at.toISOString(),
+    updated_at: item.updated_at.toISOString(),
+  };
+}
+
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const query = req.nextUrl.searchParams.get('q')?.trim();
+    const status = req.nextUrl.searchParams.get('status')?.trim();
+
+    const pumps = await prisma.pcaPump.findMany({
+      where: {
+        org_id: req.orgId,
+        ...(status && status !== 'all' ? { status: status as never } : {}),
+        ...(query
+          ? {
+              OR: [
+                { asset_code: { contains: query, mode: 'insensitive' } },
+                { serial_number: { contains: query, mode: 'insensitive' } },
+                { model_name: { contains: query, mode: 'insensitive' } },
+                { manufacturer: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        _count: {
+          select: { rentals: true },
+        },
+        rentals: {
+          where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+          orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
+          take: 1,
+          include: {
+            institution: {
+              select: {
+                id: true,
+                name: true,
+                institution_code: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
+    });
+
+    return success({ data: pumps.map(serializePump) });
+  },
+  {
+    permission: 'canReport',
+    message: 'PCAポンプ台帳の閲覧権限がありません',
+  },
+);
+
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = createPcaPumpSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const created = await withOrgContext(
+      req.orgId,
+      (tx) =>
+        tx.pcaPump.create({
+          data: {
+            org_id: req.orgId,
+            asset_code: parsed.data.asset_code,
+            serial_number: parsed.data.serial_number || null,
+            model_name: parsed.data.model_name,
+            manufacturer: parsed.data.manufacturer || null,
+            status: parsed.data.status ?? 'available',
+            maintenance_due_at: parsed.data.maintenance_due_at
+              ? new Date(parsed.data.maintenance_due_at)
+              : null,
+            notes: parsed.data.notes || null,
+          },
+        }),
+      { requestContext: req },
+    );
+
+    return success({ data: serializePump(created) }, 201);
+  },
+  {
+    permission: 'canAdmin',
+    message: 'PCAポンプ台帳の更新権限がありません',
+  },
+);

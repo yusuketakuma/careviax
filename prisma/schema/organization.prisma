@@ -65,6 +65,8 @@ model Organization {
   facilities              Facility[]
   external_professionals  ExternalProfessional[]
   prescriber_institutions PrescriberInstitution[]
+  pca_pumps               PcaPump[]
+  pca_pump_rentals        PcaPumpRental[]
   service_areas           ServiceArea[]
   webhook_registrations   WebhookRegistration[]
 
@@ -434,6 +436,7 @@ model PrescriberInstitution {
   updated_at               DateTime              @default(now()) @updatedAt
 
   prescription_intakes PrescriptionIntake[]
+  pca_pump_rentals     PcaPumpRental[]
 
   @@unique([org_id, name])
   @@index([org_id])

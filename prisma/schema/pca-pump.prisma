@@ -1,0 +1,59 @@
+enum PcaPumpStatus {
+  available
+  rented
+  maintenance
+  retired
+}
+
+enum PcaPumpRentalStatus {
+  scheduled
+  active
+  overdue
+  returned
+  cancelled
+}
+
+model PcaPump {
+  id                 String          @id @default(cuid())
+  org_id             String
+  org                Organization    @relation(fields: [org_id], references: [id])
+  asset_code         String
+  serial_number      String?
+  model_name         String
+  manufacturer       String?
+  status             PcaPumpStatus   @default(available)
+  maintenance_due_at DateTime?       @db.Date
+  notes              String?
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @default(now()) @updatedAt
+  rentals            PcaPumpRental[]
+
+  @@unique([org_id, asset_code])
+  @@index([org_id, status])
+  @@index([org_id, serial_number])
+}
+
+model PcaPumpRental {
+  id             String                @id @default(cuid())
+  org_id         String
+  org            Organization          @relation(fields: [org_id], references: [id])
+  pump_id        String
+  pump           PcaPump               @relation(fields: [pump_id], references: [id])
+  institution_id String
+  institution    PrescriberInstitution @relation(fields: [institution_id], references: [id])
+  status         PcaPumpRentalStatus   @default(scheduled)
+  rented_at      DateTime              @db.Date
+  due_at         DateTime?             @db.Date
+  returned_at    DateTime?             @db.Date
+  contact_name   String?
+  contact_phone  String?
+  rental_fee_yen Int?
+  notes          String?
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @default(now()) @updatedAt
+
+  @@index([org_id, status])
+  @@index([org_id, pump_id])
+  @@index([org_id, institution_id])
+  @@index([org_id, due_at])
+}

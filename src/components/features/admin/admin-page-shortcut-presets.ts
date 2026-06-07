@@ -7,6 +7,7 @@ export function getAdminDashboardShortcutLinks(): PageShortcutLink[] {
     { href: '/admin/staff', label: 'スタッフ' },
     { href: '/admin/facilities', label: '施設' },
     { href: '/admin/contact-profiles', label: '連携先' },
+    { href: '/admin/pca-pumps', label: 'PCAポンプ' },
     { href: '/admin/formulary', label: '採用薬' },
     { href: '/admin/drug-masters', label: '医薬品' },
     { href: '/admin/billing-rules', label: '請求ルール' },
@@ -58,6 +59,7 @@ export function getAdminContactProfilesShortcutLinks(): PageShortcutLink[] {
 export function getAdminInstitutionsShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/admin/contact-profiles', label: '連携先' },
+    { href: '/admin/pca-pumps', label: 'PCAポンプ' },
     { href: '/admin/alert-rules', label: '処方安全アラート' },
     { href: '/reports', label: '報告書' },
   ];

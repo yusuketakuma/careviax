@@ -171,6 +171,7 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
     items: [
       { label: '施設', href: '/admin/facilities', icon: Building2 },
       { label: '医療機関', href: '/admin/institutions', icon: Hospital },
+      { label: 'PCAポンプ', href: '/admin/pca-pumps', icon: Package },
       { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
       { label: '連携先', href: '/admin/contact-profiles', icon: Users },
       { label: '訪問エリア', href: '/admin/service-areas', icon: Car },
@@ -207,8 +208,6 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
   },
   {
     label: 'その他',
-    items: [
-      { label: 'UAT', href: '/admin/uat', icon: MessageSquare },
-    ],
+    items: [{ label: 'UAT', href: '/admin/uat', icon: MessageSquare }],
   },
 ];

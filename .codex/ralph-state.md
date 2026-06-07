@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-081000
+
+- current task: implement minimum PCA pump rental management for pharmacy-to-medical-institution rentals
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `prisma/schema/organization.prisma`, existing prescriber institution admin/API patterns, navigation config, route labels, and read-only subagent PCA pump implementation gap reviews
+- files changed: `prisma/schema/organization.prisma`, `prisma/schema/pca-pump.prisma`, `prisma/migrations/20260608081500_add_pca_pump_rentals/migration.sql`, `src/lib/validations/pca-pump-rental.ts`, `src/lib/validations/pca-pump-rental.test.ts`, `src/app/api/pca-pumps/route.ts`, `src/app/api/pca-pumps/[id]/route.ts`, `src/app/api/pca-pump-rentals/route.ts`, `src/app/api/pca-pump-rentals/[id]/route.ts`, `src/app/api/pca-pump-rentals/route.test.ts`, `src/app/(dashboard)/admin/pca-pumps/page.tsx`, `src/app/(dashboard)/admin/pca-pumps/loading.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/components/layout/navigation-config.ts`, `src/lib/navigation/route-labels.ts`, `src/components/features/admin/admin-page-shortcut-presets.ts`, `.codex/ralph-state.md`
+- bugs found: PCAポンプレンタル事業管理は専用モデル/API/UI/導線が未実装だった。既存の医療機関マスターや高度管理医療機器販売業許可フラグでは、PCAポンプの管理番号、シリアル、貸出先医療機関、貸出日、返却予定、返却状態、メンテ状態を正本管理できなかった。
+- security risks found: PCAポンプAPIは org scoped lookup と `withOrgContext` write path を使用し、医療機関FKも同一orgで存在確認する。作成/更新は `canAdmin`、閲覧は `canReport`。貸出中ポンプの二重貸出をAPIで拒否する。個別の専用監査ログ作成はまだ未実装。
+- performance issues found: 一覧はPCAポンプ台帳と貸出履歴を最大100件のレンタル取得・関連医療機関/ポンプincludeで表示する最小構成。重い集計やポーリングは追加していない。
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma generate`; `pnpm --config.verify-deps-before-run=false exec prisma format --schema prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prettier --write ...`; `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/validations/pca-pump-rental.test.ts src/app/api/pca-pump-rentals/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint ... --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false exec prisma validate`; `git diff --check`; `pnpm --config.verify-deps-before-run=false exec next dev --turbopack --port 3000`; `curl -I -L --max-time 20 http://localhost:3000/admin/pca-pumps`
+- validation results: Prisma Client generation passed; Prisma schema format/validate passed; focused PCA Vitest passed with 2 files / 7 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed; Next dev server started on `http://localhost:3000`; unauthenticated HTTP access to `/admin/pca-pumps` redirected to `/login?callbackUrl=%2Fadmin%2Fpca-pumps` without server errors.
+- remaining work: DB-backed authenticated browser operation for `/admin/pca-pumps` is not completed in this slice. Dedicated audit log events, maintenance event history, rental billing/monthly close integration, and finer-grained rental-specific permissions remain future hardening items.
+- next action: commit this PCA pump management slice, then continue injectable outpatient prescription eligibility current-state review.
+
 ### 20260608-074800
 
 - current task: add patient insurance application status for care change/public subsidy pending billing blockers
