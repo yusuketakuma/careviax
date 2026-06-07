@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { format } from 'date-fns';
+import { addDays, format, subDays } from 'date-fns';
 import { NextRequest } from 'next/server';
 
 const TODAY = format(new Date(), 'yyyy-MM-dd');
+const FUTURE_DATE = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+const EXPIRED_DATE = format(subDays(new Date(), 5), 'yyyy-MM-dd');
 
 const {
   withAuthMock,
@@ -70,6 +72,44 @@ function createMalformedJsonRequest() {
     body: '{"entries":',
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function createValidFacilityBatchBody(overrides: Record<string, unknown> = {}) {
+  return {
+    source_type: 'facility_batch',
+    prescribed_date: TODAY,
+    entries: [
+      {
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      },
+      {
+        case_id: 'case_2',
+        patient_id: 'patient_2',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '1149019',
+            dose: '1錠',
+            frequency: '疼痛時',
+            days: 7,
+          },
+        ],
+      },
+    ],
+    ...overrides,
+  };
 }
 
 describe('/api/prescription-intakes/facility-batch POST', () => {
@@ -178,6 +218,42 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects future prescription dates before facility batch transaction work', async () => {
+    const response = await POST(
+      createRequest(createValidFacilityBatchBody({ prescribed_date: FUTURE_DATE })),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '未来日の処方箋は登録できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired prescription dates before facility batch transaction work', async () => {
+    const response = await POST(
+      createRequest(createValidFacilityBatchBody({ prescribed_date: EXPIRED_DATE })),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '処方箋の有効期限が切れています（発行日から4日以内が有効です）',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();

@@ -4,7 +4,6 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createFacilityBatchPrescriptionIntakeSchema } from '@/lib/validations/prescription';
-import { addDays } from 'date-fns';
 import { collectDuplicatePrescriptionLines, collectStructuringBlockedLines } from '../shared';
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
@@ -12,6 +11,7 @@ import {
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -35,10 +35,12 @@ export const POST = withAuth(
       entries,
     } = parsed.data;
 
-    const prescribedDate = new Date(prescribed_date);
-    const expiryDate = addDays(prescribedDate, 4);
-    if (expiryDate < new Date()) {
+    const dateWindow = validatePrescriptionDateWindow(prescribed_date);
+    if (!dateWindow.ok && dateWindow.reason === 'expiry_exceeded') {
       return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
+    }
+    if (!dateWindow.ok && dateWindow.reason === 'future_prescribed_date') {
+      return validationError('未来日の処方箋は登録できません');
     }
 
     const duplicatedCaseIds = entries

@@ -22,6 +22,9 @@ const {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    drugMaster: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -48,6 +51,7 @@ vi.mock('@/server/services/dispense-draft-service', () => ({
 import {
   createPrescriptionIntake,
   createPrescriptionIntakeInTx,
+  runPrescriptionIntakePostCreateHooks,
 } from './prescription-intake-service';
 
 function createMockTx() {
@@ -114,6 +118,7 @@ describe('createPrescriptionIntake', () => {
     prismaMock.medicationProfile.create.mockResolvedValue({});
     prismaMock.medicationProfile.update.mockResolvedValue({});
     prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
     notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
     createDispenseDraftMock.mockResolvedValue({
@@ -328,5 +333,68 @@ describe('createPrescriptionIntake', () => {
     expect(tx.careCase.findFirst).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves prescription drug codes to DrugMaster ids when syncing medication profiles', async () => {
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    prismaMock.medicationProfile.findMany.mockResolvedValue([
+      {
+        id: 'profile_1',
+        drug_master_id: '2149001',
+        drug_name: 'アムロジピン錠5mg',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_amlodipine',
+        yj_code: '2149001',
+        receipt_code: null,
+        hot_code: null,
+      },
+    ]);
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan',
+    });
+
+    expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { yj_code: { in: ['2149001'] } },
+          { receipt_code: { in: ['2149001'] } },
+          { hot_code: { in: ['2149001'] } },
+        ],
+      },
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    expect(prismaMock.medicationProfile.update).toHaveBeenCalledWith({
+      where: { id: 'profile_1' },
+      data: expect.objectContaining({
+        drug_master_id: 'drug_master_amlodipine',
+      }),
+    });
+    expect(prismaMock.medicationProfile.create).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalled();
+    expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
   });
 });

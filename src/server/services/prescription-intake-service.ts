@@ -93,6 +93,14 @@ type CreatedIntake = {
   lines: CreatedIntakeLine[];
 };
 
+type MedicationProfileSyncLine = {
+  drug_name: string;
+  drug_code?: string | null;
+  dose: string;
+  frequency: string;
+  start_date?: Date | string | null;
+};
+
 type UpdatedCycle = {
   id: string;
   patient_id: string;
@@ -864,13 +872,7 @@ export interface ProfileSyncResult {
 async function syncMedicationProfiles(
   patientId: string,
   orgId: string,
-  intakeLines: Array<{
-    drug_name: string;
-    drug_code?: string | null;
-    dose: string;
-    frequency: string;
-    start_date?: Date | string | null;
-  }>,
+  intakeLines: MedicationProfileSyncLine[],
   prescriberName: string | null,
   sourceType: PrescriptionSourceType,
 ): Promise<ProfileSyncResult> {
@@ -883,15 +885,23 @@ async function syncMedicationProfiles(
     where: { org_id: orgId, patient_id: patientId, is_current: true },
   });
 
-  const existingByKey = new Map(existingProfiles.map((p) => [p.drug_master_id || p.drug_name, p]));
+  const drugMasterIdByCode = await resolveDrugMasterIdsByPrescriptionCode(intakeLines);
+  const existingByKey = new Map<string, (typeof existingProfiles)[number]>();
+  for (const profile of existingProfiles) {
+    for (const key of profileKeys(profile)) {
+      if (!existingByKey.has(key)) existingByKey.set(key, profile);
+    }
+  }
   const incomingKeys = new Set<string>();
 
   // 新規処方の各行を upsert
   for (const line of intakeLines) {
-    const key = line.drug_code || line.drug_name;
-    incomingKeys.add(key);
+    const drugCode = normalizePrescriptionDrugCode(line.drug_code);
+    const resolvedDrugMasterId = drugCode ? (drugMasterIdByCode.get(drugCode) ?? null) : null;
+    const keys = incomingLineKeys(line, resolvedDrugMasterId, drugCode);
+    keys.forEach((key) => incomingKeys.add(key));
 
-    const existing = existingByKey.get(key);
+    const existing = keys.map((key) => existingByKey.get(key)).find(Boolean);
     const startDate = line.start_date
       ? typeof line.start_date === 'string'
         ? new Date(line.start_date)
@@ -899,11 +909,18 @@ async function syncMedicationProfiles(
       : new Date();
 
     if (existing) {
-      // 既存プロファイルを更新（dose/frequency が変わった場合のみ）
-      if (existing.dose !== line.dose || existing.frequency !== line.frequency) {
+      const shouldRefreshDrugMasterId =
+        resolvedDrugMasterId != null && existing.drug_master_id !== resolvedDrugMasterId;
+      // 既存プロファイルを更新（dose/frequency またはマスタ解決結果が変わった場合のみ）
+      if (
+        existing.dose !== line.dose ||
+        existing.frequency !== line.frequency ||
+        shouldRefreshDrugMasterId
+      ) {
         await prisma.medicationProfile.update({
           where: { id: existing.id },
           data: {
+            ...(shouldRefreshDrugMasterId ? { drug_master_id: resolvedDrugMasterId } : {}),
             dose: line.dose,
             frequency: line.frequency,
             prescriber: prescriberName,
@@ -921,7 +938,7 @@ async function syncMedicationProfiles(
           org_id: orgId,
           patient_id: patientId,
           drug_name: line.drug_name,
-          drug_master_id: line.drug_code || null,
+          drug_master_id: resolvedDrugMasterId,
           dose: line.dose,
           frequency: line.frequency,
           prescriber: prescriberName,
@@ -935,9 +952,9 @@ async function syncMedicationProfiles(
   }
 
   // 今回の処方に含まれない既存プロファイルを中止扱い（一括更新）
-  const idsToDiscontinue = [...existingByKey.entries()]
-    .filter(([key]) => !incomingKeys.has(key))
-    .map(([, profile]) => profile.id);
+  const idsToDiscontinue = existingProfiles
+    .filter((profile) => profileKeys(profile).every((key) => !incomingKeys.has(key)))
+    .map((profile) => profile.id);
 
   if (idsToDiscontinue.length > 0) {
     const result = await prisma.medicationProfile.updateMany({
@@ -948,4 +965,61 @@ async function syncMedicationProfiles(
   }
 
   return { created, updated, discontinued };
+}
+
+function normalizePrescriptionDrugCode(code: string | null | undefined) {
+  const normalized = code?.replace(/\s/g, '').trim();
+  return normalized || null;
+}
+
+function profileKeys(profile: { drug_master_id?: string | null; drug_name: string }) {
+  return [profile.drug_master_id, profile.drug_name].filter((key): key is string => Boolean(key));
+}
+
+function incomingLineKeys(
+  line: MedicationProfileSyncLine,
+  resolvedDrugMasterId: string | null,
+  normalizedDrugCode: string | null,
+) {
+  return [resolvedDrugMasterId, normalizedDrugCode, line.drug_name].filter((key): key is string =>
+    Boolean(key),
+  );
+}
+
+async function resolveDrugMasterIdsByPrescriptionCode(lines: MedicationProfileSyncLine[]) {
+  const codes = Array.from(
+    new Set(
+      lines
+        .map((line) => normalizePrescriptionDrugCode(line.drug_code))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+  const byCode = new Map<string, string>();
+  if (codes.length === 0) return byCode;
+
+  const masters = await prisma.drugMaster.findMany({
+    where: {
+      OR: [
+        { yj_code: { in: codes } },
+        { receipt_code: { in: codes } },
+        { hot_code: { in: codes } },
+      ],
+    },
+    select: {
+      id: true,
+      yj_code: true,
+      receipt_code: true,
+      hot_code: true,
+    },
+  });
+
+  for (const master of masters) {
+    for (const code of [master.yj_code, master.receipt_code, master.hot_code]) {
+      if (code && codes.includes(code) && !byCode.has(code)) {
+        byCode.set(code, master.id);
+      }
+    }
+  }
+
+  return byCode;
 }
