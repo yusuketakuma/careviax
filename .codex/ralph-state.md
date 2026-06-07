@@ -11693,3 +11693,16 @@ Backup directory:
 - validation results: focused billing Vitest passed with 3 files / 55 tests; targeted ESLint passed; TypeScript passed; broader billing and prescription related Vitest passed with 10 files / 142 tests; whitespace check passed
 - remaining work:区分変更中 and 21/54 public-subsidy applying still need structured patient-insurance/application-state fields before they can be fully verified. `care_level=not_applied/not_eligible` now has blocker logic when payer basis is care, but dedicated tests for those two statuses are still pending. PCA pump rental and injectable outpatient-prescription eligibility remain separate unimplemented domains
 - next action: implement structured insurance/public-subsidy application status or start the injectable eligibility policy contract, depending on the next highest-risk slice
+
+### 20260608-073800
+
+- current task: lock care-certification `not_applied` and `not_eligible` billing blockers with regression tests
+- files inspected: `src/server/services/billing-evidence/core.test.ts`, current git status, and focused validation outputs
+- files changed: `src/server/services/billing-evidence/core.test.ts`, `.codex/ralph-state.md`
+- bugs found: no new runtime bug was introduced in this slice. The previous care-certification blocker implementation covered `not_applied` and `not_eligible` for care payer basis, but those two branches were not yet directly tested
+- security risks found: no auth, RLS, PHI, external send, or logging behavior changed
+- performance issues found: no runtime code changed
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write src/server/services/billing-evidence/core.test.ts`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/billing-evidence/core.test.ts src/server/services/billing-payer-basis.test.ts src/server/services/billing-requirement-validator.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/server/services/billing-evidence/core.test.ts --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: focused billing Vitest passed with 3 files / 57 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work:区分変更中 and 21/54 public-subsidy applying still need structured application-state fields and BillingEvidence integration. PCA pump rental and injectable outpatient-prescription eligibility remain unimplemented domains
+- next action: implement patient insurance/application status structure for care-level change and public-subsidy pending, or start injectable eligibility policy if schema scope should be deferred
