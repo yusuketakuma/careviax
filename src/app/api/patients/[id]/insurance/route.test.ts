@@ -274,6 +274,55 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
+  it('POST rejects invalid calendar dates and reversed validity periods before DB writes', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'medical',
+        valid_from: '2026-02-30',
+        valid_until: '2026-01-31',
+      }),
+      routeParams,
+    );
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST rejects public subsidy fields on medical insurance before DB writes', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'medical',
+        public_program_code: '54',
+      }),
+      routeParams,
+    );
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST rejects reversed application and decision dates before DB writes', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+        public_program_code: '21',
+        application_submitted_at: '2026-04-20',
+        decision_at: '2026-04-10',
+      }),
+      routeParams,
+    );
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
   it('POST creates insurance with context org, route patient, and Date validity fields', async () => {
     const response = await POST(
       createRequest({
@@ -285,6 +334,12 @@ describe('/api/patients/[id]/insurance', () => {
         copay_ratio: 10,
         valid_from: '2026-04-01',
         valid_until: '2027-03-31',
+        application_status: 'change_pending',
+        application_submitted_at: '2026-04-10',
+        decision_at: null,
+        previous_care_level: 'care_1',
+        provisional_care_level: 'care_2',
+        confirmed_care_level: null,
         is_active: true,
         notes: 'initial registration',
       }),
@@ -308,6 +363,49 @@ describe('/api/patients/[id]/insurance', () => {
         notes: 'initial registration',
         valid_from: new Date('2026-04-01'),
         valid_until: new Date('2027-03-31'),
+        application_status: 'change_pending',
+        application_submitted_at: new Date('2026-04-10'),
+        decision_at: null,
+        previous_care_level: 'care_1',
+        provisional_care_level: 'care_2',
+        confirmed_care_level: null,
+      },
+    });
+  });
+
+  it('POST creates public subsidy insurance application records for pending 21/54 programs', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+        insurer_number: '21540000',
+        public_program_code: '54',
+        number: '54001234',
+        valid_from: null,
+        valid_until: null,
+        application_submitted_at: '2026-04-12',
+        decision_at: null,
+        is_active: true,
+      }),
+      routeParams,
+    );
+
+    expect(response.status).toBe(200);
+    expectPatientAssignmentLookup();
+    expect(patientInsuranceCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+        insurer_number: '21540000',
+        public_program_code: '54',
+        number: '54001234',
+        is_active: true,
+        valid_from: null,
+        valid_until: null,
+        application_submitted_at: new Date('2026-04-12'),
+        decision_at: null,
       },
     });
   });

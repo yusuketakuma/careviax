@@ -35,6 +35,13 @@ enum InsuranceType {
   public_subsidy
 }
 
+enum InsuranceApplicationStatus {
+  confirmed
+  applying
+  change_pending
+  not_applicable
+}
+
 enum PackagingMethod {
   none
   unit_dose
@@ -425,26 +432,34 @@ model PatientMcsSummary {
 }
 
 model PatientInsurance {
-  id             String        @id @default(cuid())
-  org_id         String
-  patient_id     String
-  patient        Patient       @relation(fields: [patient_id], references: [id])
-  insurance_type InsuranceType
-  insurer_number String? // 保険者番号
-  symbol         String? // 記号
-  number         String? // 番号
-  branch_number  String? // 枝番
-  copay_ratio    Int? // 自己負担割合（例: 30 = 3割）
-  valid_from     DateTime?     @db.Date
-  valid_until    DateTime?     @db.Date
-  is_active      Boolean       @default(true)
-  notes          String?
-  created_at     DateTime      @default(now())
-  updated_at     DateTime      @updatedAt
+  id                       String                     @id @default(cuid())
+  org_id                   String
+  patient_id               String
+  patient                  Patient                    @relation(fields: [patient_id], references: [id])
+  insurance_type           InsuranceType
+  application_status       InsuranceApplicationStatus @default(confirmed)
+  insurer_number           String? // 保険者番号 / 公費負担者番号
+  public_program_code      String? // 法別番号（例: 21, 54）
+  symbol                   String? // 記号
+  number                   String? // 番号 / 公費受給者番号
+  branch_number            String? // 枝番
+  copay_ratio              Int? // 自己負担割合（例: 30 = 3割）
+  valid_from               DateTime?                  @db.Date
+  valid_until              DateTime?                  @db.Date
+  application_submitted_at DateTime?                  @db.Date
+  decision_at              DateTime?                  @db.Date
+  previous_care_level      String?
+  provisional_care_level   String?
+  confirmed_care_level     String?
+  is_active                Boolean                    @default(true)
+  notes                    String?
+  created_at               DateTime                   @default(now())
+  updated_at               DateTime                   @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
   @@index([patient_id, insurance_type, is_active])
+  @@index([patient_id, application_status, is_active])
 }
 
 model PatientLabObservation {

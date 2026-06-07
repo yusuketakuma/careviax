@@ -1,4 +1,4 @@
-import type { InsuranceType } from '@prisma/client';
+import type { InsuranceApplicationStatus, InsuranceType } from '@prisma/client';
 
 type PatientInsuranceReader = {
   patientInsurance: {
@@ -6,6 +6,11 @@ type PatientInsuranceReader = {
       id: string;
       number: string | null;
       insurance_type: InsuranceType;
+      application_status: InsuranceApplicationStatus;
+      public_program_code: string | null;
+      previous_care_level: string | null;
+      provisional_care_level: string | null;
+      confirmed_care_level: string | null;
       is_active: boolean;
     } | null>;
   };
@@ -22,7 +27,7 @@ export async function resolvePatientInsurance(
     patientId: string;
     type: InsuranceType;
     asOf?: Date;
-  }
+  },
 ) {
   const asOf = args.asOf ?? new Date();
   const today = new Date(asOf);

@@ -79,15 +79,34 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   });
 
   it('updates an insurance record', async () => {
-    const response = await PUT(createPutRequest({ is_active: false }), {
-      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
-    });
+    const response = await PUT(
+      createPutRequest({
+        is_active: false,
+        application_status: 'confirmed',
+        application_submitted_at: '2026-04-10',
+        decision_at: '2026-04-20',
+        previous_care_level: 'care_1',
+        provisional_care_level: null,
+        confirmed_care_level: 'care_2',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'insurance_1' },
-      data: { is_active: false },
+      data: {
+        is_active: false,
+        application_status: 'confirmed',
+        application_submitted_at: new Date('2026-04-10'),
+        decision_at: new Date('2026-04-20'),
+        previous_care_level: 'care_1',
+        provisional_care_level: null,
+        confirmed_care_level: 'care_2',
+      },
     });
   });
 
@@ -255,6 +274,26 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects invalid date and insurance field combinations before loading records', async () => {
+    const response = await PUT(
+      createPutRequest({
+        insurance_type: 'medical',
+        public_program_code: '54',
+        valid_from: '2026-02-30',
+        valid_until: '2026-01-31',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 

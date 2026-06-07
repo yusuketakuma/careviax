@@ -1,4 +1,4 @@
-import type { PayerBasis, Prisma } from '@prisma/client';
+import type { InsuranceApplicationStatus, PayerBasis, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
@@ -98,6 +98,11 @@ type UpsertBillingEvidenceReader = HomeCareBillingRuleEngineTx & {
       id: string;
       number: string | null;
       insurance_type: 'medical' | 'care' | 'public_subsidy';
+      application_status: InsuranceApplicationStatus;
+      public_program_code: string | null;
+      previous_care_level: string | null;
+      provisional_care_level: string | null;
+      confirmed_care_level: string | null;
       is_active: boolean;
     } | null>;
   };
@@ -218,6 +223,7 @@ export type BillingEvidenceBlocker = {
     | 'initial_home_visit_assessment_missing'
     | 'report_delivery_incomplete'
     | 'care_certification_pending'
+    | 'public_subsidy_application_pending'
     | 'outcome_not_claimable';
   reason: string;
   action_href: string;
@@ -861,6 +867,14 @@ function blockerDefinition(
         action_label: '介護認定を確認',
         severity: 'high',
       };
+    case 'public_subsidy_application_pending':
+      return {
+        key,
+        reason: fallbackReason ?? '公費資格の確認が必要です',
+        action_href: '/patients',
+        action_label: '公費資格を確認',
+        severity: 'high',
+      };
     case 'outcome_not_claimable':
     default:
       return {
@@ -885,6 +899,7 @@ function listBlockerKeys(
     'initial_home_visit_assessment_missing',
     'report_delivery_incomplete',
     'care_certification_pending',
+    'public_subsidy_application_pending',
     'outcome_not_claimable',
   ];
 
@@ -918,8 +933,12 @@ export function describeBillingEvidenceBlockers(args: {
 
 function resolveCareCertificationBlocker(args: {
   careLevel: string | null;
+  insuranceStatus: InsuranceApplicationStatus | null;
   payerBasis: PayerBasis;
-}): { reason: string; status: 'applying' | 'not_applied' | 'not_eligible' } | null {
+}): {
+  reason: string;
+  status: 'applying' | 'change_pending' | 'not_applied' | 'not_eligible';
+} | null {
   if (args.careLevel === 'applying') {
     return {
       status: 'applying',
@@ -928,6 +947,20 @@ function resolveCareCertificationBlocker(args: {
   }
 
   if (args.payerBasis !== 'care') return null;
+
+  if (args.insuranceStatus === 'applying') {
+    return {
+      status: 'applying',
+      reason: '介護保険資格が申請中です。認定結果の確定まで請求保留または確認が必要です',
+    };
+  }
+
+  if (args.insuranceStatus === 'change_pending') {
+    return {
+      status: 'change_pending',
+      reason: '介護保険区分変更中です。認定結果の確定まで請求保留または確認が必要です',
+    };
+  }
 
   if (args.careLevel === 'not_applied') {
     return {
@@ -944,6 +977,29 @@ function resolveCareCertificationBlocker(args: {
   }
 
   return null;
+}
+
+function resolvePublicSubsidyApplicationBlocker(
+  insurance: {
+    application_status: InsuranceApplicationStatus;
+    public_program_code: string | null;
+  } | null,
+) {
+  if (!insurance) return null;
+  if (
+    insurance.application_status !== 'applying' &&
+    insurance.application_status !== 'change_pending'
+  ) {
+    return null;
+  }
+
+  const programLabel = insurance.public_program_code
+    ? `公費${insurance.public_program_code}`
+    : '公費';
+  return {
+    status: insurance.application_status,
+    reason: `${programLabel}が申請中です。公費負担者番号・受給者番号と適用開始日の確定まで請求保留または確認が必要です`,
+  };
 }
 
 export async function listBillingEvidenceBlockers(
@@ -1047,7 +1103,7 @@ export async function upsertBillingEvidenceForVisit(
     throw new Error('PATIENT_NOT_FOUND');
   }
 
-  const [medicalInsurance, careInsurance] = await Promise.all([
+  const [medicalInsurance, careInsurance, publicSubsidyInsurance] = await Promise.all([
     resolvePatientInsurance(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
@@ -1058,6 +1114,12 @@ export async function upsertBillingEvidenceForVisit(
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
       type: 'care',
+      asOf: visitRecord.visit_date,
+    }),
+    resolvePatientInsurance(tx, {
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+      type: 'public_subsidy',
       asOf: visitRecord.visit_date,
     }),
   ]);
@@ -1300,8 +1362,11 @@ export async function upsertBillingEvidenceForVisit(
     : null;
   const careCertificationBlocker = resolveCareCertificationBlocker({
     careLevel,
+    insuranceStatus: careInsurance?.application_status ?? null,
     payerBasis,
   });
+  const publicSubsidyApplicationBlocker =
+    resolvePublicSubsidyApplicationBlocker(publicSubsidyInsurance);
   const hasVisitReports = reports.length > 0;
   const hasConferenceReports = conferenceReports.length > 0;
   const allReportsDelivered =
@@ -1326,6 +1391,7 @@ export async function upsertBillingEvidenceForVisit(
       initialHomeVisitAssessment.required && !initialHomeVisitAssessment.satisfied,
     report_delivery_incomplete: !allReportsDelivered,
     care_certification_pending: careCertificationBlocker != null,
+    public_subsidy_application_pending: publicSubsidyApplicationBlocker != null,
     outcome_not_claimable: !isClaimableOutcome(visitRecord.outcome_status),
     building_patient_count: buildingPatientCount,
     monthly_visit_count: monthlyVisitCount,
@@ -1344,9 +1410,11 @@ export async function upsertBillingEvidenceForVisit(
             ? '報告書送付が未完了です'
             : exclusionFlags.care_certification_pending
               ? (careCertificationBlocker?.reason ?? '介護保険認定状況の確認が必要です')
-              : exclusionFlags.outcome_not_claimable
-                ? '訪問結果が算定対象外です'
-                : null;
+              : exclusionFlags.public_subsidy_application_pending
+                ? (publicSubsidyApplicationBlocker?.reason ?? '公費資格の確認が必要です')
+                : exclusionFlags.outcome_not_claimable
+                  ? '訪問結果が算定対象外です'
+                  : null;
 
   const claimable = exclusionReason == null;
 
@@ -1622,6 +1690,12 @@ export async function upsertBillingEvidenceForVisit(
     care_level: careLevel,
     care_level_category: careLevelCategory,
     care_certification_status: careCertificationBlocker?.status ?? null,
+    care_insurance_application_status: careInsurance?.application_status ?? null,
+    care_insurance_previous_care_level: careInsurance?.previous_care_level ?? null,
+    care_insurance_provisional_care_level: careInsurance?.provisional_care_level ?? null,
+    care_insurance_confirmed_care_level: careInsurance?.confirmed_care_level ?? null,
+    public_subsidy_application_status: publicSubsidyInsurance?.application_status ?? null,
+    public_subsidy_program_code: publicSubsidyInsurance?.public_program_code ?? null,
     initial_transition_eligible: homeVisit2026Eligibility.initialTransitionEligible,
     multi_staff_visit_eligible: homeVisit2026Eligibility.multiStaffVisitEligible,
     physician_simultaneous_eligible: homeVisit2026Eligibility.physicianSimultaneousEligible,

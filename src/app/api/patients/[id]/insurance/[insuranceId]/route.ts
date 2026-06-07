@@ -7,27 +7,101 @@ import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { dateKeySchema } from '@/lib/validations/date-key';
 
-const updateInsuranceSchema = z.object({
-  insurance_type: z.enum(['medical', 'care', 'public_subsidy']).optional(),
-  insurer_number: z.string().max(8).optional().nullable(),
-  symbol: z.string().max(100).optional().nullable(),
-  number: z.string().max(20).optional().nullable(),
-  branch_number: z.string().max(2).optional().nullable(),
-  copay_ratio: z.number().int().min(0).max(100).optional().nullable(),
-  valid_from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional()
-    .nullable(),
-  valid_until: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional()
-    .nullable(),
-  is_active: z.boolean().optional(),
-  notes: z.string().max(500).optional().nullable(),
-});
+const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+const publicProgramCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{2}$/, '公費制度コードが不正です');
+
+const careLevelSchema = z
+  .enum([
+    'support_1',
+    'support_2',
+    'care_1',
+    'care_2',
+    'care_3',
+    'care_4',
+    'care_5',
+    'applying',
+    'not_applied',
+    'not_eligible',
+  ])
+  .optional()
+  .nullable();
+
+const updateInsuranceSchema = z
+  .object({
+    insurance_type: z.enum(['medical', 'care', 'public_subsidy']).optional(),
+    application_status: z
+      .enum(['confirmed', 'applying', 'change_pending', 'not_applicable'])
+      .optional(),
+    insurer_number: z.string().max(8).optional().nullable(),
+    public_program_code: publicProgramCodeSchema.optional().nullable(),
+    symbol: z.string().max(100).optional().nullable(),
+    number: z.string().max(20).optional().nullable(),
+    branch_number: z.string().max(2).optional().nullable(),
+    copay_ratio: z.number().int().min(0).max(100).optional().nullable(),
+    valid_from: dateStringSchema.optional().nullable(),
+    valid_until: dateStringSchema.optional().nullable(),
+    application_submitted_at: dateStringSchema.optional().nullable(),
+    decision_at: dateStringSchema.optional().nullable(),
+    previous_care_level: careLevelSchema,
+    provisional_care_level: careLevelSchema,
+    confirmed_care_level: careLevelSchema,
+    is_active: z.boolean().optional(),
+    notes: z.string().max(500).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.valid_from && value.valid_until && value.valid_from > value.valid_until) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['valid_until'],
+        message: '有効期限は有効開始日以降の日付を指定してください',
+      });
+    }
+    if (
+      value.application_submitted_at &&
+      value.decision_at &&
+      value.application_submitted_at > value.decision_at
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['decision_at'],
+        message: '決定日は申請日以降の日付を指定してください',
+      });
+    }
+    if (
+      value.insurance_type &&
+      value.insurance_type !== 'public_subsidy' &&
+      value.public_program_code
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['public_program_code'],
+        message: '公費制度コードは公費保険でのみ指定できます',
+      });
+    }
+    if (
+      value.insurance_type &&
+      value.insurance_type !== 'care' &&
+      (value.previous_care_level || value.provisional_care_level || value.confirmed_care_level)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['previous_care_level'],
+        message: '介護度情報は介護保険でのみ指定できます',
+      });
+    }
+    if (value.insurance_type === 'medical' && value.application_status === 'change_pending') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['application_status'],
+        message: '区分変更中は介護保険または公費保険で指定してください',
+      });
+    }
+  });
 
 export async function PUT(
   req: NextRequest,
@@ -72,7 +146,7 @@ export async function PUT(
   });
   if (!existing) return notFound('保険情報が見つかりません');
 
-  const { valid_from, valid_until, ...rest } = parsed.data;
+  const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 
   const updated = await withOrgContext(ctx.orgId, (tx) =>
     tx.patientInsurance.update({
@@ -84,6 +158,16 @@ export async function PUT(
           : {}),
         ...(valid_until !== undefined
           ? { valid_until: valid_until ? new Date(valid_until) : null }
+          : {}),
+        ...(application_submitted_at !== undefined
+          ? {
+              application_submitted_at: application_submitted_at
+                ? new Date(application_submitted_at)
+                : null,
+            }
+          : {}),
+        ...(decision_at !== undefined
+          ? { decision_at: decision_at ? new Date(decision_at) : null }
           : {}),
       },
     }),
