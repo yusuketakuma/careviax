@@ -155,6 +155,25 @@ export const POST = withAuth(
             institution: true,
           },
         });
+        await tx.auditLog.create({
+          data: {
+            org_id: req.orgId,
+            actor_id: req.userId,
+            action: 'pca_pump_rental_created',
+            target_type: 'PcaPumpRental',
+            target_id: rental.id,
+            changes: {
+              pump_id: rental.pump_id,
+              institution_id: rental.institution_id,
+              status: rental.status,
+              rented_at: rental.rented_at.toISOString().slice(0, 10),
+              due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+              rental_fee_yen: rental.rental_fee_yen,
+            },
+            ip_address: req.headers.get('x-forwarded-for') ?? null,
+            user_agent: req.headers.get('user-agent') ?? null,
+          },
+        });
 
         return { kind: 'rental' as const, rental };
       },

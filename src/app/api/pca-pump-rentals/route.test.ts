@@ -9,6 +9,7 @@ const {
   pcaPumpRentalFindManyMock,
   pcaPumpRentalCreateMock,
   pcaPumpUpdateManyMock,
+  auditLogCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   pcaPumpFindFirstMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   pcaPumpRentalFindManyMock: vi.fn(),
   pcaPumpRentalCreateMock: vi.fn(),
   pcaPumpUpdateManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -100,6 +102,9 @@ describe('/api/pca-pump-rentals', () => {
         },
         pcaPump: {
           updateMany: pcaPumpUpdateManyMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -201,6 +206,20 @@ describe('/api/pca-pump-rentals', () => {
         status: 'available',
       },
       data: { status: 'rented' },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'pca_pump_rental_created',
+        target_type: 'PcaPumpRental',
+        target_id: 'rental_1',
+        changes: expect.objectContaining({
+          pump_id: 'pump_1',
+          institution_id: 'institution_1',
+          status: 'active',
+        }),
+      }),
     });
   });
 

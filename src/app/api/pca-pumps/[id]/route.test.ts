@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, withOrgContextMock, pcaPumpFindFirstMock, pcaPumpUpdateMock } =
-  vi.hoisted(() => ({
-    requireAuthContextMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-    pcaPumpFindFirstMock: vi.fn(),
-    pcaPumpUpdateMock: vi.fn(),
-  }));
+const {
+  requireAuthContextMock,
+  withOrgContextMock,
+  pcaPumpFindFirstMock,
+  pcaPumpUpdateMock,
+  auditLogCreateMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  pcaPumpFindFirstMock: vi.fn(),
+  pcaPumpUpdateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -62,6 +68,9 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         pcaPump: {
           update: pcaPumpUpdateMock,
         },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
       }),
     );
   });
@@ -108,5 +117,15 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         data: expect.objectContaining({ status: 'maintenance' }),
       }),
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'pca_pump_updated',
+        target_type: 'PcaPump',
+        target_id: 'pump_1',
+        changes: { status: 'maintenance' },
+      }),
+    });
   });
 });

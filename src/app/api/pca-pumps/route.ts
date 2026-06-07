@@ -91,8 +91,8 @@ export const POST = withAuth(
 
     const created = await withOrgContext(
       req.orgId,
-      (tx) =>
-        tx.pcaPump.create({
+      async (tx) => {
+        const pump = await tx.pcaPump.create({
           data: {
             org_id: req.orgId,
             asset_code: parsed.data.asset_code,
@@ -105,7 +105,27 @@ export const POST = withAuth(
               : null,
             notes: parsed.data.notes || null,
           },
-        }),
+        });
+        await tx.auditLog.create({
+          data: {
+            org_id: req.orgId,
+            actor_id: req.userId,
+            action: 'pca_pump_created',
+            target_type: 'PcaPump',
+            target_id: pump.id,
+            changes: {
+              asset_code: pump.asset_code,
+              serial_number: pump.serial_number,
+              model_name: pump.model_name,
+              status: pump.status,
+              maintenance_due_at: pump.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
+            },
+            ip_address: req.headers.get('x-forwarded-for') ?? null,
+            user_agent: req.headers.get('user-agent') ?? null,
+          },
+        });
+        return pump;
+      },
       { requestContext: req },
     );
 

@@ -9,6 +9,7 @@ const {
   pcaPumpRentalUpdateMock,
   pcaPumpUpdateMock,
   openRentalFindFirstMock,
+  auditLogCreateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   pcaPumpRentalUpdateMock: vi.fn(),
   pcaPumpUpdateMock: vi.fn(),
   openRentalFindFirstMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -89,6 +91,9 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         pcaPump: {
           update: pcaPumpUpdateMock,
         },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
       }),
     );
   });
@@ -128,6 +133,20 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         }),
       }),
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'pca_pump_rental_updated',
+        target_type: 'PcaPumpRental',
+        target_id: 'rental_1',
+        changes: expect.objectContaining({
+          previous_status: 'active',
+          status: 'returned',
+          returned_at: '2026-06-18',
+        }),
+      }),
+    });
     expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
   });
 

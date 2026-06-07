@@ -147,6 +147,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           institution: true,
         },
       });
+      await tx.auditLog.create({
+        data: {
+          org_id: ctx.orgId,
+          actor_id: ctx.userId,
+          action: 'pca_pump_rental_updated',
+          target_type: 'PcaPumpRental',
+          target_id: id,
+          changes: {
+            previous_status: existing.status,
+            ...parsed.data,
+          },
+          ip_address: req.headers.get('x-forwarded-for') ?? null,
+          user_agent: req.headers.get('user-agent') ?? null,
+        },
+      });
 
       if (nextStatus === 'returned' || nextStatus === 'cancelled') {
         const remainingOpenRental = await tx.pcaPumpRental.findFirst({
