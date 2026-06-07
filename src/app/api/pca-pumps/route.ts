@@ -5,6 +5,17 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
 
+const pumpStatuses = ['available', 'rented', 'maintenance', 'retired'] as const;
+type PumpStatus = (typeof pumpStatuses)[number];
+
+function parsePumpStatusParam(value: string | undefined) {
+  if (!value || value === 'all') return { ok: true as const, status: undefined };
+  if (pumpStatuses.includes(value as PumpStatus)) {
+    return { ok: true as const, status: value as PumpStatus };
+  }
+  return { ok: false as const };
+}
+
 function serializePump<
   T extends { maintenance_due_at: Date | null; created_at: Date; updated_at: Date },
 >(item: T) {
@@ -19,12 +30,14 @@ function serializePump<
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const query = req.nextUrl.searchParams.get('q')?.trim();
-    const status = req.nextUrl.searchParams.get('status')?.trim();
+    const statusParam = req.nextUrl.searchParams.get('status')?.trim();
+    const parsedStatus = parsePumpStatusParam(statusParam);
+    if (!parsedStatus.ok) return validationError('PCAポンプ状態の指定が不正です');
 
     const pumps = await prisma.pcaPump.findMany({
       where: {
         org_id: req.orgId,
-        ...(status && status !== 'all' ? { status: status as never } : {}),
+        ...(parsedStatus.status ? { status: parsedStatus.status } : {}),
         ...(query
           ? {
               OR: [

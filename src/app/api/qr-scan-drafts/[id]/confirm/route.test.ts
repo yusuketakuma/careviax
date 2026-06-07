@@ -71,6 +71,11 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/prescription-intake-service', () => ({
   createPrescriptionIntakeInTx: createPrescriptionIntakeInTxMock,
+  PrescriptionIntakeTransactionRollback: class PrescriptionIntakeTransactionRollback extends Error {
+    constructor(readonly result: unknown) {
+      super('Prescription intake creation rolled back');
+    }
+  },
   runPrescriptionIntakePostCreateHooks: runPostCreateHooksMock,
 }));
 

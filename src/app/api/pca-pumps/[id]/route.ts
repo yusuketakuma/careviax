@@ -41,9 +41,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await prisma.pcaPump.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          rentals: {
+            where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+          },
+        },
+      },
+    },
   });
   if (!existing) return notFound('PCAポンプが見つかりません');
+  if (parsed.data.status && parsed.data.status !== 'rented' && existing._count.rentals > 0) {
+    return validationError('未完了の貸出があるPCAポンプは利用可能・点検・退役へ変更できません');
+  }
 
   const updated = await withOrgContext(
     ctx.orgId,

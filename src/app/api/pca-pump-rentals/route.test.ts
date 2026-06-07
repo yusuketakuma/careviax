@@ -8,14 +8,14 @@ const {
   prescriberInstitutionFindFirstMock,
   pcaPumpRentalFindManyMock,
   pcaPumpRentalCreateMock,
-  pcaPumpUpdateMock,
+  pcaPumpUpdateManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   pcaPumpFindFirstMock: vi.fn(),
   prescriberInstitutionFindFirstMock: vi.fn(),
   pcaPumpRentalFindManyMock: vi.fn(),
   pcaPumpRentalCreateMock: vi.fn(),
-  pcaPumpUpdateMock: vi.fn(),
+  pcaPumpUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -92,14 +92,14 @@ describe('/api/pca-pump-rentals', () => {
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     pcaPumpRentalFindManyMock.mockResolvedValue([rentalRecord]);
     pcaPumpRentalCreateMock.mockResolvedValue(rentalRecord);
-    pcaPumpUpdateMock.mockResolvedValue({ id: 'pump_1', status: 'rented' });
+    pcaPumpUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPumpRental: {
           create: pcaPumpRentalCreateMock,
         },
         pcaPump: {
-          update: pcaPumpUpdateMock,
+          updateMany: pcaPumpUpdateManyMock,
         },
       }),
     );
@@ -130,6 +130,15 @@ describe('/api/pca-pump-rentals', () => {
         },
       ],
     });
+  });
+
+  it('rejects invalid rental status filters', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/pca-pump-rentals?status=broken'),
+    );
+
+    expect(response.status).toBe(400);
+    expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {
@@ -171,10 +180,29 @@ describe('/api/pca-pump-rentals', () => {
         institution: true,
       },
     });
-    expect(pcaPumpUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'pump_1' },
+    expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pump_1',
+        org_id: 'org_1',
+        status: 'available',
+      },
       data: { status: 'rented' },
     });
+  });
+
+  it('rejects a rental if the pump cannot be claimed inside the transaction', async () => {
+    pcaPumpUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: '2026-06-10',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects already rented pumps before creating a rental', async () => {
@@ -191,6 +219,6 @@ describe('/api/pca-pump-rentals', () => {
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
-    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
   });
 });

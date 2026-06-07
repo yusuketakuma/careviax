@@ -168,6 +168,7 @@ function makeTx(overrides: Record<string, unknown> = {}) {
         .mockImplementation(({ where }: { where: { insurance_type: string } }) =>
           Promise.resolve(where?.insurance_type === 'medical' ? makeInsuranceRecord() : null),
         ),
+      findMany: vi.fn().mockResolvedValue([]),
     },
   };
 
@@ -429,6 +430,62 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
+  it('blocks billing evidence when care insurance is pending even before care number is assigned', async () => {
+    const tx = makeCareCertificationTx('care_1');
+    tx.patientInsurance.findFirst = vi
+      .fn()
+      .mockImplementation(({ where }: { where: { insurance_type: string } }) =>
+        Promise.resolve(
+          where?.insurance_type === 'care'
+            ? makeInsuranceRecord({
+                id: 'ins_care_1',
+                number: null,
+                insurance_type: 'care',
+                application_status: 'applying',
+                provisional_care_level: 'care_1',
+              })
+            : makeInsuranceRecord({
+                id: 'ins_med_1',
+                number: 'med_1',
+                insurance_type: 'medical',
+              }),
+        ),
+      );
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    const reason = '介護保険資格が申請中です。認定結果の確定まで請求保留または確認が必要です';
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payer_basis: 'medical',
+          claimable: false,
+          exclusion_reason: reason,
+          same_month_exclusion_flags: expect.objectContaining({
+            care_certification_pending: true,
+          }),
+          calculation_context: expect.objectContaining({
+            care_level: 'care_1',
+            care_certification_status: 'applying',
+            care_insurance_application_status: 'applying',
+            care_insurance_provisional_care_level: 'care_1',
+          }),
+        }),
+      }),
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        payerBasis: 'medical',
+        claimable: false,
+        exclusionReason: reason,
+      }),
+    );
+  });
+
   it('blocks billing evidence when public subsidy 21/54 application is pending', async () => {
     const tx = makeTx({
       patientInsurance: {
@@ -483,6 +540,74 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         payerBasis: 'medical',
         claimable: false,
         exclusionReason: reason,
+      }),
+    );
+  });
+
+  it('blocks billing evidence when any active public subsidy is pending even if another subsidy is confirmed', async () => {
+    const tx = makeTx({
+      patientInsurance: {
+        findFirst: vi.fn().mockImplementation(({ where }: { where: { insurance_type: string } }) =>
+          Promise.resolve(
+            where?.insurance_type === 'public_subsidy'
+              ? makeInsuranceRecord({
+                  id: 'ins_public_21',
+                  number: '21001234',
+                  insurance_type: 'public_subsidy',
+                  application_status: 'confirmed',
+                  public_program_code: '21',
+                })
+              : where?.insurance_type === 'medical'
+                ? makeInsuranceRecord({
+                    id: 'ins_med_1',
+                    number: 'med_1',
+                    insurance_type: 'medical',
+                  })
+                : null,
+          ),
+        ),
+        findMany: vi.fn().mockResolvedValue([
+          makeInsuranceRecord({
+            id: 'ins_public_54',
+            number: null,
+            insurance_type: 'public_subsidy',
+            application_status: 'applying',
+            public_program_code: '54',
+          }),
+        ]),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    const reason =
+      '公費54が申請中です。公費負担者番号・受給者番号と適用開始日の確定まで請求保留または確認が必要です';
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payer_basis: 'medical',
+          claimable: false,
+          exclusion_reason: reason,
+          same_month_exclusion_flags: expect.objectContaining({
+            public_subsidy_application_pending: true,
+          }),
+          calculation_context: expect.objectContaining({
+            public_subsidy_application_status: 'applying',
+            public_subsidy_program_code: '54',
+          }),
+        }),
+      }),
+    );
+    expect(tx.patientInsurance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          insurance_type: 'public_subsidy',
+          application_status: { in: ['applying', 'change_pending'] },
+        }),
+        take: 1,
       }),
     );
   });

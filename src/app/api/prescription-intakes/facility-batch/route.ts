@@ -8,6 +8,7 @@ import { collectDuplicatePrescriptionLines, collectStructuringBlockedLines } fro
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
   createPrescriptionIntakeInTx,
+  PrescriptionIntakeTransactionRollback,
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -283,6 +284,8 @@ export const POST = withAuth(
     } catch (error) {
       if (error instanceof FacilityBatchIntakeRollback) {
         result = error.result;
+      } else if (error instanceof PrescriptionIntakeTransactionRollback) {
+        result = { error: error.result.error };
       } else if (error instanceof PrescriberInstitutionReferenceValidationError) {
         return validationError(error.message);
       } else {

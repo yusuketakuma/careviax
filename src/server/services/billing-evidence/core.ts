@@ -28,6 +28,18 @@ const REGION_ADD_ON_KEY_SET = new Set<string>(REGION_ADD_ON_KEYS);
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
 
+type PatientInsuranceSnapshot = {
+  id: string;
+  number: string | null;
+  insurance_type: 'medical' | 'care' | 'public_subsidy';
+  application_status: InsuranceApplicationStatus;
+  public_program_code: string | null;
+  previous_care_level: string | null;
+  provisional_care_level: string | null;
+  confirmed_care_level: string | null;
+  is_active: boolean;
+};
+
 export type BillingEvidenceBlockersReader = {
   billingEvidence: {
     findMany(args: unknown): Promise<
@@ -94,17 +106,8 @@ type UpsertBillingEvidenceReader = HomeCareBillingRuleEngineTx & {
     } | null>;
   };
   patientInsurance: {
-    findFirst(args: unknown): Promise<{
-      id: string;
-      number: string | null;
-      insurance_type: 'medical' | 'care' | 'public_subsidy';
-      application_status: InsuranceApplicationStatus;
-      public_program_code: string | null;
-      previous_care_level: string | null;
-      provisional_care_level: string | null;
-      confirmed_care_level: string | null;
-      is_active: boolean;
-    } | null>;
+    findFirst(args: unknown): Promise<PatientInsuranceSnapshot | null>;
+    findMany(args: unknown): Promise<PatientInsuranceSnapshot[]>;
   };
   consentRecord: {
     findFirst(args: unknown): Promise<{ id: string; expiry_date?: Date | null } | null>;
@@ -946,8 +949,6 @@ function resolveCareCertificationBlocker(args: {
     };
   }
 
-  if (args.payerBasis !== 'care') return null;
-
   if (args.insuranceStatus === 'applying') {
     return {
       status: 'applying',
@@ -961,6 +962,8 @@ function resolveCareCertificationBlocker(args: {
       reason: '介護保険区分変更中です。認定結果の確定まで請求保留または確認が必要です',
     };
   }
+
+  if (args.payerBasis !== 'care') return null;
 
   if (args.careLevel === 'not_applied') {
     return {
@@ -1000,6 +1003,34 @@ function resolvePublicSubsidyApplicationBlocker(
     status: insurance.application_status,
     reason: `${programLabel}が申請中です。公費負担者番号・受給者番号と適用開始日の確定まで請求保留または確認が必要です`,
   };
+}
+
+async function findPendingPublicSubsidyInsurance(
+  tx: UpsertBillingEvidenceTx,
+  args: {
+    orgId: string;
+    patientId: string;
+    asOf: Date;
+  },
+) {
+  const asOf = new Date(args.asOf);
+  asOf.setHours(0, 0, 0, 0);
+
+  const [record] = await tx.patientInsurance.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      insurance_type: 'public_subsidy',
+      is_active: true,
+      application_status: { in: ['applying', 'change_pending'] },
+      OR: [{ valid_from: null }, { valid_from: { lte: asOf } }],
+      AND: [{ OR: [{ valid_until: null }, { valid_until: { gte: asOf } }] }],
+    },
+    orderBy: [{ application_submitted_at: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
+    take: 1,
+  });
+
+  return record ?? null;
 }
 
 export async function listBillingEvidenceBlockers(
@@ -1103,26 +1134,32 @@ export async function upsertBillingEvidenceForVisit(
     throw new Error('PATIENT_NOT_FOUND');
   }
 
-  const [medicalInsurance, careInsurance, publicSubsidyInsurance] = await Promise.all([
-    resolvePatientInsurance(tx, {
-      orgId: args.orgId,
-      patientId: visitRecord.patient_id,
-      type: 'medical',
-      asOf: visitRecord.visit_date,
-    }),
-    resolvePatientInsurance(tx, {
-      orgId: args.orgId,
-      patientId: visitRecord.patient_id,
-      type: 'care',
-      asOf: visitRecord.visit_date,
-    }),
-    resolvePatientInsurance(tx, {
-      orgId: args.orgId,
-      patientId: visitRecord.patient_id,
-      type: 'public_subsidy',
-      asOf: visitRecord.visit_date,
-    }),
-  ]);
+  const [medicalInsurance, careInsurance, publicSubsidyInsurance, pendingPublicSubsidyInsurance] =
+    await Promise.all([
+      resolvePatientInsurance(tx, {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+        type: 'medical',
+        asOf: visitRecord.visit_date,
+      }),
+      resolvePatientInsurance(tx, {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+        type: 'care',
+        asOf: visitRecord.visit_date,
+      }),
+      resolvePatientInsurance(tx, {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+        type: 'public_subsidy',
+        asOf: visitRecord.visit_date,
+      }),
+      findPendingPublicSubsidyInsurance(tx, {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+        asOf: visitRecord.visit_date,
+      }),
+    ]);
 
   const visitDate = visitRecord.visit_date;
   const visitDateOnly = new Date(
@@ -1365,8 +1402,10 @@ export async function upsertBillingEvidenceForVisit(
     insuranceStatus: careInsurance?.application_status ?? null,
     payerBasis,
   });
-  const publicSubsidyApplicationBlocker =
-    resolvePublicSubsidyApplicationBlocker(publicSubsidyInsurance);
+  const publicSubsidyApplicationInsurance = pendingPublicSubsidyInsurance ?? publicSubsidyInsurance;
+  const publicSubsidyApplicationBlocker = resolvePublicSubsidyApplicationBlocker(
+    publicSubsidyApplicationInsurance,
+  );
   const hasVisitReports = reports.length > 0;
   const hasConferenceReports = conferenceReports.length > 0;
   const allReportsDelivered =
@@ -1694,8 +1733,9 @@ export async function upsertBillingEvidenceForVisit(
     care_insurance_previous_care_level: careInsurance?.previous_care_level ?? null,
     care_insurance_provisional_care_level: careInsurance?.provisional_care_level ?? null,
     care_insurance_confirmed_care_level: careInsurance?.confirmed_care_level ?? null,
-    public_subsidy_application_status: publicSubsidyInsurance?.application_status ?? null,
-    public_subsidy_program_code: publicSubsidyInsurance?.public_program_code ?? null,
+    public_subsidy_application_status:
+      publicSubsidyApplicationInsurance?.application_status ?? null,
+    public_subsidy_program_code: publicSubsidyApplicationInsurance?.public_program_code ?? null,
     initial_transition_eligible: homeVisit2026Eligibility.initialTransitionEligible,
     multi_staff_visit_eligible: homeVisit2026Eligibility.multiStaffVisitEligible,
     physician_simultaneous_eligible: homeVisit2026Eligibility.physicianSimultaneousEligible,

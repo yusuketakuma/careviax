@@ -65,7 +65,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         role: 'pharmacist',
       },
     });
-    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_1' });
+    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_1', insurance_type: 'care' });
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1', is_active: false });
     patientInsuranceDeleteMock.mockResolvedValue({ id: 'insurance_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -167,6 +167,50 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       message: '保険情報IDが不正です',
     });
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects public subsidy fields when existing insurance is medical', async () => {
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      insurance_type: 'medical',
+    });
+
+    const response = await PUT(createPutRequest({ public_program_code: '54' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        public_program_code: ['公費制度コードは公費保険でのみ指定できます'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects change-pending status when existing insurance is medical', async () => {
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      insurance_type: 'medical',
+    });
+
+    const response = await PUT(createPutRequest({ application_status: 'change_pending' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        application_status: ['区分変更中は介護保険または公費保険で指定してください'],
+      },
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });

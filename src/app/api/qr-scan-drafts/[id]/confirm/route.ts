@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   createPrescriptionIntakeInTx,
+  PrescriptionIntakeTransactionRollback,
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
@@ -370,6 +371,9 @@ export const POST = withAuth(
       if (error instanceof QrDraftConfirmRollback) {
         return createIntakeErrorResponse(error.result);
       }
+      if (error instanceof PrescriptionIntakeTransactionRollback) {
+        return createIntakeErrorResponse(error.result);
+      }
       if (error instanceof PrescriberInstitutionReferenceValidationError) {
         return validationError(error.message);
       }
@@ -418,13 +422,17 @@ export const POST = withAuth(
       sourceType: 'qr_scan',
     });
 
-    await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
-      intakeId: result.intake.id,
-      cycleId: result.cycle.id,
-      patientId: result.cycle.patient_id,
-      sourceType: 'qr_scan',
-      lineCount: result.intake.lines.length,
-    });
+    try {
+      await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
+        intakeId: result.intake.id,
+        cycleId: result.cycle.id,
+        patientId: result.cycle.patient_id,
+        sourceType: 'qr_scan',
+        lineCount: result.intake.lines.length,
+      });
+    } catch {
+      // Webhook delivery is best-effort and must not fail a committed intake.
+    }
 
     // Cross-user confirmation audit log (best-effort)
     if (result.draft.scanned_by && result.draft.scanned_by !== req.userId) {

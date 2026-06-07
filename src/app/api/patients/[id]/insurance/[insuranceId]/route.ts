@@ -142,9 +142,31 @@ export async function PUT(
       org_id: ctx.orgId,
       ...(caseAssignmentWherePut ? { patient: { cases: { some: caseAssignmentWherePut } } } : {}),
     },
-    select: { id: true },
+    select: { id: true, insurance_type: true },
   });
   if (!existing) return notFound('保険情報が見つかりません');
+
+  const effectiveInsuranceType = parsed.data.insurance_type ?? existing.insurance_type;
+  if (effectiveInsuranceType !== 'public_subsidy' && parsed.data.public_program_code) {
+    return validationError('入力値が不正です', {
+      public_program_code: ['公費制度コードは公費保険でのみ指定できます'],
+    });
+  }
+  if (
+    effectiveInsuranceType !== 'care' &&
+    (parsed.data.previous_care_level ||
+      parsed.data.provisional_care_level ||
+      parsed.data.confirmed_care_level)
+  ) {
+    return validationError('入力値が不正です', {
+      previous_care_level: ['介護度情報は介護保険でのみ指定できます'],
+    });
+  }
+  if (effectiveInsuranceType === 'medical' && parsed.data.application_status === 'change_pending') {
+    return validationError('入力値が不正です', {
+      application_status: ['区分変更中は介護保険または公費保険で指定してください'],
+    });
+  }
 
   const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 

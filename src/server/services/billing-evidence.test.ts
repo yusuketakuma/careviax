@@ -72,6 +72,7 @@ function makeUpsertBillingEvidenceSupportDelegates() {
               : null,
           ),
         ),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     consentRecord: {
       findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
@@ -210,10 +211,13 @@ describe('billing-evidence service', () => {
     });
 
     expect(buildBillingCandidateSpecsMock).toHaveBeenCalledTimes(1);
-    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(tx, expect.objectContaining({
-      claimable: true,
-      exclusionReason: null,
-    }));
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        claimable: true,
+        exclusionReason: null,
+      }),
+    );
     expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -233,12 +237,11 @@ describe('billing-evidence service', () => {
             }),
           }),
         }),
-      })
+      }),
     );
     expect(
-      (
-        upsertMock.mock.calls[0][0].create.calculation_breakdown as Record<string, unknown>
-      ).debug_note,
+      (upsertMock.mock.calls[0][0].create.calculation_breakdown as Record<string, unknown>)
+        .debug_note,
     ).toBeUndefined();
     expect(deleteManyMock).toHaveBeenCalledWith({
       where: {
@@ -353,11 +356,13 @@ describe('billing-evidence service', () => {
         findMany: vi.fn().mockResolvedValue([]),
       },
       billingEvidence: {
-        findMany: vi.fn().mockResolvedValue([
-          { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
-          { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
-          { exclusion_reason: '承認済み管理計画書がありません' },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
+            { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
+            { exclusion_reason: '承認済み管理計画書がありません' },
+          ]),
       },
     };
 
@@ -404,10 +409,12 @@ describe('billing-evidence service', () => {
       },
       billingEvidence: {
         count: vi.fn().mockResolvedValue(2),
-        findMany: vi.fn().mockResolvedValue([
-          { exclusion_reason: '報告書送付が未完了です' },
-          { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { exclusion_reason: '報告書送付が未完了です' },
+            { exclusion_reason: '訪問薬剤管理の有効同意がありません' },
+          ]),
       },
       auditLog: {
         create: vi.fn(),
@@ -452,12 +459,14 @@ describe('billing-evidence service', () => {
 
   it('generates information provision and duplicate-interaction candidates with validation layers', async () => {
     const billingMonth = new Date(Date.UTC(2026, 2, 1));
-    const upsertMock = vi.fn().mockImplementation(({ create }) => Promise.resolve({
-      id: create.dedupe_key,
-      status: create.status,
-      billing_code: create.billing_code,
-      source_snapshot: create.source_snapshot,
-    }));
+    const upsertMock = vi.fn().mockImplementation(({ create }) =>
+      Promise.resolve({
+        id: create.dedupe_key,
+        status: create.status,
+        billing_code: create.billing_code,
+        source_snapshot: create.source_snapshot,
+      }),
+    );
 
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
@@ -584,7 +593,7 @@ describe('billing-evidence service', () => {
             }),
           }),
         }),
-      })
+      }),
     );
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -596,7 +605,7 @@ describe('billing-evidence service', () => {
           exclusion_reason:
             '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません',
         }),
-      })
+      }),
     );
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -607,7 +616,7 @@ describe('billing-evidence service', () => {
           dedupe_key: '2026-03:home-dup:inq_1:1_i',
           exclusion_reason: null,
         }),
-      })
+      }),
     );
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -618,7 +627,7 @@ describe('billing-evidence service', () => {
           dedupe_key: '2026-03:home-dup:inq_2:2_ro',
           exclusion_reason: null,
         }),
-      })
+      }),
     );
   });
 
@@ -816,14 +825,14 @@ describe('billing-evidence service', () => {
           report_delivery_ref: 'delivery_conf_1',
           recommended_rule_keys: ['medical.information_provision.2_care_manager'],
         }),
-      })
+      }),
     );
     expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         claimable: true,
         exclusionReason: null,
-      })
+      }),
     );
   });
 
@@ -847,10 +856,7 @@ describe('billing-evidence service', () => {
         building_id: null,
         unit_name: null,
       });
-    const residenceCountMock = vi
-      .fn()
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(1);
+    const residenceCountMock = vi.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(1);
 
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
@@ -947,7 +953,7 @@ describe('billing-evidence service', () => {
         update: expect.objectContaining({
           building_patient_count: 3,
         }),
-      })
+      }),
     );
   });
 
@@ -1019,14 +1025,12 @@ describe('billing-evidence service', () => {
         count: vi.fn().mockResolvedValue(1),
       },
       careReport: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'report_1', status: 'sent' },
-        ]),
+        findMany: vi.fn().mockResolvedValue([{ id: 'report_1', status: 'sent' }]),
       },
       deliveryRecord: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'delivery_1', report_id: 'report_1', status: 'sent' },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'delivery_1', report_id: 'report_1', status: 'sent' }]),
       },
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -1068,7 +1072,10 @@ describe('billing-evidence service', () => {
         site_id: 'site_1',
         insurance_type: 'medical',
         effective_from: { lte: new Date('2026-03-20T00:00:00.000Z') },
-        OR: [{ effective_to: null }, { effective_to: { gte: new Date('2026-03-20T00:00:00.000Z') } }],
+        OR: [
+          { effective_to: null },
+          { effective_to: { gte: new Date('2026-03-20T00:00:00.000Z') } },
+        ],
       },
       orderBy: { effective_from: 'desc' },
     });

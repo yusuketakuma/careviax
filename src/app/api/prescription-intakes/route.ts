@@ -16,6 +16,7 @@ import { z } from 'zod';
 import {
   createPrescriptionIntake,
   createPrescriptionIntakeInTx,
+  PrescriptionIntakeTransactionRollback,
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
@@ -414,6 +415,9 @@ export const POST = withAuth(
         if (error instanceof PrescriptionIntakeRollback) {
           return createIntakeErrorResponse(error.result, cycle_id);
         }
+        if (error instanceof PrescriptionIntakeTransactionRollback) {
+          return createIntakeErrorResponse(error.result, cycle_id);
+        }
         if (error instanceof PrescriberInstitutionReferenceValidationError) {
           return validationError(error.message);
         }
@@ -461,13 +465,17 @@ export const POST = withAuth(
         sourceType: source_type,
       });
 
-      await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
-        intakeId: qrResult.intake.id,
-        cycleId: qrResult.cycle.id,
-        patientId: qrResult.cycle.patient_id,
-        sourceType: source_type,
-        lineCount: qrResult.intake.lines.length,
-      });
+      try {
+        await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
+          intakeId: qrResult.intake.id,
+          cycleId: qrResult.cycle.id,
+          patientId: qrResult.cycle.patient_id,
+          sourceType: source_type,
+          lineCount: qrResult.intake.lines.length,
+        });
+      } catch {
+        // Webhook delivery is best-effort and must not fail a committed intake.
+      }
 
       await broadcastOrgRealtimeEvent({
         orgId: req.orgId,

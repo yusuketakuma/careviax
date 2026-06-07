@@ -24,6 +24,10 @@ function serializeRental(item: {
   };
 }
 
+function toDateKey(value: Date | null) {
+  return value?.toISOString().slice(0, 10) ?? null;
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
@@ -45,9 +49,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await prisma.pcaPumpRental.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true, pump_id: true },
+    select: {
+      id: true,
+      pump_id: true,
+      status: true,
+      rented_at: true,
+      due_at: true,
+      returned_at: true,
+    },
   });
   if (!existing) return notFound('PCAポンプレンタルが見つかりません');
+
+  const effectiveRentedAt = parsed.data.rented_at ?? toDateKey(existing.rented_at);
+  if (!effectiveRentedAt) {
+    return validationError('貸出日が不正です', {
+      rented_at: ['貸出日が不正です'],
+    });
+  }
+  const effectiveDueAt =
+    parsed.data.due_at !== undefined ? parsed.data.due_at : toDateKey(existing.due_at);
+  const effectiveReturnedAt =
+    parsed.data.returned_at !== undefined
+      ? parsed.data.returned_at
+      : toDateKey(existing.returned_at);
+  if (effectiveDueAt && effectiveRentedAt > effectiveDueAt) {
+    return validationError('返却予定日は貸出日以降の日付を指定してください', {
+      due_at: ['返却予定日は貸出日以降の日付を指定してください'],
+    });
+  }
+  if (effectiveReturnedAt && effectiveRentedAt > effectiveReturnedAt) {
+    return validationError('返却日は貸出日以降の日付を指定してください', {
+      returned_at: ['返却日は貸出日以降の日付を指定してください'],
+    });
+  }
 
   if (parsed.data.institution_id) {
     const institution = await prisma.prescriberInstitution.findFirst({
@@ -60,6 +94,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updated = await withOrgContext(
     ctx.orgId,
     async (tx) => {
+      const nextStatus = parsed.data.status;
+      if (nextStatus === 'active' || nextStatus === 'scheduled' || nextStatus === 'overdue') {
+        const conflictingRental = await tx.pcaPumpRental.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            pump_id: existing.pump_id,
+            id: { not: existing.id },
+            status: { in: ['scheduled', 'active', 'overdue'] },
+          },
+          select: { id: true, status: true },
+        });
+        if (conflictingRental) {
+          return {
+            kind: 'error' as const,
+            error: 'pump_already_has_open_rental' as const,
+          };
+        }
+      }
+
       const rental = await tx.pcaPumpRental.update({
         where: { id },
         data: {
@@ -95,15 +148,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      if (parsed.data.status === 'returned' || parsed.data.status === 'cancelled') {
-        await tx.pcaPump.update({
-          where: { id: existing.pump_id },
-          data: { status: 'available' },
+      if (nextStatus === 'returned' || nextStatus === 'cancelled') {
+        const remainingOpenRental = await tx.pcaPumpRental.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            pump_id: existing.pump_id,
+            id: { not: existing.id },
+            status: { in: ['scheduled', 'active', 'overdue'] },
+          },
+          select: { id: true },
         });
+        if (!remainingOpenRental) {
+          await tx.pcaPump.update({
+            where: { id: existing.pump_id },
+            data: { status: 'available' },
+          });
+        }
       } else if (
-        parsed.data.status === 'active' ||
-        parsed.data.status === 'scheduled' ||
-        parsed.data.status === 'overdue'
+        nextStatus === 'active' ||
+        nextStatus === 'scheduled' ||
+        nextStatus === 'overdue'
       ) {
         await tx.pcaPump.update({
           where: { id: existing.pump_id },
@@ -111,10 +175,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
 
-      return rental;
+      return { kind: 'rental' as const, rental };
     },
     { requestContext: ctx },
   );
 
-  return success({ data: serializeRental(updated) });
+  if (updated.kind === 'error') {
+    return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');
+  }
+
+  return success({ data: serializeRental(updated.rental) });
 }

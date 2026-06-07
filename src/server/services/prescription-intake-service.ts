@@ -157,6 +157,18 @@ type TransactionResult =
   | { kind: 'error'; error: 'invalid_transition' }
   | { kind: 'error'; error: 'version_conflict' };
 
+type TransactionRollbackResult = Extract<
+  TransactionResult,
+  { kind: 'error'; error: 'invalid_transition' | 'version_conflict' }
+>;
+
+export class PrescriptionIntakeTransactionRollback extends Error {
+  constructor(readonly result: TransactionRollbackResult) {
+    super(result.error);
+    this.name = 'PrescriptionIntakeTransactionRollback';
+  }
+}
+
 export type CreateIntakeServiceResult =
   | {
       ok: true;
@@ -781,10 +793,16 @@ export async function createPrescriptionIntakeInTx(
     });
   } catch (err) {
     if (err instanceof InvalidTransitionError) {
-      return { kind: 'error', error: 'invalid_transition' };
+      throw new PrescriptionIntakeTransactionRollback({
+        kind: 'error',
+        error: 'invalid_transition',
+      });
     }
     if (err instanceof VersionConflictError) {
-      return { kind: 'error', error: 'version_conflict' };
+      throw new PrescriptionIntakeTransactionRollback({
+        kind: 'error',
+        error: 'version_conflict',
+      });
     }
     throw err;
   }
@@ -825,10 +843,13 @@ export async function createPrescriptionIntake(
       createPrescriptionIntakeInTx(tx, input, orgId, userId, options),
     );
   } catch (error) {
-    if (error instanceof PrescriberInstitutionReferenceValidationError) {
+    if (error instanceof PrescriptionIntakeTransactionRollback) {
+      txResult = error.result;
+    } else if (error instanceof PrescriberInstitutionReferenceValidationError) {
       return { ok: false, error: 'prescriber_institution_not_found', message: error.message };
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   if (txResult.kind === 'error') {
@@ -892,13 +913,17 @@ export async function createPrescriptionIntake(
     sourceType: input.source_type,
   });
 
-  await notifyWebhookEventForOrg(orgId, 'prescription.created', {
-    intakeId: intake.id,
-    cycleId: cycle.id,
-    patientId: cycle.patient_id,
-    sourceType: input.source_type,
-    lineCount: intake.lines.length,
-  });
+  try {
+    await notifyWebhookEventForOrg(orgId, 'prescription.created', {
+      intakeId: intake.id,
+      cycleId: cycle.id,
+      patientId: cycle.patient_id,
+      sourceType: input.source_type,
+      lineCount: intake.lines.length,
+    });
+  } catch {
+    // Webhook delivery is best-effort and must not fail a committed intake.
+  }
 
   return {
     ok: true,
