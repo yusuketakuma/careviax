@@ -32,7 +32,13 @@ vi.mock('../operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { endOfMonth, monthLabel, startOfMonth, upsertBillingEvidenceForVisit } from './core';
+import {
+  describeBillingEvidenceBlockers,
+  endOfMonth,
+  monthLabel,
+  startOfMonth,
+  upsertBillingEvidenceForVisit,
+} from './core';
 
 // ── Test Helpers ──
 
@@ -198,6 +204,26 @@ describe('billing-evidence/core: billing month date helpers', () => {
   });
 });
 
+describe('billing-evidence/core: blocker descriptions', () => {
+  it('describes care certification pending blockers with a patient action', () => {
+    expect(
+      describeBillingEvidenceBlockers({
+        claimable: false,
+        exclusionReason: '介護保険認定が申請中です',
+        sameMonthExclusionFlags: { care_certification_pending: true },
+      }),
+    ).toEqual([
+      {
+        key: 'care_certification_pending',
+        reason: '介護保険認定が申請中です',
+        action_href: '/patients',
+        action_label: '介護認定を確認',
+        severity: 'high',
+      },
+    ]);
+  });
+});
+
 describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -239,6 +265,72 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       expect.objectContaining({
         claimable: true,
         exclusionReason: null,
+      }),
+    );
+  });
+
+  it('blocks billing evidence when care certification is still applying', async () => {
+    const tx = makeTx({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue(
+          makePatient({
+            cases: [
+              {
+                required_visit_support: {
+                  home_visit_intake: {
+                    care_level: 'applying',
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      },
+      patientInsurance: {
+        findFirst: vi.fn().mockImplementation(({ where }: { where: { insurance_type: string } }) =>
+          Promise.resolve(
+            where?.insurance_type === 'care'
+              ? { id: 'ins_care_1', number: 'care_1', insurance_type: 'care', is_active: true }
+              : {
+                  id: 'ins_med_1',
+                  number: 'med_1',
+                  insurance_type: 'medical',
+                  is_active: true,
+                },
+          ),
+        ),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          payer_basis: 'care',
+          claimable: false,
+          exclusion_reason:
+            '介護保険認定が申請中です。認定結果の確定まで請求保留または確認が必要です',
+          same_month_exclusion_flags: expect.objectContaining({
+            care_certification_pending: true,
+          }),
+          calculation_context: expect.objectContaining({
+            care_level: 'applying',
+            care_level_category: null,
+            care_certification_status: 'applying',
+          }),
+        }),
+      }),
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        payerBasis: 'care',
+        claimable: false,
+        exclusionReason: '介護保険認定が申請中です。認定結果の確定まで請求保留または確認が必要です',
       }),
     );
   });

@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { PayerBasis, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
@@ -217,6 +217,7 @@ export type BillingEvidenceBlocker = {
     | 'management_plan_review_overdue'
     | 'initial_home_visit_assessment_missing'
     | 'report_delivery_incomplete'
+    | 'care_certification_pending'
     | 'outcome_not_claimable';
   reason: string;
   action_href: string;
@@ -852,6 +853,14 @@ function blockerDefinition(
         action_label: '送達状況を確認',
         severity: 'normal',
       };
+    case 'care_certification_pending':
+      return {
+        key,
+        reason: fallbackReason ?? '介護保険認定状況の確認が必要です',
+        action_href: '/patients',
+        action_label: '介護認定を確認',
+        severity: 'high',
+      };
     case 'outcome_not_claimable':
     default:
       return {
@@ -875,6 +884,7 @@ function listBlockerKeys(
     'management_plan_review_overdue',
     'initial_home_visit_assessment_missing',
     'report_delivery_incomplete',
+    'care_certification_pending',
     'outcome_not_claimable',
   ];
 
@@ -904,6 +914,36 @@ export function describeBillingEvidenceBlockers(args: {
   return keys.map((key, index) =>
     blockerDefinition(key, index === 0 ? args.exclusionReason : null),
   );
+}
+
+function resolveCareCertificationBlocker(args: {
+  careLevel: string | null;
+  payerBasis: PayerBasis;
+}): { reason: string; status: 'applying' | 'not_applied' | 'not_eligible' } | null {
+  if (args.careLevel === 'applying') {
+    return {
+      status: 'applying',
+      reason: '介護保険認定が申請中です。認定結果の確定まで請求保留または確認が必要です',
+    };
+  }
+
+  if (args.payerBasis !== 'care') return null;
+
+  if (args.careLevel === 'not_applied') {
+    return {
+      status: 'not_applied',
+      reason: '介護保険認定が未申請です。介護保険請求として確定できません',
+    };
+  }
+
+  if (args.careLevel === 'not_eligible') {
+    return {
+      status: 'not_eligible',
+      reason: '介護保険認定が非該当です。介護保険請求として確定できません',
+    };
+  }
+
+  return null;
 }
 
 export async function listBillingEvidenceBlockers(
@@ -1247,6 +1287,21 @@ export async function upsertBillingEvidenceForVisit(
     careInsuranceNumber: careInsurance?.number ?? null,
     visitType: visitRecord.schedule.visit_type,
   });
+  // 介護認定レベル判定 (intake の care_level から)
+  const caseData = patient.cases?.[0] ?? null;
+  const intakeJson = getHomeVisitIntake(caseData?.required_visit_support);
+  const careLevel = typeof intakeJson?.care_level === 'string' ? intakeJson.care_level : null;
+  const careLevelCategory = careLevel
+    ? careLevel.startsWith('support_')
+      ? ('support_required' as const)
+      : careLevel.startsWith('care_')
+        ? ('care_required' as const)
+        : null
+    : null;
+  const careCertificationBlocker = resolveCareCertificationBlocker({
+    careLevel,
+    payerBasis,
+  });
   const hasVisitReports = reports.length > 0;
   const hasConferenceReports = conferenceReports.length > 0;
   const allReportsDelivered =
@@ -1270,6 +1325,7 @@ export async function upsertBillingEvidenceForVisit(
     initial_home_visit_assessment_missing:
       initialHomeVisitAssessment.required && !initialHomeVisitAssessment.satisfied,
     report_delivery_incomplete: !allReportsDelivered,
+    care_certification_pending: careCertificationBlocker != null,
     outcome_not_claimable: !isClaimableOutcome(visitRecord.outcome_status),
     building_patient_count: buildingPatientCount,
     monthly_visit_count: monthlyVisitCount,
@@ -1286,9 +1342,11 @@ export async function upsertBillingEvidenceForVisit(
           ? '初回算定月のため、初回訪問前日までの患家訪問・環境聴取記録が必要です'
           : exclusionFlags.report_delivery_incomplete
             ? '報告書送付が未完了です'
-            : exclusionFlags.outcome_not_claimable
-              ? '訪問結果が算定対象外です'
-              : null;
+            : exclusionFlags.care_certification_pending
+              ? (careCertificationBlocker?.reason ?? '介護保険認定状況の確認が必要です')
+              : exclusionFlags.outcome_not_claimable
+                ? '訪問結果が算定対象外です'
+                : null;
 
   const claimable = exclusionReason == null;
 
@@ -1302,18 +1360,6 @@ export async function upsertBillingEvidenceForVisit(
   const pediatricAge = patient.birth_date
     ? isUnderAge(new Date(patient.birth_date), visitDate, 18)
     : false;
-
-  // 介護認定レベル判定 (intake の care_level から)
-  const caseData = patient.cases?.[0] ?? null;
-  const intakeJson = getHomeVisitIntake(caseData?.required_visit_support);
-  const careLevel = typeof intakeJson?.care_level === 'string' ? intakeJson.care_level : null;
-  const careLevelCategory = careLevel
-    ? careLevel.startsWith('support_')
-      ? ('support_required' as const)
-      : careLevel.startsWith('care_')
-        ? ('care_required' as const)
-        : null
-    : null;
 
   // 麻薬関連フラグ (intake から)
   const narcoticsBase = intakeJson?.narcotics_base === true;
@@ -1573,7 +1619,9 @@ export async function upsertBillingEvidenceForVisit(
     narcotic_injection_required: narcoticInjectionRequired,
     central_venous_required: centralVenousRequired,
     enteral_required: enteralRequired,
+    care_level: careLevel,
     care_level_category: careLevelCategory,
+    care_certification_status: careCertificationBlocker?.status ?? null,
     initial_transition_eligible: homeVisit2026Eligibility.initialTransitionEligible,
     multi_staff_visit_eligible: homeVisit2026Eligibility.multiStaffVisitEligible,
     physician_simultaneous_eligible: homeVisit2026Eligibility.physicianSimultaneousEligible,
