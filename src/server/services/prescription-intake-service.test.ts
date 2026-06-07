@@ -91,6 +91,9 @@ function createMockTx() {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    drugMaster: {
+      findMany: vi.fn(),
+    },
     task: {
       create: vi.fn(),
       updateMany: vi.fn(),
@@ -333,6 +336,262 @@ describe('createPrescriptionIntake', () => {
     expect(tx.careCase.findFirst).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks injectable prescription lines that are not confirmed as outpatient eligible', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.workflowException.findFirst.mockResolvedValue(null);
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        yj_code: 'INJ001',
+        receipt_code: null,
+        hot_code: null,
+        outpatient_injection_eligible: false,
+      },
+    ]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '注射薬A',
+            drug_code: 'INJ001',
+            dosage_form: '注射液',
+            route: 'injection',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: '注射薬A',
+          reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+        },
+      ],
+    });
+    expect(tx.drugMaster.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { yj_code: { in: ['INJ001'] } },
+          { receipt_code: { in: ['INJ001'] } },
+          { hot_code: { in: ['INJ001'] } },
+        ],
+      },
+      select: {
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+        outpatient_injection_eligible: true,
+      },
+    });
+    expect(tx.workflowException.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        exception_type: 'outpatient_injection_eligibility_block',
+        severity: 'warning',
+        status: 'open',
+      }),
+    });
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('allows injectable prescription lines confirmed as outpatient eligible', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        yj_code: 'INJ001',
+        receipt_code: null,
+        hot_code: null,
+        outpatient_injection_eligible: true,
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '注射薬A',
+            drug_code: 'INJ001',
+            dosage_form: '注射液',
+            route: 'injection',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lines: {
+          create: [
+            expect.objectContaining({
+              org_id: 'org_1',
+              drug_name: '注射薬A',
+              drug_code: 'INJ001',
+              route: 'injection',
+            }),
+          ],
+        },
+      }),
+    });
+    expect(createDispenseDraftMock).toHaveBeenCalled();
+  });
+
+  it('blocks injectable dosage forms without a drug code', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.workflowException.findFirst.mockResolvedValue(null);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '薬剤A',
+            drug_code: undefined,
+            dosage_form: '注射液',
+            route: undefined,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: '薬剤A',
+          reason: '薬剤コード未設定の注射剤は外来/在宅自己注射対象か確認できません',
+        },
+      ],
+    });
+    expect(tx.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+  });
+
+  it('allows outpatient eligible injectable lines resolved by receipt code', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        yj_code: 'YJ999',
+        receipt_code: 'RC001',
+        hot_code: null,
+        outpatient_injection_eligible: true,
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '注射薬A',
+            drug_code: 'RC001',
+            dosage_form: '注射液',
+            route: undefined,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).toHaveBeenCalled();
   });
 
   it('resolves prescription drug codes to DrugMaster ids when syncing medication profiles', async () => {

@@ -120,6 +120,8 @@ const drugSafetyOverrideSchema = z
     lasa_group_key: z.string().trim().min(1).nullable().optional(),
     is_lasa_risk: z.boolean().optional(),
     is_high_risk: z.boolean().optional(),
+    outpatient_injection_eligible: z.boolean().optional(),
+    outpatient_injection_note: z.string().trim().min(1).nullable().optional(),
   })
   .refine((value) => Boolean(value.yj_code || value.drug_name), {
     message: 'yj_code または drug_name のいずれかが必要です',
@@ -241,6 +243,12 @@ async function applyDrugSafetyOverride(
     ...(override.lasa_group_key !== undefined ? { lasa_group_key: override.lasa_group_key } : {}),
     ...(override.is_lasa_risk !== undefined ? { is_lasa_risk: override.is_lasa_risk } : {}),
     ...(override.is_high_risk !== undefined ? { is_high_risk: override.is_high_risk } : {}),
+    ...(override.outpatient_injection_eligible !== undefined
+      ? { outpatient_injection_eligible: override.outpatient_injection_eligible }
+      : {}),
+    ...(override.outpatient_injection_note !== undefined
+      ? { outpatient_injection_note: override.outpatient_injection_note }
+      : {}),
   };
 
   if (Object.keys(data).length === 0) {

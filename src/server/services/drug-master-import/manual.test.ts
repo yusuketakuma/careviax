@@ -72,6 +72,8 @@ describe('importManualClinicalRules', () => {
           lasa_group_key: 'dobutamine_dopamine',
           is_lasa_risk: true,
           is_high_risk: true,
+          outpatient_injection_eligible: true,
+          outpatient_injection_note: '在宅自己注射対象として手動確認済み',
         },
       ],
     });
@@ -86,6 +88,8 @@ describe('importManualClinicalRules', () => {
         lasa_group_key: 'dobutamine_dopamine',
         is_lasa_risk: true,
         is_high_risk: true,
+        outpatient_injection_eligible: true,
+        outpatient_injection_note: '在宅自己注射対象として手動確認済み',
       },
     });
     expect(db.drugPackageInsert.create).toHaveBeenCalledWith({

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-083000
+
+- current task: harden prescription intake with outpatient/self-injection eligibility checks
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, prescription intake service/API/QR/facility-batch routes and tests, DrugMaster schema/API/admin view, manual clinical import service/tests, and five read-only subagent review outputs
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260608083000_add_outpatient_injection_eligibility/migration.sql`, `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/facility-batch/route.ts`, `src/app/api/prescription-intakes/facility-batch/route.test.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/server/services/drug-master-import/manual.ts`, `src/server/services/drug-master-import/manual.test.ts`, `src/app/api/drug-masters/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: 注射剤の処方取込で、外来/在宅自己注射として薬局調剤可能かを薬剤マスターで確認せずに受付・ドラフト作成まで進める経路があった。通常POST、QR下書き確定、施設まとめ処方で同じエラーを返す必要があった。施設まとめ処方は作成ループ中の後続患者エラーを通常returnしていたため、トランザクションが部分コミットされ得た。DrugMasterに可否フラグを追加するだけでは、全注射剤がdefault falseで止まり、手動確認済みフラグを設定・確認する運用経路が不足していた。
+- security risks found: 注射剤可否の外部入力は受付作成前にサーバー側でDrugMasterへ照合する。未確認時は intake/dispense draft/post-create hook を作らず、通常/QR/施設まとめAPIは blocked line と reason を返す。施設まとめ処方の作成中エラーは rollback exception でトランザクション全体を戻す。新規ログに患者詳細や秘匿情報を追加していない。
+- performance issues found: 注射剤らしい明細がある場合のみ、重複排除した薬剤コードを YJ/レセ電/HOT に対して1回 `findMany` する。非注射剤では追加DrugMaster queryを発行しない。外来自己注射可否には index を追加した。管理画面は既存一覧/詳細表示に小さなバッジを足すだけで新規ポーリングや重い集計は追加していない。
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prettier --write ...`; `pnpm --config.verify-deps-before-run=false exec vitest run src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/route.test.ts src/app/api/prescription-intakes/facility-batch/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' src/server/services/drug-master-import/manual.test.ts src/app/api/drug-masters/route.test.ts 'src/app/api/drug-masters/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec prisma generate`; `pnpm --config.verify-deps-before-run=false exec prisma validate`; targeted `eslint ... --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false typecheck`; `git diff --check`
+- validation results: Prisma Client generation passed; Prisma schema format/validate passed; targeted Vitest passed with 8 files / 78 tests; targeted ESLint passed with zero warnings; `tsc --noEmit` passed; formal `pnpm typecheck` passed with Next route typegen and TypeScript; whitespace diff check passed.
+- remaining work: 実データとして外来/在宅自己注射対象薬の curated list/seed はまだ投入していない。既存 open workflow exception の description 更新・構造化metadata、注射剤可否専用の管理編集画面、ブラウザ実操作での処方取込UI表示確認は今後の強化余地。
+- next action: commit this prescription intake injectable eligibility slice, then report current prescription intake findings and remaining operational issues.
+
 ### 20260608-081000
 
 - current task: implement minimum PCA pump rental management for pharmacy-to-medical-institution rentals

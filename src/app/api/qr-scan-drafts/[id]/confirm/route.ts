@@ -148,6 +148,11 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult) {
       blocked_lines: result.blockedLines,
     });
   }
+  if (result.error === 'outpatient_injection_not_eligible') {
+    return validationError('外来/在宅自己注射として調剤可否が未確認の注射剤があります', {
+      blocked_lines: result.blockedLines,
+    });
+  }
   if (result.error === 'invalid_refill_remaining_count') {
     return validationError('リフィル処方箋は残回数を1回以上設定してください');
   }

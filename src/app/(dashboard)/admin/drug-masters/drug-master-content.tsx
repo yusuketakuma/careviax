@@ -62,6 +62,8 @@ type DrugMasterRow = {
   is_narcotic: boolean;
   is_psychotropic: boolean;
   is_high_risk: boolean;
+  outpatient_injection_eligible: boolean;
+  outpatient_injection_note: string | null;
   is_lasa_risk: boolean;
   tall_man_name: string | null;
   lasa_group_key: string | null;
@@ -562,6 +564,11 @@ const baseColumns: ColumnDef<DrugMasterRow>[] = [
           <span className="inline-flex items-center gap-0.5 rounded border border-red-300 bg-red-50 px-1 py-0.5 text-[10px] font-medium text-red-700">
             <AlertTriangle className="size-2.5" aria-hidden="true" />
             ハイリスク
+          </span>
+        )}
+        {row.original.outpatient_injection_eligible && (
+          <span className="inline-flex items-center gap-0.5 rounded border border-emerald-300 bg-emerald-50 px-1 py-0.5 text-[10px] font-medium text-emerald-800">
+            自己注射
           </span>
         )}
         {row.original.is_lasa_risk && (
@@ -3963,6 +3970,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   description="YJ/HOTコード、薬価、経過措置、高リスク・LASA属性を確認します。"
                   tone={
                     detailQuery.data.is_high_risk ||
+                    detailQuery.data.outpatient_injection_eligible ||
                     detailQuery.data.is_lasa_risk ||
                     detailQuery.data.is_narcotic
                       ? 'warning'
@@ -3984,6 +3992,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     {detailQuery.data.is_high_risk && (
                       <Badge variant="destructive">ハイリスク薬</Badge>
                     )}
+                    {detailQuery.data.outpatient_injection_eligible && (
+                      <Badge variant="outline" className="border-emerald-300 text-emerald-800">
+                        外来/在宅自己注射確認済み
+                      </Badge>
+                    )}
                     {detailQuery.data.is_lasa_risk && (
                       <Badge variant="outline" className="border-amber-300 text-amber-800">
                         LASA注意
@@ -3992,7 +4005,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   </div>
                   {(detailQuery.data.tall_man_name ||
                     detailQuery.data.is_lasa_risk ||
-                    detailQuery.data.is_high_risk) && (
+                    detailQuery.data.is_high_risk ||
+                    detailQuery.data.outpatient_injection_eligible) && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
                       <h2 className="font-semibold">薬剤名・高リスク確認</h2>
                       <dl className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -4016,11 +4030,20 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             {[
                               detailQuery.data.is_lasa_risk ? '類似薬剤名注意' : null,
                               detailQuery.data.is_high_risk ? '高リスク薬' : null,
+                              detailQuery.data.outpatient_injection_eligible
+                                ? '外来/在宅自己注射確認済み'
+                                : null,
                             ]
                               .filter(Boolean)
                               .join(' / ') || '—'}
                           </dd>
                         </div>
+                        {detailQuery.data.outpatient_injection_note && (
+                          <div className="sm:col-span-2">
+                            <dt className="text-xs font-medium text-amber-800">自己注射確認メモ</dt>
+                            <dd className="mt-0.5">{detailQuery.data.outpatient_injection_note}</dd>
+                          </div>
+                        )}
                       </dl>
                     </div>
                   )}

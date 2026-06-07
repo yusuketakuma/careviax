@@ -130,6 +130,8 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
         is_narcotic: true,
         is_psychotropic: true,
         is_high_risk: true,
+        outpatient_injection_eligible: true,
+        outpatient_injection_note: true,
         is_lasa_risk: true,
         tall_man_name: true,
         lasa_group_key: true,

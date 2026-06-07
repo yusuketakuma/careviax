@@ -51,30 +51,32 @@ enum ImportStatus {
 
 // グローバルマスタ（org_id なし）
 model DrugMaster {
-  id                       String    @id @default(cuid())
-  yj_code                  String    @unique // YJコード 12桁
-  receipt_code             String? // レセ電コード 9桁
-  hot_code                 String? // HOTコード 13桁
-  jan_code                 String?
-  drug_name                String
-  drug_name_kana           String?
-  generic_name             String?
-  drug_price               Decimal?  @db.Decimal(12, 2)
-  unit                     String?
-  dosage_form              String?
-  therapeutic_category     String? // 薬効分類 4桁
-  manufacturer             String?
-  is_generic               Boolean   @default(false)
-  is_narcotic              Boolean   @default(false)
-  is_psychotropic          Boolean   @default(false)
-  is_high_risk             Boolean   @default(false)
-  is_lasa_risk             Boolean   @default(false)
-  tall_man_name            String?
-  lasa_group_key           String?
-  max_administration_days  Int?
-  transitional_expiry_date DateTime?
-  created_at               DateTime  @default(now())
-  updated_at               DateTime  @updatedAt
+  id                            String    @id @default(cuid())
+  yj_code                       String    @unique // YJコード 12桁
+  receipt_code                  String? // レセ電コード 9桁
+  hot_code                      String? // HOTコード 13桁
+  jan_code                      String?
+  drug_name                     String
+  drug_name_kana                String?
+  generic_name                  String?
+  drug_price                    Decimal?  @db.Decimal(12, 2)
+  unit                          String?
+  dosage_form                   String?
+  therapeutic_category          String? // 薬効分類 4桁
+  manufacturer                  String?
+  is_generic                    Boolean   @default(false)
+  is_narcotic                   Boolean   @default(false)
+  is_psychotropic               Boolean   @default(false)
+  is_high_risk                  Boolean   @default(false)
+  outpatient_injection_eligible Boolean   @default(false) // 外来/在宅自己注射等として保険薬局で調剤可能
+  outpatient_injection_note     String?
+  is_lasa_risk                  Boolean   @default(false)
+  tall_man_name                 String?
+  lasa_group_key                String?
+  max_administration_days       Int?
+  transitional_expiry_date      DateTime?
+  created_at                    DateTime  @default(now())
+  updated_at                    DateTime  @updatedAt
 
   package_inserts   DrugPackageInsert[]
   interactions_as_a DrugInteraction[]   @relation("DrugA")
@@ -90,6 +92,7 @@ model DrugMaster {
   @@index([generic_name])
   @@index([therapeutic_category])
   @@index([is_high_risk])
+  @@index([outpatient_injection_eligible])
   @@index([is_lasa_risk])
   @@index([is_narcotic])
   @@index([is_psychotropic])

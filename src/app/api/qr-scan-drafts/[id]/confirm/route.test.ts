@@ -357,6 +357,60 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(JSON.stringify(event)).not.toContain('cycle_1');
   });
 
+  it('returns injectable outpatient eligibility details from intake rollback', async () => {
+    createPrescriptionIntakeInTxMock.mockResolvedValue({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: '注射薬A',
+          reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+        },
+      ],
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: '注射薬A',
+            drug_code: 'INJ001',
+            dosage_form: '注射液',
+            dose: '1本',
+            frequency: '1日1回',
+            days: 7,
+            route: 'injection',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+      details: {
+        blocked_lines: [
+          {
+            line_number: 1,
+            drug_name: '注射薬A',
+            reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+          },
+        ],
+      },
+    });
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+    expect(runPostCreateHooksMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects blank required fields and invalid line enums before draft lookup', async () => {
     const response = await POST(
       createRequest({

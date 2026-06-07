@@ -112,6 +112,7 @@ type Tx = {
   communicationRequest: Pick<Prisma.TransactionClient['communicationRequest'], 'create'>;
   cycleTransitionLog: Pick<Prisma.TransactionClient['cycleTransitionLog'], 'create'>;
   dispenseTask: Pick<Prisma.TransactionClient['dispenseTask'], 'create' | 'findFirst'>;
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
   inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'count' | 'create'>;
   medicationCycle: Pick<
     Prisma.TransactionClient['medicationCycle'],
@@ -146,6 +147,11 @@ type TransactionResult =
       error: 'structuring_blocked_lines';
       blockedLines: Array<{ line_number: number; drug_name: string }>;
     }
+  | {
+      kind: 'error';
+      error: 'outpatient_injection_not_eligible';
+      blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
+    }
   | { kind: 'error'; error: 'expiry_exceeded' }
   | { kind: 'error'; error: 'future_prescribed_date' }
   | { kind: 'error'; error: 'invalid_transition' }
@@ -178,6 +184,11 @@ export type CreateIntakeServiceResult =
       ok: false;
       error: 'structuring_blocked_lines';
       blockedLines: Array<{ line_number: number; drug_name: string }>;
+    }
+  | {
+      ok: false;
+      error: 'outpatient_injection_not_eligible';
+      blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
     }
   | { ok: false; error: 'expiry_exceeded' }
   | { ok: false; error: 'future_prescribed_date' }
@@ -410,6 +421,80 @@ async function createInquiryArtifactsTx(
   });
 }
 
+const INJECTABLE_TEXT_PATTERN = /注射|注入|点滴|シリンジ|アンプル|バイアル/u;
+
+function isInjectablePrescriptionLine(line: CreateIntakeLineInput) {
+  if (line.route === 'injection') return true;
+  return [line.dosage_form, line.drug_name].some((value) =>
+    value ? INJECTABLE_TEXT_PATTERN.test(value) : false,
+  );
+}
+
+async function collectOutpatientInjectionBlockedLines(tx: Tx, lines: CreateIntakeLineInput[]) {
+  const injectableLines = lines.filter(isInjectablePrescriptionLine);
+  if (injectableLines.length === 0) return [];
+
+  const codes = Array.from(
+    new Set(
+      injectableLines
+        .map((line) => normalizePrescriptionDrugCode(line.drug_code))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+  const eligibleCodes = new Set<string>();
+
+  if (codes.length > 0) {
+    const masters = await tx.drugMaster.findMany({
+      where: {
+        OR: [
+          { yj_code: { in: codes } },
+          { receipt_code: { in: codes } },
+          { hot_code: { in: codes } },
+        ],
+      },
+      select: {
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+        outpatient_injection_eligible: true,
+      },
+    });
+
+    for (const master of masters) {
+      if (!master.outpatient_injection_eligible) continue;
+      for (const code of [master.yj_code, master.receipt_code, master.hot_code]) {
+        const normalizedCode = normalizePrescriptionDrugCode(code);
+        if (normalizedCode && codes.includes(normalizedCode)) {
+          eligibleCodes.add(normalizedCode);
+        }
+      }
+    }
+  }
+
+  return injectableLines
+    .map((line) => {
+      const code = normalizePrescriptionDrugCode(line.drug_code);
+      if (!code) {
+        return {
+          line_number: line.line_number,
+          drug_name: line.drug_name,
+          reason: '薬剤コード未設定の注射剤は外来/在宅自己注射対象か確認できません',
+        };
+      }
+      if (!eligibleCodes.has(code)) {
+        return {
+          line_number: line.line_number,
+          drug_name: line.drug_name,
+          reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+        };
+      }
+      return null;
+    })
+    .filter((line): line is { line_number: number; drug_name: string; reason: string } =>
+      Boolean(line),
+    );
+}
+
 async function ensureFaxOriginalFollowupTaskTx(
   tx: Tx,
   args: {
@@ -570,6 +655,38 @@ export async function createPrescriptionIntakeInTx(
         })),
       };
     }
+  }
+
+  const outpatientInjectionBlockedLines = await collectOutpatientInjectionBlockedLines(tx, lines);
+  if (outpatientInjectionBlockedLines.length > 0) {
+    const existingException = await tx.workflowException.findFirst({
+      where: {
+        org_id: orgId,
+        cycle_id: cycle.id,
+        exception_type: 'outpatient_injection_eligibility_block',
+        status: 'open',
+      },
+      select: { id: true },
+    });
+
+    if (!existingException) {
+      await tx.workflowException.create({
+        data: {
+          org_id: orgId,
+          cycle_id: cycle.id,
+          exception_type: 'outpatient_injection_eligibility_block',
+          description: `外来/在宅自己注射として調剤可否が未確認の注射剤があります: ${outpatientInjectionBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
+          severity: 'warning',
+          status: 'open',
+        },
+      });
+    }
+
+    return {
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: outpatientInjectionBlockedLines,
+    };
   }
 
   const resolvedInstitution = await resolvePrescriberInstitutionFields(tx, orgId, {
@@ -738,6 +855,13 @@ export async function createPrescriptionIntake(
     }
     if (txResult.error === 'structuring_blocked_lines') {
       return { ok: false, error: 'structuring_blocked_lines', blockedLines: txResult.blockedLines };
+    }
+    if (txResult.error === 'outpatient_injection_not_eligible') {
+      return {
+        ok: false,
+        error: 'outpatient_injection_not_eligible',
+        blockedLines: txResult.blockedLines,
+      };
     }
     if (txResult.error === 'expiry_exceeded') {
       return { ok: false, error: 'expiry_exceeded' };

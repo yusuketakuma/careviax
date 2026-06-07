@@ -263,6 +263,339 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns case and patient details for outpatient injection eligibility blocks', async () => {
+    const intakeCreateMock = vi.fn();
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'case_1',
+              patient_id: 'patient_1',
+              patient: {
+                id: 'patient_1',
+                name: '山田 花子',
+                residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+              },
+            },
+            {
+              id: 'case_2',
+              patient_id: 'patient_2',
+              patient: {
+                id: 'patient_2',
+                name: '佐藤 次郎',
+                residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+              },
+            },
+          ]),
+          findFirst: vi.fn().mockImplementation(async ({ where }) => ({
+            id: where.id,
+            patient_id: where.patient_id,
+            primary_pharmacist_id: 'pharmacist_1',
+          })),
+        },
+        medicationCycle: {
+          create: vi.fn().mockResolvedValue({
+            id: 'cycle_1',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            overall_status: 'intake_received',
+            version: 1,
+          }),
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'exception_1' }),
+        },
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              yj_code: 'INJ001',
+              receipt_code: null,
+              hot_code: null,
+              outpatient_injection_eligible: false,
+            },
+          ]),
+        },
+        prescriberInstitution: {
+          findFirst: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn(),
+          create: vi.fn(),
+        },
+        communicationRequest: {
+          create: vi.fn(),
+        },
+        communicationEvent: {
+          create: vi.fn(),
+        },
+        dispenseTask: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+        task: {
+          create: vi.fn(),
+          updateMany: vi.fn(),
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest(
+        createValidFacilityBatchBody({
+          entries: [
+            {
+              case_id: 'case_1',
+              patient_id: 'patient_1',
+              lines: [
+                {
+                  line_number: 1,
+                  drug_name: '注射薬A',
+                  drug_code: 'INJ001',
+                  dosage_form: '注射液',
+                  route: 'injection',
+                  dose: '1本',
+                  frequency: '1日1回',
+                  days: 7,
+                },
+              ],
+            },
+            {
+              case_id: 'case_2',
+              patient_id: 'patient_2',
+              lines: [
+                {
+                  line_number: 1,
+                  drug_name: 'アムロジピン錠5mg',
+                  drug_code: '2149001',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+      details: {
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        patient_name: '山田 花子',
+        blocked_lines: [
+          {
+            line_number: 1,
+            drug_name: '注射薬A',
+            reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+          },
+        ],
+      },
+    });
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back earlier facility batch intake work when a later outpatient injection block occurs', async () => {
+    const persistedIntakeIds: string[] = [];
+    const cycleCreateMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+        overall_status: 'intake_received',
+        version: 1,
+      });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      });
+    const intakeCreateMock = vi.fn().mockImplementation(async () => {
+      persistedIntakeIds.push('intake_1');
+      return { id: 'intake_1' };
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      try {
+        return await callback({
+          careCase: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: 'case_1',
+                patient_id: 'patient_1',
+                patient: {
+                  id: 'patient_1',
+                  name: '山田 花子',
+                  residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+                },
+              },
+              {
+                id: 'case_2',
+                patient_id: 'patient_2',
+                patient: {
+                  id: 'patient_2',
+                  name: '佐藤 次郎',
+                  residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+                },
+              },
+            ]),
+            findFirst: vi.fn().mockImplementation(async ({ where }) => ({
+              id: where.id,
+              patient_id: where.patient_id,
+              primary_pharmacist_id: 'pharmacist_1',
+            })),
+          },
+          medicationCycle: {
+            create: cycleCreateMock,
+            findFirst: cycleFindFirstMock,
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
+          cycleTransitionLog: {
+            create: vi.fn().mockResolvedValue({}),
+          },
+          workflowException: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'exception_1' }),
+          },
+          drugMaster: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                yj_code: 'INJ001',
+                receipt_code: null,
+                hot_code: null,
+                outpatient_injection_eligible: false,
+              },
+            ]),
+          },
+          prescriberInstitution: {
+            findFirst: vi.fn(),
+          },
+          prescriptionIntake: {
+            create: intakeCreateMock,
+          },
+          inquiryRecord: {
+            count: vi.fn().mockResolvedValue(0),
+            create: vi.fn(),
+          },
+          communicationRequest: {
+            create: vi.fn(),
+          },
+          communicationEvent: {
+            create: vi.fn(),
+          },
+          dispenseTask: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'task_1' }),
+          },
+          task: {
+            create: vi.fn(),
+            updateMany: vi.fn(),
+            upsert: vi.fn(),
+          },
+        });
+      } catch (error) {
+        persistedIntakeIds.length = 0;
+        throw error;
+      }
+    });
+
+    const response = await POST(
+      createRequest(
+        createValidFacilityBatchBody({
+          entries: [
+            {
+              case_id: 'case_1',
+              patient_id: 'patient_1',
+              lines: [
+                {
+                  line_number: 1,
+                  drug_name: 'アムロジピン錠5mg',
+                  drug_code: '2149001',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                },
+              ],
+            },
+            {
+              case_id: 'case_2',
+              patient_id: 'patient_2',
+              lines: [
+                {
+                  line_number: 1,
+                  drug_name: '注射薬A',
+                  drug_code: 'INJ001',
+                  dosage_form: '注射液',
+                  route: 'injection',
+                  dose: '1本',
+                  frequency: '1日1回',
+                  days: 7,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+      details: {
+        case_id: 'case_2',
+        patient_id: 'patient_2',
+        patient_name: '佐藤 次郎',
+      },
+    });
+    expect(intakeCreateMock).toHaveBeenCalledTimes(1);
+    expect(persistedIntakeIds).toEqual([]);
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
   it('creates one medication cycle and intake per patient in a facility batch', async () => {
     const cycleCreateMock = vi
       .fn()
