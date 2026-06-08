@@ -46,6 +46,91 @@ function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+type QrDraftResponse = {
+  raw_qr_texts?: unknown;
+  qr_payload_hash?: unknown;
+  parsed_data?: unknown;
+  [key: string]: unknown;
+};
+
+function sanitizeParsedDataForResponse(parsedData: unknown) {
+  if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) return parsedData;
+  const sanitized = { ...(parsedData as Record<string, unknown>) };
+  delete sanitized.rawText;
+  return sanitized;
+}
+
+function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
+  const sanitized = { ...draft };
+  delete sanitized.raw_qr_texts;
+  delete sanitized.qr_payload_hash;
+  return {
+    ...sanitized,
+    parsed_data: sanitizeParsedDataForResponse(draft.parsed_data),
+  };
+}
+
+function readQrFormatFamily(qrData: JahisQRData) {
+  const header = qrData.rawText.split(/\r?\n/, 1)[0]?.trim() ?? '';
+  if (header.startsWith('JAHISTC')) return 'e_okusuri';
+  if (/^JAHIS\d{1,2}$/.test(header)) return 'outpatient_prescription';
+  return 'unknown';
+}
+
+function validateQrPageSet(pages: JahisQRData[]) {
+  if (pages.length === 0) return null;
+
+  const families = new Set(pages.map(readQrFormatFamily));
+  if (families.size > 1) {
+    return '異なるJAHIS QR形式が混在しています。同じ処方/お薬手帳のQRだけを読み取ってください';
+  }
+
+  const firstIdentity = pages[0].patient;
+  const identityMismatch = pages.some((page) => {
+    return (
+      (page.patient.name || '') !== (firstIdentity.name || '') ||
+      (page.patient.birthDate || '') !== (firstIdentity.birthDate || '') ||
+      (page.patient.gender || '') !== (firstIdentity.gender || '')
+    );
+  });
+  if (identityMismatch) {
+    return '分割QR内の患者情報が一致しません。同じ患者のQRだけを読み取ってください';
+  }
+
+  const splitPages = pages.filter((page) => page.splitInfo);
+  if (splitPages.length === 0) return null;
+  if (splitPages.length !== pages.length) {
+    return '分割QRと通常QRが混在しています。分割QRは全ページを読み取ってください';
+  }
+
+  const firstSplit = splitPages[0].splitInfo;
+  if (!firstSplit) return null;
+  if (firstSplit.splitCount !== pages.length) {
+    return `分割QRの枚数が不足しています。${firstSplit.splitCount}枚中${pages.length}枚です`;
+  }
+
+  const sequences = new Set<number>();
+  for (const page of splitPages) {
+    const splitInfo = page.splitInfo;
+    if (!splitInfo) continue;
+    if (splitInfo.dataId !== firstSplit.dataId || splitInfo.splitCount !== firstSplit.splitCount) {
+      return '分割QRの識別子または総枚数が一致しません。同じ処方/お薬手帳のQRだけを読み取ってください';
+    }
+    if (sequences.has(splitInfo.sequenceNumber)) {
+      return `分割QRの${splitInfo.sequenceNumber}枚目が重複しています`;
+    }
+    sequences.add(splitInfo.sequenceNumber);
+  }
+
+  for (let sequenceNumber = 1; sequenceNumber <= firstSplit.splitCount; sequenceNumber += 1) {
+    if (!sequences.has(sequenceNumber)) {
+      return `分割QRの${sequenceNumber}枚目が不足しています`;
+    }
+  }
+
+  return null;
+}
+
 function buildDraftParsedData(args: {
   qrData: JahisQRData;
   mapResult: Awaited<ReturnType<typeof mapJahisToIntake>> | null;
@@ -67,7 +152,6 @@ function buildDraftParsedData(args: {
     patientNotes: args.qrData.patientNotes,
     supplementalRecords: args.qrData.supplementalRecords ?? [],
     splitInfo: args.qrData.splitInfo ?? null,
-    rawText: args.qrData.rawText,
     patientName: args.qrData.patient.name,
     patientNameKana: args.qrData.patient.nameKana ?? '',
     patientBirthdate: args.qrData.patient.birthDate ?? '',
@@ -117,20 +201,22 @@ export const GET = withAuth(
     const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
     const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
-    const drafts = await prisma.qrScanDraft.findMany({
-      where: {
-        org_id: req.orgId,
-        status: 'pending',
-        ...(unmatched ? { patient_id: null } : {}),
-        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    const drafts = await withOrgContext(req.orgId, (tx) => {
+      return tx.qrScanDraft.findMany({
+        where: {
+          org_id: req.orgId,
+          status: 'pending',
+          ...(unmatched ? { patient_id: null } : {}),
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      });
     });
 
     const hasMore = drafts.length > limit;
-    const data = hasMore ? drafts.slice(0, limit) : drafts;
+    const data = (hasMore ? drafts.slice(0, limit) : drafts).map(toQrDraftResponse);
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
     return success({ data, hasMore, nextCursor });
@@ -159,7 +245,13 @@ export const POST = withAuth(
       site_id,
       session_id: clientSessionId,
     } = parsed.data;
-    const qr_texts = Array.from(new Set(parsedQrTexts));
+    const uniqueQrTexts = Array.from(new Set(parsedQrTexts));
+    if (uniqueQrTexts.length !== parsedQrTexts.length) {
+      return validationError('同じQRコードが重複しています', {
+        qr_texts: ['同じQRコードを複数回読み取っています'],
+      });
+    }
+    const qr_texts = uniqueQrTexts;
     const qrPayloadHash = buildQrPayloadHash(qr_texts);
     let selectedPatient: {
       id: string;
@@ -218,6 +310,13 @@ export const POST = withAuth(
 
     // Extract successful data (partial data from failed parses is still usable)
     const successfulPages = parseResults.map((r) => r.data as JahisQRData);
+
+    const pageSetError = validateQrPageSet(successfulPages);
+    if (pageSetError) {
+      return validationError(pageSetError, {
+        qr_texts: [pageSetError],
+      });
+    }
 
     // Merge pages if multiple QR texts
     const mergedData: JahisQRData =
@@ -348,7 +447,7 @@ export const POST = withAuth(
 
     return success(
       {
-        draft,
+        draft: toQrDraftResponse(draft),
         parse_result: {
           success: allErrors.length === 0,
           warnings: allWarnings,

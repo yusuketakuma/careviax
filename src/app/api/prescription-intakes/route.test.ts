@@ -936,11 +936,18 @@ describe('/api/prescription-intakes POST', () => {
     });
     expect(qrDraftUpdateMock).toHaveBeenCalledWith({
       where: { id: 'draft_qr' },
-      data: {
+      data: expect.objectContaining({
         patient_id: 'patient_qr',
         status: 'confirmed',
         confirmed_intake_id: 'intake_qr',
-      },
+        raw_qr_texts: [],
+        qr_payload_hash: null,
+        parsed_data: expect.objectContaining({
+          confirmed: true,
+          confirmed_intake_id: 'intake_qr',
+        }),
+        expected_qr_count: null,
+      }),
     });
     expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
       orgId: 'org_1',

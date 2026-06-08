@@ -453,6 +453,22 @@ describe('parseJahisQR', () => {
         supplements: ['一包化', '薬品補足: 冷所保管'],
       });
     });
+
+    it('parses splitInfo from JAHIS11 record 911', () => {
+      const result = parseJahisQR(`${OUTPATIENT_PRESCRIPTION_QR_V11}\n911,12345678901234,002,001`);
+
+      expect(result.splitInfo).toEqual({
+        dataId: '12345678901234',
+        splitCount: 2,
+        sequenceNumber: 1,
+      });
+    });
+
+    it('ignores invalid JAHIS11 record 911 splitInfo', () => {
+      const result = parseJahisQR(`${OUTPATIENT_PRESCRIPTION_QR_V11}\n911,not-a-data-id,002,003`);
+
+      expect(result.splitInfo).toBeUndefined();
+    });
   });
 
   describe('with MULTI_QR_PART1', () => {

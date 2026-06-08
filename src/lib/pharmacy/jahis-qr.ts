@@ -577,18 +577,31 @@ export function detectMultiQR(text: string): JahisSplitInfo | null {
   for (const line of lines) {
     const parts = line.split(',');
     if (parts[0] === '911') {
-      const splitCount = parseInt(parts[2], 10);
-      const sequenceNumber = parseInt(parts[3], 10);
-      if (!isNaN(splitCount) && splitCount > 0 && !isNaN(sequenceNumber) && sequenceNumber > 0) {
-        return {
-          dataId: parts[1] || '',
-          splitCount,
-          sequenceNumber,
-        };
-      }
+      return parseSplitInfoRecord(parts);
     }
   }
   return null;
+}
+
+function parseSplitInfoRecord(parts: string[]): JahisSplitInfo | null {
+  const splitCount = parseInt(parts[2] ?? '', 10);
+  const sequenceNumber = parseInt(parts[3] ?? '', 10);
+  if (
+    !parts[1] ||
+    !Number.isInteger(splitCount) ||
+    splitCount <= 0 ||
+    !Number.isInteger(sequenceNumber) ||
+    sequenceNumber <= 0 ||
+    sequenceNumber > splitCount
+  ) {
+    return null;
+  }
+
+  return {
+    dataId: parts[1],
+    splitCount,
+    sequenceNumber,
+  };
 }
 
 /**
@@ -848,11 +861,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           break;
         }
         case '911': {
-          const splitCount = parseInt(parts[2], 10);
-          const sequenceNumber = parseInt(parts[3], 10);
-          if (!isNaN(splitCount) && !isNaN(sequenceNumber)) {
-            splitInfo = { dataId: parts[1] || '', splitCount, sequenceNumber };
-          }
+          splitInfo = parseSplitInfoRecord(parts) ?? splitInfo;
           break;
         }
         default:
@@ -945,6 +954,7 @@ function parseJahisPrescriptionQRSafe(
   const medicationByRpAndSequence = new Map<string, JahisMedication>();
   const prescriptionInsurance: JahisPrescriptionInsurance = { publicSubsidies: [] };
   const rawRecords: JahisRawRecord[] = [];
+  let splitInfo: JahisSplitInfo | undefined;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -1128,6 +1138,10 @@ function parseJahisPrescriptionQRSafe(
           appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '薬品補足');
           break;
         }
+        case '911': {
+          splitInfo = parseSplitInfoRecord(parts) ?? splitInfo;
+          break;
+        }
         default:
           warnings.push({
             recordType,
@@ -1161,6 +1175,7 @@ function parseJahisPrescriptionQRSafe(
     remarks,
     patientNotes,
     supplementalRecords: [],
+    splitInfo,
     rawText: text,
     pharmacy: {
       institutionName: prescribingInstitution.name,

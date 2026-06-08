@@ -21,8 +21,8 @@ export type JahisSupplementalRecordDbView = {
   record_label: string;
   line_number: number;
   summary: string | null;
-  payload: unknown;
-  raw_line: string;
+  payload?: unknown;
+  raw_line?: string;
 };
 
 export function readJahisSupplementalDetails(
@@ -51,8 +51,8 @@ export function normalizeJahisSupplementalRecords(
     recordType: record.record_type,
     recordLabel: record.record_label,
     lineNumber: record.line_number,
-    summary: record.summary ?? record.raw_line,
+    summary: record.summary ?? record.raw_line ?? null,
     details: readJahisSupplementalDetails(record.payload),
-    rawLine: record.raw_line,
+    rawLine: record.raw_line ?? record.summary ?? '',
   }));
 }

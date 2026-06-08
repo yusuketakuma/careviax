@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHmac } from 'crypto';
 
 function normalizeQrText(value: string) {
   return value.trim().replace(/\r\n/g, '\n');
@@ -9,7 +9,13 @@ export function canonicalizeQrTextPages(qrTexts: readonly string[]) {
 }
 
 export function buildQrPayloadHash(qrTexts: readonly string[]) {
-  return createHash('sha256')
+  const secret =
+    process.env.QR_DRAFT_HASH_SECRET ??
+    process.env.AUTH_SECRET ??
+    process.env.NEXTAUTH_SECRET ??
+    'ph-os-local-qr-draft-hash-secret';
+
+  return createHmac('sha256', secret)
     .update(JSON.stringify(canonicalizeQrTextPages(qrTexts)))
     .digest('hex');
 }

@@ -30,6 +30,7 @@ import {
   getAssignedPatientIds,
 } from '@/server/services/prescription-access';
 import { prisma } from '@/lib/db/client';
+import { Prisma } from '@prisma/client';
 
 const requiredTrimmedStringSchema = z.string().trim().min(1);
 const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -462,6 +463,16 @@ export const POST = withAuth(
             patient_id,
             status: 'confirmed',
             confirmed_intake_id: intakeResult.intake.id,
+            raw_qr_texts: [],
+            qr_payload_hash: null,
+            parsed_data: {
+              confirmed: true,
+              confirmed_at: new Date().toISOString(),
+              confirmed_intake_id: intakeResult.intake.id,
+            },
+            parse_errors: Prisma.JsonNull,
+            auto_completed: Prisma.JsonNull,
+            expected_qr_count: null,
           },
         });
 

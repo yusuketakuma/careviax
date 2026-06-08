@@ -318,11 +318,18 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     );
     expect(qrScanDraftUpdateMock).toHaveBeenCalledWith({
       where: { id: 'draft_1' },
-      data: {
+      data: expect.objectContaining({
         patient_id: 'patient_1',
         status: 'confirmed',
         confirmed_intake_id: 'intake_1',
-      },
+        raw_qr_texts: [],
+        qr_payload_hash: null,
+        parsed_data: expect.objectContaining({
+          confirmed: true,
+          confirmed_intake_id: 'intake_1',
+        }),
+        expected_qr_count: null,
+      }),
     });
     expect(jahisSupplementalRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {

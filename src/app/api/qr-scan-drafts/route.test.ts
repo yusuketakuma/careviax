@@ -286,7 +286,7 @@ describe('/api/qr-scan-drafts POST', () => {
   it('persists enriched parsed_data from the QR mapper', async () => {
     const response = await POST(
       createRequest({
-        qr_texts: [' JAHISTC08,1 ', 'JAHISTC08,1'],
+        qr_texts: [' JAHISTC08,1 '],
         patient_id: ' patient_1 ',
         site_id: ' site_1 ',
         session_id: ' session_1 ',
@@ -352,6 +352,9 @@ describe('/api/qr-scan-drafts POST', () => {
         }),
       }),
     );
+    expect(qrScanDraftCreateMock.mock.calls[0]?.[0]?.data.parsed_data).not.toHaveProperty(
+      'rawText',
+    );
     expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1', qr_draft_id: 'draft_1' },
     });
@@ -382,6 +385,68 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(JSON.stringify(event)).not.toContain('draft_1');
     expect(JSON.stringify(event)).not.toContain('session_1');
     expect(JSON.stringify(event)).not.toContain('patient_1');
+  });
+
+  it('rejects QR texts duplicated in the same request instead of silently deduplicating them', async () => {
+    const response = await POST(
+      createRequest({
+        qr_texts: [' JAHISTC08,1 ', 'JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '同じQRコードが重複しています',
+      details: {
+        qr_texts: ['同じQRコードを複数回読み取っています'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not expose raw QR texts or payload hashes in the create response', async () => {
+    qrScanDraftCreateMock.mockResolvedValueOnce({
+      id: 'draft_1',
+      status: 'pending',
+      raw_qr_texts: ['JAHISTC08,1\n1,山田 太郎'],
+      qr_payload_hash: 'a'.repeat(64),
+      parsed_data: {
+        patientName: '山田 太郎',
+        rawText: 'JAHISTC08,1\n1,山田 太郎',
+        rawRecords: [{ recordType: '1', lineNumber: 2 }],
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.draft).toMatchObject({
+      id: 'draft_1',
+      status: 'pending',
+      parsed_data: {
+        patientName: '山田 太郎',
+        rawRecords: [{ recordType: '1', lineNumber: 2 }],
+      },
+    });
+    expect(body.draft).not.toHaveProperty('raw_qr_texts');
+    expect(body.draft).not.toHaveProperty('qr_payload_hash');
+    expect(body.draft.parsed_data).not.toHaveProperty('rawText');
   });
 
   it('rejects blank QR texts and blank site ids before lookup or parsing', async () => {
@@ -488,6 +553,239 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
     expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects incomplete split QR page sets before saving a draft', async () => {
+    parseJahisQRSafeMock.mockReturnValueOnce({
+      success: true,
+      warnings: [],
+      data: {
+        patient: {
+          name: '山田 太郎',
+          nameKana: 'ヤマダ タロウ',
+          birthDate: '1950-03-15',
+          gender: 'male',
+        },
+        medications: [{ drugName: 'アムロジピン錠5mg' }],
+        prescribingInstitution: {},
+        dispensingInstitution: {},
+        supplementalRecords: [],
+        splitInfo: {
+          dataId: '12345678901234',
+          splitCount: 2,
+          sequenceNumber: 1,
+        },
+        rawText: 'JAHISTC08,1\n911,12345678901234,002,001',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1\n911,12345678901234,002,001'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '分割QRの枚数が不足しています。2枚中1枚です',
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects split QR pages whose data id does not match', async () => {
+    parseJahisQRSafeMock
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'アムロジピン錠5mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          splitInfo: {
+            dataId: '12345678901234',
+            splitCount: 2,
+            sequenceNumber: 1,
+          },
+          rawText: 'JAHISTC08,1\n911,12345678901234,002,001',
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'メトホルミン錠500mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          splitInfo: {
+            dataId: '99999999999999',
+            splitCount: 2,
+            sequenceNumber: 2,
+          },
+          rawText: 'JAHISTC08,1\n911,99999999999999,002,002',
+        },
+      });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: [
+          'JAHISTC08,1\n911,12345678901234,002,001',
+          'JAHISTC08,1\n911,99999999999999,002,002',
+        ],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '分割QRの識別子または総枚数が一致しません。同じ処方/お薬手帳のQRだけを読み取ってください',
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects split QR pages whose patient identity differs', async () => {
+    parseJahisQRSafeMock
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'アムロジピン錠5mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          splitInfo: {
+            dataId: '12345678901234',
+            splitCount: 2,
+            sequenceNumber: 1,
+          },
+          rawText: 'JAHISTC08,1\n911,12345678901234,002,001',
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '佐藤 花子',
+            nameKana: 'サトウ ハナコ',
+            birthDate: '1950-03-15',
+            gender: 'female',
+          },
+          medications: [{ drugName: 'メトホルミン錠500mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          splitInfo: {
+            dataId: '12345678901234',
+            splitCount: 2,
+            sequenceNumber: 2,
+          },
+          rawText: 'JAHISTC08,1\n911,12345678901234,002,002',
+        },
+      });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: [
+          'JAHISTC08,1\n911,12345678901234,002,001',
+          'JAHISTC08,1\n911,12345678901234,002,002',
+        ],
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '分割QR内の患者情報が一致しません。同じ患者のQRだけを読み取ってください',
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects mixed e-okusuri and outpatient prescription QR families', async () => {
+    parseJahisQRSafeMock
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'アムロジピン錠5mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          rawText: 'JAHISTC08,1',
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'メトホルミン錠500mg' }],
+          prescribingInstitution: {},
+          dispensingInstitution: {},
+          supplementalRecords: [],
+          rawText: 'JAHIS11',
+        },
+      });
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1', 'JAHIS11'],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '異なるJAHIS QR形式が混在しています。同じ処方/お薬手帳のQRだけを読み取ってください',
+    });
+    expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects exact duplicate QR payloads before creating another draft', async () => {

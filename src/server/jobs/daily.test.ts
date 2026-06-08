@@ -120,6 +120,7 @@ import {
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
   cleanupAbandonedQrDrafts,
+  cleanupTerminalQrDraftPayloads,
 } from './daily';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
 
@@ -347,7 +348,16 @@ describe('cleanupAbandonedQrDrafts', () => {
     );
     expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith({
       where: { id: { in: ['draft_1', 'draft_2'] } },
-      data: { status: 'discarded' },
+      data: expect.objectContaining({
+        status: 'discarded',
+        raw_qr_texts: [],
+        qr_payload_hash: null,
+        parsed_data: expect.objectContaining({
+          discarded: true,
+          discarded_by: 'cleanup_abandoned_qr_drafts',
+        }),
+        expected_qr_count: null,
+      }),
     });
     expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
       where: {
@@ -365,6 +375,41 @@ describe('cleanupAbandonedQrDrafts', () => {
     expect(result).toEqual({ processedCount: 0 });
     expect(qrScanDraftUpdateManyMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordDeleteManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('cleanupTerminalQrDraftPayloads', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('scrubs raw QR payloads from all terminal QR drafts', async () => {
+    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 7 });
+
+    const result = await cleanupTerminalQrDraftPayloads();
+
+    expect(result).toEqual({ processedCount: 7 });
+    expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        status: { in: ['confirmed', 'discarded'] },
+      },
+      data: expect.objectContaining({
+        raw_qr_texts: [],
+        qr_payload_hash: null,
+        parsed_data: expect.objectContaining({
+          scrubbed: true,
+          scrubbed_by: 'cleanup_terminal_qr_draft_payloads',
+          scrubbed_at: '2026-04-21T12:00:00.000Z',
+        }),
+        expected_qr_count: null,
+      }),
+    });
   });
 });
 

@@ -74,7 +74,9 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
       id: 'draft_1',
       org_id: 'org_1',
       status: 'pending',
-      parsed_data: { patientName: '山田 太郎' },
+      raw_qr_texts: ['JAHISTC08,1\n1,山田 太郎'],
+      qr_payload_hash: 'a'.repeat(64),
+      parsed_data: { patientName: '山田 太郎', rawText: 'JAHISTC08,1\n1,山田 太郎' },
     };
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -91,6 +93,9 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({ id: 'draft_1', status: 'pending' });
+    expect(body).not.toHaveProperty('raw_qr_texts');
+    expect(body).not.toHaveProperty('qr_payload_hash');
+    expect(body.parsed_data).not.toHaveProperty('rawText');
   });
 
   it('returns 404 when draft is not found', async () => {
@@ -132,12 +137,14 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
               record_type: true,
               record_label: true,
               summary: true,
-              payload: true,
             }),
           }),
         }),
       }),
     );
+    const select = findFirstSpy.mock.calls[0]?.[0]?.include?.jahis_supplemental_records?.select;
+    expect(select).not.toHaveProperty('payload');
+    expect(select).not.toHaveProperty('raw_line');
   });
 });
 
@@ -162,7 +169,13 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
   });
 
   it('sets status to discarded and returns 200', async () => {
-    const updatedDraft = { id: 'draft_1', status: 'discarded' };
+    const updatedDraft = {
+      id: 'draft_1',
+      status: 'discarded',
+      raw_qr_texts: [],
+      qr_payload_hash: null,
+      parsed_data: { discarded: true },
+    };
     let callCount = 0;
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) => {
@@ -191,6 +204,8 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({ id: 'draft_1', status: 'discarded' });
+    expect(body).not.toHaveProperty('raw_qr_texts');
+    expect(body).not.toHaveProperty('qr_payload_hash');
   });
 
   it('returns 404 when draft does not exist', async () => {
@@ -316,7 +331,13 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'draft_1' },
-        data: { status: 'discarded' },
+        data: expect.objectContaining({
+          status: 'discarded',
+          raw_qr_texts: [],
+          qr_payload_hash: null,
+          parsed_data: expect.objectContaining({ discarded: true }),
+          expected_qr_count: null,
+        }),
       }),
     );
     expect(deleteSupplementalSpy).toHaveBeenCalledWith({

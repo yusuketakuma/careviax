@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { format } from 'date-fns';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   createPrescriptionIntake,
@@ -502,6 +503,16 @@ export const POST = withAuth(
               patient_id,
               status: 'confirmed',
               confirmed_intake_id: intakeResult.intake.id,
+              raw_qr_texts: [],
+              qr_payload_hash: null,
+              parsed_data: {
+                confirmed: true,
+                confirmed_at: new Date().toISOString(),
+                confirmed_intake_id: intakeResult.intake.id,
+              },
+              parse_errors: Prisma.JsonNull,
+              auto_completed: Prisma.JsonNull,
+              expected_qr_count: null,
             },
           });
 

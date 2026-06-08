@@ -7,6 +7,31 @@ import {
   getAssignedPatientIds,
 } from '@/server/services/prescription-access';
 import { prisma } from '@/lib/db/client';
+import { Prisma } from '@prisma/client';
+
+type QrDraftResponse = {
+  raw_qr_texts?: unknown;
+  qr_payload_hash?: unknown;
+  parsed_data?: unknown;
+  [key: string]: unknown;
+};
+
+function sanitizeParsedDataForResponse(parsedData: unknown) {
+  if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) return parsedData;
+  const sanitized = { ...(parsedData as Record<string, unknown>) };
+  delete sanitized.rawText;
+  return sanitized;
+}
+
+function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
+  const sanitized = { ...draft };
+  delete sanitized.raw_qr_texts;
+  delete sanitized.qr_payload_hash;
+  return {
+    ...sanitized,
+    parsed_data: sanitizeParsedDataForResponse(draft.parsed_data),
+  };
+}
 
 // ── GET: fetch single draft by id ──
 
@@ -35,8 +60,6 @@ export const GET = withAuth(
               record_label: true,
               line_number: true,
               summary: true,
-              payload: true,
-              raw_line: true,
             },
           },
         },
@@ -47,7 +70,7 @@ export const GET = withAuth(
       return notFound('QRスキャン下書きが見つかりません');
     }
 
-    return success(draft);
+    return success(toQrDraftResponse(draft));
   },
   {
     permission: 'canVisit',
@@ -101,7 +124,18 @@ export const DELETE = withAuth(
 
       const updated = await tx.qrScanDraft.update({
         where: { id },
-        data: { status: 'discarded' },
+        data: {
+          status: 'discarded',
+          raw_qr_texts: [],
+          qr_payload_hash: null,
+          parsed_data: {
+            discarded: true,
+            discarded_at: new Date().toISOString(),
+          },
+          parse_errors: Prisma.JsonNull,
+          auto_completed: Prisma.JsonNull,
+          expected_qr_count: null,
+        },
       });
 
       await tx.jahisSupplementalRecord.deleteMany({
@@ -119,7 +153,7 @@ export const DELETE = withAuth(
       return conflict('このQRスキャン下書きはすでに処理済みです');
     }
 
-    return success(draft);
+    return success(toQrDraftResponse(draft));
   },
   {
     permission: 'canVisit',
