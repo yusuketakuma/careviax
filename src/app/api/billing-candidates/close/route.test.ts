@@ -97,6 +97,7 @@ describe('/api/billing-candidates/close POST', () => {
         orgId: 'org_1',
         billingMonth: new Date('2026-03-01T00:00:00.000Z'),
         actorId: 'user_1',
+        billingDomain: 'home_care',
       },
     );
     expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {

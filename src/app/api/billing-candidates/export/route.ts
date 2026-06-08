@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { validationError } from '@/lib/api/response';
-import { readJsonObjectString } from '@/lib/db/json';
+import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
@@ -17,11 +17,33 @@ function isSafeFilterId(value: string | null) {
   return !value || /^[A-Za-z0-9_-]{1,80}$/.test(value);
 }
 
+function parseBillingDomain(value: string | null) {
+  if (value === null || value === '') return undefined;
+  return value === 'home_care' || value === 'pca_rental' ? value : null;
+}
+
+function readBillingTargetName(candidate: {
+  billing_target_name?: string | null;
+  source_snapshot: unknown;
+}) {
+  if (candidate.billing_target_name) return candidate.billing_target_name;
+  const target = readJsonObject(readJsonObject(candidate.source_snapshot)?.billing_target);
+  return typeof target?.name === 'string' ? target.name : '';
+}
+
+function readAmountYen(source: unknown, calculationBreakdown: unknown) {
+  const breakdown = readJsonObject(calculationBreakdown);
+  if (typeof breakdown?.amount_yen === 'number') return breakdown.amount_yen;
+  const sourceRental = readJsonObject(readJsonObject(source)?.pca_rental);
+  return typeof sourceRental?.amount_yen === 'number' ? sourceRental.amount_yen : '';
+}
+
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
+    const billingDomain = parseBillingDomain(searchParams.get('billing_domain'));
 
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
@@ -30,6 +52,9 @@ export const GET = withAuth(
     if (!isSafeFilterId(patientId)) {
       return validationError('patient_id の形式が不正です');
     }
+    if (billingDomain === null) {
+      return validationError('billing_domain は home_care または pca_rental を指定してください');
+    }
 
     const candidates = await withOrgContext(req.orgId, async (tx) => {
       const records = await tx.billingCandidate.findMany({
@@ -37,23 +62,35 @@ export const GET = withAuth(
           org_id: req.orgId,
           ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
+          ...(billingDomain ? { billing_domain: billingDomain } : {}),
           status: { in: ['confirmed', 'exported'] },
         },
         orderBy: [{ billing_month: 'desc' }, { billing_code: 'asc' }],
         select: {
           id: true,
           patient_id: true,
+          billing_domain: true,
+          billing_target_type: true,
+          billing_target_id: true,
+          billing_target_name: true,
           cycle_id: true,
           billing_month: true,
           billing_code: true,
           billing_name: true,
           points: true,
+          calculation_breakdown: true,
           status: true,
           source_snapshot: true,
         },
       });
 
-      const patientIds = Array.from(new Set(records.map((candidate) => candidate.patient_id)));
+      const patientIds = Array.from(
+        new Set(
+          records
+            .map((candidate) => candidate.patient_id)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0),
+        ),
+      );
       const cycleIds = Array.from(
         new Set(
           records
@@ -126,11 +163,19 @@ export const GET = withAuth(
       }
 
       const candidates = records.map((candidate) => {
-        const patient = patientById.get(candidate.patient_id) ?? null;
-        const residence = residenceByPatientId.get(candidate.patient_id) ?? null;
+        const patient = candidate.patient_id
+          ? (patientById.get(candidate.patient_id) ?? null)
+          : null;
+        const residence = candidate.patient_id
+          ? (residenceByPatientId.get(candidate.patient_id) ?? null)
+          : null;
         return {
           ...candidate,
           patient_name: patient?.name ?? '',
+          billing_target_label:
+            candidate.billing_target_type === 'institution'
+              ? readBillingTargetName(candidate)
+              : (patient?.name ?? candidate.patient_id ?? ''),
           building_id: residence?.building_id ?? '',
           unit_name: residence?.unit_name ?? '',
           yj_codes: candidate.cycle_id ? (yjCodesByCycleId.get(candidate.cycle_id) ?? []) : [],
@@ -138,6 +183,7 @@ export const GET = withAuth(
             readJsonObjectString(candidate.source_snapshot, 'revision_code') ?? '',
           site_config_revision_code:
             readJsonObjectString(candidate.source_snapshot, 'site_config_revision_code') ?? '',
+          amount_yen: readAmountYen(candidate.source_snapshot, candidate.calculation_breakdown),
         };
       });
 
@@ -150,6 +196,7 @@ export const GET = withAuth(
         filters: {
           billing_month: parsedBillingMonth?.canonical ?? null,
           patient_id: patientId ?? null,
+          billing_domain: billingDomain ?? null,
           statuses: ['confirmed', 'exported'],
         },
         ipAddress: req.ipAddress,
@@ -163,6 +210,10 @@ export const GET = withAuth(
       'id',
       'patient_id',
       'patient_name',
+      'billing_domain',
+      'billing_target_type',
+      'billing_target_id',
+      'billing_target_name',
       'building_id',
       'unit_name',
       'billing_month',
@@ -172,6 +223,7 @@ export const GET = withAuth(
       'site_config_revision_code',
       'yj_codes',
       'points',
+      'amount_yen',
       'status',
     ].join(',');
 
@@ -184,6 +236,10 @@ export const GET = withAuth(
         csvCell(c.id),
         csvCell(c.patient_id),
         csvCell(c.patient_name),
+        csvCell(c.billing_domain),
+        csvCell(c.billing_target_type),
+        csvCell(c.billing_target_id),
+        csvCell(c.billing_target_label),
         csvCell(c.building_id),
         csvCell(c.unit_name),
         csvCell(month),
@@ -193,6 +249,7 @@ export const GET = withAuth(
         csvCell(c.site_config_revision_code),
         csvCell(c.yj_codes.join('|')),
         csvCell(c.points ?? ''),
+        csvCell(c.amount_yen),
         csvCell(c.status),
       ].join(',');
     });

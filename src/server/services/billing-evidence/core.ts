@@ -1922,7 +1922,7 @@ type BillingCandidateWorkbenchSummaryTx = {
 
 export async function getBillingCandidateWorkbenchSummary(
   tx: BillingCandidateWorkbenchSummaryTx,
-  args: { orgId: string; billingMonth: Date; patientId?: string },
+  args: { orgId: string; billingMonth: Date; patientId?: string; billingDomain?: string },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
   const [candidates, blockedEvidences] = await Promise.all([
@@ -1930,6 +1930,7 @@ export async function getBillingCandidateWorkbenchSummary(
       where: {
         org_id: args.orgId,
         billing_month: billingMonth,
+        ...(args.billingDomain ? { billing_domain: args.billingDomain } : {}),
         ...(args.patientId ? { patient_id: args.patientId } : {}),
       },
       select: {
@@ -2094,13 +2095,16 @@ export async function closeBillingCandidatesForMonth(
     orgId: string;
     billingMonth: Date;
     actorId: string;
+    billingDomain?: string;
   },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
+  const billingDomain = args.billingDomain ?? 'home_care';
   const candidates = await tx.billingCandidate.findMany({
     where: {
       org_id: args.orgId,
       billing_month: billingMonth,
+      billing_domain: billingDomain,
     },
     select: {
       id: true,
@@ -2123,6 +2127,7 @@ export async function closeBillingCandidatesForMonth(
       summary: await getBillingCandidateWorkbenchSummary(tx, {
         orgId: args.orgId,
         billingMonth,
+        billingDomain,
       }),
       blockingCount: pendingReview.length + blockedEvidenceCount,
     };
@@ -2176,6 +2181,7 @@ export async function closeBillingCandidatesForMonth(
     summary: await getBillingCandidateWorkbenchSummary(tx, {
       orgId: args.orgId,
       billingMonth,
+      billingDomain,
     }),
   };
 }

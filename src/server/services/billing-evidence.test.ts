@@ -247,6 +247,7 @@ describe('billing-evidence service', () => {
       where: {
         org_id: 'org_1',
         billing_month: billingMonth,
+        billing_domain: 'home_care',
         evidence_id: { in: ['evidence_blocked'] },
         status: { not: 'exported' },
       },
@@ -435,6 +436,7 @@ describe('billing-evidence service', () => {
         where: {
           org_id: 'org_1',
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
         },
       }),
     );

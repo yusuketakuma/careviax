@@ -9,6 +9,7 @@ const {
   workbenchSummaryMock,
   upsertBillingEvidenceForVisitMock,
   generateBillingCandidatesForMonthMock,
+  generatePcaRentalBillingCandidatesForMonthMock,
   japanMonthRangeForBillingMonthMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   workbenchSummaryMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   generateBillingCandidatesForMonthMock: vi.fn(),
+  generatePcaRentalBillingCandidatesForMonthMock: vi.fn(),
   japanMonthRangeForBillingMonthMock: vi.fn((billingMonth: Date) => {
     const year = billingMonth.getUTCFullYear();
     const monthIndex = billingMonth.getUTCMonth();
@@ -60,6 +62,10 @@ vi.mock('@/server/services/billing-evidence', () => ({
   upsertBillingEvidenceForVisit: upsertBillingEvidenceForVisitMock,
   generateBillingCandidatesForMonth: generateBillingCandidatesForMonthMock,
   japanMonthRangeForBillingMonth: japanMonthRangeForBillingMonthMock,
+}));
+
+vi.mock('@/server/services/pca-rental-billing', () => ({
+  generatePcaRentalBillingCandidatesForMonth: generatePcaRentalBillingCandidatesForMonthMock,
 }));
 
 import { GET, POST } from './route';
@@ -133,6 +139,7 @@ describe('/api/billing-candidates', () => {
       { status: 'candidate' },
       { status: 'excluded' },
     ]);
+    generatePcaRentalBillingCandidatesForMonthMock.mockResolvedValue([{ status: 'candidate' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         billingCandidate: {
@@ -174,7 +181,7 @@ describe('/api/billing-candidates', () => {
 
     const response = await GET(
       createGetRequest(
-        'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&limit=10',
+        'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&billing_domain=home_care&limit=10',
       ),
     );
 
@@ -187,6 +194,7 @@ describe('/api/billing-candidates', () => {
           org_id: 'org_1',
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
           patient_id: 'patient_1',
+          billing_domain: 'home_care',
         }),
       }),
     );
@@ -196,6 +204,7 @@ describe('/api/billing-candidates', () => {
         orgId: 'org_1',
         billingMonth: new Date('2026-03-01T00:00:00.000Z'),
         patientId: 'patient_1',
+        billingDomain: 'home_care',
       }),
     );
     expect(patientFindManyMock).toHaveBeenCalledWith({
@@ -254,6 +263,46 @@ describe('/api/billing-candidates', () => {
     });
   });
 
+  it('returns institution billing targets for PCA rental candidates without patient lookup', async () => {
+    billingCandidateFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'candidate_pca_rental',
+        patient_id: null,
+        billing_target_type: 'institution',
+        billing_target_id: 'institution_1',
+        billing_target_name: 'みなと病院',
+        status: 'candidate',
+        source_snapshot: {
+          source_type: 'pca_pump_rental',
+          billing_target: {
+            type: 'institution',
+            id: 'institution_1',
+            name: 'みなと病院',
+          },
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await GET(createGetRequest('http://localhost/api/billing-candidates'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'candidate_pca_rental',
+          patient_id: null,
+          patient_name: null,
+          billing_target_type: 'institution',
+          billing_target_id: 'institution_1',
+          billing_target_label: 'みなと病院',
+        },
+      ],
+    });
+  });
+
   it.each([
     ['empty query value', ''],
     ['incomplete month', '2026-03'],
@@ -305,10 +354,23 @@ describe('/api/billing-candidates', () => {
         billingMonth: new Date('2026-03-01T00:00:00.000Z'),
       },
     );
+    expect(generatePcaRentalBillingCandidatesForMonthMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+      }),
+      {
+        orgId: 'org_1',
+        billingMonth: new Date('2026-03-01T00:00:00.000Z'),
+      },
+    );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
-      generated: 3,
+      generated: 4,
+      home_care_generated: 3,
+      pca_rental_generated: 1,
       confirmed: 1,
-      review_required: 1,
+      review_required: 2,
       excluded: 1,
     });
   });
@@ -332,6 +394,7 @@ describe('/api/billing-candidates', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
     expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(generatePcaRentalBillingCandidatesForMonthMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON on generation before database work', async () => {

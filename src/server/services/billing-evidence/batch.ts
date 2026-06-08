@@ -23,13 +23,10 @@ import {
 } from './duplicate-interaction';
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -54,54 +51,56 @@ function readFacilityStandards(context: Record<string, unknown>): Record<string,
   );
 }
 
-type GenerateBillingCandidatesTx =
-  InformationProvisionCandidatesTx
-      & HomeDuplicateInteractionCandidatesTx
-      & HomeCareBillingRuleEngineTx
-      & {
-        billingCandidate: {
-          findMany(args: unknown): Promise<Array<{
-            dedupe_key: string | null;
-            source_snapshot: Prisma.JsonValue | null;
-          }>>;
-          upsert(args: unknown): Promise<unknown>;
-          deleteMany(args: unknown): Promise<unknown>;
-        };
-        billingEvidence: {
-          findMany(args: unknown): Promise<Array<{
-            id: string;
-            patient_id: string | null;
-            cycle_id: string | null;
-            visit_record_id?: string | null;
-            payer_basis: string;
-            billing_service_type: string;
-            provider_scope: string;
-            building_patient_count: number | null;
-            monthly_count_snapshot: number | null;
-            weekly_count_snapshot: number | null;
-            claimable: boolean;
-            exclusion_reason: string | null;
-            calculation_context?: Prisma.JsonValue | null;
-          }>>;
-        };
-        visitRecord?: {
-          findMany(args: unknown): Promise<Array<{ id: string; visit_date: Date }>>;
-        };
-      };
+type GenerateBillingCandidatesTx = InformationProvisionCandidatesTx &
+  HomeDuplicateInteractionCandidatesTx &
+  HomeCareBillingRuleEngineTx & {
+    billingCandidate: {
+      findMany(args: unknown): Promise<
+        Array<{
+          dedupe_key: string | null;
+          source_snapshot: Prisma.JsonValue | null;
+        }>
+      >;
+      upsert(args: unknown): Promise<unknown>;
+      deleteMany(args: unknown): Promise<unknown>;
+    };
+    billingEvidence: {
+      findMany(args: unknown): Promise<
+        Array<{
+          id: string;
+          patient_id: string | null;
+          cycle_id: string | null;
+          visit_record_id?: string | null;
+          payer_basis: string;
+          billing_service_type: string;
+          provider_scope: string;
+          building_patient_count: number | null;
+          monthly_count_snapshot: number | null;
+          weekly_count_snapshot: number | null;
+          claimable: boolean;
+          exclusion_reason: string | null;
+          calculation_context?: Prisma.JsonValue | null;
+        }>
+      >;
+    };
+    visitRecord?: {
+      findMany(args: unknown): Promise<Array<{ id: string; visit_date: Date }>>;
+    };
+  };
 
 type GeneratedBillingCandidate = { status: string };
 
 export async function generateBillingCandidatesForMonth(
   tx: Tx,
-  args: { orgId: string; billingMonth: Date }
+  args: { orgId: string; billingMonth: Date },
 ): Promise<GeneratedBillingCandidate[]>;
 export async function generateBillingCandidatesForMonth(
   tx: GenerateBillingCandidatesTx,
-  args: { orgId: string; billingMonth: Date }
+  args: { orgId: string; billingMonth: Date },
 ): Promise<GeneratedBillingCandidate[]>;
 export async function generateBillingCandidatesForMonth(
   tx: Tx | GenerateBillingCandidatesTx,
-  args: { orgId: string; billingMonth: Date }
+  args: { orgId: string; billingMonth: Date },
 ): Promise<GeneratedBillingCandidate[]> {
   const db = tx as GenerateBillingCandidatesTx;
   await ensureHomeCareBillingSsot(db, args.orgId, { asOfDate: args.billingMonth });
@@ -142,9 +141,7 @@ export async function generateBillingCandidatesForMonth(
     },
   });
   const ruleIdByKey = new Map(
-    rules
-      .filter((rule) => rule.ssot_key)
-      .map((rule) => [rule.ssot_key as string, rule.id])
+    rules.filter((rule) => rule.ssot_key).map((rule) => [rule.ssot_key as string, rule.id]),
   );
   const existingCandidates = await db.billingCandidate.findMany({
     where: {
@@ -159,7 +156,7 @@ export async function generateBillingCandidatesForMonth(
   const existingByKey = new Map(
     existingCandidates
       .filter((candidate) => candidate.dedupe_key)
-      .map((candidate) => [candidate.dedupe_key as string, candidate])
+      .map((candidate) => [candidate.dedupe_key as string, candidate]),
   );
   const blockedEvidenceIds: string[] = [];
   const claimableEvidenceByPatient = new Map<string, { any: number; care: number }>();
@@ -184,7 +181,7 @@ export async function generateBillingCandidatesForMonth(
     const regionAddOnEligible = Array.isArray(calculationContext.region_add_on_eligible)
       ? calculationContext.region_add_on_eligible.filter(
           (value): value is 'special_15' | 'small_office_10' | 'resident_5' =>
-            value === 'special_15' || value === 'small_office_10' || value === 'resident_5'
+            value === 'special_15' || value === 'small_office_10' || value === 'resident_5',
         )
       : [];
     const emergencyCategory =
@@ -216,8 +213,7 @@ export async function generateBillingCandidatesForMonth(
         evidence.billing_service_type === 'care_home_management'
           ? 'care_home_management'
           : 'medical_home_visit',
-      providerScope:
-        evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
+      providerScope: evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
       buildingPatientCount: evidence.building_patient_count ?? 1,
       monthlyVisitCount: evidence.monthly_count_snapshot ?? 0,
       weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
@@ -244,14 +240,13 @@ export async function generateBillingCandidatesForMonth(
       const dedupeKey = `${monthStart.toISOString().slice(0, 10)}:${evidence.id}:${spec.code}`;
       const existing = existingByKey.get(dedupeKey);
       const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-      const preservedStatus =
-        existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : spec.status;
+      const preservedStatus = existingWorkflow.closed_at
+        ? 'exported'
+        : existingWorkflow.resolution_state === 'confirmed'
+          ? 'confirmed'
+          : existingWorkflow.resolution_state === 'excluded'
+            ? 'excluded'
+            : spec.status;
       const preservedExclusionReason =
         preservedStatus === 'excluded' && existingWorkflow.note
           ? existingWorkflow.note
@@ -264,19 +259,18 @@ export async function generateBillingCandidatesForMonth(
             calculationContext: evidence.calculation_context,
             candidateStatus: preservedStatus,
             claimable: evidence.claimable,
-            evidenceMessage:
-              evidence.claimable
-                ? '同意・管理計画書・報告送付を満たしています'
-                : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
+            evidenceMessage: evidence.claimable
+              ? '同意・管理計画書・報告送付を満たしています'
+              : (evidence.exclusion_reason ?? '請求根拠の確認が必要です'),
             ruleMessage:
               spec.exclusionReason ??
               (preservedStatus === 'candidate'
                 ? '算定候補のため月次レビューで確定してください'
                 : 'SSOTルールに適合しています'),
             workflow: existingWorkflow,
-          })
+          }),
         ),
-        existingWorkflow
+        existingWorkflow,
       );
 
       const candidate = await db.billingCandidate.upsert({
@@ -289,6 +283,10 @@ export async function generateBillingCandidatesForMonth(
         create: {
           org_id: args.orgId,
           patient_id: evidence.patient_id,
+          billing_domain: 'home_care',
+          billing_target_type: 'patient',
+          billing_target_id: evidence.patient_id,
+          billing_target_name: null,
           cycle_id: evidence.cycle_id ?? null,
           evidence_id: evidence.id,
           rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
@@ -305,6 +303,10 @@ export async function generateBillingCandidatesForMonth(
         },
         update: {
           evidence_id: evidence.id,
+          billing_domain: 'home_care',
+          billing_target_type: 'patient',
+          billing_target_id: evidence.patient_id,
+          billing_target_name: null,
           cycle_id: evidence.cycle_id ?? null,
           rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
           billing_name: spec.name,
@@ -326,6 +328,7 @@ export async function generateBillingCandidatesForMonth(
       where: {
         org_id: args.orgId,
         billing_month: monthStart,
+        billing_domain: 'home_care',
         evidence_id: { in: blockedEvidenceIds },
         status: { not: 'exported' },
       },

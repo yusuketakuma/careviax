@@ -72,7 +72,11 @@ model BillingRule {
 model BillingCandidate {
   id                    String   @id @default(cuid())
   org_id                String
-  patient_id            String
+  patient_id            String?
+  billing_domain        String   @default("home_care") // home_care/pca_rental
+  billing_target_type   String   @default("patient") // patient/institution
+  billing_target_id     String?
+  billing_target_name   String?
   cycle_id              String?
   evidence_id           String?
   rule_id               String?
@@ -91,6 +95,8 @@ model BillingCandidate {
 
   @@unique([org_id, dedupe_key])
   @@index([org_id])
+  @@index([org_id, billing_domain, billing_month])
+  @@index([org_id, billing_target_type, billing_target_id], map: "BillingCandidate_org_id_billing_target_type_billing_target_id_i")
   @@index([billing_month])
   @@index([status])
 }

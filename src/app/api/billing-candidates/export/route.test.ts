@@ -109,6 +109,7 @@ describe('/api/billing-candidates/export GET', () => {
 
     const csv = await response.text();
     expect(csv).toContain('patient_name');
+    expect(csv).toContain('billing_domain');
     expect(csv).toContain('building_id');
     expect(csv).toContain('unit_name');
     expect(csv).toContain('yj_codes');
@@ -160,7 +161,62 @@ describe('/api/billing-candidates/export GET', () => {
     expect(response.status).toBe(200);
     const csv = await response.text();
     expect(csv).toContain('"candidate_malformed_snapshot"');
-    expect(csv.split('\n')[1]?.split(',').slice(8, 10)).toEqual(['""', '""']);
+    const [header, row] = csv.split('\n').map((line) => line.split(','));
+    const effectiveRevisionIndex = header?.indexOf('effective_revision_code') ?? -1;
+    const siteRevisionIndex = header?.indexOf('site_config_revision_code') ?? -1;
+    expect(row?.[effectiveRevisionIndex]).toBe('""');
+    expect(row?.[siteRevisionIndex]).toBe('""');
+  });
+
+  it('exports institution-target PCA rental candidates without patient hierarchy lookup', async () => {
+    txMock.billingCandidate.findMany.mockResolvedValueOnce([
+      {
+        id: 'candidate_pca_rental',
+        patient_id: null,
+        billing_domain: 'pca_rental',
+        billing_target_type: 'institution',
+        billing_target_id: 'institution_1',
+        billing_target_name: 'みなと病院',
+        cycle_id: null,
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_code: 'PCA_PUMP_RENTAL',
+        billing_name: 'PCAポンプレンタル料',
+        points: null,
+        calculation_breakdown: {
+          calculation_unit: 'yen',
+          amount_yen: 12000,
+        },
+        status: 'confirmed',
+        source_snapshot: {
+          source_type: 'pca_pump_rental',
+          billing_target: {
+            type: 'institution',
+            id: 'institution_1',
+            name: 'みなと病院',
+          },
+        },
+      },
+    ]);
+    txMock.patient.findMany.mockResolvedValueOnce([]);
+    txMock.residence.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-06-01'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const csv = await response.text();
+    expect(csv).toContain('billing_domain');
+    expect(csv).toContain('billing_target_type');
+    expect(csv).toContain('amount_yen');
+    expect(csv).toContain('"pca_rental"');
+    expect(csv).toContain('"institution"');
+    expect(csv).toContain('"institution_1"');
+    expect(csv).toContain('"みなと病院"');
+    expect(csv).toContain('"12000"');
+    expect(txMock.patient.findMany).not.toHaveBeenCalled();
+    expect(txMock.residence.findMany).not.toHaveBeenCalled();
   });
 
   it('does not expose patient filters in the export filename', async () => {

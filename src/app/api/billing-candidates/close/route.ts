@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       orgId: ctx.orgId,
       billingMonth: parsedBillingMonth.start,
       actorId: ctx.userId,
+      billingDomain: 'home_care',
     }),
   );
 

@@ -13,13 +13,10 @@ import {
 } from './core';
 
 function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined
+  value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !('toJSON' in value)
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
   );
 }
 
@@ -28,12 +25,7 @@ function normalizedJsonObject(value: unknown): Prisma.InputJsonObject {
   return isInputJsonObject(normalized) ? normalized : {};
 }
 
-export type InformationProvisionFeeType =
-  | '1'
-  | '2_i'
-  | '2_ro'
-  | '2_ha'
-  | '3';
+export type InformationProvisionFeeType = '1' | '2_i' | '2_ro' | '2_ha' | '3';
 
 export const INFORMATION_PROVISION_RULES: Record<
   InformationProvisionFeeType,
@@ -83,7 +75,7 @@ export const INFORMATION_PROVISION_RULES: Record<
 
 export function parseInformationProvisionFeeType(
   content: Prisma.JsonValue | null | undefined,
-  fallbackType?: InformationProvisionFeeType
+  fallbackType?: InformationProvisionFeeType,
 ): InformationProvisionFeeType {
   const record = asRecord(content);
   const directType = record.billing_fee_type;
@@ -110,23 +102,27 @@ export type InformationProvisionCandidatesTx = {
     upsert(args: unknown): Promise<unknown>;
   };
   careReport: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      case_id: string | null;
-      content: Prisma.JsonValue | null;
-      status: string;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        case_id: string | null;
+        content: Prisma.JsonValue | null;
+        status: string;
+      }>
+    >;
   };
   tracingReport: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      patient_id: string;
-      case_id: string | null;
-      content: Prisma.JsonValue | null;
-      status: string;
-      sent_at: Date | null;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        patient_id: string;
+        case_id: string | null;
+        content: Prisma.JsonValue | null;
+        status: string;
+        sent_at: Date | null;
+      }>
+    >;
   };
 };
 
@@ -140,7 +136,7 @@ export async function generateInformationProvisionCandidates(
     ruleIdByKey: Map<string, string>;
     existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
     claimableEvidenceByPatient: Map<string, { any: number; care: number }>;
-  }
+  },
 ) {
   const monthStart = startOfMonth(args.billingMonth);
   const monthRange = japanMonthRangeForBillingMonth(monthStart);
@@ -210,14 +206,13 @@ export async function generateInformationProvisionCandidates(
     const existing = args.existingByKey.get(dedupeKey);
     const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
     const alreadyClaimedThisMonth = claimedInfoTypes.has(typeScopeKey);
-    const exclusionReason =
-      sameMonthHomeCareClaim
-        ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
-        : feeType === '2_ha' && sameMonthCareManagementClaim
-          ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
-          : alreadyClaimedThisMonth
-            ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
-            : null;
+    const exclusionReason = sameMonthHomeCareClaim
+      ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
+      : feeType === '2_ha' && sameMonthCareManagementClaim
+        ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
+        : alreadyClaimedThisMonth
+          ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
+          : null;
     const status =
       exclusionReason != null
         ? 'excluded'
@@ -256,9 +251,9 @@ export async function generateInformationProvisionCandidates(
           ruleMessage:
             exclusionReason == null ? `${rule.targetLabel} の情報提供候補` : exclusionReason,
           workflow: existingWorkflow,
-        })
+        }),
       ),
-      existingWorkflow
+      existingWorkflow,
     );
 
     const candidate = await tx.billingCandidate.upsert({
@@ -271,6 +266,10 @@ export async function generateInformationProvisionCandidates(
       create: {
         org_id: args.orgId,
         patient_id: report.patient_id,
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: report.patient_id,
+        billing_target_name: null,
         cycle_id: null,
         evidence_id: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
@@ -286,6 +285,10 @@ export async function generateInformationProvisionCandidates(
         exclusion_reason: exclusionReason,
       },
       update: {
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: report.patient_id,
+        billing_target_name: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
         billing_name: rule.name,
         points: rule.points,
@@ -317,14 +320,13 @@ export async function generateInformationProvisionCandidates(
     const existing = args.existingByKey.get(dedupeKey);
     const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
     const alreadyClaimedThisMonth = claimedInfoTypes.has(typeScopeKey);
-    const exclusionReason =
-      sameMonthHomeCareClaim
-        ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
-        : feeType === '2_ha' && sameMonthCareManagementClaim
-          ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
-          : alreadyClaimedThisMonth
-            ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
-            : null;
+    const exclusionReason = sameMonthHomeCareClaim
+      ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
+      : feeType === '2_ha' && sameMonthCareManagementClaim
+        ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
+        : alreadyClaimedThisMonth
+          ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
+          : null;
     const status =
       exclusionReason != null
         ? 'excluded'
@@ -363,9 +365,9 @@ export async function generateInformationProvisionCandidates(
           ruleMessage:
             exclusionReason == null ? `${rule.targetLabel} の情報提供候補` : exclusionReason,
           workflow: existingWorkflow,
-        })
+        }),
       ),
-      existingWorkflow
+      existingWorkflow,
     );
 
     const candidate = await tx.billingCandidate.upsert({
@@ -378,6 +380,10 @@ export async function generateInformationProvisionCandidates(
       create: {
         org_id: args.orgId,
         patient_id: report.patient_id,
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: report.patient_id,
+        billing_target_name: null,
         cycle_id: null,
         evidence_id: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
@@ -393,6 +399,10 @@ export async function generateInformationProvisionCandidates(
         exclusion_reason: exclusionReason,
       },
       update: {
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: report.patient_id,
+        billing_target_name: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
         billing_name: rule.name,
         points: rule.points,

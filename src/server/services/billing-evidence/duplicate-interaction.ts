@@ -285,6 +285,10 @@ export async function generateHomeDuplicateInteractionCandidates(
       create: {
         org_id: args.orgId,
         patient_id: inquiry.cycle.patient_id,
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: inquiry.cycle.patient_id,
+        billing_target_name: null,
         cycle_id: inquiry.cycle_id,
         evidence_id: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
@@ -300,6 +304,10 @@ export async function generateHomeDuplicateInteractionCandidates(
         exclusion_reason: exclusionReason,
       },
       update: {
+        billing_domain: 'home_care',
+        billing_target_type: 'patient',
+        billing_target_id: inquiry.cycle.patient_id,
+        billing_target_name: null,
         rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
         billing_name: rule.name,
         points: rule.points,

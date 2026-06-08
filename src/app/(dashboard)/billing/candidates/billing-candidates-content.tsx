@@ -30,8 +30,13 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type BillingCandidate = {
   id: string;
-  patient_id: string;
+  patient_id: string | null;
   patient_name: string | null;
+  billing_domain?: 'home_care' | 'pca_rental' | string | null;
+  billing_target_type?: 'patient' | 'institution' | string | null;
+  billing_target_id?: string | null;
+  billing_target_name?: string | null;
+  billing_target_label?: string | null;
   billing_month: string;
   billing_code: string;
   billing_name: string;
@@ -44,6 +49,7 @@ type BillingCandidate = {
   site_config_status?: string | null;
   calculation_breakdown?: {
     calculation_unit?: string;
+    amount_yen?: number | null;
     rate_percent?: number | null;
     derived_points?: number | null;
   } | null;
@@ -266,6 +272,16 @@ function candidateEvidenceSummary(candidate: BillingCandidate) {
   return lines.length > 0 ? lines : ['候補生成時の根拠を確認してください'];
 }
 
+function candidateBillingTargetLabel(candidate: BillingCandidate) {
+  return (
+    candidate.billing_target_label ??
+    candidate.billing_target_name ??
+    candidate.patient_name ??
+    candidate.patient_id ??
+    '請求先未設定'
+  );
+}
+
 function parseInitialBillingMonth(value: string | null | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
@@ -426,14 +442,27 @@ export function BillingCandidatesContent({
         cell: ({ row }) => <span className="text-sm">{row.original.billing_name}</span>,
       },
       {
-        accessorKey: 'patient_name',
-        header: '患者名',
+        accessorKey: 'billing_target_label',
+        header: '請求先',
         meta: {
-          label: '患者名',
-          mobileLabel: '患者',
+          label: '請求先',
+          mobileLabel: '請求先',
         },
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.patient_name ?? row.original.patient_id}</span>
+          <span className="text-sm">{candidateBillingTargetLabel(row.original)}</span>
+        ),
+      },
+      {
+        accessorKey: 'billing_domain',
+        header: '区分',
+        meta: {
+          label: '区分',
+          mobileHidden: true,
+        },
+        cell: ({ row }) => (
+          <Badge variant="outline">
+            {row.original.billing_domain === 'pca_rental' ? 'PCAレンタル' : '医療・介護'}
+          </Badge>
         ),
       },
       {
@@ -449,9 +478,11 @@ export function BillingCandidatesContent({
               ? `${row.original.points}${
                   row.original.calculation_breakdown?.calculation_unit === 'unit' ? '単位' : '点'
                 }`
-              : row.original.calculation_breakdown?.rate_percent != null
-                ? `${row.original.calculation_breakdown.rate_percent}%`
-                : '—'}
+              : row.original.calculation_breakdown?.amount_yen != null
+                ? `${row.original.calculation_breakdown.amount_yen.toLocaleString('ja-JP')}円`
+                : row.original.calculation_breakdown?.rate_percent != null
+                  ? `${row.original.calculation_breakdown.rate_percent}%`
+                  : '—'}
           </span>
         ),
       },
@@ -857,9 +888,11 @@ export function BillingCandidatesContent({
               <div className="space-y-2">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    患者ID
+                    請求先ID
                   </p>
-                  <p className="font-mono text-xs">{candidate.patient_id}</p>
+                  <p className="font-mono text-xs">
+                    {candidate.billing_target_id ?? candidate.patient_id ?? '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
