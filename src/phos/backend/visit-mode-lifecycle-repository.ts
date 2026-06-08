@@ -1,7 +1,11 @@
 import {
+  BlockerSeverity,
+  ActionCode,
+  UserRole,
   VisitArrivalOutcome,
   VisitStatus,
   VisitStep,
+  type BlockerView,
   type VisitModeView,
   type VisitStepMutationRequest,
 } from '@/phos/contracts/phos_contracts';
@@ -97,10 +101,34 @@ async function assertIdempotent(input: {
   return null;
 }
 
+const ABSENT_FOLLOWUP_BLOCKER_CODE = 'VISIT_ABSENT_FOLLOWUP';
+
+function upsertAbsentFollowupBlocker(visit: VisitModeView): BlockerView[] {
+  const existing = visit.blockers ?? [];
+  if (
+    existing.some(
+      (blocker) => blocker.active && blocker.blocker_code === ABSENT_FOLLOWUP_BLOCKER_CODE,
+    )
+  ) {
+    return existing;
+  }
+  return [
+    ...existing,
+    {
+      blocker_code: ABSENT_FOLLOWUP_BLOCKER_CODE,
+      severity: BlockerSeverity.WARNING,
+      owner_role: UserRole.PHARMACY_CLERK,
+      message_key: 'blocker.visit_absent_followup',
+      required_action_code: ActionCode.RESOLVE_CLERK_BLOCKER,
+      active: true,
+    },
+  ];
+}
+
 function applyArrivalOutcome(
   visit: VisitModeView,
   command: VisitStepMutationRequest,
-): Pick<VisitModeView, 'visit_status' | 'step_completed'> {
+): Pick<VisitModeView, 'visit_status' | 'step_completed' | 'blockers'> {
   const outcome = command.payload?.arrival_outcome;
   if (outcome === VisitArrivalOutcome.PRESENT) {
     return {
@@ -112,6 +140,7 @@ function applyArrivalOutcome(
     return {
       visit_status: VisitStatus.POST_VISIT_PENDING,
       step_completed: { ...visit.step_completed, [VisitStep.ARRIVAL_CONFIRM]: true },
+      blockers: upsertAbsentFollowupBlocker(visit),
     };
   }
   if (outcome === VisitArrivalOutcome.POSTPONED) {

@@ -78,7 +78,10 @@ describe('PH-OS static contract checks', () => {
   it('keeps PH-OS handler RBAC checks routed through the API Gateway manifest policy', () => {
     const backendRoot = join(canonicalRoot, 'backend');
     const handlerFiles = listFiles(backendRoot).filter((file) => file.endsWith('-handlers.ts'));
-    const forbiddenDirectAuthorizationHelpers = [/assertRequiredScopes/, /assertAllowedRole/];
+    const forbiddenDirectAuthorizationHelpers = [
+      new RegExp(['assertRequired', 'Scopes'].join('')),
+      new RegExp(['assertAllowed', 'Role'].join('')),
+    ];
 
     for (const file of handlerFiles) {
       const content = readFileSync(file, 'utf8');

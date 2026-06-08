@@ -546,6 +546,7 @@ export type VisitModeView = {
     blocking_unsynced_count: number;
     non_blocking_unsynced_count: number;
   };
+  blockers?: BlockerView[];
   online: boolean;
 };
 

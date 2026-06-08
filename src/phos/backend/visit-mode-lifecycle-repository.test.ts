@@ -124,6 +124,32 @@ describe('createVisitModeLifecycleRepository', () => {
     });
   });
 
+  it('creates a clerk-owned follow-up blocker when the patient is absent', async () => {
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () => visit({ visit_status: VisitStatus.SCHEDULED })),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.ARRIVAL_CONFIRM, {
+        idempotency_key: 'idem_absent',
+        client_version: 3,
+        payload: { arrival_outcome: VisitArrivalOutcome.ABSENT },
+      }),
+    ).resolves.toMatchObject({
+      visit_status: VisitStatus.POST_VISIT_PENDING,
+      step_completed: { [VisitStep.ARRIVAL_CONFIRM]: true },
+      blockers: [
+        {
+          blocker_code: 'VISIT_ABSENT_FOLLOWUP',
+          owner_role: UserRole.PHARMACY_CLERK,
+          message_key: 'blocker.visit_absent_followup',
+          active: true,
+        },
+      ],
+    });
+  });
+
   it('rejects CANCELED arrival without a reason in the lifecycle layer', async () => {
     const repository = createVisitModeLifecycleRepository(store());
 

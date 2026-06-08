@@ -58,6 +58,7 @@ export const PhosBlockerMessageLabel: Readonly<Record<string, string>> = {
   'blocker.missing_evidence': '証跡が不足しています。',
   'blocker.need_pharmacist': '薬剤師の判断が必要です。',
   'blocker.pharmacist_review': '薬剤師の確認が必要です。',
+  'blocker.visit_absent_followup': '不在後のフォローが必要です。',
 } as const;
 
 export const PhosToast = {
