@@ -1,0 +1,89 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  ActionCode,
+  ActionKind,
+  ActionPhase,
+  ButtonState,
+  UserRole,
+} from '@/phos/contracts/phos_contracts';
+import type { BlockerView, NextActionView } from '@/phos/contracts/phos_contracts';
+import { NextActionPanel } from './NextActionPanel';
+
+const nextAction = {
+  code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+  kind: ActionKind.STEP_CHANGING,
+  label_key: 'action.confirm_prescription_diff',
+  enabled: true,
+  offline_allowed: false,
+  priority: 'PRIMARY',
+  required_role: [],
+  target_endpoint: '/cards/card_1/actions',
+  ui_state: ButtonState.ACTIONABLE,
+  can_user_handle: true,
+} satisfies NextActionView;
+
+const blocker = {
+  blocker_code: 'MISSING_EVIDENCE',
+  severity: 'ERROR',
+  owner_role: UserRole.PHARMACIST,
+  message_key: 'blocker.missing_evidence',
+  active: true,
+} satisfies BlockerView;
+
+describe('NextActionPanel', () => {
+  it('executes only server-enabled next actions', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={nextAction}
+        blockers={[]}
+        onExecute={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
+
+    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.CONFIRM_PRESCRIPTION_DIFF);
+  });
+
+  it('does not execute server-unavailable actions', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={{ ...nextAction, enabled: false }}
+        blockers={[blocker]}
+        actionMessage="必要な情報が不足しています。"
+        onExecute={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（実行不可）' }));
+
+    expect(screen.getByText('必要な情報が不足しています。')).toBeTruthy();
+    expect(screen.getByText('1件の確認が必要です。')).toBeTruthy();
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it('locks execution while the action is submitting', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={nextAction}
+        blockers={[]}
+        actionPhase={ActionPhase.SUBMITTING}
+        onExecute={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（送信中）' }));
+
+    expect(screen.getByText('操作状態: SUBMITTING')).toBeTruthy();
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+});

@@ -4,6 +4,7 @@ import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextRequest } from 'next/server';
 import { readJsonObject } from '@/lib/db/json';
+import { UserRole, type UserRole as PhosUserRole } from '@/phos/contracts/phos_contracts';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
@@ -20,6 +21,12 @@ const authBaseUrl = getAuthBaseUrl();
 
 if (authBaseUrl && !process.env.NEXTAUTH_URL) {
   process.env.NEXTAUTH_URL = authBaseUrl;
+}
+
+function normalizePhosRole(value: unknown): PhosUserRole | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  return Object.values(UserRole).find((role) => role === normalized);
 }
 
 export const authOptions: NextAuthOptions = {
@@ -94,6 +101,19 @@ export const authOptions: NextAuthOptions = {
           typeof profileObject?.sub === 'string' ? profileObject.sub : token.cognitoSub;
         token.sub = token.cognitoSub;
         token.cognitoGroups = profileObject?.['cognito:groups'] ?? [];
+        token.phosRole =
+          normalizePhosRole(profileObject?.role) ??
+          normalizePhosRole(profileObject?.['custom:role']) ??
+          token.phosRole;
+        token.accessToken =
+          typeof account.access_token === 'string' ? account.access_token : token.accessToken;
+        token.refreshToken =
+          typeof account.refresh_token === 'string' ? account.refresh_token : token.refreshToken;
+        token.idToken = typeof account.id_token === 'string' ? account.id_token : token.idToken;
+        token.accessTokenExpiry =
+          typeof account.expires_at === 'number'
+            ? account.expires_at * 1000
+            : token.accessTokenExpiry;
       }
 
       if (account?.provider === 'credentials' && user) {
@@ -112,6 +132,7 @@ export const authOptions: NextAuthOptions = {
         token.refreshToken = credentialUser.refreshToken;
         token.idToken = credentialUser.idToken;
         token.accessTokenExpiry = Date.now() + 3600 * 1000;
+        token.phosRole = normalizePhosRole((credentialUser as { phosRole?: unknown }).phosRole);
       }
 
       if (!token.userId || account) {
@@ -168,6 +189,9 @@ export const authOptions: NextAuthOptions = {
         session.cognitoGroups = token.cognitoGroups;
         session.error = token.error;
       }
+      session.phosRole = normalizePhosRole(token.phosRole);
+      session.phosAccessToken =
+        typeof token.accessToken === 'string' ? token.accessToken : undefined;
       return session;
     },
   },

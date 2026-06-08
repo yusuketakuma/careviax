@@ -1,0 +1,89 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import {
+  ActionCode,
+  ActionKind,
+  ButtonState,
+  CardType,
+  CurrentStep,
+  DisplayStatus,
+} from '@/phos/contracts/phos_contracts';
+import type { CardDetailResponse } from '@/phos/contracts/phos_contracts';
+import { WorkspaceTabs } from './WorkspaceTabs';
+
+function detail(overrides: Partial<CardDetailResponse> = {}): CardDetailResponse {
+  return {
+    card: {
+      card_id: 'card_1',
+      card_type: CardType.PRESCRIPTION,
+      patient_name: '患者 山田太郎',
+      current_step: CurrentStep.DIFF_REVIEW,
+      display_status: DisplayStatus.READY,
+      server_version: 1,
+      tags: [],
+    },
+    visible_tabs: ['OVERVIEW', 'PRESCRIPTION'],
+    permissions: {
+      can_read: true,
+      can_write: true,
+      allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
+    },
+    next_action: {
+      code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      kind: ActionKind.STEP_CHANGING,
+      label_key: 'action.confirm_prescription_diff',
+      enabled: true,
+      offline_allowed: false,
+      priority: 'PRIMARY',
+      required_role: [],
+      target_endpoint: '/cards/card_1/actions',
+      ui_state: ButtonState.ACTIONABLE,
+      can_user_handle: true,
+    },
+    blockers: [],
+    source_refs: [
+      {
+        kind: 'PRESCRIPTION',
+        ref_id: 'rx_1',
+        label: '処方箋 1',
+      },
+      {
+        kind: 'RULE_DOCUMENT',
+        ref_id: 'rule_1',
+        label: '算定ルール',
+      },
+    ],
+    server_version: 1,
+    ...overrides,
+  };
+}
+
+describe('WorkspaceTabs', () => {
+  it('renders only server-provided visible tabs and does not infer from card type', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW'] })} />);
+
+    expect(screen.getByRole('tab', { name: '概要' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: '処方' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: '算定' })).toBeNull();
+  });
+
+  it('switches active tab and filters source refs by tab contract', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW', 'CLAIM_HISTORY'] })} />);
+
+    expect(screen.getByText('処方箋 1')).toBeTruthy();
+    expect(screen.getByText('算定ルール')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '算定' }));
+
+    expect(screen.queryByText('処方箋 1')).toBeNull();
+    expect(screen.getByText('算定ルール')).toBeTruthy();
+  });
+
+  it('renders an empty tab state when the server returns no visible tabs', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: [] })} />);
+
+    expect(screen.getByText('表示可能なタブはありません。')).toBeTruthy();
+  });
+});

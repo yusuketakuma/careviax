@@ -1,0 +1,370 @@
+import {
+  ActionCode,
+  HandoffStatus,
+  HandoffUrgency,
+  UserRole,
+} from '@/phos/contracts/phos_contracts';
+import type {
+  CreateHandoffRequest,
+  ErrorResponse,
+  HandoffSearchQuery,
+  OpenHandoffRequest,
+  ResolveHandoffRequest,
+  ReturnHandoffRequest,
+  SourceRef,
+} from '@/phos/contracts/phos_contracts';
+import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { PhosDomainError } from './cards-repository';
+import { toErrorLambdaResponse } from './error-response';
+import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
+import type { PhosHandoffsRepository } from './handoffs-repository';
+import { buildLogEntry, logPhosEvent } from './structured-logger';
+import type { TenantContext } from './tenant-context';
+
+export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
+export const HANDOFF_SEARCH_MAX_LIMIT = 50;
+const SOURCE_REF_KINDS = [
+  'PRESCRIPTION',
+  'PREVIOUS_VISIT',
+  'MEDICATION_HISTORY',
+  'OTHER_PRO_MESSAGE',
+  'RULE_DOCUMENT',
+  'EVIDENCE_FILE',
+  'CARE_PLAN',
+] as const satisfies readonly SourceRef['kind'][];
+
+function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
+  const value = event.queryStringParameters?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readHandoffId(event: PhosHttpEvent): string | null {
+  const value = event.pathParameters?.handoff_id ?? event.pathParameters?.handoffId;
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function validationError(details: Record<string, unknown>): PhosDomainError {
+  return new PhosDomainError({
+    status: 400,
+    error_code: 'VALIDATION_ERROR',
+    message_key: 'api.error.validation.generic',
+    details,
+  });
+}
+
+function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
+  const response: ErrorResponse = {
+    request_id: ctx.request_id,
+    error_code: error.error_code,
+    message_key: error.message_key,
+    ...(error.details ? { details: error.details } : {}),
+  };
+  return toErrorLambdaResponse(error.status, response);
+}
+
+function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
+  return new PhosDomainError({
+    status: 403,
+    error_code: 'FORBIDDEN',
+    message_key: 'api.error.forbidden',
+    details: error.details,
+  });
+}
+
+function parsePositiveVersion(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw validationError({ field: 'client_version' });
+  }
+  return Number(value);
+}
+
+function parseIdempotencyKey(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw validationError({ field: 'idempotency_key' });
+  }
+  return value.trim();
+}
+
+function parseSourceRefs(value: unknown): SourceRef[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw validationError({ field: 'source_refs' });
+  }
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw validationError({ field: `source_refs.${index}` });
+    }
+    const source = item as Partial<SourceRef>;
+    if (
+      typeof source.kind !== 'string' ||
+      !SOURCE_REF_KINDS.includes(source.kind as SourceRef['kind']) ||
+      typeof source.ref_id !== 'string' ||
+      source.ref_id.trim().length === 0
+    ) {
+      throw validationError({ field: `source_refs.${index}` });
+    }
+    if (typeof source.label !== 'string' || source.label.trim().length === 0) {
+      throw validationError({ field: `source_refs.${index}.label` });
+    }
+    return {
+      kind: source.kind as SourceRef['kind'],
+      ref_id: source.ref_id.trim(),
+      label: source.label.trim(),
+      ...(typeof source.uri === 'string' ? { uri: source.uri } : {}),
+      ...(typeof source.captured_at === 'string' ? { captured_at: source.captured_at } : {}),
+    };
+  });
+}
+
+function parseSearchQuery(event: PhosHttpEvent): HandoffSearchQuery {
+  const rawLimit = readQueryParam(event, 'limit');
+  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : HANDOFF_SEARCH_DEFAULT_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > HANDOFF_SEARCH_MAX_LIMIT) {
+    throw validationError({ field: 'limit', max: HANDOFF_SEARCH_MAX_LIMIT });
+  }
+
+  const status = readQueryParam(event, 'status');
+  if (status && !Object.values(HandoffStatus).includes(status as HandoffStatus)) {
+    throw validationError({ field: 'status' });
+  }
+
+  return {
+    ...(status ? { status: status as HandoffStatus } : {}),
+    ...(readQueryParam(event, 'assignee') ? { assignee: readQueryParam(event, 'assignee') } : {}),
+    ...(readQueryParam(event, 'cursor') ? { cursor: readQueryParam(event, 'cursor') } : {}),
+    limit,
+  };
+}
+
+function parseCreateRequest(body: unknown): CreateHandoffRequest {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw validationError({ field: 'body' });
+  }
+  const input = body as Partial<CreateHandoffRequest>;
+  if (typeof input.card_id !== 'string' || input.card_id.trim().length === 0) {
+    throw validationError({ field: 'card_id' });
+  }
+  if (typeof input.reason_code !== 'string' || input.reason_code.trim().length === 0) {
+    throw validationError({ field: 'reason_code' });
+  }
+  if (typeof input.summary !== 'string' || input.summary.trim().length === 0) {
+    throw validationError({ field: 'summary' });
+  }
+  if (!Object.values(HandoffUrgency).includes(input.urgency as HandoffUrgency)) {
+    throw validationError({ field: 'urgency' });
+  }
+  if (
+    input.requested_action !== undefined &&
+    !Object.values(ActionCode).includes(input.requested_action as ActionCode)
+  ) {
+    throw validationError({ field: 'requested_action' });
+  }
+
+  return {
+    card_id: input.card_id.trim(),
+    reason_code: input.reason_code.trim(),
+    summary: input.summary.trim(),
+    source_refs: parseSourceRefs(input.source_refs),
+    urgency: input.urgency as HandoffUrgency,
+    ...(input.requested_action ? { requested_action: input.requested_action } : {}),
+    ...(typeof input.assignee_user_id === 'string'
+      ? { assignee_user_id: input.assignee_user_id.trim() }
+      : {}),
+    ...(typeof input.related_blocker_code === 'string'
+      ? { related_blocker_code: input.related_blocker_code.trim() }
+      : {}),
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
+    client_version: parsePositiveVersion(input.client_version),
+  };
+}
+
+function parseResolveRequest(body: unknown): ResolveHandoffRequest {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw validationError({ field: 'body' });
+  }
+  const input = body as Partial<ResolveHandoffRequest>;
+  if (!Object.values(ActionCode).includes(input.resolved_action_code as ActionCode)) {
+    throw validationError({ field: 'resolved_action_code' });
+  }
+  return {
+    resolved_action_code: input.resolved_action_code as ActionCode,
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
+    client_version: parsePositiveVersion(input.client_version),
+  };
+}
+
+function parseOpenRequest(body: unknown): OpenHandoffRequest {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw validationError({ field: 'body' });
+  }
+  const input = body as Partial<OpenHandoffRequest>;
+  return {
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
+    client_version: parsePositiveVersion(input.client_version),
+  };
+}
+
+function parseReturnRequest(body: unknown): ReturnHandoffRequest {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw validationError({ field: 'body' });
+  }
+  const input = body as Partial<ReturnHandoffRequest>;
+  if (
+    typeof input.return_reason_code !== 'string' ||
+    input.return_reason_code.trim().length === 0
+  ) {
+    throw validationError({ field: 'return_reason_code' });
+  }
+  if (typeof input.return_note !== 'string' || input.return_note.trim().length === 0) {
+    throw validationError({ field: 'return_note' });
+  }
+  return {
+    return_reason_code: input.return_reason_code.trim(),
+    return_note: input.return_note.trim(),
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
+    client_version: parsePositiveVersion(input.client_version),
+  };
+}
+
+function assertHandoffReadAccess(ctx: TenantContext) {
+  assertRequiredScopes(ctx, ['phos/handoffs.read']);
+  assertAllowedRole(ctx, [
+    UserRole.PHARMACIST,
+    UserRole.PHARMACY_CLERK,
+    UserRole.MANAGER,
+    UserRole.ADMIN,
+  ]);
+}
+
+function assertHandoffCreateAccess(ctx: TenantContext) {
+  assertRequiredScopes(ctx, ['phos/handoffs.write']);
+  assertAllowedRole(ctx, [UserRole.PHARMACY_CLERK, UserRole.MANAGER, UserRole.ADMIN]);
+}
+
+function assertHandoffResolveAccess(ctx: TenantContext) {
+  assertRequiredScopes(ctx, ['phos/handoffs.write']);
+  assertAllowedRole(ctx, [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN]);
+}
+
+function logHandlerError(input: {
+  ctx: TenantContext;
+  route_key: string;
+  error_code: string;
+  details?: Record<string, unknown>;
+}) {
+  logPhosEvent(
+    buildLogEntry({
+      level: 'ERROR',
+      message: 'PH-OS handoffs handler failed',
+      ctx: input.ctx,
+      route_key: input.route_key,
+      error_code: input.error_code,
+      details: input.details,
+    }),
+  );
+}
+
+function logHandlerSuccess(input: { ctx: TenantContext; route_key: string; handoff_id?: string }) {
+  logPhosEvent(
+    buildLogEntry({
+      level: 'INFO',
+      message: 'PH-OS handoffs handler succeeded',
+      ctx: input.ctx,
+      route_key: input.route_key,
+      ...(input.handoff_id ? { handoff_id: input.handoff_id } : {}),
+    }),
+  );
+}
+
+function withHandoffErrors(route_key: string, ctx: TenantContext, error: unknown) {
+  if (error instanceof PhosDomainError) {
+    logHandlerError({ ctx, route_key, error_code: error.error_code, details: error.details });
+    return domainErrorResponse(ctx, error);
+  }
+  if (error instanceof PhosAuthorizationError) {
+    const forbidden = forbiddenError(error);
+    logHandlerError({
+      ctx,
+      route_key,
+      error_code: forbidden.error_code,
+      details: forbidden.details,
+    });
+    return domainErrorResponse(ctx, forbidden);
+  }
+  throw error;
+}
+
+export function createHandoffSearchHandler(repository: PhosHandoffsRepository): PhosHandler {
+  return async ({ event, ctx }) => {
+    const route_key = event.routeKey ?? 'GET /handoffs';
+    try {
+      assertHandoffReadAccess(ctx);
+      const response = await repository.searchHandoffs(ctx, parseSearchQuery(event));
+      logHandlerSuccess({ ctx, route_key });
+      return response;
+    } catch (error) {
+      return withHandoffErrors(route_key, ctx, error);
+    }
+  };
+}
+
+export function createCreateHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
+  return async ({ event, ctx, body }) => {
+    const route_key = event.routeKey ?? 'POST /handoffs';
+    try {
+      assertHandoffCreateAccess(ctx);
+      const response = await repository.createHandoff(ctx, parseCreateRequest(body));
+      logHandlerSuccess({ ctx, route_key, handoff_id: response.handoff.handoff_id });
+      return response;
+    } catch (error) {
+      return withHandoffErrors(route_key, ctx, error);
+    }
+  };
+}
+
+export function createResolveHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
+  return async ({ event, ctx, body }) => {
+    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/resolve';
+    const handoff_id = readHandoffId(event);
+    if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
+    try {
+      assertHandoffResolveAccess(ctx);
+      const response = await repository.resolveHandoff(ctx, handoff_id, parseResolveRequest(body));
+      logHandlerSuccess({ ctx, route_key, handoff_id });
+      return response;
+    } catch (error) {
+      return withHandoffErrors(route_key, ctx, error);
+    }
+  };
+}
+
+export function createOpenHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
+  return async ({ event, ctx, body }) => {
+    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/open';
+    const handoff_id = readHandoffId(event);
+    if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
+    try {
+      assertHandoffResolveAccess(ctx);
+      const response = await repository.openHandoff(ctx, handoff_id, parseOpenRequest(body));
+      logHandlerSuccess({ ctx, route_key, handoff_id });
+      return response;
+    } catch (error) {
+      return withHandoffErrors(route_key, ctx, error);
+    }
+  };
+}
+
+export function createReturnHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
+  return async ({ event, ctx, body }) => {
+    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/return';
+    const handoff_id = readHandoffId(event);
+    if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
+    try {
+      assertHandoffResolveAccess(ctx);
+      const response = await repository.returnHandoff(ctx, handoff_id, parseReturnRequest(body));
+      logHandlerSuccess({ ctx, route_key, handoff_id });
+      return response;
+    } catch (error) {
+      return withHandoffErrors(route_key, ctx, error);
+    }
+  };
+}

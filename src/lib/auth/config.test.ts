@@ -55,6 +55,7 @@ describe('authOptions jwt callback', () => {
       sub: 'sub_1',
       email: 'user@example.com',
       'cognito:groups': ['admin', 'pharmacist'],
+      role: 'MANAGER',
     } as unknown as Parameters<JwtCallback>[0]['profile'];
 
     const token = await jwtCallback!({
@@ -63,6 +64,10 @@ describe('authOptions jwt callback', () => {
         provider: 'cognito',
         type: 'oauth',
         providerAccountId: 'sub_1',
+        access_token: 'oauth-access-token',
+        refresh_token: 'oauth-refresh-token',
+        id_token: 'oauth-id-token',
+        expires_at: 1_900_000_000,
       },
       profile: cognitoProfile,
       user: {
@@ -77,6 +82,9 @@ describe('authOptions jwt callback', () => {
     expect(token.cognitoSub).toBe('sub_1');
     expect(token.sub).toBe('sub_1');
     expect(token.cognitoGroups).toEqual(['admin', 'pharmacist']);
+    expect(token.phosRole).toBe('MANAGER');
+    expect(token.accessToken).toBe('oauth-access-token');
+    expect(token.accessTokenExpiry).toBe(1_900_000_000_000);
     expect(resolveLocalUserByIdentity).toHaveBeenCalledWith({
       cognitoSub: 'sub_1',
       email: 'user@example.com',
@@ -85,7 +93,7 @@ describe('authOptions jwt callback', () => {
 });
 
 describe('authOptions session callback', () => {
-  it('keeps Cognito tokens out of the client session payload', async () => {
+  it('keeps refresh and ID tokens out of the client session payload', async () => {
     const sessionCallback = authOptions.callbacks?.session;
     expect(sessionCallback).toBeTypeOf('function');
 
@@ -104,6 +112,7 @@ describe('authOptions session callback', () => {
         refreshToken: 'refresh-token',
         idToken: 'id-token',
         cognitoGroups: ['admin'],
+        phosRole: 'ADMIN',
       },
       user: {
         id: 'user_1',
@@ -119,6 +128,8 @@ describe('authOptions session callback', () => {
     expect(clientSession.user?.id).toBe('user_1');
     expect(clientSession.user?.cognitoSub).toBe('sub_1');
     expect(clientSession.cognitoGroups).toEqual(['admin']);
+    expect(clientSession.phosRole).toBe('ADMIN');
+    expect(clientSession.phosAccessToken).toBe('access-token');
     expect(clientSession).not.toHaveProperty('accessToken');
     expect(clientSession).not.toHaveProperty('refreshToken');
     expect(clientSession).not.toHaveProperty('idToken');

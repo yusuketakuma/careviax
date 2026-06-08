@@ -1,9 +1,12 @@
 import { DefaultSession } from 'next-auth';
+import type { UserRole } from '@/phos/contracts/phos_contracts';
 
 declare module 'next-auth' {
   interface Session {
     cognitoGroups?: unknown;
     error?: string;
+    phosAccessToken?: string;
+    phosRole?: UserRole;
     user: DefaultSession['user'] & {
       id?: string;
       cognitoSub?: string;
@@ -24,6 +27,7 @@ declare module 'next-auth/jwt' {
     idToken?: string;
     accessTokenExpiry?: number;
     sessionVersion?: number;
+    phosRole?: UserRole;
     error?: string;
   }
 }
