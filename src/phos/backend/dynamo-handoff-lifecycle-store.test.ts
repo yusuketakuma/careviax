@@ -255,6 +255,21 @@ describe('createDynamoHandoffLifecycleStore', () => {
       request_fingerprint: 'fp_create',
       command: expect.objectContaining({ card_id: 'card_1' }),
       response,
+      audit_event: expect.objectContaining({
+        event_id: 'HANDOFF_CREATED#idem_create',
+        event_type: 'HANDOFF_CREATED',
+        card_id: 'card_1',
+        action_code: undefined,
+        actor_user_id: 'user_pharmacist',
+        request_id: 'req_1',
+        correlation_id: 'corr_1',
+        before_json: null,
+        after_json: expect.objectContaining({
+          handoff_id: 'handoff_created',
+          status: HandoffStatus.OPEN,
+          source_ref_count: 1,
+        }),
+      }),
     });
   });
 
@@ -318,6 +333,25 @@ describe('createDynamoHandoffLifecycleStore', () => {
       expected_server_version: 1,
       request_fingerprint: 'fp_resolve',
       response,
+      audit_event: expect.objectContaining({
+        event_id: 'HANDOFF_RESOLVED#idem_resolve',
+        event_type: 'HANDOFF_RESOLVED',
+        card_id: 'card_1',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        actor_user_id: 'user_pharmacist',
+        request_id: 'req_1',
+        correlation_id: 'corr_1',
+        before_json: expect.objectContaining({
+          handoff_id: 'handoff_1',
+          status: HandoffStatus.OPEN,
+          source_ref_count: 1,
+        }),
+        after_json: expect.objectContaining({
+          handoff_id: 'handoff_1',
+          status: HandoffStatus.RESOLVED,
+          source_ref_count: 1,
+        }),
+      }),
       blocker_resolution: { card_id: 'card_1', blocker_code: 'MISSING_EVIDENCE' },
       card_aggregate_update: {
         card_sort_key: 'CARD#card_1',

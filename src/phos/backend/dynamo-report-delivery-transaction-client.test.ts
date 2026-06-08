@@ -36,8 +36,7 @@ function transaction(
     delivery_sort_key: 'REPORT_DELIVERY#delivery_1',
     status_gsi_pk: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#ACTION_DONE',
     status_gsi_sk: 'STALE#00000000#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
-    idempotency_sort_key:
-      'REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_reply',
+    idempotency_sort_key: 'REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_reply',
     idempotency_key: 'idem_reply',
     expected_server_version: 1,
     request_fingerprint: 'fp_1',
@@ -58,6 +57,25 @@ function transaction(
       ],
       server_version: 2,
     },
+    audit_event: {
+      event_id: 'REPORT_REPLY_REGISTERED#idem_reply',
+      event_type: 'REPORT_REPLY_REGISTERED',
+      card_id: 'card_1',
+      actor_user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      before_json: {
+        delivery_id: 'delivery_1',
+        status: ReportDeliveryStatus.WAITING_REPLY,
+        server_version: 1,
+      },
+      after_json: {
+        delivery_id: 'delivery_1',
+        status: ReportDeliveryStatus.ACTION_DONE,
+        server_version: 2,
+      },
+      subject_json: { delivery_id: 'delivery_1' },
+    },
     ...overrides,
   };
 }
@@ -69,7 +87,7 @@ describe('Dynamo report delivery transaction client', () => {
       '2026-06-09T02:00:00.000Z',
     );
 
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({
       Update: {
         TableName: 'phos_core',
@@ -90,6 +108,35 @@ describe('Dynamo report delivery transaction client', () => {
       },
     });
     expect(items[1]).toMatchObject({
+      Put: {
+        Item: {
+          PK: { S: 'TENANT#tenant_abc123' },
+          SK: {
+            S: 'CARD_EVENT#card_1#2026-06-09T02:00:00.000Z#REPORT_REPLY_REGISTERED#idem_reply',
+          },
+          entity_type: { S: 'CARD_EVENT' },
+          event_type: { S: 'REPORT_REPLY_REGISTERED' },
+          card_id: { S: 'card_1' },
+          actor_user_id: { S: 'user_1' },
+          request_id: { S: 'req_1' },
+          correlation_id: { S: 'corr_1' },
+          before_json: {
+            M: expect.objectContaining({
+              status: { S: ReportDeliveryStatus.WAITING_REPLY },
+              server_version: { N: '1' },
+            }),
+          },
+          after_json: {
+            M: expect.objectContaining({
+              status: { S: ReportDeliveryStatus.ACTION_DONE },
+              server_version: { N: '2' },
+            }),
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(items[1])).not.toContain('問題ありません。');
+    expect(items[2]).toMatchObject({
       Put: {
         Item: {
           PK: { S: 'TENANT#tenant_abc123' },

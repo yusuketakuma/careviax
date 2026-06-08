@@ -79,6 +79,23 @@ function createTransaction(
       client_version: 1,
     },
     response: response(),
+    audit_event: {
+      event_id: 'HANDOFF_CREATED#idem_create',
+      event_type: 'HANDOFF_CREATED',
+      card_id: 'card_1',
+      action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      actor_user_id: 'user_clerk',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      before_json: null,
+      after_json: {
+        handoff_id: 'handoff_1',
+        card_id: 'card_1',
+        status: HandoffStatus.OPEN,
+        server_version: 1,
+      },
+      subject_json: { handoff_id: 'handoff_1' },
+    },
     ...overrides,
   };
 }
@@ -102,6 +119,28 @@ function transitionTransaction(
         server_version: 2,
       }),
     ),
+    audit_event: {
+      event_id: 'HANDOFF_RESOLVED#idem_resolve',
+      event_type: 'HANDOFF_RESOLVED',
+      card_id: 'card_1',
+      action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      actor_user_id: 'user_pharmacist',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      before_json: {
+        handoff_id: 'handoff_1',
+        card_id: 'card_1',
+        status: HandoffStatus.OPEN,
+        server_version: 1,
+      },
+      after_json: {
+        handoff_id: 'handoff_1',
+        card_id: 'card_1',
+        status: HandoffStatus.RESOLVED,
+        server_version: 2,
+      },
+      subject_json: { handoff_id: 'handoff_1' },
+    },
     blocker_resolution: { card_id: 'card_1', blocker_code: 'MISSING_EVIDENCE' },
     card_aggregate_update: {
       card_sort_key: 'CARD#card_1',
@@ -143,7 +182,7 @@ describe('Dynamo handoff transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4);
     expect(items[0]).toMatchObject({
       ConditionCheck: {
         TableName: 'phos_core',
@@ -178,6 +217,24 @@ describe('Dynamo handoff transaction client', () => {
     expect(items[2]).toMatchObject({
       Put: {
         Item: {
+          PK: { S: 'TENANT#tenant_abc123' },
+          SK: {
+            S: 'CARD_EVENT#card_1#2026-06-09T00:00:00.000Z#HANDOFF_CREATED#idem_create',
+          },
+          entity_type: { S: 'CARD_EVENT' },
+          event_type: { S: 'HANDOFF_CREATED' },
+          actor_user_id: { S: 'user_clerk' },
+          request_id: { S: 'req_1' },
+          correlation_id: { S: 'corr_1' },
+          before_json: { NULL: true },
+        },
+      },
+    });
+    expect(JSON.stringify(items[2])).not.toContain('患者 山田太郎');
+    expect(JSON.stringify(items[2])).not.toContain('薬剤師確認が必要です。');
+    expect(items[3]).toMatchObject({
+      Put: {
+        Item: {
           SK: { S: 'HANDOFF_IDEMPOTENCY#CREATE_HANDOFF:card_1#idem_create' },
           entity_type: { S: 'HANDOFF_IDEMPOTENCY' },
           idempotency_key: { S: 'idem_create' },
@@ -194,7 +251,7 @@ describe('Dynamo handoff transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     expect(items[0]).toMatchObject({
       Update: {
         TableName: 'phos_core',
@@ -241,6 +298,31 @@ describe('Dynamo handoff transaction client', () => {
     expect(items[3]).toMatchObject({
       Put: {
         Item: {
+          SK: {
+            S: 'CARD_EVENT#card_1#2026-06-09T00:00:00.000Z#HANDOFF_RESOLVED#idem_resolve',
+          },
+          entity_type: { S: 'CARD_EVENT' },
+          event_type: { S: 'HANDOFF_RESOLVED' },
+          action_code: { S: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+          actor_user_id: { S: 'user_pharmacist' },
+          before_json: {
+            M: expect.objectContaining({
+              status: { S: HandoffStatus.OPEN },
+              server_version: { N: '1' },
+            }),
+          },
+          after_json: {
+            M: expect.objectContaining({
+              status: { S: HandoffStatus.RESOLVED },
+              server_version: { N: '2' },
+            }),
+          },
+        },
+      },
+    });
+    expect(items[4]).toMatchObject({
+      Put: {
+        Item: {
           SK: { S: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve' },
           idempotency_key: { S: 'idem_resolve' },
         },
@@ -267,6 +349,6 @@ describe('Dynamo handoff transaction client', () => {
     expect(send.mock.calls[0]?.[0]).toBeInstanceOf(TransactWriteItemsCommand);
     expect(send.mock.calls[1]?.[0]).toBeInstanceOf(TransactWriteItemsCommand);
     const transitionCommand = send.mock.calls[1]?.[0] as TransactWriteItemsCommand | undefined;
-    expect(transitionCommand?.input.TransactItems).toHaveLength(2);
+    expect(transitionCommand?.input.TransactItems).toHaveLength(3);
   });
 });

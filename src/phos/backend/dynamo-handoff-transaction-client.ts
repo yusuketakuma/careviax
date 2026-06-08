@@ -8,6 +8,7 @@ import {
   type DynamoHandoffTransitionTransaction,
   handoffUrgencyQueueRank,
 } from './dynamo-handoff-lifecycle-store';
+import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { cardBlockerSk, handoffAssigneeGsiSk } from './dynamodb-keys';
 
@@ -89,6 +90,12 @@ export function buildDynamoHandoffCreateTransactWriteItems(
         ConditionExpression: 'attribute_not_exists(PK)',
       },
     },
+    buildDynamoCardAuditEventPut({
+      table_name: input.table_name,
+      partition_key: input.partition_key,
+      committed_at,
+      event: input.audit_event,
+    }),
     idempotencyPut(input, committed_at),
   ];
 }
@@ -184,6 +191,12 @@ export function buildDynamoHandoffTransitionTransactWriteItems(
     },
     ...blockerUpdate,
     ...cardAggregateUpdate,
+    buildDynamoCardAuditEventPut({
+      table_name: input.table_name,
+      partition_key: input.partition_key,
+      committed_at,
+      event: input.audit_event,
+    }),
     idempotencyPut(input, committed_at),
   ];
 }

@@ -29,6 +29,7 @@ import type {
   DynamoQueryOutput,
 } from './dynamo-cards-repository';
 import { PHOS_BOARD_GSI, PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
 export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
@@ -51,6 +52,7 @@ export type DynamoHandoffCreateTransaction = {
   request_fingerprint: string;
   command: CreateHandoffRequest;
   response: HandoffMutationResponse;
+  audit_event: DynamoCardAuditEvent;
 };
 
 export type DynamoHandoffTransitionTransaction = {
@@ -63,6 +65,7 @@ export type DynamoHandoffTransitionTransaction = {
   expected_server_version: number;
   request_fingerprint: string;
   response: HandoffMutationResponse;
+  audit_event: DynamoCardAuditEvent;
   blocker_resolution?: { card_id: string; blocker_code: string };
   card_aggregate_update?: {
     card_sort_key: string;
@@ -117,6 +120,29 @@ function readAssignee(ctx: TenantContext, query: HandoffSearchQuery): string {
 function boundedLimit(limit: number | undefined): number {
   if (!limit) return HANDOFF_SEARCH_DEFAULT_LIMIT;
   return Math.min(Math.max(limit, 1), HANDOFF_SEARCH_MAX_LIMIT);
+}
+
+function handoffAuditSummary(handoff: HandoffView) {
+  return {
+    handoff_id: handoff.handoff_id,
+    card_id: handoff.card_id,
+    status: handoff.status,
+    requested_action: handoff.requested_action,
+    resolved_action_code: handoff.resolved_action_code ?? null,
+    return_reason_code: handoff.return_reason_code ?? null,
+    urgency: handoff.urgency,
+    assignee_user_id: handoff.assignee_user_id ?? null,
+    related_blocker_code: handoff.related_blocker_code ?? null,
+    source_ref_count: handoff.source_refs.length,
+    server_version: handoff.server_version,
+  };
+}
+
+function handoffTransitionEventType(handoff: HandoffView): string {
+  if (handoff.status === 'IN_REVIEW') return 'HANDOFF_OPENED';
+  if (handoff.status === 'RESOLVED') return 'HANDOFF_RESOLVED';
+  if (handoff.status === 'RETURNED') return 'HANDOFF_RETURNED';
+  return 'HANDOFF_UPDATED';
 }
 
 export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem>(
@@ -248,6 +274,21 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
         request_fingerprint,
         command,
         response,
+        audit_event: {
+          event_id: `HANDOFF_CREATED#${command.idempotency_key}`,
+          event_type: 'HANDOFF_CREATED',
+          card_id: command.card_id,
+          action_code: command.requested_action,
+          actor_user_id: ctx.user_id,
+          request_id: ctx.request_id,
+          correlation_id: ctx.correlation_id,
+          before_json: null,
+          after_json: handoffAuditSummary(response.handoff),
+          subject_json: {
+            handoff_id: response.handoff.handoff_id,
+            mutation_key: `CREATE_HANDOFF:${command.card_id}`,
+          },
+        },
       });
       return response;
     },
@@ -285,6 +326,25 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
         expected_server_version: input.previous_handoff.server_version,
         request_fingerprint: input.request_fingerprint,
         response: input.response,
+        audit_event: {
+          event_id: `${handoffTransitionEventType(input.response.handoff)}#${
+            input.command.idempotency_key
+          }`,
+          event_type: handoffTransitionEventType(input.response.handoff),
+          card_id: input.previous_handoff.card_id,
+          action_code:
+            input.response.handoff.resolved_action_code ?? input.response.handoff.requested_action,
+          actor_user_id: ctx.user_id,
+          request_id: ctx.request_id,
+          correlation_id: ctx.correlation_id,
+          before_json: handoffAuditSummary(input.previous_handoff),
+          after_json: handoffAuditSummary(input.response.handoff),
+          subject_json: {
+            handoff_id: input.handoff_id,
+            mutation_key: input.mutation_key,
+            side_effect_types: input.response.side_effects.map((effect) => effect.type),
+          },
+        },
         blocker_resolution: relatedBlocker,
         card_aggregate_update: cardAggregateUpdate,
       });

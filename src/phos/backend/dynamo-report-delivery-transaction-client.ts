@@ -4,6 +4,7 @@ import {
   type TransactWriteItem,
 } from '@aws-sdk/client-dynamodb';
 import type { DynamoReportDeliveryTransitionTransaction } from './dynamo-report-delivery-lifecycle-store';
+import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 
 function idempotencyPut(
@@ -66,6 +67,12 @@ export function buildDynamoReportDeliveryTransitionTransactWriteItems(
         },
       },
     },
+    buildDynamoCardAuditEventPut({
+      table_name: input.table_name,
+      partition_key: input.partition_key,
+      committed_at,
+      event: input.audit_event,
+    }),
     idempotencyPut(input, committed_at),
   ];
 }

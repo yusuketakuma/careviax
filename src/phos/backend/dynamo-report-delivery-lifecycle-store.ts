@@ -19,6 +19,7 @@ import {
 } from './dynamodb-keys';
 import type { DynamoGetInput } from './dynamo-cards-repository';
 import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
 export type DynamoReportDeliveryIdempotencyRecord = {
@@ -38,6 +39,7 @@ export type DynamoReportDeliveryTransitionTransaction = {
   request_fingerprint: string;
   command: RegisterReportReplyRequest | MarkReportActionDoneRequest;
   response: ReportDeliveryMutationResponse;
+  audit_event: DynamoCardAuditEvent;
 };
 
 export type DynamoReportDeliveryLifecycleClient<TDeliveryItem, TIdempotencyItem> = {
@@ -52,6 +54,26 @@ export type DynamoReportDeliveryLifecycleMapper<TDeliveryItem, TIdempotencyItem>
   toReportDeliveryView(item: TDeliveryItem): ReportDeliveryView;
   toIdempotencyRecord(item: TIdempotencyItem): DynamoReportDeliveryIdempotencyRecord;
 };
+
+function reportDeliveryAuditSummary(delivery: ReportDeliveryView) {
+  return {
+    delivery_id: delivery.delivery_id,
+    card_id: delivery.card_id,
+    report_id: delivery.report_id,
+    status: delivery.status,
+    stale_minutes: delivery.stale_minutes,
+    reply_received_at: delivery.reply_received_at ?? null,
+    action_done_at: delivery.action_done_at ?? null,
+    action_done_by_user_id: delivery.action_done_by_user_id ?? null,
+    source_ref_count: delivery.source_refs.length,
+    server_version: delivery.server_version,
+  };
+}
+
+function reportDeliveryEventType(mutation_key: string): string {
+  if (mutation_key.startsWith('MARK_REPORT_ACTION_DONE:')) return 'REPORT_ACTION_DONE';
+  return 'REPORT_REPLY_REGISTERED';
+}
 
 export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempotencyItem>(
   client: DynamoReportDeliveryLifecycleClient<TDeliveryItem, TIdempotencyItem>,
@@ -125,6 +147,23 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
         request_fingerprint: input.request_fingerprint,
         command: input.command,
         response: input.response,
+        audit_event: {
+          event_id: `${reportDeliveryEventType(input.mutation_key)}#${
+            input.command.idempotency_key
+          }`,
+          event_type: reportDeliveryEventType(input.mutation_key),
+          card_id: delivery.card_id,
+          actor_user_id: ctx.user_id,
+          request_id: ctx.request_id,
+          correlation_id: ctx.correlation_id,
+          before_json: reportDeliveryAuditSummary(input.previous_delivery),
+          after_json: reportDeliveryAuditSummary(delivery),
+          subject_json: {
+            delivery_id: input.delivery_id,
+            mutation_key: input.mutation_key,
+            side_effect_types: input.response.side_effects.map((effect) => effect.type),
+          },
+        },
       });
       return input.response;
     },
