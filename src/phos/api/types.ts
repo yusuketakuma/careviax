@@ -115,8 +115,6 @@ export type PhosOfflineActionQueue = {
   enqueueCardAction(input: PhosOfflineCardActionQueueInput): Promise<PhosOfflineActionQueueResult>;
 };
 
-export type PhosApiErrorStatus = 400 | 403 | 404 | 409 | 422 | 500;
-
 export class PhosApiError extends Error {
   status: number;
   response: ErrorResponse;

@@ -128,6 +128,24 @@ describe('PH-OS Final No-Go gate', () => {
     }
   });
 
+  it('does not keep unused helper exports left behind by PH-OS route/client consolidation', () => {
+    const obsoleteSymbols = [
+      ['PhosApiError', 'Status'].join(''),
+      ['handoffUrgency', 'Rank'].join(''),
+      ['assigneeGsi', 'Sk'].join(''),
+      ['patientGsi', 'Sk'].join(''),
+      ['PhosTag', 'Label'].join(''),
+    ];
+
+    for (const file of listFiles(canonicalRoot)) {
+      const relativePath = relative(repoRoot, file);
+      const content = readFileSync(file, 'utf8');
+      for (const symbol of obsoleteSymbols) {
+        expect(content, relativePath).not.toContain(symbol);
+      }
+    }
+  });
+
   it('keeps PH-OS UI and app code isolated from legacy Next API route calls', () => {
     const forbiddenApiPatterns = [
       /fetch\(\s*['"]\/api\//,

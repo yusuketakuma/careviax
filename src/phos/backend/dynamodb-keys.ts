@@ -176,20 +176,8 @@ export function assigneeGsiPk(ctx: Pick<TenantContext, 'tenant_id'>, user_id: st
   return `${tenantPk(ctx)}#ASSIGNEE#${user_id}`;
 }
 
-export function assigneeGsiSk(input: {
-  display_status: string;
-  due_at: string;
-  card_id: string;
-}): string {
-  return `STATUS#${input.display_status}#DUE#${input.due_at}#CARD#${input.card_id}`;
-}
-
 export function patientGsiPk(ctx: Pick<TenantContext, 'tenant_id'>, patient_id: string): string {
   return `${tenantPk(ctx)}#PATIENT#${patient_id}`;
-}
-
-export function patientGsiSk(input: { created_at: string; card_id: string }): string {
-  return `CREATED#${input.created_at}#CARD#${input.card_id}`;
 }
 
 export function packetGsiPk(ctx: Pick<TenantContext, 'tenant_id'>, packet_id: string): string {

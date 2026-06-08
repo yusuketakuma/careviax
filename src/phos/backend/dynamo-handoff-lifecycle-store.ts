@@ -98,13 +98,6 @@ export type DynamoHandoffStoreMapper<THandoffItem, TIdempotencyItem> = {
   }): HandoffMutationResponse;
 };
 
-const URGENCY_RANK = {
-  [HandoffUrgency.LOW]: 0,
-  [HandoffUrgency.NORMAL]: 1,
-  [HandoffUrgency.HIGH]: 2,
-  [HandoffUrgency.URGENT]: 3,
-} as const satisfies Record<HandoffUrgency, number>;
-
 const URGENCY_QUEUE_RANK = {
   [HandoffUrgency.URGENT]: 0,
   [HandoffUrgency.HIGH]: 1,
@@ -351,10 +344,6 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       return input.response;
     },
   };
-}
-
-export function handoffUrgencyRank(urgency: HandoffUrgency): number {
-  return URGENCY_RANK[urgency];
 }
 
 export function handoffUrgencyQueueRank(urgency: HandoffUrgency): number {

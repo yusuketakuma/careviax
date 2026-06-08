@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-073053
+
+- current task: remove PH-OS helper code left obsolete by API Gateway/Lambda route and API client consolidation
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `src/phos/api/types.ts`, `src/phos/backend/dynamodb-keys.ts`, `src/phos/backend/dynamo-handoff-lifecycle-store.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/backend/dynamodb-keys.test.ts`, `src/phos/backend/dynamo-handoff-lifecycle-store.test.ts`, `src/phos/domain/handoff/handoffLifecycle.ts`, `ts-prune` output for `src/phos`, and no-go grep output for obsolete symbols
+- files changed: `src/phos/api/types.ts`, `src/phos/backend/dynamodb-keys.ts`, `src/phos/backend/dynamo-handoff-lifecycle-store.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: route/client consolidation left unused PH-OS public symbols behind: `PhosApiErrorStatus`, `handoffUrgencyRank`, backend-only `URGENCY_RANK`, `assigneeGsiSk`, `patientGsiSk`, and `PhosTagLabel`. These symbols were not referenced by `src/phos` or `src/app/(phos)` and created unnecessary API surface after canonical route/client/data contracts moved elsewhere.
+- security risks found: the new PR-15 no-go gate fails if the obsolete helper/type names return under `src/phos`, reducing drift back toward stale helper surfaces after the API Gateway/Lambda and API client consolidation. No auth, tenant isolation, RBAC, logging, S3, DynamoDB, or Aurora behavior was weakened.
+- performance issues found: no runtime path was added. Removing unused helpers slightly narrows module import/export surface and adds only a test-time static scan.
+- validation commands: Prettier for touched PH-OS cleanup files; focused `pnpm exec vitest run src/phos/api/client.test.ts src/phos/backend/dynamodb-keys.test.ts src/phos/backend/dynamo-handoff-lifecycle-store.test.ts src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm dlx ts-prune -p tsconfig.json | rg '^src/phos' || true`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for removed helper names and PH-OS forbidden markers; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; `pnpm build`
+- validation results: Prettier reported unchanged; focused cleanup Vitest passed with 5 files / 41 tests; `ts-prune` no longer reports the removed obsolete symbols and remaining `src/phos` lines are module-internal export/style candidates; PH-OS plus auth focused Vitest passed with 81 files / 387 tests; TypeScript passed; ESLint passed after deleting the now-unused backend `URGENCY_RANK`; whitespace diff check passed; no-go grep returned zero for removed helper names and PH-OS forbidden markers; `disabled` grep only finds the static prohibition test and a test proving no disabled attribute is used; production build passed.
+- remaining work: full PH-OS objective is not yet marked complete. Remaining known work is to continue checking the final v1.1 backlog for any No-Go item that lacks executable proof, and to keep legacy Next API near-overlaps isolated until business-by-business cutover decisions allow deletion.
+- next action: wait for verifier review of this cleanup diff, commit the cleanup slice if no blocker is found, then continue auditing remaining PH-OS final no-go coverage.
+
 ### 20260609-072530
 
 - current task: audit and gate legacy Next API route isolation for PH-OS canonical API Gateway/Lambda migration

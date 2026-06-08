@@ -6,7 +6,6 @@ import {
   HandoffStatus,
   HandoffUrgency,
   RejectReason,
-  Tag,
   TriageLane,
   VisitArrivalOutcome,
   VisitStep,
@@ -172,23 +171,3 @@ export const PhosCurrentStepLabel = {
   [CurrentStep.CLOSING]: 'クローズ確認',
   [CurrentStep.CLOSED]: 'クローズ済み',
 } as const satisfies Record<CurrentStep, string>;
-
-export const PhosTagLabel = {
-  [Tag.NARCOTIC]: '麻薬',
-  [Tag.OPIOID]: 'オピオイド',
-  [Tag.HIGH_RISK]: 'ハイリスク',
-  [Tag.COLD_CHAIN]: '冷所',
-  [Tag.INSULIN]: 'インスリン',
-  [Tag.ANTICOAGULANT]: '抗凝固薬',
-  [Tag.MULTI_PERSON_VISIT]: '複数名訪問',
-  [Tag.DOCTOR_SIMULTANEOUS]: '医師同時',
-  [Tag.PRESCRIPTION_DIFF]: '処方差分',
-  [Tag.SET_DIFF]: 'セット差分',
-  [Tag.RESIDUAL]: '残薬',
-  [Tag.FALL_RISK]: '転倒リスク',
-  [Tag.HYPOGLYCEMIA_RISK]: '低血糖リスク',
-  [Tag.REPORT_REQUIRED]: '報告必須',
-  [Tag.CLAIM_CANDIDATE]: '算定候補',
-  [Tag.CLERK_CAN_RESOLVE]: '事務対応可',
-  [Tag.WAITING_REPLY]: '返信待ち',
-} as const satisfies Record<Tag, string>;
