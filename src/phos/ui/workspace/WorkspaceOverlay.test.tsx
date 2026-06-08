@@ -162,6 +162,60 @@ describe('WorkspaceOverlay', () => {
     });
   });
 
+  it('clears stale reason input when the selected card action changes', () => {
+    const onExecute = vi.fn();
+    const firstDetail = {
+      ...detail(),
+      next_action: {
+        ...detail().next_action,
+        code: ActionCode.REJECT_SET_AUDIT,
+        label_key: 'action.reject_set_audit',
+        reason_required: true,
+      },
+    } satisfies CardDetailResponse;
+    const secondDetail = {
+      ...detail(),
+      card: {
+        ...detail().card,
+        card_id: 'card_2',
+      },
+      next_action: {
+        ...detail().next_action,
+        code: ActionCode.CANCEL_CARD,
+        label_key: 'action.cancel_card',
+        reason_required: true,
+      },
+    } satisfies CardDetailResponse;
+
+    const { rerender } = render(
+      <WorkspaceOverlay
+        detail={firstDetail}
+        open
+        onOpenChange={vi.fn()}
+        onExecute={onExecute}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'PHOTO_INSUFFICIENT' } });
+    fireEvent.change(screen.getByLabelText('補足'), { target: { value: '写真が不鮮明です。' } });
+
+    rerender(
+      <WorkspaceOverlay
+        detail={secondDetail}
+        open
+        onOpenChange={vi.fn()}
+        onExecute={onExecute}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByLabelText('理由') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('補足') as HTMLTextAreaElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'カードをキャンセルする（実行不可）' }));
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
   it('renders detail errors inside the overlay instead of closing the board surface', () => {
     render(
       <WorkspaceOverlay

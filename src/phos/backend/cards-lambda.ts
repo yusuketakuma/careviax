@@ -13,6 +13,7 @@ import type {
   NextActionView,
 } from '@/phos/contracts/phos_contracts';
 import type { CardActionExecutionState } from './card-action-executor';
+import { normalizeNextActionView } from './card-action-projection';
 import { createCardActionExecutorRepository } from './card-action-executor';
 import {
   createCardDetailHandler,
@@ -141,27 +142,31 @@ export function createDynamoCardsClient(input: {
 function createDefaultCardsMapper(): DynamoCardsMapper<DynamoItem, DynamoItem> {
   return {
     toCardBoardItem(item) {
-      return (
-        optionalObjectAttr<CardBoardItemView>(item, 'card_board_item') ?? {
-          card: objectAttr<CardSummaryView>(item, 'card'),
-          next_action: objectAttr<NextActionView>(item, 'next_action'),
-        }
-      );
+      const stored = optionalObjectAttr<CardBoardItemView>(item, 'card_board_item') ?? {
+        card: objectAttr<CardSummaryView>(item, 'card'),
+        next_action: objectAttr<NextActionView>(item, 'next_action'),
+      };
+      return {
+        ...stored,
+        next_action: normalizeNextActionView(stored.next_action),
+      };
     },
     toCardDetail(item) {
-      return (
-        optionalObjectAttr<CardDetailResponse>(item, 'card_detail') ?? {
-          card: objectAttr<CardSummaryView>(item, 'card'),
-          visible_tabs: (attr(item, 'visible_tabs') as CardDetailResponse['visible_tabs']) ?? [],
-          permissions: objectAttr<CardDetailResponse['permissions']>(item, 'permissions'),
-          next_action: objectAttr<NextActionView>(item, 'next_action'),
-          blockers: (attr(item, 'blockers') as CardDetailResponse['blockers']) ?? [],
-          source_refs: (attr(item, 'source_refs') as CardDetailResponse['source_refs']) ?? [],
-          server_version:
-            numberAttr(item, 'server_version') ??
-            objectAttr<CardSummaryView>(item, 'card').server_version,
-        }
-      );
+      const stored = optionalObjectAttr<CardDetailResponse>(item, 'card_detail') ?? {
+        card: objectAttr<CardSummaryView>(item, 'card'),
+        visible_tabs: (attr(item, 'visible_tabs') as CardDetailResponse['visible_tabs']) ?? [],
+        permissions: objectAttr<CardDetailResponse['permissions']>(item, 'permissions'),
+        next_action: objectAttr<NextActionView>(item, 'next_action'),
+        blockers: (attr(item, 'blockers') as CardDetailResponse['blockers']) ?? [],
+        source_refs: (attr(item, 'source_refs') as CardDetailResponse['source_refs']) ?? [],
+        server_version:
+          numberAttr(item, 'server_version') ??
+          objectAttr<CardSummaryView>(item, 'card').server_version,
+      };
+      return {
+        ...stored,
+        next_action: normalizeNextActionView(stored.next_action),
+      };
     },
   };
 }
@@ -171,33 +176,34 @@ function createDefaultActionMapper(
 ): DynamoCardActionStoreMapper<DynamoItem, DynamoItem> {
   return {
     toActionState(item) {
-      return (
-        optionalObjectAttr<CardActionExecutionState>(item, 'action_state') ?? {
-          card: objectAttr<CardSummaryView>(item, 'card'),
-          next_action: objectAttr<NextActionView>(item, 'next_action'),
-          blockers: (attr(item, 'blockers') as CardActionExecutionState['blockers']) ?? [],
-          ...(optionalObjectAttr<CardActionExecutionState['visit_mode'] & Record<string, unknown>>(
-            item,
-            'visit_mode',
-          )
-            ? {
-                visit_mode: objectAttr<
-                  CardActionExecutionState['visit_mode'] & Record<string, unknown>
-                >(item, 'visit_mode'),
-              }
-            : {}),
-          unresolved_claim_candidate_count:
-            numberAttr(item, 'unresolved_claim_candidate_count') ?? 0,
-          ...(attr(item, 'allowed_actions')
-            ? {
-                allowed_actions: attr(
-                  item,
-                  'allowed_actions',
-                ) as CardActionExecutionState['allowed_actions'],
-              }
-            : {}),
-        }
-      );
+      const stored = optionalObjectAttr<CardActionExecutionState>(item, 'action_state') ?? {
+        card: objectAttr<CardSummaryView>(item, 'card'),
+        next_action: objectAttr<NextActionView>(item, 'next_action'),
+        blockers: (attr(item, 'blockers') as CardActionExecutionState['blockers']) ?? [],
+        ...(optionalObjectAttr<CardActionExecutionState['visit_mode'] & Record<string, unknown>>(
+          item,
+          'visit_mode',
+        )
+          ? {
+              visit_mode: objectAttr<
+                CardActionExecutionState['visit_mode'] & Record<string, unknown>
+              >(item, 'visit_mode'),
+            }
+          : {}),
+        unresolved_claim_candidate_count: numberAttr(item, 'unresolved_claim_candidate_count') ?? 0,
+        ...(attr(item, 'allowed_actions')
+          ? {
+              allowed_actions: attr(
+                item,
+                'allowed_actions',
+              ) as CardActionExecutionState['allowed_actions'],
+            }
+          : {}),
+      };
+      return {
+        ...stored,
+        next_action: normalizeNextActionView(stored.next_action),
+      };
     },
     toIdempotencyRecord(item): DynamoActionIdempotencyRecord {
       const responseJson = stringAttr(item, 'response_json');

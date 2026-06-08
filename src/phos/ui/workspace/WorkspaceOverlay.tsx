@@ -3,7 +3,11 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PhosCurrentStepLabel, PhosDisplayStatusLabel } from '@/phos/contracts/phos_copy.ja';
 import type { ActionPhase } from '@/phos/contracts/phos_contracts';
-import type { ActionCode, CardDetailResponse } from '@/phos/contracts/phos_contracts';
+import type {
+  ActionCode,
+  ActionReasonInput,
+  CardDetailResponse,
+} from '@/phos/contracts/phos_contracts';
 import type { VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
 import { BlockerPanel } from './BlockerPanel';
 import type { HandoffCreateInput } from './HandoffPanel';
@@ -19,7 +23,7 @@ export type WorkspaceOverlayProps = {
   actionPhase?: ActionPhase;
   actionMessage?: string;
   onOpenChange(open: boolean): void;
-  onExecute(cardId: string, action: ActionCode): void;
+  onExecute(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
   onCreateHandoff?(cardId: string, input: HandoffCreateInput): void;
   onOpenHandoffReview(handoffId: string): void;
   onResolveHandoff?(handoffId: string, resolvedActionCode: ActionCode): void;
@@ -73,6 +77,7 @@ export function WorkspaceOverlay({
 
               <div className="space-y-4">
                 <NextActionPanel
+                  key={`${detail.card.card_id}:${detail.next_action.code}`}
                   cardId={detail.card.card_id}
                   nextAction={detail.next_action}
                   blockers={detail.blockers}

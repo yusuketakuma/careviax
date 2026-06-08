@@ -217,4 +217,22 @@ describe('PH-OS Final No-Go gate', () => {
       /PH-OS toast notifications/,
     ]);
   });
+
+  it('keeps reason-required actions executable only with UI-provided reason codes', () => {
+    expectEvidence('src/phos/ui/workspace/NextActionPanel.test.tsx', [
+      /requires reason_code before executing reason-required actions/,
+      /reason_required/,
+      /PHOTO_INSUFFICIENT/,
+      /getAttribute\('disabled'\)/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /sends workspace reason input for reason-required actions/,
+      /reason_code: 'PHOTO_INSUFFICIENT'/,
+      /reason_note: '写真が不鮮明です。'/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.test.tsx', [
+      /clears stale reason input when the selected card action changes/,
+      /カードをキャンセルする（実行不可）/,
+    ]);
+  });
 });

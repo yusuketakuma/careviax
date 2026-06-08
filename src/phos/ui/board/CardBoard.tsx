@@ -2,6 +2,7 @@
 
 import type {
   ActionCode,
+  ActionReasonInput,
   BoardQuickFilter,
   CapacityResponse,
   CardBoardItemView,
@@ -28,7 +29,7 @@ export type CardBoardProps = {
   onTriageLaneChange(lane?: TriageLane): void;
   onResetFilters(): void;
   onOpen(cardId: string): void;
-  onPrimaryAction(cardId: string, action: ActionCode): void;
+  onPrimaryAction(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
 };
 
 export function CardBoard({

@@ -47,7 +47,42 @@ describe('NextActionPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
 
-    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.CONFIRM_PRESCRIPTION_DIFF);
+    expect(onExecute).toHaveBeenCalledWith(
+      'card_1',
+      ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      undefined,
+    );
+  });
+
+  it('requires reason_code before executing reason-required actions', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={{
+          ...nextAction,
+          code: ActionCode.REJECT_SET_AUDIT,
+          label_key: 'action.reject_set_audit',
+          reason_required: true,
+        }}
+        blockers={[]}
+        onExecute={onExecute}
+      />,
+    );
+
+    const blockedButton = screen.getByRole('button', { name: 'セット監査を差し戻す（実行不可）' });
+    expect(blockedButton.getAttribute('disabled')).toBeNull();
+    fireEvent.click(blockedButton);
+    expect(onExecute).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'PHOTO_INSUFFICIENT' } });
+    fireEvent.change(screen.getByLabelText('補足'), { target: { value: ' 写真が不鮮明です。 ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'セット監査を差し戻す' }));
+
+    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.REJECT_SET_AUDIT, {
+      reason_code: 'PHOTO_INSUFFICIENT',
+      reason_note: '写真が不鮮明です。',
+    });
   });
 
   it('does not execute server-unavailable actions', () => {

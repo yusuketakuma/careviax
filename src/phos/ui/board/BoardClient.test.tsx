@@ -772,6 +772,93 @@ describe('BoardClient', () => {
     );
   });
 
+  it('sends workspace reason input for reason-required actions', async () => {
+    const reasonNextAction = {
+      ...nextAction,
+      code: ActionCode.REJECT_SET_AUDIT,
+      label_key: 'action.reject_set_audit',
+      reason_required: true,
+    } satisfies NextActionView;
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          card: {
+            ...readyCard,
+            current_step: CurrentStep.SET_AUDIT,
+            server_version: 7,
+          },
+          next_action: reasonNextAction,
+          server_version: 7,
+        }),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'PHOTO_INSUFFICIENT' } });
+    fireEvent.change(screen.getByLabelText('補足'), { target: { value: ' 写真が不鮮明です。 ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'セット監査を差し戻す' }));
+
+    await waitFor(() =>
+      expect(apiClient.executeCardAction).toHaveBeenCalledWith(
+        'card_1',
+        expect.objectContaining({
+          action_code: ActionCode.REJECT_SET_AUDIT,
+          client_version: 7,
+          reason_code: 'PHOTO_INSUFFICIENT',
+          reason_note: '写真が不鮮明です。',
+        }),
+      ),
+    );
+  });
+
+  it('uses selected detail action metadata instead of stale board reason metadata', async () => {
+    const staleReasonItem = {
+      ...item,
+      next_action: {
+        ...nextAction,
+        reason_required: true,
+      },
+    } satisfies CardBoardItemView;
+    const freshNextAction = {
+      ...nextAction,
+      code: ActionCode.START_DISPENSING,
+      label_key: 'action.start_dispensing',
+      reason_required: false,
+    } satisfies NextActionView;
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          next_action: freshNextAction,
+          server_version: 7,
+        }),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[staleReasonItem]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    fireEvent.click(screen.getByRole('button', { name: '調剤を開始する' }));
+
+    await waitFor(() =>
+      expect(apiClient.executeCardAction).toHaveBeenCalledWith(
+        'card_1',
+        expect.objectContaining({
+          action_code: ActionCode.START_DISPENSING,
+          client_version: 7,
+        }),
+      ),
+    );
+    expect(apiClient.executeCardAction).toHaveBeenCalledWith(
+      'card_1',
+      expect.not.objectContaining({ reason_code: expect.any(String) }),
+    );
+  });
+
   it('updates visible tabs from ActionResponse while preserving the open workspace', async () => {
     const apiClient = client({
       executeCardAction: vi.fn(

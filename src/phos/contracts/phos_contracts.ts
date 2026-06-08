@@ -124,6 +124,7 @@ export type NextActionView = {
   target_endpoint: string;
   ui_state: ButtonState;
   can_user_handle: boolean;
+  reason_required?: boolean;
 };
 
 export type ButtonStateContext = {
@@ -840,6 +841,11 @@ export type ActionRequest = {
   client_version: number;
   payload?: Record<string, unknown>;
   reason_code?: string;
+  reason_note?: string;
+};
+
+export type ActionReasonInput = {
+  reason_code: string;
   reason_note?: string;
 };
 

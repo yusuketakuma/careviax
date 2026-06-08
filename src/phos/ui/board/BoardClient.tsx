@@ -16,6 +16,7 @@ import {
 } from '@/phos/contracts/phos_contracts';
 import type {
   ActionCode,
+  ActionReasonInput,
   CapacityResponse,
   CardBoardItemView,
   CardDetailResponse,
@@ -397,11 +398,22 @@ export function BoardClient({
   }, [apiClient, selectedCardId]);
 
   const handlePrimaryAction = useCallback(
-    async (cardId: string, actionCode: ActionCode) => {
+    async (cardId: string, actionCode: ActionCode, reason?: ActionReasonInput) => {
       const item = items.find((candidate) => candidate.card.card_id === cardId);
       if (!item || action.phase === ActionPhase.SUBMITTING) return;
-      const detailVersion =
-        selectedDetail?.card.card_id === cardId ? selectedDetail.server_version : undefined;
+      const activeDetail = selectedDetail?.card.card_id === cardId ? selectedDetail : undefined;
+      const activeNextAction = activeDetail?.next_action ?? item.next_action;
+      const detailVersion = activeDetail?.server_version;
+      const reasonCode = reason?.reason_code.trim();
+      const reasonNote = reason?.reason_note?.trim();
+
+      if (activeNextAction.reason_required && !reasonCode) {
+        setSelectedDetail(null);
+        setDetailError(undefined);
+        setSelectedCardId(cardId);
+        setActionError('理由を選択してください。');
+        return;
+      }
 
       setActionError(undefined);
       try {
@@ -411,9 +423,11 @@ export function BoardClient({
             action_code: actionCode,
             idempotency_key: buildIdempotencyKey(cardId, actionCode),
             client_version: detailVersion ?? item.card.server_version,
+            ...(reasonCode ? { reason_code: reasonCode } : {}),
+            ...(reasonNote ? { reason_note: reasonNote } : {}),
           },
           {
-            offline_allowed: item.next_action.offline_allowed,
+            offline_allowed: activeNextAction.offline_allowed,
             offline_op_class: 'BLOCKING',
           },
         );

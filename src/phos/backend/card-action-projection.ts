@@ -89,15 +89,17 @@ function blockerSideEffects(changes: CardActionBlockerChanges | undefined): Side
   ];
 }
 
-function normalizeNextAction(next_action: NextActionView): NextActionView {
+export function normalizeNextActionView(next_action: NextActionView): NextActionView {
   const uiEnabled =
     next_action.ui_state === ButtonState.ACTIONABLE ||
     next_action.ui_state === ButtonState.RESOLVABLE_BLOCK;
+  const transition = ACTION_TRANSITION_MATRIX[next_action.code];
 
   return {
     ...next_action,
-    kind: ACTION_TRANSITION_MATRIX[next_action.code].kind,
+    kind: transition.kind,
     enabled: uiEnabled,
+    reason_required: 'reason_required' in transition && transition.reason_required === true,
   };
 }
 
@@ -146,7 +148,7 @@ export function projectCardActionResponse(input: CardActionProjectionInput): Act
 
   return {
     card,
-    next_action: normalizeNextAction(input.next_action),
+    next_action: normalizeNextActionView(input.next_action),
     display_status,
     blockers,
     ...(input.visible_tabs ? { visible_tabs: input.visible_tabs } : {}),

@@ -1,10 +1,16 @@
 'use client';
 
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 import { CardTileDims } from '@/phos/contracts/phos_design_tokens';
-import { PhosActionLabel } from '@/phos/contracts/phos_copy.ja';
+import { PhosActionLabel, PhosRejectReasonLabel } from '@/phos/contracts/phos_copy.ja';
 import { ActionPhase } from '@/phos/contracts/phos_contracts';
-import type { ActionCode, BlockerView, NextActionView } from '@/phos/contracts/phos_contracts';
+import type {
+  ActionCode,
+  ActionReasonInput,
+  BlockerView,
+  NextActionView,
+} from '@/phos/contracts/phos_contracts';
 
 export type NextActionPanelProps = {
   cardId: string;
@@ -12,7 +18,7 @@ export type NextActionPanelProps = {
   blockers: BlockerView[];
   actionPhase?: ActionPhase;
   actionMessage?: string;
-  onExecute(cardId: string, action: ActionCode): void;
+  onExecute(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
 };
 
 export function NextActionPanel({
@@ -23,10 +29,14 @@ export function NextActionPanel({
   actionMessage,
   onExecute,
 }: NextActionPanelProps) {
+  const [reasonCode, setReasonCode] = useState('');
+  const [reasonNote, setReasonNote] = useState('');
   const actionLabel = PhosActionLabel[nextAction.code];
   const blockingCount = blockers.filter((blocker) => blocker.active).length;
   const isSubmitting = actionPhase === ActionPhase.SUBMITTING;
-  const canExecute = nextAction.enabled && !isSubmitting;
+  const reasonRequired = nextAction.reason_required === true;
+  const trimmedReasonNote = reasonNote.trim();
+  const canExecute = nextAction.enabled && !isSubmitting && (!reasonRequired || reasonCode);
 
   return (
     <aside className="space-y-4 rounded-lg border border-border/70 bg-card p-4">
@@ -39,6 +49,39 @@ export function NextActionPanel({
         <div className="flex items-start gap-2 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{actionMessage}</span>
+        </div>
+      ) : null}
+
+      {reasonRequired ? (
+        <div className="space-y-2 rounded-md border border-border/70 bg-background px-3 py-3">
+          <label className="block text-sm font-medium text-foreground" htmlFor={`${cardId}-reason`}>
+            理由
+          </label>
+          <select
+            id={`${cardId}-reason`}
+            className="min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={reasonCode}
+            onChange={(event) => setReasonCode(event.target.value)}
+          >
+            <option value="">選択してください</option>
+            {Object.entries(PhosRejectReasonLabel).map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <label
+            className="block text-sm font-medium text-foreground"
+            htmlFor={`${cardId}-reason-note`}
+          >
+            補足
+          </label>
+          <textarea
+            id={`${cardId}-reason-note`}
+            className="min-h-20 w-full resize-y rounded-md border border-border/70 bg-background px-3 py-2 text-sm text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={reasonNote}
+            onChange={(event) => setReasonNote(event.target.value)}
+          />
         </div>
       ) : null}
 
@@ -56,7 +99,16 @@ export function NextActionPanel({
         }
         onClick={() => {
           if (!canExecute) return;
-          onExecute(cardId, nextAction.code);
+          onExecute(
+            cardId,
+            nextAction.code,
+            reasonRequired
+              ? {
+                  reason_code: reasonCode,
+                  ...(trimmedReasonNote ? { reason_note: trimmedReasonNote } : {}),
+                }
+              : undefined,
+          );
         }}
       >
         <span className="inline-flex items-center justify-center gap-2">

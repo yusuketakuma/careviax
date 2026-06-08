@@ -12,6 +12,7 @@ import {
 import { BlockerSeverity } from '@/phos/contracts/phos_contracts';
 import type {
   ActionCode,
+  ActionReasonInput,
   CardSummaryView,
   NextActionView,
   TagView,
@@ -25,7 +26,7 @@ export type CardTileProps = {
   tags: TagView[];
   selected?: boolean;
   onOpen(cardId: string): void;
-  onPrimaryAction(cardId: string, action: ActionCode): void;
+  onPrimaryAction(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
 };
 
 const SeverityIcon = {

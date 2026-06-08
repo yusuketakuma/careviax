@@ -183,6 +183,27 @@ describe('projectCardActionResponse', () => {
       code: ActionCode.START_DISPENSING,
       kind: ActionKind.INTRA_STEP,
       enabled: true,
+      reason_required: false,
+    });
+  });
+
+  it('adds reason_required metadata from the canonical action transition matrix', () => {
+    const response = projectCardActionResponse({
+      previous_state: state(),
+      command: {
+        action_code: ActionCode.CANCEL_CARD,
+        idempotency_key: 'idem_5',
+        client_version: 3,
+        reason_code: 'OTHER',
+      },
+      server_version: 4,
+      next_action: nextAction({ code: ActionCode.REOPEN_CARD }),
+      display_context: displayContext({ canceled_at: '2026-06-09T00:00:00.000Z' }),
+    });
+
+    expect(response.next_action).toMatchObject({
+      code: ActionCode.REOPEN_CARD,
+      reason_required: true,
     });
   });
 
