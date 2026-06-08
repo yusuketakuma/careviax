@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { PHOS_API_ROUTES } from './api-gateway-routes';
+
+const repoRoot = process.cwd();
+const nextApiRoot = join(repoRoot, 'src/app/api');
+const debtDocPath = join(repoRoot, 'docs/phos-legacy-api-isolation.md');
+
+function listRouteFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    return statSync(path).isDirectory()
+      ? listRouteFiles(path)
+      : path.endsWith(`${sep}route.ts`)
+        ? [path]
+        : [];
+  });
+}
+
+function normalizeSegment(segment: string): string {
+  if (segment.startsWith('[') && segment.endsWith(']')) {
+    return `{${segment.slice(1, -1)}}`;
+  }
+  return segment;
+}
+
+function toNextApiPath(routeFile: string): string {
+  const relativePath = relative(nextApiRoot, routeFile);
+  const segments = relativePath
+    .split(sep)
+    .slice(0, -1)
+    .filter((segment) => !segment.startsWith('__'))
+    .map(normalizeSegment);
+  return `/${segments.join('/')}`;
+}
+
+function pathToRegExp(path: string): RegExp {
+  const pattern = path
+    .split('/')
+    .map((segment) => {
+      if (!segment) return '';
+      if (segment.startsWith('{') && segment.endsWith('}')) return '[^/]+';
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
+    .join('/');
+  return new RegExp(`^${pattern}(?:/|$)`);
+}
+
+describe('PH-OS legacy Next API isolation', () => {
+  it('does not expose canonical PH-OS API Gateway routes as Next.js Route Handlers', () => {
+    const nextApiPaths = new Set(listRouteFiles(nextApiRoot).map(toNextApiPath));
+    const phosPaths = PHOS_API_ROUTES.map((route) => route.path);
+
+    for (const path of phosPaths) {
+      expect(nextApiPaths.has(path), path).toBe(false);
+    }
+  });
+
+  it('does not let Next.js API route subtrees shadow canonical PH-OS API Gateway paths', () => {
+    const nextApiPaths = listRouteFiles(nextApiRoot).map(toNextApiPath);
+
+    for (const route of PHOS_API_ROUTES) {
+      const matcher = pathToRegExp(route.path);
+      const shadowingPaths = nextApiPaths.filter((path) => matcher.test(path));
+      expect(shadowingPaths, route.path).toEqual([]);
+    }
+  });
+
+  it('documents near-overlap legacy routes as non-canonical PH-OS migration debt', () => {
+    const doc = readFileSync(debtDocPath, 'utf8');
+    const documentedLegacyRoutes = [
+      '/api/handoff-board',
+      '/api/visit-records/{id}/handoff',
+      '/api/visit-preparations/{scheduleId}',
+      '/api/visit-schedules',
+      '/api/facility-visit-batches',
+      '/api/care-reports/{id}/send',
+      '/api/care-reports/generate-from-visit',
+      '/api/tracing-reports',
+      '/api/billing-candidates',
+      '/api/billing-rules',
+      '/api/billing-evidence/analytics',
+      '/api/files/presigned-upload',
+      '/api/prescription-intakes',
+      '/api/set-plans',
+      '/api/dispense-tasks',
+      '/api/dashboard/workflow',
+    ];
+
+    for (const route of documentedLegacyRoutes) {
+      expect(doc).toContain(route);
+    }
+    expect(doc).toContain('API Gateway + Lambda');
+    expect(doc.replace(/\s+/g, ' ')).toContain('not the canonical PH-OS v1.1 API boundary');
+  });
+});

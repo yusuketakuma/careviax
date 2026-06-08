@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-072530
+
+- current task: audit and gate legacy Next API route isolation for PH-OS canonical API Gateway/Lambda migration
+- files inspected: `git status --short`, `find src/app/api -name route.ts`, `src/phos/infra/api-gateway-routes.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, existing API route listings for handoff, visit, report, billing, evidence/upload, prescription, set, dispense, and dashboard workflow routes, and read-only subagent audit findings for exact/near-overlap legacy routes
+- files changed: `docs/phos-legacy-api-isolation.md`, `src/phos/infra/legacy-next-api-isolation.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: there was no executable guard proving that future `src/app/api/**/route.ts` additions cannot exactly overlap or shadow canonical PH-OS API Gateway paths. PR-15 also required refactoring debt to be documented, but legacy Next API near-overlaps were not yet captured as explicit non-canonical migration debt.
+- security risks found: the new isolation gate enumerates all Next.js Route Handlers, normalizes App Router dynamic segments to PH-OS `{param}` style, and fails if any canonical PH-OS manifest path is implemented or shadowed under `src/app/api`. The debt document marks near-overlap legacy routes as non-canonical, keeping PH-OS UI/app code on API Gateway/Lambda instead of falling back to dashboard `x-org-id`/Prisma routes.
+- performance issues found: no runtime behavior changed. The added route isolation check is test-time filesystem enumeration only and adds no application query, network, Scan, polling, render, or database cost.
+- validation commands: focused `pnpm exec vitest run src/phos/infra/legacy-next-api-isolation.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for `CANCELLED`, removed helper/type names, planned route markers, PH-OS UI/app Next `/api` usage, and obsolete direct authorization helpers; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; `pnpm build`
+- validation results: focused legacy isolation gate passed with 2 files / 20 tests; TypeScript passed; PH-OS plus auth focused Vitest passed with 81 files / 386 tests; ESLint passed; whitespace diff check passed; no-go grep returned zero for `CANCELLED`, removed helper/type names, planned route markers, PH-OS UI/app Next `/api` usage, and obsolete direct authorization helpers; `disabled` grep only finds the static prohibition test and a test proving no disabled attribute is used; production build passed.
+- remaining work: no exact duplicate Next.js route was found for PH-OS canonical API Gateway paths, so there was no safe route deletion in this slice. Remaining near-overlap legacy routes are documented migration debt and need future business-by-business cutover decisions before deletion.
+- next action: continue from the PH-OS spec backlog by checking whether any remaining P0 No-Go item lacks a concrete implementation/test gate after the PR-15 and legacy API isolation gates.
+
 ### 20260609-072032
 
 - current task: remove obsolete direct PH-OS authorization helper surface and add PR-15 / Final No-Go gate evidence

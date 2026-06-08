@@ -165,6 +165,16 @@ describe('PH-OS Final No-Go gate', () => {
     }
   });
 
+  it('keeps refactoring debt and legacy API isolation documented for PR review', () => {
+    const doc = readRelative('docs/phos-legacy-api-isolation.md');
+
+    expect(doc).toContain('PH-OS v1.1 business APIs');
+    expect(doc).toContain('Current Legacy Next API Debt');
+    expect(doc).toContain('/api/handoff-board');
+    expect(doc).toContain('/api/care-reports');
+    expect(doc).toContain('/api/billing-candidates');
+  });
+
   it('keeps stale-version and guard-failure behavior non-optimistic in the action hook', () => {
     const hook = readRelative('src/phos/api/usePhosAction.ts');
     const singleLineHook = hook.replace(/\n/g, ' ');
