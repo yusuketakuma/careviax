@@ -9,6 +9,7 @@ import {
 } from '@/phos/contracts/phos_contracts';
 import { PhosEmptyState } from '@/phos/contracts/phos_copy.ja';
 import { SeverityToken } from '@/phos/contracts/phos_design_tokens';
+import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 
 export type CapacityBarProps = {
   capacity?: CapacityResponse;
@@ -54,7 +55,8 @@ export function CapacityBar({ capacity, phase = 'IDLE', errorMessage }: Capacity
     return (
       <section
         aria-label="Capacity error"
-        className="flex items-center gap-2 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-950"
+        className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+        style={warningFeedbackStyle}
       >
         <AlertTriangle className="size-4" aria-hidden="true" />
         <span>{errorMessage ?? '可処分時間を読み込めません'}</span>
@@ -148,9 +150,7 @@ export function CapacityBar({ capacity, phase = 'IDLE', errorMessage }: Capacity
               {capacity.work_buckets.map((bucket) => (
                 <tr key={`bucket-${bucket.bucket_code}`}>
                   <td className="border-b border-border/50 py-2 pr-3">{bucket.label}</td>
-                  <td className="border-b border-border/50 py-2 pr-3">
-                    {bucket.planned_minutes}
-                  </td>
+                  <td className="border-b border-border/50 py-2 pr-3">{bucket.planned_minutes}</td>
                   <td className="border-b border-border/50 py-2 pr-3">
                     {bucket.available_minutes}
                   </td>
@@ -164,12 +164,8 @@ export function CapacityBar({ capacity, phase = 'IDLE', errorMessage }: Capacity
                   <td className="border-b border-border/50 py-2 pr-3">
                     {staff.display_name} / {staff.active_card_count}件
                   </td>
-                  <td className="border-b border-border/50 py-2 pr-3">
-                    {staff.planned_minutes}
-                  </td>
-                  <td className="border-b border-border/50 py-2 pr-3">
-                    {staff.available_minutes}
-                  </td>
+                  <td className="border-b border-border/50 py-2 pr-3">{staff.planned_minutes}</td>
+                  <td className="border-b border-border/50 py-2 pr-3">{staff.available_minutes}</td>
                   <td className="border-b border-border/50 py-2 pr-3">
                     {staff.utilization_percent}%
                   </td>

@@ -183,6 +183,19 @@ describe('PH-OS Final No-Go gate', () => {
     }
   });
 
+  it('keeps PH-OS feedback colors on design tokens instead of direct Tailwind color classes', () => {
+    const feedbackClassPattern =
+      /\b(?:border|bg|text)-(?:red|amber|emerald|sky)(?:-\d{2,3})?(?:\/\d{2,3})?\b/;
+
+    for (const root of [join(canonicalRoot, 'ui'), phosAppRoot]) {
+      for (const file of listFiles(root).filter((path) => path.endsWith('.tsx'))) {
+        const relativePath = relative(repoRoot, file);
+        const content = readFileSync(file, 'utf8');
+        expect(content, relativePath).not.toMatch(feedbackClassPattern);
+      }
+    }
+  });
+
   it('keeps refactoring debt and legacy API isolation documented for PR review', () => {
     const doc = readRelative('docs/phos-legacy-api-isolation.md');
 

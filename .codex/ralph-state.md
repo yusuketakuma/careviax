@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-081700
+
+- current task: remove PH-OS feedback color code made obsolete by the design-token feedback structure
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/contracts/phos_design_tokens.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, direct PH-OS UI feedback color grep output, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/CapacityBar.tsx`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/workspace/NextActionPanel.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`
+- files changed: `src/phos/ui/feedback/feedbackStyles.ts`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/CapacityBar.tsx`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/workspace/NextActionPanel.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: PH-OS warning and error feedback panels still used direct Tailwind amber border/background/text classes after the feedback structure had moved toward contract design tokens. This left duplicate visual constants scattered across BoardClient, CapacityBar, VisitMode, NextActionPanel, and HandoffPanel, and the PR-15 no-go gate did not prevent the pattern from returning.
+- security risks found: no auth, tenant isolation, route access, request payload, logging, S3, DynamoDB, Aurora, or external-send behavior was changed. The added static gate reduces presentation-layer drift by keeping PH-OS UI feedback colors routed through design tokens instead of ad hoc semantic Tailwind classes.
+- performance issues found: token lookup is a module-level style helper and adds no query, network request, polling, broad render loop, or expensive computation. UI behavior remains local render-only styling.
+- validation commands: Prettier for touched PH-OS UI/feedback/gate files; focused `pnpm exec vitest run src/phos/infra/pr15-final-no-go-gate.test.ts src/phos/ui/board/BoardClient.test.tsx src/phos/ui/board/CapacityBar.test.tsx src/phos/ui/visit/VisitMode.test.tsx src/phos/ui/workspace/NextActionPanel.test.tsx src/phos/ui/workspace/HandoffPanel.test.tsx --reporter=dot`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for removed/forbidden PH-OS markers and obsolete helper names; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; UI policy grep for transition/policy imports; direct PH-OS UI feedback color class grep; production enum-literal grep for SourceRef/claim/handoff status values; `pnpm build`
+- validation results: Prettier completed; focused feedback-token suite passed with 6 files / 67 tests; PH-OS plus auth focused Vitest passed with 82 files / 404 tests; TypeScript passed; PH-OS ESLint passed with zero warnings; whitespace diff check passed; no-go grep returned zero for removed/forbidden PH-OS markers and obsolete helper names; `disabled` grep only finds the static prohibition test and tests proving no disabled attribute is used; UI policy grep returned zero for presentation components; direct PH-OS UI feedback color class grep returned zero; production enum-literal grep remains contract-only for the targeted values; production build passed.
+- remaining work: this slice closes the direct feedback color cleanup/gating gap. Broader PH-OS Final No-Go work should continue with any remaining uncovered runtime proof or migration-debt items from the spec backlog.
+- next action: commit this feedback-token cleanup slice, then continue the remaining PH-OS Final No-Go backlog if requested.
+
 ### 20260609-081120
 
 - current task: close PH-OS Final No-Go reason-required action UI gap without moving policy logic into presentation components

@@ -9,6 +9,7 @@ import {
 import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type { ActionCode, HandoffView, SourceRef } from '@/phos/contracts/phos_contracts';
 import { sortHandoffQueue } from '@/phos/domain/handoff/handoffLifecycle';
+import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 
 export type HandoffCreateInput = {
   reason_code: string;
@@ -130,7 +131,11 @@ export function HandoffPanel({
                 ))}
               </select>
               <SourceRefList sources={createSources} />
-              {createError ? <p className="mt-2 text-sm text-amber-950">{createError}</p> : null}
+              {createError ? (
+                <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                  {createError}
+                </p>
+              ) : null}
               <button
                 type="button"
                 className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -256,7 +261,11 @@ export function HandoffPanel({
                         setError(undefined);
                       }}
                     />
-                    {error ? <p className="mt-2 text-sm text-amber-950">{error}</p> : null}
+                    {error ? (
+                      <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                        {error}
+                      </p>
+                    ) : null}
                     <button
                       type="button"
                       className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"

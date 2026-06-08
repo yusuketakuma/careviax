@@ -6,6 +6,7 @@ import { PhosVisitArrivalOutcomeLabel, PhosVisitStepLabel } from '@/phos/contrac
 import { ActionPhase, VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
 import type { EvidencePendingView, VisitModeView } from '@/phos/contracts/phos_contracts';
 import { canCompleteVisit } from '@/phos/domain/visit/resolveVisitMode';
+import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 
 export type VisitModeProps = {
   visit: VisitModeView;
@@ -81,7 +82,7 @@ export function VisitMode({
             {visit.online ? 'オンライン' : 'オフライン'}
           </span>
           {blockingUnsyncedCount > 0 ? (
-            <span className="rounded-md border border-amber-200/80 bg-amber-50/80 px-2 py-1 text-amber-950">
+            <span className="rounded-md border px-2 py-1" style={warningFeedbackStyle}>
               必須未同期 {blockingUnsyncedCount}件
             </span>
           ) : null}
@@ -132,7 +133,9 @@ export function VisitMode({
                 }}
               />
               {cancelReasonError ? (
-                <p className="mt-2 text-sm text-amber-950">{cancelReasonError}</p>
+                <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                  {cancelReasonError}
+                </p>
               ) : null}
               <button
                 type="button"
@@ -183,7 +186,10 @@ export function VisitMode({
       </ol>
 
       {!visit.online ? (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
+        <div
+          className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+          style={warningFeedbackStyle}
+        >
           <CloudOff className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>オフライン中です。証跡は未同期として保持されます。</span>
         </div>

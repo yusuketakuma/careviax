@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { CardTileDims } from '@/phos/contracts/phos_design_tokens';
 import { PhosActionLabel, PhosRejectReasonLabel } from '@/phos/contracts/phos_copy.ja';
 import { ActionPhase } from '@/phos/contracts/phos_contracts';
+import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 import type {
   ActionCode,
   ActionReasonInput,
@@ -46,7 +47,10 @@ export function NextActionPanel({
       </div>
 
       {actionMessage ? (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
+        <div
+          className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+          style={warningFeedbackStyle}
+        >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{actionMessage}</span>
         </div>

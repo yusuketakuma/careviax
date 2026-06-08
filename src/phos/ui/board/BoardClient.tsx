@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
   ActionPhase,
   BoardQuickFilter,
@@ -38,6 +37,7 @@ import { countBoardFilters, selectBoardItems } from '@/phos/domain/board/boardFi
 import { ClerkSupportWorkbench } from '@/phos/ui/handoff/ClerkSupportWorkbench';
 import { HandoffQueue } from '@/phos/ui/handoff/HandoffQueue';
 import { ReportDeliveryQueue } from '@/phos/ui/report/ReportDeliveryQueue';
+import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 import { appendPhosToast, PhosToastRegion } from '@/phos/ui/feedback/PhosToastRegion';
 import type { PhosToastInput, PhosToastEntry } from '@/phos/ui/feedback/PhosToastRegion';
 import type {
@@ -720,10 +720,8 @@ export function BoardClient({
     <div className="space-y-4">
       <PhosToastRegion toasts={toasts} />
       <div
-        className={cn(
-          'flex flex-col gap-2 rounded-lg border border-border/70 bg-card px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between',
-          displayPhase === 'ERROR' ? 'border-amber-200/80 bg-amber-50/80' : null,
-        )}
+        className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+        style={displayPhase === 'ERROR' ? warningFeedbackStyle : undefined}
       >
         <div className="flex items-center gap-2 font-medium text-foreground">
           {displayPhase === 'LOADING' ? (
@@ -745,23 +743,23 @@ export function BoardClient({
       </div>
 
       {actionError ? (
-        <div className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-lg border px-4 py-3 text-sm" style={warningFeedbackStyle}>
           {actionError}
         </div>
       ) : null}
       {handoffError ? (
-        <div className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-lg border px-4 py-3 text-sm" style={warningFeedbackStyle}>
           {handoffError}
         </div>
       ) : null}
       {reportDeliveryError ? (
-        <div className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-lg border px-4 py-3 text-sm" style={warningFeedbackStyle}>
           {reportDeliveryError}
         </div>
       ) : null}
 
       {displayPhase === 'ERROR' ? (
-        <div className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-lg border px-4 py-3 text-sm" style={warningFeedbackStyle}>
           {displayErrorMessage}
         </div>
       ) : (
