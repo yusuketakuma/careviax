@@ -187,6 +187,19 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects clearing the due date while the rental remains open', async () => {
+    const response = await PATCH(createRequest({ due_at: null }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '貸出中・予定・延滞のPCAポンプには返却予定日が必須です',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects marking a rental returned without a returned date', async () => {
     const response = await PATCH(createRequest({ status: 'returned' }), {
       params: Promise.resolve({ id: 'rental_1' }),

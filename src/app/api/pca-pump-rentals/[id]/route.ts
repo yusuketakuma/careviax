@@ -91,6 +91,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
   const effectiveStatus = parsed.data.status ?? existing.status;
+  if (
+    (effectiveStatus === 'scheduled' ||
+      effectiveStatus === 'active' ||
+      effectiveStatus === 'overdue') &&
+    !effectiveDueAt
+  ) {
+    return validationError('貸出中・予定・延滞のPCAポンプには返却予定日が必須です', {
+      due_at: ['貸出中・予定・延滞のPCAポンプには返却予定日が必須です'],
+    });
+  }
   if (effectiveStatus === 'returned' && !effectiveReturnedAt) {
     return validationError('返却済みにする場合は返却日が必須です', {
       returned_at: ['返却済みにする場合は返却日が必須です'],

@@ -67,4 +67,24 @@ describe('pca-pump-rental validations', () => {
       rental_fee_yen: 12000,
     });
   });
+
+  it('requires a due date for open PCA pump rentals', () => {
+    expect(
+      createPcaPumpRentalSchema.safeParse({
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        status: 'active',
+        rented_at: '2026-06-10',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createPcaPumpRentalSchema.safeParse({
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        status: 'cancelled',
+        rented_at: '2026-06-10',
+      }).success,
+    ).toBe(true);
+  });
 });

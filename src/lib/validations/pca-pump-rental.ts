@@ -19,6 +19,7 @@ export const updatePcaPumpSchema = createPcaPumpSchema.partial();
 
 function validateRentalDateOrder(
   value: {
+    status?: 'scheduled' | 'active' | 'overdue' | 'returned' | 'cancelled' | null;
     rented_at?: string | null;
     due_at?: string | null;
     returned_at?: string | null;
@@ -41,6 +42,23 @@ function validateRentalDateOrder(
   }
 }
 
+function validateCreateRentalLifecycle(
+  value: {
+    status?: 'scheduled' | 'active' | 'overdue' | 'returned' | 'cancelled' | null;
+    due_at?: string | null;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const status = value.status ?? 'active';
+  if ((status === 'scheduled' || status === 'active' || status === 'overdue') && !value.due_at) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['due_at'],
+      message: '貸出中・予定・延滞のPCAポンプには返却予定日が必須です',
+    });
+  }
+}
+
 export const createPcaPumpRentalSchema = z
   .object({
     pump_id: z.string().trim().min(1, 'PCAポンプIDは必須です'),
@@ -54,7 +72,10 @@ export const createPcaPumpRentalSchema = z
     rental_fee_yen: z.number().int().min(0).optional().nullable(),
     notes: optionalTextSchema,
   })
-  .superRefine(validateRentalDateOrder);
+  .superRefine((value, ctx) => {
+    validateRentalDateOrder(value, ctx);
+    validateCreateRentalLifecycle(value, ctx);
+  });
 
 export const updatePcaPumpRentalSchema = z
   .object({

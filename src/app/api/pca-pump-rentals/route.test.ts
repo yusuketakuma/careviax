@@ -231,6 +231,27 @@ describe('/api/pca-pump-rentals', () => {
     });
   });
 
+  it('rejects open rentals without a due date', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        status: 'active',
+        rented_at: '2026-06-10',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        due_at: ['貸出中・予定・延滞のPCAポンプには返却予定日が必須です'],
+      },
+    });
+    expect(pcaPumpFindFirstMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a rental if the pump cannot be claimed inside the transaction', async () => {
     pcaPumpUpdateManyMock.mockResolvedValue({ count: 0 });
 
@@ -239,6 +260,7 @@ describe('/api/pca-pump-rentals', () => {
         pump_id: 'pump_1',
         institution_id: 'institution_1',
         rented_at: '2026-06-10',
+        due_at: '2026-06-20',
       }),
     );
 
@@ -261,6 +283,7 @@ describe('/api/pca-pump-rentals', () => {
         pump_id: 'pump_1',
         institution_id: 'institution_1',
         rented_at: '2026-06-10',
+        due_at: '2026-06-20',
       }),
     );
 
@@ -278,6 +301,7 @@ describe('/api/pca-pump-rentals', () => {
         pump_id: 'pump_1',
         institution_id: 'institution_1',
         rented_at: '2026-06-10',
+        due_at: '2026-06-20',
       }),
     );
 
