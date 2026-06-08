@@ -4,6 +4,7 @@ import type { EvidenceUploadPresigner } from './evidence-handlers';
 import {
   createEvidencePresignUploadLambdaHandler,
   createEvidenceUploadPresigner,
+  evidencePresignUploadHandler,
 } from './evidence-lambda';
 import type { PhosHttpEvent } from './lambda-handler';
 
@@ -91,6 +92,29 @@ describe('PH-OS evidence Lambda composition', () => {
       expect(() => createEvidenceUploadPresigner()).toThrow(
         'PH-OS evidence S3 bucket is not configured',
       );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET = previous;
+      }
+    }
+  });
+
+  it('rejects tenant_id query at the Lambda boundary before default S3 configuration is read', async () => {
+    const previous = process.env.PHOS_EVIDENCE_BUCKET;
+    delete process.env.PHOS_EVIDENCE_BUCKET;
+
+    try {
+      const response = await evidencePresignUploadHandler(
+        event({ queryStringParameters: { tenant_id: 'tenant_other' } }),
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+        details: { source: 'query' },
+      });
     } finally {
       if (previous === undefined) {
         delete process.env.PHOS_EVIDENCE_BUCKET;

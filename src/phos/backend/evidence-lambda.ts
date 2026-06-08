@@ -41,6 +41,18 @@ export function createEvidenceUploadPresigner(
   });
 }
 
+function createLazyEvidenceUploadPresigner(
+  deps: EvidenceLambdaDependencies = {},
+): EvidenceUploadPresigner {
+  let presigner: EvidenceUploadPresigner | undefined;
+  return {
+    presignPut(input) {
+      presigner ??= createEvidenceUploadPresigner(deps);
+      return presigner.presignPut(input);
+    },
+  };
+}
+
 export function createEvidenceUploadIntentStore(
   deps: EvidenceLambdaDependencies = {},
 ): EvidenceUploadIntentStore {
@@ -51,12 +63,24 @@ export function createEvidenceUploadIntentStore(
   });
 }
 
+function createLazyEvidenceUploadIntentStore(
+  deps: EvidenceLambdaDependencies = {},
+): EvidenceUploadIntentStore {
+  let store: EvidenceUploadIntentStore | undefined;
+  return {
+    recordUploadIntent(ctx, input) {
+      store ??= createEvidenceUploadIntentStore(deps);
+      return store.recordUploadIntent(ctx, input);
+    },
+  };
+}
+
 export function createEvidencePresignUploadLambdaHandler(deps: EvidenceLambdaDependencies = {}) {
   return withTenantContext(
-    createEvidencePresignUploadHandler(createEvidenceUploadPresigner(deps), {
+    createEvidencePresignUploadHandler(createLazyEvidenceUploadPresigner(deps), {
       generateEvidenceId: deps.generateEvidenceId,
       max_size_bytes: deps.max_size_bytes,
-      upload_intent_store: createEvidenceUploadIntentStore(deps),
+      upload_intent_store: createLazyEvidenceUploadIntentStore(deps),
     }),
     {
       observability: createLambdaObservabilitySink(deps),

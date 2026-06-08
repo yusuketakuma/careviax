@@ -28,8 +28,23 @@ export function createFeeRulesRepository(
   });
 }
 
+function createLazyFeeRulesRepository(
+  deps: FeeRulesLambdaDependencies = {},
+): PhosFeeRulesRepository {
+  let repository: PhosFeeRulesRepository | undefined;
+  return {
+    searchFeeRules(ctx, query) {
+      repository ??= createFeeRulesRepository(deps);
+      return repository.searchFeeRules(ctx, query);
+    },
+  };
+}
+
 export function createFeeRuleSearchLambdaHandler(deps: FeeRulesLambdaDependencies = {}) {
-  return withTenantContext(createFeeRuleSearchHandler(createFeeRulesRepository(deps)), {
+  const repository = deps.repository
+    ? createFeeRulesRepository(deps)
+    : createLazyFeeRulesRepository(deps);
+  return withTenantContext(createFeeRuleSearchHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { QueryResultRow } from 'pg';
 import { UserRole } from '@/phos/contracts/phos_contracts';
-import { createFeeRuleSearchLambdaHandler, createFeeRulesRepository } from './fee-rules-lambda';
+import {
+  createFeeRuleSearchLambdaHandler,
+  createFeeRulesRepository,
+  feeRuleSearchHandler,
+} from './fee-rules-lambda';
 import type { AuroraFeeRulesClient } from './aurora-fee-rules-repository';
 
 function event() {
@@ -103,6 +107,34 @@ describe('fee-rules lambda composition', () => {
       expect(() => createFeeRulesRepository()).toThrow(
         'PH-OS FeeRule Aurora database URL is not configured',
       );
+    } finally {
+      if (previousAuroraUrl === undefined) {
+        delete process.env.PHOS_AURORA_DATABASE_URL;
+      } else {
+        process.env.PHOS_AURORA_DATABASE_URL = previousAuroraUrl;
+      }
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
+  it('rejects tenant_id query at the Lambda boundary before default Aurora configuration is read', async () => {
+    const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.PHOS_AURORA_DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      const response = await feeRuleSearchHandler(eventWithTenantQuery());
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+        details: { source: 'query' },
+      });
     } finally {
       if (previousAuroraUrl === undefined) {
         delete process.env.PHOS_AURORA_DATABASE_URL;
