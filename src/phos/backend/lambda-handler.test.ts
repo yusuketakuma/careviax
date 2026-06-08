@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withTenantContext } from './lambda-handler';
+import { createInMemoryObservabilitySink, hashTenantId } from './observability';
 
 const validEvent = {
   routeKey: 'GET /cards',
@@ -25,11 +26,15 @@ describe('withTenantContext', () => {
   });
 
   it('passes TenantContext to the wrapped handler', async () => {
-    const handler = withTenantContext(async ({ ctx }) => ({
-      request_id: ctx.request_id,
-      tenant_id: ctx.tenant_id,
-      user_id: ctx.user_id,
-    }));
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(
+      async ({ ctx }) => ({
+        request_id: ctx.request_id,
+        tenant_id: ctx.tenant_id,
+        user_id: ctx.user_id,
+      }),
+      { observability },
+    );
 
     const response = await handler(validEvent);
 
@@ -39,15 +44,30 @@ describe('withTenantContext', () => {
       tenant_id: 'tenant_abc123',
       user_id: 'user_001',
     });
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'RequestLatencyMs',
+        route_key: 'GET /cards',
+        tenant_id: 'tenant_abc123',
+      }),
+    );
+    expect(observability.annotations).toContainEqual({
+      route_key: 'GET /cards',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+    });
   });
 
   it('rejects tenant_id in body before handler execution', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const observability = createInMemoryObservabilitySink();
     let called = false;
-    const handler = withTenantContext(async () => {
-      called = true;
-      return {};
-    });
+    const handler = withTenantContext(
+      async () => {
+        called = true;
+        return {};
+      },
+      { observability },
+    );
 
     const response = await handler({
       ...validEvent,
@@ -70,6 +90,29 @@ describe('withTenantContext', () => {
         user_id: 'UNKNOWN',
         request_id: 'req_1',
         correlation_id: 'req_1',
+        route_key: 'GET /cards',
+        error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+        details: { source: 'body' },
+      }),
+    );
+    expect(observability.metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'TenantBoundaryRejectedCount',
+          route_key: 'GET /cards',
+          error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+        }),
+        expect.objectContaining({
+          name: 'CrossTenantAttemptCount',
+          route_key: 'GET /cards',
+          error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+        }),
+      ]),
+    );
+    expect(observability.security_events).toContainEqual(
+      expect.objectContaining({
+        event_type: 'TENANT_BOUNDARY_REJECTED',
+        request_id: 'req_1',
         route_key: 'GET /cards',
         error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
         details: { source: 'body' },
@@ -111,9 +154,13 @@ describe('withTenantContext', () => {
 
   it('logs unhandled handler failures with tenant context before returning INTERNAL_ERROR', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const handler = withTenantContext(async () => {
-      throw new Error('database unavailable');
-    });
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(
+      async () => {
+        throw new Error('database unavailable');
+      },
+      { observability },
+    );
 
     const response = await handler(validEvent);
 
@@ -133,5 +180,20 @@ describe('withTenantContext', () => {
       route_key: 'GET /cards',
       error_code: 'INTERNAL_ERROR',
     });
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'InternalErrorCount',
+        route_key: 'GET /cards',
+        tenant_id: 'tenant_abc123',
+        error_code: 'INTERNAL_ERROR',
+      }),
+    );
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'GET /cards',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        error_code: 'INTERNAL_ERROR',
+      }),
+    );
   });
 });

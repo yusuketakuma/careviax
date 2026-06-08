@@ -104,6 +104,36 @@ function logEvidencePresign(input: {
   );
 }
 
+function emitEvidenceUploadFailed(input: {
+  ctx: TenantContext;
+  error_code: string;
+  card_id?: string;
+}) {
+  input.ctx.observability?.emitMetric({
+    name: 'EvidenceUploadFailedCount',
+    value: 1,
+    unit: 'Count',
+    route_key: 'POST /evidence/presign-upload',
+    tenant_id: input.ctx.tenant_id,
+    error_code: input.error_code,
+  });
+  if (input.error_code === 'FORBIDDEN') {
+    input.ctx.observability?.recordSecurityEvent({
+      event_type: 'EVIDENCE_UPLOAD_REJECTED',
+      severity: 'WARNING',
+      tenant_id: input.ctx.tenant_id,
+      user_id: input.ctx.user_id,
+      request_id: input.ctx.request_id,
+      correlation_id: input.ctx.correlation_id,
+      route_key: 'POST /evidence/presign-upload',
+      error_code: input.error_code,
+      details: {
+        card_id: input.card_id ?? null,
+      },
+    });
+  }
+}
+
 export function createEvidencePresignUploadHandler(
   presigner: EvidenceUploadPresigner,
   options: {
@@ -147,12 +177,15 @@ export function createEvidencePresignUploadHandler(
     } catch (error) {
       if (error instanceof PhosAuthorizationError) {
         logEvidencePresign({ ctx, error_code: 'FORBIDDEN' });
+        emitEvidenceUploadFailed({ ctx, error_code: 'FORBIDDEN' });
         return forbiddenError(ctx, error);
       }
       if (error instanceof TenantStorageKeyError) {
         logEvidencePresign({ ctx, error_code: 'VALIDATION_ERROR' });
+        emitEvidenceUploadFailed({ ctx, error_code: 'VALIDATION_ERROR' });
         return validationError(ctx, { reason: error.message });
       }
+      emitEvidenceUploadFailed({ ctx, error_code: 'INTERNAL_ERROR' });
       throw error;
     }
   };

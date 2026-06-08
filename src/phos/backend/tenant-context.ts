@@ -1,5 +1,6 @@
 import { UserRole } from '@/phos/contracts/phos_contracts';
 import type { ErrorResponse, UserRole as UserRoleType } from '@/phos/contracts/phos_contracts';
+import type { PhosObservabilitySink } from './observability';
 
 export type TenantContext = {
   tenant_id: string;
@@ -8,6 +9,7 @@ export type TenantContext = {
   request_id: string;
   correlation_id: string;
   scopes: string[];
+  observability?: PhosObservabilitySink;
 };
 
 export type JwtClaims = Record<string, unknown>;
@@ -59,6 +61,7 @@ export function buildTenantContext(input: {
   claims: JwtClaims;
   request_id: string;
   correlation_id?: string;
+  observability?: PhosObservabilitySink;
 }): TenantContext {
   const tenant_id =
     readStringClaim(input.claims, 'tenant_id') ?? readStringClaim(input.claims, 'custom:tenant_id');
@@ -107,6 +110,7 @@ export function buildTenantContext(input: {
     request_id: input.request_id,
     correlation_id: input.correlation_id ?? input.request_id,
     scopes: readScopes(input.claims),
+    ...(input.observability ? { observability: input.observability } : {}),
   };
 }
 

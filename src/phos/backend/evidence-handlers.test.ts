@@ -5,6 +5,7 @@ import {
 } from './evidence-handlers';
 import { withTenantContext } from './lambda-handler';
 import type { PhosHttpEvent } from './lambda-handler';
+import { createInMemoryObservabilitySink } from './observability';
 
 const baseBody = {
   card_id: 'card_1',
@@ -135,8 +136,10 @@ describe('PH-OS evidence presign upload handler', () => {
 
   it('rejects oversized uploads before presigning', async () => {
     const fakePresigner = presigner();
+    const observability = createInMemoryObservabilitySink();
     const handler = withTenantContext(
       createEvidencePresignUploadHandler(fakePresigner, { max_size_bytes: 100 }),
+      { observability },
     );
 
     const response = await handler(event());
@@ -147,11 +150,22 @@ describe('PH-OS evidence presign upload handler', () => {
       details: { reason: 'size_bytes exceeds max upload size' },
     });
     expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'EvidenceUploadFailedCount',
+        route_key: 'POST /evidence/presign-upload',
+        tenant_id: 'tenant_abc123',
+        error_code: 'VALIDATION_ERROR',
+      }),
+    );
   });
 
   it('requires evidence write scope', async () => {
     const fakePresigner = presigner();
-    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner));
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner), {
+      observability,
+    });
 
     const response = await handler(
       event({
@@ -178,5 +192,53 @@ describe('PH-OS evidence presign upload handler', () => {
       details: { missing_scopes: ['phos/evidence.write'] },
     });
     expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(observability.metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'AuthorizationDeniedCount',
+          error_code: 'FORBIDDEN',
+        }),
+        expect.objectContaining({
+          name: 'EvidenceUploadFailedCount',
+          error_code: 'FORBIDDEN',
+        }),
+      ]),
+    );
+    expect(observability.security_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'AUTHORIZATION_DENIED',
+          error_code: 'FORBIDDEN',
+        }),
+        expect.objectContaining({
+          event_type: 'EVIDENCE_UPLOAD_REJECTED',
+          error_code: 'FORBIDDEN',
+        }),
+      ]),
+    );
+  });
+
+  it('emits an upload failure metric when presigning throws', async () => {
+    const fakePresigner: EvidenceUploadPresigner = {
+      presignPut: vi.fn(async () => {
+        throw new Error('s3 unavailable');
+      }),
+    };
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner), {
+      observability,
+    });
+
+    const response = await handler(event());
+
+    expect(response.statusCode).toBe(500);
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'EvidenceUploadFailedCount',
+        route_key: 'POST /evidence/presign-upload',
+        tenant_id: 'tenant_abc123',
+        error_code: 'INTERNAL_ERROR',
+      }),
+    );
   });
 });

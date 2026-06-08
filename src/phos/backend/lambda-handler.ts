@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { toErrorLambdaResponse, toLambdaJsonResponse } from './error-response';
 import type { PhosLambdaResponse } from './error-response';
+import {
+  createConsoleObservabilitySink,
+  hashTenantId,
+  type PhosObservabilitySink,
+} from './observability';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import {
   assertTenantIdNotInExternalInput,
@@ -34,6 +39,11 @@ export type PhosHandlerInput = {
 };
 
 export type PhosHandler = (input: PhosHandlerInput) => Promise<unknown | PhosLambdaResponse>;
+
+export type PhosLambdaOptions = {
+  observability?: PhosObservabilitySink;
+  now?: () => Date;
+};
 
 function readHeader(
   headers: Record<string, string | undefined> | undefined,
@@ -72,6 +82,79 @@ function routeKey(event: PhosHttpEvent): string {
   return event.routeKey ?? event.rawPath ?? 'UNKNOWN_ROUTE';
 }
 
+function emitBoundaryObservability(input: {
+  observability: PhosObservabilitySink;
+  event: PhosHttpEvent;
+  ctx?: TenantContext;
+  request_id: string;
+  correlation_id: string;
+  error_code: string;
+  details?: Record<string, unknown>;
+}) {
+  const route_key = routeKey(input.event);
+  if (input.error_code === 'TENANT_ID_IN_PAYLOAD_FORBIDDEN') {
+    input.observability.emitMetric({
+      name: 'TenantBoundaryRejectedCount',
+      value: 1,
+      unit: 'Count',
+      route_key,
+      error_code: input.error_code,
+    });
+    input.observability.emitMetric({
+      name: 'CrossTenantAttemptCount',
+      value: 1,
+      unit: 'Count',
+      route_key,
+      error_code: input.error_code,
+    });
+    input.observability.recordSecurityEvent({
+      event_type: 'TENANT_BOUNDARY_REJECTED',
+      severity: 'ERROR',
+      ...(input.ctx ? { tenant_id: input.ctx.tenant_id, user_id: input.ctx.user_id } : {}),
+      request_id: input.request_id,
+      correlation_id: input.correlation_id,
+      route_key,
+      error_code: input.error_code,
+      details: input.details,
+    });
+  }
+  if (input.error_code === 'INTERNAL_ERROR') {
+    input.observability.emitMetric({
+      name: 'InternalErrorCount',
+      value: 1,
+      unit: 'Count',
+      route_key,
+      ...(input.ctx ? { tenant_id: input.ctx.tenant_id } : {}),
+      error_code: input.error_code,
+    });
+  }
+  input.observability.annotateTrace({
+    route_key,
+    ...(input.ctx ? { tenant_id_hash: hashTenantId(input.ctx.tenant_id) } : {}),
+    error_code: input.error_code,
+  });
+}
+
+function emitSuccessObservability(input: {
+  observability: PhosObservabilitySink;
+  event: PhosHttpEvent;
+  ctx: TenantContext;
+  latency_ms: number;
+}) {
+  const route_key = routeKey(input.event);
+  input.observability.emitMetric({
+    name: 'RequestLatencyMs',
+    value: input.latency_ms,
+    unit: 'Milliseconds',
+    route_key,
+    tenant_id: input.ctx.tenant_id,
+  });
+  input.observability.annotateTrace({
+    route_key,
+    tenant_id_hash: hashTenantId(input.ctx.tenant_id),
+  });
+}
+
 function logBoundaryError(input: {
   event: PhosHttpEvent;
   ctx?: TenantContext;
@@ -107,8 +190,10 @@ function logBoundaryError(input: {
   });
 }
 
-export function withTenantContext(handler: PhosHandler) {
+export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptions = {}) {
   return async (event: PhosHttpEvent) => {
+    const observability = options.observability ?? createConsoleObservabilitySink();
+    const start = options.now?.() ?? new Date();
     const request_id = event.requestContext?.requestId ?? randomUUID();
     const correlation_id = readHeader(event.headers, 'x-correlation-id') ?? request_id;
     let ctx: TenantContext | undefined;
@@ -126,9 +211,16 @@ export function withTenantContext(handler: PhosHandler) {
         claims: event.requestContext?.authorizer?.jwt?.claims ?? {},
         request_id,
         correlation_id,
+        observability,
       });
 
       const result = await handler({ event, ctx, body });
+      emitSuccessObservability({
+        observability,
+        event,
+        ctx,
+        latency_ms: (options.now?.() ?? new Date()).getTime() - start.getTime(),
+      });
       if (isLambdaResponse(result)) return result;
       return toLambdaJsonResponse(200, result);
     } catch (error) {
@@ -141,10 +233,27 @@ export function withTenantContext(handler: PhosHandler) {
           error_code: error.response.error_code,
           details: error.response.details,
         });
+        emitBoundaryObservability({
+          observability,
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+          error_code: error.response.error_code,
+          details: error.response.details,
+        });
         return toErrorLambdaResponse(error.status, error.response);
       }
 
       logBoundaryError({
+        event,
+        ctx,
+        request_id,
+        correlation_id,
+        error_code: 'INTERNAL_ERROR',
+      });
+      emitBoundaryObservability({
+        observability,
         event,
         ctx,
         request_id,
