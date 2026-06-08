@@ -14,6 +14,8 @@ const {
   qrScanDraftClaimMock,
   qrScanDraftUpdateMock,
   jahisSupplementalRecordUpdateManyMock,
+  jahisSupplementalRecordDeleteManyMock,
+  jahisSupplementalRecordCreateManyMock,
   medicationIssueFindManyMock,
   medicationIssueCreateManyMock,
   broadcastStatusUpdateMock,
@@ -45,6 +47,8 @@ const {
   qrScanDraftClaimMock: vi.fn(),
   qrScanDraftUpdateMock: vi.fn(),
   jahisSupplementalRecordUpdateManyMock: vi.fn(),
+  jahisSupplementalRecordDeleteManyMock: vi.fn(),
+  jahisSupplementalRecordCreateManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
   medicationIssueCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
@@ -138,6 +142,8 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     qrScanDraftClaimMock.mockResolvedValue({ count: 1 });
     qrScanDraftUpdateMock.mockResolvedValue({ id: 'draft_1', status: 'confirmed' });
     jahisSupplementalRecordUpdateManyMock.mockResolvedValue({ count: 1 });
+    jahisSupplementalRecordDeleteManyMock.mockResolvedValue({ count: 0 });
+    jahisSupplementalRecordCreateManyMock.mockResolvedValue({ count: 2 });
     medicationIssueFindManyMock.mockResolvedValue([]);
     medicationIssueCreateManyMock.mockResolvedValue({ count: 1 });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -179,6 +185,17 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
                     rawLine: '421,アムロジピンが10錠残薬。,1',
                   },
                 ],
+                prescriptionInsurance: {
+                  insuranceType: '1',
+                  insurerNumber: '06012345',
+                  symbol: '記号A',
+                  number: '1234567',
+                  branchNumber: '05',
+                  patientCopayRatio: 30,
+                  publicSubsidies: [
+                    { rank: 1, payerNumber: '54123456', recipientNumber: '7654321' },
+                  ],
+                },
               },
             }),
             updateMany: qrScanDraftClaimMock,
@@ -186,6 +203,8 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           },
           jahisSupplementalRecord: {
             updateMany: jahisSupplementalRecordUpdateManyMock,
+            deleteMany: jahisSupplementalRecordDeleteManyMock,
+            createMany: jahisSupplementalRecordCreateManyMock,
           },
           medicationIssue: {
             findMany: medicationIssueFindManyMock,
@@ -351,6 +370,28 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         patient_id: 'patient_1',
         prescription_intake_id: 'intake_1',
       },
+    });
+    expect(jahisSupplementalRecordCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          qr_draft_id: 'draft_1',
+          prescription_intake_id: 'intake_1',
+          record_type: 'prescription_insurance',
+          record_label: '処方QR保険情報',
+          summary: expect.stringContaining('保険者番号 06012345'),
+        }),
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          qr_draft_id: 'draft_1',
+          prescription_intake_id: 'intake_1',
+          record_type: 'prescription_public_subsidy',
+          record_label: '処方QR公費情報',
+          summary: expect.stringContaining('受給者番号 7654321'),
+        }),
+      ],
     });
     expect(medicationIssueFindManyMock).toHaveBeenCalledWith({
       where: {

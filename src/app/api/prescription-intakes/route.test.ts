@@ -823,11 +823,22 @@ describe('/api/prescription-intakes POST', () => {
             rawLine: '421,残薬あり,1',
           },
         ],
+        prescriptionInsurance: {
+          insuranceType: '1',
+          insurerNumber: '06012345',
+          symbol: '記号A',
+          number: '1234567',
+          branchNumber: '05',
+          patientCopayRatio: 30,
+          publicSubsidies: [{ rank: 1, payerNumber: '54123456', recipientNumber: '7654321' }],
+        },
       },
     });
     const qrDraftUpdateMock = vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' });
     const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
     const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const supplementalDeleteManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const supplementalCreateManyMock = vi.fn().mockResolvedValue({ count: 2 });
     const intakeCreateMock = vi.fn().mockResolvedValue({ id: 'intake_qr' });
     const medicationIssueFindManyMock = vi.fn().mockResolvedValue([]);
     const medicationIssueCreateManyMock = vi.fn().mockResolvedValue({ count: 1 });
@@ -841,6 +852,8 @@ describe('/api/prescription-intakes POST', () => {
         },
         jahisSupplementalRecord: {
           updateMany: supplementalUpdateManyMock,
+          deleteMany: supplementalDeleteManyMock,
+          createMany: supplementalCreateManyMock,
         },
         medicationIssue: {
           findMany: medicationIssueFindManyMock,
@@ -939,6 +952,26 @@ describe('/api/prescription-intakes POST', () => {
         patient_id: 'patient_qr',
         prescription_intake_id: 'intake_qr',
       },
+    });
+    expect(supplementalCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_qr',
+          qr_draft_id: 'draft_qr',
+          prescription_intake_id: 'intake_qr',
+          record_type: 'prescription_insurance',
+          record_label: '処方QR保険情報',
+        }),
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_qr',
+          qr_draft_id: 'draft_qr',
+          prescription_intake_id: 'intake_qr',
+          record_type: 'prescription_public_subsidy',
+          record_label: '処方QR公費情報',
+        }),
+      ],
     });
     expect(medicationIssueCreateManyMock).toHaveBeenCalledWith({
       data: [

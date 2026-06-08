@@ -29,8 +29,10 @@ import {
   getAssignedPatientIds,
 } from '@/server/services/prescription-access';
 import {
+  attachJahisPrescriptionInsuranceSidecarToIntake,
   attachJahisSupplementalRecordsToIntake,
   createMedicationIssueCandidatesFromJahisSupplementalRecords,
+  readJahisPrescriptionInsurance,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -559,12 +561,23 @@ export const POST = withAuth(
           }
 
           const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
+          const prescriptionInsurance = readJahisPrescriptionInsurance(
+            parsedData?.prescriptionInsurance,
+          );
           await attachJahisSupplementalRecordsToIntake(tx, {
             orgId: req.orgId,
             patientId: patient_id,
             qrDraftId: qrDraft.id,
             prescriptionIntakeId: intakeResult.intake.id,
             fallbackRecords: supplementalRecords,
+          });
+
+          await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
+            orgId: req.orgId,
+            patientId: patient_id,
+            qrDraftId: qrDraft.id,
+            prescriptionIntakeId: intakeResult.intake.id,
+            prescriptionInsurance,
           });
 
           await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {

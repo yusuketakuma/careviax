@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-170000
+
+- current task: preserve and route prescription QR insurance/public-subsidy metadata as intake sidecar records in both QR confirm paths
+- files inspected: prescription QR parser insurance fields, `JahisSupplementalRecord` model/display usage, QR draft confirm route, normal prescription-intakes QR draft route, supplemental-record service/tests, and DB-backed prescription Playwright flow
+- files changed: `src/server/services/jahis-supplemental-records.ts`, `src/server/services/jahis-supplemental-records.test.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: JAHIS11 prescription QR insurance/public subsidy data was parsed and shown before confirmation, but after confirmation it was not attached to `PrescriptionIntake` as structured sidecar data and could be lost from downstream intake/detail/review surfaces
+- security risks found: insurance/public subsidy metadata is not auto-applied to PatientInsurance or billing eligibility; it is stored as intake-bound sidecar evidence (`prescription_insurance` / `prescription_public_subsidy`) for pharmacist/billing review, preserving QR context without silently mutating payer master data
+- performance issues found: sidecar creation is bounded to one insurance row and up to three public subsidy rows, with a deleteMany/createMany pair only when parsed insurance data exists
+- validation commands: Prettier for touched files; focused Vitest for supplemental service, QR confirm route, and prescription-intakes route; targeted ESLint; `tsc --noEmit`; DB-backed Playwright prescription/QR/dispensing/auditing flow
+- validation results: focused Vitest passed with 3 files / 47 tests; ESLint passed; TypeScript passed; DB-backed Playwright prescription flow passed 10/10
+- remaining work: pharmacist-confirmed OTC candidates still need a review-to-MedicationProfile/CDS flow; allergy/lab structured extraction remains open; PCA return inspection/maintenance/billing lifecycle and external migration checksum planning remain open
+- next action: commit this prescription QR insurance sidecar slice, then continue with allergy/lab extraction or PCA lifecycle/billing.
+
 ### 20260608-165600
 
 - current task: extend QR supplemental clinical routing to OTC/general-drug records and the normal prescription-intake QR draft import path

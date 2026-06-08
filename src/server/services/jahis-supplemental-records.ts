@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { readJsonObject } from '@/lib/db/json';
-import { isSupplementalRecordType, type JahisSupplementalRecord } from '@/lib/pharmacy/jahis-qr';
+import {
+  isSupplementalRecordType,
+  type JahisPrescriptionInsurance,
+  type JahisPrescriptionPublicSubsidy,
+  type JahisSupplementalRecord,
+} from '@/lib/pharmacy/jahis-qr';
 
 const CLINICAL_SUPPLEMENTAL_RECORD_TYPES = new Set(['3', '31', '4', '411', '421', '601']);
 const CLINICAL_NOTE_PATTERN =
@@ -146,6 +151,137 @@ export function readJahisSupplementalRecords(value: unknown): JahisSupplementalR
   });
 }
 
+function readTextField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readNumberField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readPublicSubsidyRank(record: Record<string, unknown>) {
+  const rank = readNumberField(record, 'rank');
+  return rank === 1 || rank === 2 || rank === 3 ? rank : undefined;
+}
+
+export function readJahisPrescriptionInsurance(value: unknown): JahisPrescriptionInsurance | null {
+  const record = readJsonObject(value);
+  if (!record) return null;
+
+  const publicSubsidies = Array.isArray(record.publicSubsidies)
+    ? record.publicSubsidies.flatMap((item): JahisPrescriptionPublicSubsidy[] => {
+        const subsidy = readJsonObject(item);
+        if (!subsidy) return [];
+        const rank = readPublicSubsidyRank(subsidy);
+        const payerNumber = readTextField(subsidy, 'payerNumber');
+        if (rank == null || !payerNumber) return [];
+        return [
+          {
+            rank,
+            payerNumber,
+            recipientNumber: readTextField(subsidy, 'recipientNumber'),
+          },
+        ];
+      })
+    : [];
+
+  const insurance: JahisPrescriptionInsurance = {
+    insuranceType: readTextField(record, 'insuranceType'),
+    insurerNumber: readTextField(record, 'insurerNumber'),
+    symbol: readTextField(record, 'symbol'),
+    number: readTextField(record, 'number'),
+    insuredPersonType: readTextField(record, 'insuredPersonType'),
+    branchNumber: readTextField(record, 'branchNumber'),
+    patientCopayRatio: readNumberField(record, 'patientCopayRatio'),
+    benefitRatio: readNumberField(record, 'benefitRatio'),
+    publicSubsidies,
+  };
+
+  const hasInsuranceValue = Object.entries(insurance).some(([key, fieldValue]) =>
+    key === 'publicSubsidies' ? false : fieldValue !== undefined,
+  );
+  return hasInsuranceValue || publicSubsidies.length > 0 ? insurance : null;
+}
+
+function buildInsuranceSummary(insurance: JahisPrescriptionInsurance) {
+  return [
+    insurance.insurerNumber ? `保険者番号 ${insurance.insurerNumber}` : null,
+    insurance.symbol ? `記号 ${insurance.symbol}` : null,
+    insurance.number ? `番号 ${insurance.number}` : null,
+    insurance.branchNumber ? `枝番 ${insurance.branchNumber}` : null,
+    insurance.patientCopayRatio != null ? `負担割合 ${insurance.patientCopayRatio}%` : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
+export function buildPrescriptionInsuranceSidecarRows(args: {
+  orgId: string;
+  patientId: string;
+  qrDraftId: string;
+  prescriptionIntakeId: string;
+  prescriptionInsurance: JahisPrescriptionInsurance | null;
+}): Prisma.JahisSupplementalRecordCreateManyInput[] {
+  const insurance = args.prescriptionInsurance;
+  if (!insurance) return [];
+
+  const rows: Prisma.JahisSupplementalRecordCreateManyInput[] = [];
+  const insuranceSummary = buildInsuranceSummary(insurance);
+  if (insuranceSummary) {
+    rows.push({
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      qr_draft_id: args.qrDraftId,
+      prescription_intake_id: args.prescriptionIntakeId,
+      record_type: 'prescription_insurance',
+      record_label: '処方QR保険情報',
+      line_number: 21,
+      summary: insuranceSummary,
+      payload: {
+        insuranceType: insurance.insuranceType ?? null,
+        insurerNumber: insurance.insurerNumber ?? null,
+        symbol: insurance.symbol ?? null,
+        number: insurance.number ?? null,
+        insuredPersonType: insurance.insuredPersonType ?? null,
+        branchNumber: insurance.branchNumber ?? null,
+        patientCopayRatio: insurance.patientCopayRatio ?? null,
+        benefitRatio: insurance.benefitRatio ?? null,
+      } satisfies Prisma.InputJsonObject,
+      raw_line: insuranceSummary,
+    });
+  }
+
+  for (const subsidy of insurance.publicSubsidies) {
+    const summary = [
+      `公費${subsidy.rank}`,
+      `負担者番号 ${subsidy.payerNumber}`,
+      subsidy.recipientNumber ? `受給者番号 ${subsidy.recipientNumber}` : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
+    rows.push({
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      qr_draft_id: args.qrDraftId,
+      prescription_intake_id: args.prescriptionIntakeId,
+      record_type: 'prescription_public_subsidy',
+      record_label: '処方QR公費情報',
+      line_number: 26 + subsidy.rank,
+      summary,
+      payload: {
+        rank: subsidy.rank,
+        payerNumber: subsidy.payerNumber,
+        recipientNumber: subsidy.recipientNumber ?? null,
+      } satisfies Prisma.InputJsonObject,
+      raw_line: summary,
+    });
+  }
+
+  return rows;
+}
+
 export async function replaceJahisSupplementalRecords(
   tx: Prisma.TransactionClient,
   args: {
@@ -227,6 +363,31 @@ export async function attachJahisSupplementalRecordsToIntake(
     prescriptionIntakeId: args.prescriptionIntakeId,
     records: args.fallbackRecords,
   });
+}
+
+export async function attachJahisPrescriptionInsuranceSidecarToIntake(
+  tx: Prisma.TransactionClient,
+  args: {
+    orgId: string;
+    patientId: string;
+    qrDraftId: string;
+    prescriptionIntakeId: string;
+    prescriptionInsurance: JahisPrescriptionInsurance | null;
+  },
+) {
+  const rows = buildPrescriptionInsuranceSidecarRows(args);
+  if (rows.length === 0) return { count: 0 };
+
+  await tx.jahisSupplementalRecord.deleteMany({
+    where: {
+      org_id: args.orgId,
+      qr_draft_id: args.qrDraftId,
+      prescription_intake_id: args.prescriptionIntakeId,
+      record_type: { in: ['prescription_insurance', 'prescription_public_subsidy'] },
+    },
+  });
+
+  return tx.jahisSupplementalRecord.createMany({ data: rows });
 }
 
 export async function createMedicationIssueCandidatesFromJahisSupplementalRecords(

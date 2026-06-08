@@ -11,8 +11,10 @@ import {
 } from '@/server/services/prescription-intake-service';
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
+  attachJahisPrescriptionInsuranceSidecarToIntake,
   attachJahisSupplementalRecordsToIntake,
   createMedicationIssueCandidatesFromJahisSupplementalRecords,
+  readJahisPrescriptionInsurance,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import {
@@ -449,6 +451,9 @@ export const POST = withAuth(
         }
 
         const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
+        const prescriptionInsurance = readJahisPrescriptionInsurance(
+          parsedData?.prescriptionInsurance,
+        );
 
         await attachJahisSupplementalRecordsToIntake(tx, {
           orgId: req.orgId,
@@ -456,6 +461,14 @@ export const POST = withAuth(
           qrDraftId: id,
           prescriptionIntakeId: intakeResult.intake.id,
           fallbackRecords: supplementalRecords,
+        });
+
+        await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
+          orgId: req.orgId,
+          patientId: patient_id,
+          qrDraftId: id,
+          prescriptionIntakeId: intakeResult.intake.id,
+          prescriptionInsurance,
         });
 
         await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
