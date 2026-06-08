@@ -438,6 +438,7 @@ model PrescriberInstitution {
   prescription_intakes PrescriptionIntake[]
   pca_pump_rentals     PcaPumpRental[]
 
+  @@unique([id, org_id])
   @@unique([org_id, name])
   @@index([org_id])
   @@index([institution_code])

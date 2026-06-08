@@ -28,6 +28,7 @@ model PcaPump {
   updated_at         DateTime        @default(now()) @updatedAt
   rentals            PcaPumpRental[]
 
+  @@unique([id, org_id])
   @@unique([org_id, asset_code])
   @@index([org_id, status])
   @@index([org_id, serial_number])
@@ -38,9 +39,9 @@ model PcaPumpRental {
   org_id         String
   org            Organization          @relation(fields: [org_id], references: [id])
   pump_id        String
-  pump           PcaPump               @relation(fields: [pump_id], references: [id])
+  pump           PcaPump               @relation(fields: [pump_id, org_id], references: [id, org_id])
   institution_id String
-  institution    PrescriberInstitution @relation(fields: [institution_id], references: [id])
+  institution    PrescriberInstitution @relation(fields: [institution_id, org_id], references: [id, org_id])
   status         PcaPumpRentalStatus   @default(scheduled)
   rented_at      DateTime              @db.Date
   due_at         DateTime?             @db.Date

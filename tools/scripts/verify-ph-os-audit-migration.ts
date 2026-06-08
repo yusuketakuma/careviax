@@ -1,22 +1,11 @@
 import { Client } from 'pg';
-
-const EXPECTED_AUDIT_TRIGGERS = [
-  'audit_log_patient',
-  'audit_log_patient_insurance',
-  'audit_log_care_case',
-  'audit_log_consent_record',
-  'audit_log_management_plan',
-  'audit_log_visit_schedule',
-  'audit_log_visit_record',
-  'audit_log_communication_request',
-  'audit_log_care_report',
-  'audit_log_external_access_grant',
-  'audit_log_workflow_exception',
-  'audit_log_task',
-  'audit_log_dispense_result',
-  'audit_log_dispense_audit',
-  'audit_log_set_audit',
-] as const;
+import {
+  AUDIT_TRIGGER_CATALOG_SQL,
+  describeAuditTriggerIssue,
+  EXPECTED_AUDIT_TRIGGER_NAMES,
+  validateAuditTriggerContracts,
+} from './audit-trigger-contract';
+import type { AuditTriggerCatalogRow } from './audit-trigger-contract';
 
 async function queryValue<T>(client: Client, sql: string, params: unknown[] = []) {
   const result = await client.query<{ value: T }>(sql, params);
@@ -59,39 +48,15 @@ async function main() {
       throw new Error(`Expected 3 ph_os audit functions, found ${phOsFunctionCount ?? 0}`);
     }
 
-    const triggerResult = await client.query<{
-      tgname: string;
-      table_name: string;
-      function_name: string;
-    }>(
-      `
-        SELECT
-          pg_trigger.tgname AS tgname,
-          table_class.relname AS table_name,
-          pg_proc.proname AS function_name
-        FROM pg_trigger
-        JOIN pg_class AS table_class ON table_class.oid = pg_trigger.tgrelid
-        JOIN pg_proc ON pg_proc.oid = pg_trigger.tgfoid
-        WHERE NOT pg_trigger.tgisinternal
-          AND pg_trigger.tgname = ANY($1::text[])
-        ORDER BY pg_trigger.tgname
-      `,
-      [EXPECTED_AUDIT_TRIGGERS],
-    );
+    const triggerResult = await client.query<AuditTriggerCatalogRow>(AUDIT_TRIGGER_CATALOG_SQL, [
+      EXPECTED_AUDIT_TRIGGER_NAMES,
+    ]);
 
-    const triggerNames = new Set(triggerResult.rows.map((row) => row.tgname));
-    const missingTriggers = EXPECTED_AUDIT_TRIGGERS.filter((name) => !triggerNames.has(name));
-    if (missingTriggers.length > 0) {
-      throw new Error(`Missing audit triggers: ${missingTriggers.join(', ')}`);
-    }
-
-    const wrongFunctionTriggers = triggerResult.rows.filter(
-      (row) => row.function_name !== 'ph_os_write_audit_log',
-    );
-    if (wrongFunctionTriggers.length > 0) {
+    const triggerIssues = validateAuditTriggerContracts(triggerResult.rows);
+    if (triggerIssues.length > 0) {
       throw new Error(
-        `Audit triggers not using ph_os_write_audit_log: ${wrongFunctionTriggers
-          .map((row) => `${row.tgname}:${row.function_name}`)
+        `Audit trigger contract mismatch: ${triggerIssues
+          .map(describeAuditTriggerIssue)
           .join(', ')}`,
       );
     }

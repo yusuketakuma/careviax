@@ -4,6 +4,13 @@ import net from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
 import {
+  AUDIT_TRIGGER_CATALOG_SQL,
+  describeAuditTriggerIssue,
+  EXPECTED_AUDIT_TRIGGER_NAMES,
+  validateAuditTriggerContracts,
+} from './audit-trigger-contract';
+import type { AuditTriggerCatalogRow } from './audit-trigger-contract';
+import {
   assertMatchingE2eTargets,
   DEFAULT_E2E_DATABASE_URL,
   parseLocalE2eDatabaseTarget,
@@ -55,24 +62,6 @@ const ORG_ID_RLS_EXEMPT_TABLES = [
   'VisitScheduleOverride',
 ] as const;
 
-const REQUIRED_AUDIT_TRIGGERS = [
-  'audit_log_patient',
-  'audit_log_patient_insurance',
-  'audit_log_care_case',
-  'audit_log_consent_record',
-  'audit_log_management_plan',
-  'audit_log_visit_schedule',
-  'audit_log_visit_record',
-  'audit_log_communication_request',
-  'audit_log_care_report',
-  'audit_log_external_access_grant',
-  'audit_log_workflow_exception',
-  'audit_log_task',
-  'audit_log_dispense_result',
-  'audit_log_dispense_audit',
-  'audit_log_set_audit',
-] as const;
-
 const REQUIRED_PLAYWRIGHT_SPECS = [
   'tools/tests/ui-audit-extensions.spec.ts',
   'tools/tests/ui-mobile-layout.spec.ts',
@@ -88,7 +77,9 @@ const REQUIRED_PACKAGE_SCRIPTS = [
   'db:e2e:seed',
   'db:e2e:prepare',
   'db:check-care-report-duplicates',
+  'db:verify-migration-preconditions',
   'db:e2e:check-care-report-duplicates',
+  'db:e2e:verify-migration-preconditions',
   'medical-ui:e2e:preflight',
   'medical-ui:e2e:targeted',
   'medical-ui:e2e:gate',
@@ -295,29 +286,12 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
       (row) => !row.relrowsecurity || !row.relforcerowsecurity || row.policy_count < 1,
     );
 
-    const triggerResult = await client.query<{ tgname: string; function_name: string }>(
-      `
-        SELECT t.tgname, p.proname AS function_name
-        FROM pg_trigger t
-        JOIN pg_proc p ON p.oid = t.tgfoid
-        WHERE NOT t.tgisinternal
-          AND t.tgname = ANY($1::text[])
-      `,
-      [REQUIRED_AUDIT_TRIGGERS],
-    );
+    const triggerResult = await client.query<AuditTriggerCatalogRow>(AUDIT_TRIGGER_CATALOG_SQL, [
+      EXPECTED_AUDIT_TRIGGER_NAMES,
+    ]);
+    const triggerIssues = validateAuditTriggerContracts(triggerResult.rows);
 
-    const triggerByName = new Map(triggerResult.rows.map((row) => [row.tgname, row]));
-    const missingTriggers = REQUIRED_AUDIT_TRIGGERS.filter((name) => !triggerByName.has(name));
-    const wrongFunctionTriggers = triggerResult.rows.filter(
-      (row) => row.function_name !== 'ph_os_write_audit_log',
-    );
-
-    if (
-      missingTables.length > 0 ||
-      weakRlsTables.length > 0 ||
-      missingTriggers.length > 0 ||
-      wrongFunctionTriggers.length > 0
-    ) {
+    if (missingTables.length > 0 || weakRlsTables.length > 0 || triggerIssues.length > 0) {
       return {
         name: 'db:rls-audit-contract',
         status: 'fail',
@@ -331,10 +305,9 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
                 )
                 .join(', ')}`
             : null,
-          missingTriggers.length ? `missing audit triggers: ${missingTriggers.join(', ')}` : null,
-          wrongFunctionTriggers.length
-            ? `wrong audit functions: ${wrongFunctionTriggers
-                .map((row) => `${row.tgname}:${row.function_name}`)
+          triggerIssues.length
+            ? `audit trigger contract mismatch: ${triggerIssues
+                .map(describeAuditTriggerIssue)
                 .join(', ')}`
             : null,
         ]
@@ -346,7 +319,7 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
     return {
       name: 'db:rls-audit-contract',
       status: 'pass',
-      detail: `${rlsResult.rows.length} org-scoped RLS tables and ${REQUIRED_AUDIT_TRIGGERS.length} audit triggers verified`,
+      detail: `${rlsResult.rows.length} org-scoped RLS tables and ${EXPECTED_AUDIT_TRIGGER_NAMES.length} audit triggers verified`,
     };
   } catch (error) {
     return {
