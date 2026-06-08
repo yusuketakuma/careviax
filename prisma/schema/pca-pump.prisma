@@ -13,6 +13,12 @@ enum PcaPumpRentalStatus {
   cancelled
 }
 
+enum PcaPumpReturnInspectionStatus {
+  pending
+  passed
+  needs_maintenance
+}
+
 model PcaPump {
   id                 String          @id @default(cuid())
   org_id             String
@@ -35,26 +41,32 @@ model PcaPump {
 }
 
 model PcaPumpRental {
-  id             String                @id @default(cuid())
-  org_id         String
-  org            Organization          @relation(fields: [org_id], references: [id])
-  pump_id        String
-  pump           PcaPump               @relation(fields: [pump_id, org_id], references: [id, org_id])
-  institution_id String
-  institution    PrescriberInstitution @relation(fields: [institution_id, org_id], references: [id, org_id])
-  status         PcaPumpRentalStatus   @default(scheduled)
-  rented_at      DateTime              @db.Date
-  due_at         DateTime?             @db.Date
-  returned_at    DateTime?             @db.Date
-  contact_name   String?
-  contact_phone  String?
-  rental_fee_yen Int?
-  notes          String?
-  created_at     DateTime              @default(now())
-  updated_at     DateTime              @default(now()) @updatedAt
+  id                       String                         @id @default(cuid())
+  org_id                   String
+  org                      Organization                   @relation(fields: [org_id], references: [id])
+  pump_id                  String
+  pump                     PcaPump                        @relation(fields: [pump_id, org_id], references: [id, org_id])
+  institution_id           String
+  institution              PrescriberInstitution          @relation(fields: [institution_id, org_id], references: [id, org_id])
+  status                   PcaPumpRentalStatus            @default(scheduled)
+  rented_at                DateTime                       @db.Date
+  due_at                   DateTime?                      @db.Date
+  returned_at              DateTime?                      @db.Date
+  return_inspection_status PcaPumpReturnInspectionStatus?
+  return_inspection_notes  String?
+  accessory_checklist      Json?
+  inspected_at             DateTime?
+  inspected_by             String?
+  contact_name             String?
+  contact_phone            String?
+  rental_fee_yen           Int?
+  notes                    String?
+  created_at               DateTime                       @default(now())
+  updated_at               DateTime                       @default(now()) @updatedAt
 
   @@index([org_id, status])
   @@index([org_id, pump_id])
   @@index([org_id, institution_id])
   @@index([org_id, due_at])
+  @@index([org_id, return_inspection_status])
 }

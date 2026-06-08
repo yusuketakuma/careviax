@@ -58,6 +58,11 @@ const updatedRental = {
   rented_at: new Date('2026-06-10T00:00:00.000Z'),
   due_at: new Date('2026-06-20T00:00:00.000Z'),
   returned_at: new Date('2026-06-18T00:00:00.000Z'),
+  return_inspection_status: 'pending',
+  return_inspection_notes: null,
+  accessory_checklist: null,
+  inspected_at: null,
+  inspected_by: null,
   created_at: new Date('2026-06-10T01:00:00.000Z'),
   updated_at: new Date('2026-06-18T01:00:00.000Z'),
   pump: { id: 'pump_1', asset_code: 'PCA-001' },
@@ -77,6 +82,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       rented_at: new Date('2026-06-10T00:00:00.000Z'),
       due_at: new Date('2026-06-20T00:00:00.000Z'),
       returned_at: null,
+      return_inspection_status: null,
     });
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     openRentalFindFirstMock.mockResolvedValue(null);
@@ -154,6 +160,9 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         data: expect.objectContaining({
           status: 'returned',
           returned_at: new Date('2026-06-18'),
+          return_inspection_status: 'pending',
+          inspected_at: null,
+          inspected_by: null,
         }),
       }),
     );
@@ -240,6 +249,129 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       where: { id: 'pump_1' },
       data: { status: 'maintenance' },
     });
+    expect(pcaPumpRentalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          return_inspection_status: 'pending',
+          inspected_at: null,
+          inspected_by: null,
+        }),
+      }),
+    );
+  });
+
+  it('marks the pump available when a returned rental passes return inspection', async () => {
+    pcaPumpRentalFindFirstMock.mockResolvedValue({
+      id: 'rental_1',
+      pump_id: 'pump_1',
+      status: 'returned',
+      rented_at: new Date('2026-06-10T00:00:00.000Z'),
+      due_at: new Date('2026-06-20T00:00:00.000Z'),
+      returned_at: new Date('2026-06-18T00:00:00.000Z'),
+      return_inspection_status: 'pending',
+    });
+
+    const response = await PATCH(
+      createRequest({
+        return_inspection_status: 'passed',
+        return_inspection_notes: '動作確認済み',
+        accessory_checklist: {
+          pump_body: { status: 'ok' },
+          power_adapter: { status: 'ok' },
+          power_cable: { status: 'ok' },
+          carrying_case: { status: 'ok' },
+          manual: { status: 'not_applicable' },
+          lock_key: { status: 'not_applicable' },
+          clamp: { status: 'not_applicable' },
+          cleaning_completed: { status: 'ok' },
+          operation_check: { status: 'ok' },
+        },
+      }),
+      { params: Promise.resolve({ id: 'rental_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpRentalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          return_inspection_status: 'passed',
+          return_inspection_notes: '動作確認済み',
+          accessory_checklist: {
+            pump_body: { status: 'ok' },
+            power_adapter: { status: 'ok' },
+            power_cable: { status: 'ok' },
+            carrying_case: { status: 'ok' },
+            manual: { status: 'not_applicable' },
+            lock_key: { status: 'not_applicable' },
+            clamp: { status: 'not_applicable' },
+            cleaning_completed: { status: 'ok' },
+            operation_check: { status: 'ok' },
+          },
+          inspected_at: expect.any(Date),
+          inspected_by: 'user_1',
+        }),
+      }),
+    );
+    expect(pcaPumpUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'pump_1' },
+      data: { status: 'available' },
+    });
+  });
+
+  it('keeps the pump in maintenance when return inspection needs maintenance', async () => {
+    pcaPumpRentalFindFirstMock.mockResolvedValue({
+      id: 'rental_1',
+      pump_id: 'pump_1',
+      status: 'returned',
+      rented_at: new Date('2026-06-10T00:00:00.000Z'),
+      due_at: new Date('2026-06-20T00:00:00.000Z'),
+      returned_at: new Date('2026-06-18T00:00:00.000Z'),
+      return_inspection_status: 'pending',
+    });
+
+    const response = await PATCH(
+      createRequest({
+        return_inspection_status: 'needs_maintenance',
+        accessory_checklist: {
+          pump_body: { status: 'damaged', notes: 'Front panel crack' },
+        },
+      }),
+      { params: Promise.resolve({ id: 'rental_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpRentalUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          return_inspection_status: 'needs_maintenance',
+          inspected_at: expect.any(Date),
+          inspected_by: 'user_1',
+        }),
+      }),
+    );
+    expect(pcaPumpUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'pump_1' },
+      data: { status: 'maintenance' },
+    });
+  });
+
+  it('rejects return inspection updates before the rental is returned', async () => {
+    const response = await PATCH(
+      createRequest({
+        return_inspection_status: 'needs_maintenance',
+        accessory_checklist: {
+          pump_body: { status: 'damaged', notes: 'Front panel crack' },
+        },
+      }),
+      { params: Promise.resolve({ id: 'rental_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '返却検品は返却済みレンタルにのみ記録できます',
+    });
+    expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
   });
 
   it('marks the pump available when cancelling the only open rental', async () => {

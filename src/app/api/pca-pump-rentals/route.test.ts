@@ -252,6 +252,47 @@ describe('/api/pca-pump-rentals', () => {
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
+  it('creates a returned rental with pending inspection and marks the pump maintenance', async () => {
+    pcaPumpRentalCreateMock.mockResolvedValue({
+      ...rentalRecord,
+      status: 'returned',
+      returned_at: new Date('2026-06-18T00:00:00.000Z'),
+      return_inspection_status: 'pending',
+      pump: { ...rentalRecord.pump, status: 'maintenance' },
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        status: 'returned',
+        rented_at: '2026-06-10',
+        returned_at: '2026-06-18',
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(pcaPumpUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pump_1',
+        org_id: 'org_1',
+        status: 'available',
+      },
+      data: { status: 'maintenance' },
+    });
+    expect(pcaPumpRentalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: 'returned',
+        returned_at: new Date('2026-06-18'),
+        return_inspection_status: 'pending',
+      }),
+      include: {
+        pump: true,
+        institution: true,
+      },
+    });
+  });
+
   it('rejects a rental if the pump cannot be claimed inside the transaction', async () => {
     pcaPumpUpdateManyMock.mockResolvedValue({ count: 0 });
 

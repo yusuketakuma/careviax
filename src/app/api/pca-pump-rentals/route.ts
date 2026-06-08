@@ -30,6 +30,7 @@ function serializeRental<
     rented_at: Date;
     due_at: Date | null;
     returned_at: Date | null;
+    inspected_at?: Date | null;
     created_at: Date;
     updated_at: Date;
   },
@@ -39,6 +40,7 @@ function serializeRental<
     rented_at: item.rented_at.toISOString().slice(0, 10),
     due_at: item.due_at?.toISOString().slice(0, 10) ?? null,
     returned_at: item.returned_at?.toISOString().slice(0, 10) ?? null,
+    inspected_at: item.inspected_at?.toISOString() ?? null,
     created_at: item.created_at.toISOString(),
     updated_at: item.updated_at.toISOString(),
   };
@@ -132,19 +134,24 @@ export const POST = withAuth(
 
     const status = parsed.data.status ?? 'active';
     const requiresPumpClaim = isOpenRentalStatus(status);
+    const targetPumpStatus = requiresPumpClaim
+      ? 'rented'
+      : status === 'returned'
+        ? 'maintenance'
+        : null;
     let created;
     try {
       created = await withOrgContext(
         req.orgId,
         async (tx) => {
-          if (requiresPumpClaim) {
+          if (targetPumpStatus) {
             const claim = await tx.pcaPump.updateMany({
               where: {
                 id: parsed.data.pump_id,
                 org_id: req.orgId,
                 status: 'available',
               },
-              data: { status: 'rented' },
+              data: { status: targetPumpStatus },
             });
             if (claim.count !== 1) {
               return { kind: 'error' as const, error: 'pump_not_available' as const };
@@ -160,6 +167,7 @@ export const POST = withAuth(
               rented_at: new Date(parsed.data.rented_at),
               due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null,
               returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
+              ...(status === 'returned' ? { return_inspection_status: 'pending' } : {}),
               contact_name: parsed.data.contact_name || null,
               contact_phone: parsed.data.contact_phone || null,
               rental_fee_yen: parsed.data.rental_fee_yen ?? null,
@@ -183,6 +191,8 @@ export const POST = withAuth(
                 status: rental.status,
                 rented_at: rental.rented_at.toISOString().slice(0, 10),
                 due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+                returned_at: rental.returned_at?.toISOString().slice(0, 10) ?? null,
+                return_inspection_status: rental.return_inspection_status,
                 rental_fee_yen: rental.rental_fee_yen,
               },
               ip_address: req.headers.get('x-forwarded-for') ?? null,

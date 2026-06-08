@@ -1,15 +1,20 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { updatePcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
+import {
+  isCompletePassingPcaPumpAccessoryChecklist,
+  updatePcaPumpRentalSchema,
+} from '@/lib/validations/pca-pump-rental';
 
 function serializeRental(item: {
   rented_at: Date;
   due_at: Date | null;
   returned_at: Date | null;
+  inspected_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }) {
@@ -18,6 +23,7 @@ function serializeRental(item: {
     rented_at: item.rented_at.toISOString().slice(0, 10),
     due_at: item.due_at?.toISOString().slice(0, 10) ?? null,
     returned_at: item.returned_at?.toISOString().slice(0, 10) ?? null,
+    inspected_at: item.inspected_at?.toISOString() ?? null,
     created_at: item.created_at.toISOString(),
     updated_at: item.updated_at.toISOString(),
   };
@@ -29,6 +35,10 @@ function toDateKey(value: Date | null) {
 
 function isUniqueConstraintFailure(error: unknown) {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -62,6 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           rented_at: true,
           due_at: true,
           returned_at: true,
+          return_inspection_status: true,
         },
       }),
     { requestContext: ctx },
@@ -112,6 +123,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       status: ['返却日を指定する場合は状態を返却済みにしてください'],
     });
   }
+  const hasReturnInspectionPayload =
+    parsed.data.return_inspection_status !== undefined ||
+    parsed.data.return_inspection_notes !== undefined ||
+    parsed.data.accessory_checklist !== undefined;
+  if (hasReturnInspectionPayload && effectiveStatus !== 'returned') {
+    return validationError('返却検品は返却済みレンタルにのみ記録できます', {
+      return_inspection_status: ['返却検品は返却済みレンタルにのみ記録できます'],
+      status: ['返却検品を記録する場合は状態を返却済みにしてください'],
+    });
+  }
+  if (
+    parsed.data.return_inspection_status === 'passed' &&
+    !isCompletePassingPcaPumpAccessoryChecklist(parsed.data.accessory_checklist)
+  ) {
+    return validationError(
+      '検品合格には全ての付属品チェックがOKまたは該当なしである必要があります',
+      {
+        accessory_checklist: [
+          '検品合格には全ての付属品チェックがOKまたは該当なしである必要があります',
+        ],
+      },
+    );
+  }
 
   if (parsed.data.institution_id) {
     const institution = await withOrgContext(
@@ -132,6 +166,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ctx.orgId,
       async (tx) => {
         const nextStatus = parsed.data.status;
+        const returningNow = nextStatus === 'returned' && existing.status !== 'returned';
+        const nextInspectionStatus =
+          parsed.data.return_inspection_status ?? (returningNow ? 'pending' : undefined);
         if (nextStatus === 'active' || nextStatus === 'scheduled' || nextStatus === 'overdue') {
           const conflictingRental = await tx.pcaPumpRental.findFirst({
             where: {
@@ -150,35 +187,72 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           }
         }
 
+        const rentalUpdateData: Prisma.PcaPumpRentalUncheckedUpdateInput = {
+          ...(parsed.data.institution_id !== undefined
+            ? { institution_id: parsed.data.institution_id }
+            : {}),
+          ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+          ...(parsed.data.rented_at !== undefined
+            ? { rented_at: new Date(parsed.data.rented_at) }
+            : {}),
+          ...(parsed.data.due_at !== undefined
+            ? { due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null }
+            : {}),
+          ...(parsed.data.returned_at !== undefined
+            ? {
+                returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
+              }
+            : {}),
+          ...(nextInspectionStatus !== undefined
+            ? {
+                return_inspection_status: nextInspectionStatus,
+                ...(nextInspectionStatus === 'passed' ||
+                nextInspectionStatus === 'needs_maintenance'
+                  ? {
+                      inspected_at: new Date(),
+                      inspected_by: ctx.userId,
+                    }
+                  : {
+                      inspected_at: null,
+                      inspected_by: null,
+                    }),
+              }
+            : {}),
+          ...(parsed.data.status !== undefined && parsed.data.status !== 'returned'
+            ? {
+                return_inspection_status: null,
+                return_inspection_notes: null,
+                accessory_checklist: Prisma.DbNull,
+                inspected_at: null,
+                inspected_by: null,
+              }
+            : {}),
+          ...(parsed.data.return_inspection_notes !== undefined
+            ? { return_inspection_notes: parsed.data.return_inspection_notes || null }
+            : {}),
+          ...(parsed.data.accessory_checklist !== undefined
+            ? {
+                accessory_checklist:
+                  parsed.data.accessory_checklist === null
+                    ? Prisma.DbNull
+                    : toPrismaJson(parsed.data.accessory_checklist),
+              }
+            : {}),
+          ...(parsed.data.contact_name !== undefined
+            ? { contact_name: parsed.data.contact_name || null }
+            : {}),
+          ...(parsed.data.contact_phone !== undefined
+            ? { contact_phone: parsed.data.contact_phone || null }
+            : {}),
+          ...(parsed.data.rental_fee_yen !== undefined
+            ? { rental_fee_yen: parsed.data.rental_fee_yen ?? null }
+            : {}),
+          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
+        };
+
         const rental = await tx.pcaPumpRental.update({
           where: { id },
-          data: {
-            ...(parsed.data.institution_id !== undefined
-              ? { institution_id: parsed.data.institution_id }
-              : {}),
-            ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
-            ...(parsed.data.rented_at !== undefined
-              ? { rented_at: new Date(parsed.data.rented_at) }
-              : {}),
-            ...(parsed.data.due_at !== undefined
-              ? { due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null }
-              : {}),
-            ...(parsed.data.returned_at !== undefined
-              ? {
-                  returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
-                }
-              : {}),
-            ...(parsed.data.contact_name !== undefined
-              ? { contact_name: parsed.data.contact_name || null }
-              : {}),
-            ...(parsed.data.contact_phone !== undefined
-              ? { contact_phone: parsed.data.contact_phone || null }
-              : {}),
-            ...(parsed.data.rental_fee_yen !== undefined
-              ? { rental_fee_yen: parsed.data.rental_fee_yen ?? null }
-              : {}),
-            ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
-          },
+          data: rentalUpdateData,
           include: {
             pump: true,
             institution: true,
@@ -193,6 +267,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             target_id: id,
             changes: {
               previous_status: existing.status,
+              ...(returningNow && parsed.data.return_inspection_status === undefined
+                ? { return_inspection_status: 'pending' }
+                : {}),
               ...parsed.data,
             },
             ip_address: req.headers.get('x-forwarded-for') ?? null,
@@ -200,7 +277,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         });
 
-        if (nextStatus === 'returned' || nextStatus === 'cancelled') {
+        if (
+          nextStatus === 'returned' ||
+          nextStatus === 'cancelled' ||
+          nextInspectionStatus === 'passed' ||
+          nextInspectionStatus === 'needs_maintenance' ||
+          nextInspectionStatus === 'pending'
+        ) {
           const remainingOpenRental = await tx.pcaPumpRental.findFirst({
             where: {
               org_id: ctx.orgId,
@@ -213,7 +296,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           if (!remainingOpenRental) {
             await tx.pcaPump.update({
               where: { id: existing.pump_id },
-              data: { status: nextStatus === 'returned' ? 'maintenance' : 'available' },
+              data: {
+                status:
+                  nextStatus === 'cancelled' || nextInspectionStatus === 'passed'
+                    ? 'available'
+                    : 'maintenance',
+              },
             });
           }
         } else if (
