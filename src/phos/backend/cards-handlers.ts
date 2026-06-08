@@ -182,6 +182,36 @@ function emitActionObservability(input: {
   });
 }
 
+function emitActionFailureMetrics(input: {
+  ctx: TenantContext;
+  route_key: string;
+  action_code: ActionCode;
+  error_code: string;
+}) {
+  if (input.error_code === 'ACTION_GUARD_FAILED') {
+    input.ctx.observability?.emitMetric({
+      name: 'ActionGuardFailedCount',
+      value: 1,
+      unit: 'Count',
+      route_key: input.route_key,
+      tenant_id: input.ctx.tenant_id,
+      action_code: input.action_code,
+      error_code: input.error_code,
+    });
+  }
+  if (input.action_code === ActionCode.SEND_REPORT) {
+    input.ctx.observability?.emitMetric({
+      name: 'ReportSendFailedCount',
+      value: 1,
+      unit: 'Count',
+      route_key: input.route_key,
+      tenant_id: input.ctx.tenant_id,
+      action_code: input.action_code,
+      error_code: input.error_code,
+    });
+  }
+}
+
 export function createCardSearchHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx }) => {
     const route_key = event.routeKey ?? 'GET /cards';
@@ -300,6 +330,12 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
             route_key,
             action_code,
             started_at_ms,
+            error_code: error.error_code,
+          });
+          emitActionFailureMetrics({
+            ctx,
+            route_key,
+            action_code,
             error_code: error.error_code,
           });
         }

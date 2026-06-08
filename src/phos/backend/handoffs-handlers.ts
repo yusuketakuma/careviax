@@ -18,6 +18,7 @@ import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import type { PhosHandoffsRepository } from './handoffs-repository';
+import { hashTenantId } from './observability';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
 
@@ -258,6 +259,20 @@ function logHandlerSuccess(input: { ctx: TenantContext; route_key: string; hando
   );
 }
 
+function emitHandoffReturnedMetric(input: { ctx: TenantContext; route_key: string }) {
+  input.ctx.observability?.emitMetric({
+    name: 'HandoffReturnedCount',
+    value: 1,
+    unit: 'Count',
+    route_key: input.route_key,
+    tenant_id: input.ctx.tenant_id,
+  });
+  input.ctx.observability?.annotateTrace({
+    route_key: input.route_key,
+    tenant_id_hash: hashTenantId(input.ctx.tenant_id),
+  });
+}
+
 function withHandoffErrors(route_key: string, ctx: TenantContext, error: unknown) {
   if (error instanceof PhosDomainError) {
     logHandlerError({ ctx, route_key, error_code: error.error_code, details: error.details });
@@ -344,6 +359,7 @@ export function createReturnHandoffHandler(repository: PhosHandoffsRepository): 
     try {
       assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.returnHandoff(ctx, handoff_id, parseReturnRequest(body));
+      emitHandoffReturnedMetric({ ctx, route_key });
       logHandlerSuccess({ ctx, route_key, handoff_id });
       return response;
     } catch (error) {

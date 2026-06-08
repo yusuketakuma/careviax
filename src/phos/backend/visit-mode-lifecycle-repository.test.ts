@@ -12,6 +12,7 @@ import {
   type IdempotentVisitStepLookup,
   type VisitModeLifecycleStore,
 } from './visit-mode-lifecycle-repository';
+import { createInMemoryObservabilitySink, hashTenantId } from './observability';
 
 const ctx: TenantContext = {
   tenant_id: 'tenant_abc123',
@@ -181,6 +182,7 @@ describe('createVisitModeLifecycleRepository', () => {
   });
 
   it('rejects completion when blocking sync remains', async () => {
+    const observability = createInMemoryObservabilitySink();
     const fakeStore = store({
       loadVisitMode: vi.fn(async () =>
         visit({ evidence_sync: { blocking_unsynced_count: 1, non_blocking_unsynced_count: 0 } }),
@@ -189,7 +191,7 @@ describe('createVisitModeLifecycleRepository', () => {
     const repository = createVisitModeLifecycleRepository(fakeStore);
 
     await expect(
-      repository.updateVisitStep(ctx, 'packet_1', VisitStep.COMPLETE_CHECK, {
+      repository.updateVisitStep({ ...ctx, observability }, 'packet_1', VisitStep.COMPLETE_CHECK, {
         idempotency_key: 'idem_complete',
         client_version: 3,
       }),
@@ -199,5 +201,20 @@ describe('createVisitModeLifecycleRepository', () => {
       details: { blocking_unsynced_count: 1 },
     });
     expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'VisitCompleteGuardBlockedCount',
+        route_key: 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+        tenant_id: 'tenant_abc123',
+        error_code: 'ACTION_GUARD_FAILED',
+      }),
+    );
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        error_code: 'ACTION_GUARD_FAILED',
+      }),
+    );
   });
 });

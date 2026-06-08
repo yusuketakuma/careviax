@@ -37,6 +37,17 @@ export type PhosOfflineActionStatusView = {
   blocked_reason?: 'CONFLICT' | 'MAX_RETRIES';
 };
 
+export type PhosOfflineSyncMetricEmitter = {
+  emitMetric(metric: {
+    name: 'OfflineSyncConflictCount';
+    value: number;
+    unit: 'Count';
+    route_key: string;
+    action_code: ActionRequest['action_code'];
+    error_code: string;
+  }): void;
+};
+
 class PhosOfflineActionDb extends Dexie {
   offlineActions!: Table<PhosOfflineActionRecord, number>;
 
@@ -125,6 +136,7 @@ async function readQueuedCardAction(record: PhosOfflineActionRecord): Promise<{
 
 export async function retryPhosOfflineCardActions(input: {
   client: Pick<PhosApiClient, 'executeCardAction'>;
+  observability?: PhosOfflineSyncMetricEmitter;
 }): Promise<{ synced: number; failed: number }> {
   const pending = (
     await phosOfflineActionDb.offlineActions.where('retry_count').below(MAX_RETRIES).toArray()
@@ -142,10 +154,21 @@ export async function retryPhosOfflineCardActions(input: {
     } catch (error) {
       failed++;
       const next_retry_count = record.retry_count + 1;
+      const blocked_reason = blockedReasonFor(error, next_retry_count);
+      if (blocked_reason === 'CONFLICT') {
+        input.observability?.emitMetric({
+          name: 'OfflineSyncConflictCount',
+          value: 1,
+          unit: 'Count',
+          route_key: 'POST /cards/{card_id}/actions',
+          action_code: record.action_code,
+          error_code: errorMessage(error),
+        });
+      }
       await phosOfflineActionDb.offlineActions.update(record.id, {
         retry_count: next_retry_count,
         last_error: errorMessage(error),
-        blocked_reason: blockedReasonFor(error, next_retry_count),
+        blocked_reason,
       });
     }
   }

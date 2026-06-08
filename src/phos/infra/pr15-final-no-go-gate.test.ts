@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ActionCode } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
+import { P0_REQUIRED_METRIC_NAMES } from '@/phos/backend/observability';
 import { PHOS_API_ROUTES } from './api-gateway-routes';
 
 const repoRoot = process.cwd();
@@ -107,6 +108,22 @@ describe('PH-OS Final No-Go gate', () => {
       expect(route.requires_idempotency_key).toBe(true);
       expect(route.requires_expected_version).toBe(true);
     }
+  });
+
+  it('keeps every P0 CloudWatch metric from the final spec in the observability contract', () => {
+    expect([...P0_REQUIRED_METRIC_NAMES].sort()).toEqual(
+      [
+        'ActionLatencyMs',
+        'ActionGuardFailedCount',
+        'TenantBoundaryRejectedCount',
+        'CrossTenantAttemptCount',
+        'VisitCompleteGuardBlockedCount',
+        'EvidenceUploadFailedCount',
+        'OfflineSyncConflictCount',
+        'HandoffReturnedCount',
+        'ReportSendFailedCount',
+      ].sort(),
+    );
   });
 
   it('does not keep obsolete PH-OS deployment/status concepts after the Lambda route manifest change', () => {

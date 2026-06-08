@@ -411,4 +411,51 @@ describe('PH-OS cards Lambda handlers', () => {
       }),
     );
   });
+
+  it('emits guard and report failure metrics for blocked SEND_REPORT actions', async () => {
+    const observability = createInMemoryObservabilitySink();
+    const repo = repository({
+      executeCardAction: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 422,
+          error_code: 'ACTION_GUARD_FAILED',
+          message_key: 'api.error.action_guard_failed',
+          details: { blocker_code: 'REPORT_SEND_FAILED' },
+        });
+      }),
+    });
+    const handler = withTenantContext(createExecuteCardActionHandler(repo), { observability });
+
+    const response = await handler(
+      event({
+        routeKey: 'POST /cards/{card_id}/actions',
+        pathParameters: { card_id: 'card_1' },
+        body: JSON.stringify({
+          action_code: ActionCode.SEND_REPORT,
+          idempotency_key: 'idem_report_send',
+          client_version: 1,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(422);
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'ActionGuardFailedCount',
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id: 'tenant_abc123',
+        action_code: ActionCode.SEND_REPORT,
+        error_code: 'ACTION_GUARD_FAILED',
+      }),
+    );
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'ReportSendFailedCount',
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id: 'tenant_abc123',
+        action_code: ActionCode.SEND_REPORT,
+        error_code: 'ACTION_GUARD_FAILED',
+      }),
+    );
+  });
 });

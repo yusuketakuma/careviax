@@ -203,6 +203,7 @@ describe('PH-OS offline action queue', () => {
   });
 
   it('blocks 409 conflict replays instead of retrying and overwriting drafts', async () => {
+    const emitMetric = vi.fn();
     await enqueuePhosOfflineCardAction({
       card_id: 'card_1',
       request: {
@@ -215,6 +216,7 @@ describe('PH-OS offline action queue', () => {
 
     await expect(
       retryPhosOfflineCardActions({
+        observability: { emitMetric },
         client: {
           executeCardAction: vi.fn(async () => {
             throw new PhosApiError(409, {
@@ -227,6 +229,14 @@ describe('PH-OS offline action queue', () => {
       }),
     ).resolves.toEqual({ synced: 0, failed: 1 });
 
+    expect(emitMetric).toHaveBeenCalledWith({
+      name: 'OfflineSyncConflictCount',
+      value: 1,
+      unit: 'Count',
+      route_key: 'POST /cards/{card_id}/actions',
+      action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      error_code: 'STALE_VERSION',
+    });
     await expect(listPhosPendingOfflineCardActions()).resolves.toEqual([
       expect.objectContaining({
         card_id: 'card_1',

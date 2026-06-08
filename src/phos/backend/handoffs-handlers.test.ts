@@ -15,6 +15,7 @@ import {
   createResolveHandoffHandler,
   createReturnHandoffHandler,
 } from './handoffs-handlers';
+import { createInMemoryObservabilitySink } from './observability';
 
 function handoff(overrides: Partial<HandoffView> = {}): HandoffView {
   return {
@@ -251,7 +252,8 @@ describe('PH-OS handoffs Lambda handlers', () => {
 
   it('requires reason and note when returning handoffs', async () => {
     const repo = repository();
-    const handler = withTenantContext(createReturnHandoffHandler(repo));
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(createReturnHandoffHandler(repo), { observability });
     const invalid = await handler(
       event({
         routeKey: 'POST /handoffs/{handoff_id}/return',
@@ -288,5 +290,12 @@ describe('PH-OS handoffs Lambda handlers', () => {
       idempotency_key: 'idem_return',
       client_version: 1,
     });
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'HandoffReturnedCount',
+        route_key: 'POST /handoffs/{handoff_id}/return',
+        tenant_id: 'tenant_abc123',
+      }),
+    );
   });
 });

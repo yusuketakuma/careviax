@@ -10,6 +10,7 @@ import {
   type VisitStepMutationRequest,
 } from '@/phos/contracts/phos_contracts';
 import { canCompleteVisit } from '@/phos/domain/visit/resolveVisitMode';
+import { hashTenantId } from './observability';
 import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
 import type { PhosVisitModeRepository } from './visit-mode-repository';
@@ -102,6 +103,7 @@ async function assertIdempotent(input: {
 }
 
 const ABSENT_FOLLOWUP_BLOCKER_CODE = 'VISIT_ABSENT_FOLLOWUP';
+const VISIT_STEP_ROUTE_KEY = 'POST /visit-packets/{packet_id}/visit-steps/{step}';
 
 function upsertAbsentFollowupBlocker(visit: VisitModeView): BlockerView[] {
   const existing = visit.blockers ?? [];
@@ -166,6 +168,7 @@ function applyArrivalOutcome(
 }
 
 function projectVisitStepResponse(
+  ctx: TenantContext,
   visit: VisitModeView,
   step: VisitStep,
   command: VisitStepMutationRequest,
@@ -205,6 +208,19 @@ function projectVisitStepResponse(
       visit_status: base.visit_status,
     })
   ) {
+    ctx.observability?.emitMetric({
+      name: 'VisitCompleteGuardBlockedCount',
+      value: 1,
+      unit: 'Count',
+      route_key: VISIT_STEP_ROUTE_KEY,
+      tenant_id: ctx.tenant_id,
+      error_code: 'ACTION_GUARD_FAILED',
+    });
+    ctx.observability?.annotateTrace({
+      route_key: VISIT_STEP_ROUTE_KEY,
+      tenant_id_hash: hashTenantId(ctx.tenant_id),
+      error_code: 'ACTION_GUARD_FAILED',
+    });
     throw guardFailed({
       packet_id: visit.packet_id,
       step,
@@ -243,7 +259,7 @@ export function createVisitModeLifecycleRepository(
       }
       assertFreshVersion(visit, command);
 
-      const response = projectVisitStepResponse(visit, step, command);
+      const response = projectVisitStepResponse(ctx, visit, step, command);
       return store.commitVisitStep(ctx, {
         packet_id,
         step,

@@ -4,13 +4,30 @@ import { sanitizeLogDetails } from './structured-logger';
 
 export const PHOS_METRICS_NAMESPACE = 'PHOS/Backend';
 
+export const P0_REQUIRED_METRIC_NAMES = [
+  'ActionLatencyMs',
+  'ActionGuardFailedCount',
+  'TenantBoundaryRejectedCount',
+  'CrossTenantAttemptCount',
+  'VisitCompleteGuardBlockedCount',
+  'EvidenceUploadFailedCount',
+  'OfflineSyncConflictCount',
+  'HandoffReturnedCount',
+  'ReportSendFailedCount',
+] as const;
+
 export type PhosMetricName =
   | 'RequestLatencyMs'
   | 'ActionLatencyMs'
+  | 'ActionGuardFailedCount'
   | 'AuthorizationDeniedCount'
   | 'TenantBoundaryRejectedCount'
   | 'CrossTenantAttemptCount'
+  | 'VisitCompleteGuardBlockedCount'
   | 'EvidenceUploadFailedCount'
+  | 'OfflineSyncConflictCount'
+  | 'HandoffReturnedCount'
+  | 'ReportSendFailedCount'
   | 'InternalErrorCount';
 
 export type PhosMetricUnit = 'Count' | 'Milliseconds';

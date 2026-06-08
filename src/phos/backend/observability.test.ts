@@ -4,12 +4,29 @@ import {
   createConsoleObservabilitySink,
   createInMemoryObservabilitySink,
   hashTenantId,
+  P0_REQUIRED_METRIC_NAMES,
   PHOS_METRICS_NAMESPACE,
 } from './observability';
 
 describe('PH-OS observability', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('keeps every spec-required P0 CloudWatch metric in the metric contract', () => {
+    expect([...P0_REQUIRED_METRIC_NAMES].sort()).toEqual(
+      [
+        'ActionLatencyMs',
+        'ActionGuardFailedCount',
+        'TenantBoundaryRejectedCount',
+        'CrossTenantAttemptCount',
+        'VisitCompleteGuardBlockedCount',
+        'EvidenceUploadFailedCount',
+        'OfflineSyncConflictCount',
+        'HandoffReturnedCount',
+        'ReportSendFailedCount',
+      ].sort(),
+    );
   });
 
   it('builds CloudWatch embedded metrics in the PHOS backend namespace', () => {
