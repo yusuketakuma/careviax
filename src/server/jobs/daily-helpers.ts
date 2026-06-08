@@ -151,6 +151,10 @@ export function buildConsentExpiryTaskKey(consentId: string) {
   return `consent-expiry:${consentId}`;
 }
 
+export function buildPcaPumpRentalOverdueTaskKey(rentalId: string) {
+  return `pca-pump-rental-overdue:${rentalId}`;
+}
+
 export async function syncGeneratedOperationalTasks(
   taskSpecs: GeneratedTaskSpec[],
   managedTaskTypes: string[],

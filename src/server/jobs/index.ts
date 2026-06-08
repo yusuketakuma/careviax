@@ -15,11 +15,16 @@ export {
   checkConsentExpiry,
   checkVisitRecordRetention,
   checkPrescriptionOriginalRetention,
+  checkPcaPumpRentalOverdues,
   runDailyOperations,
 } from './daily';
 export { checkUnrecordedVisits, runEveningOperations } from './evening';
 export { checkUnsentReports, runNextDayOperations } from './next-day';
-export { generateMonthlyVisitReport, generateMonthlyMetrics, runMonthlyOperations } from './monthly';
+export {
+  generateMonthlyVisitReport,
+  generateMonthlyMetrics,
+  runMonthlyOperations,
+} from './monthly';
 export {
   refreshMhlwDrugReferences,
   refreshPmdaPackageInsertsDelta,

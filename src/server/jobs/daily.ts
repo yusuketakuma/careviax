@@ -21,6 +21,7 @@ import {
   buildInquiryWorkbenchTaskKey,
   buildIntakeLinkageTaskKey,
   buildMobileVisitModeTaskKey,
+  buildPcaPumpRentalOverdueTaskKey,
   buildPreparationTaskKey,
   buildReportDeliveryTaskKey,
   buildSelfReportTaskKey,
@@ -65,6 +66,10 @@ const DOSAGE_SUPPORT_KEYWORDS = [
 ] as const;
 
 export { checkPrescriptionOriginalRetention };
+
+type JobExecutionContext = {
+  orgId?: string;
+};
 
 /**
  * 服用最終日接近チェック（3日以内）
@@ -149,6 +154,96 @@ export async function checkRefillPrescriptions() {
 
     return { processedCount: upcoming.length };
   });
+}
+
+export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = {}) {
+  return runJob(
+    'pca_pump_rental_overdue_check',
+    async () => {
+      const today = startOfDay();
+      const overdueRentals = await prisma.pcaPumpRental.findMany({
+        where: {
+          ...(context.orgId ? { org_id: context.orgId } : {}),
+          status: { in: ['scheduled', 'active'] },
+          due_at: { lt: today },
+        },
+        select: {
+          id: true,
+          org_id: true,
+          pump_id: true,
+          institution_id: true,
+          rented_at: true,
+          due_at: true,
+          rental_fee_yen: true,
+          pump: {
+            select: {
+              asset_code: true,
+              model_name: true,
+            },
+          },
+          institution: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ due_at: 'asc' }, { created_at: 'asc' }],
+      });
+
+      for (const rental of overdueRentals) {
+        await withOrgContext(rental.org_id, async (tx) => {
+          await tx.pcaPumpRental.updateMany({
+            where: {
+              id: rental.id,
+              org_id: rental.org_id,
+              status: { in: ['scheduled', 'active'] },
+              due_at: { lt: today },
+            },
+            data: {
+              status: 'overdue',
+            },
+          });
+
+          const overdueDays = rental.due_at
+            ? Math.max(
+                1,
+                Math.floor((today.getTime() - startOfDay(rental.due_at).getTime()) / 86_400_000),
+              )
+            : 0;
+          const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
+          await upsertOperationalTask(tx, {
+            orgId: rental.org_id,
+            taskType: 'pca_pump_rental_overdue',
+            title: 'PCAポンプの返却期限を超過しています',
+            description: `${rental.institution.name} への貸出 ${pumpLabel} が返却予定日を${overdueDays}日超過しています。返却予定の確認、延長可否、請求調整を確認してください。`,
+            priority: overdueDays >= 7 ? 'urgent' : 'high',
+            assignedTo: null,
+            dueDate: rental.due_at,
+            slaDueAt: rental.due_at,
+            relatedEntityType: 'pca_pump_rental',
+            relatedEntityId: rental.id,
+            dedupeKey: buildPcaPumpRentalOverdueTaskKey(rental.id),
+            metadata: {
+              rental_id: rental.id,
+              pump_id: rental.pump_id,
+              pump_asset_code: rental.pump.asset_code,
+              institution_id: rental.institution_id,
+              institution_name: rental.institution.name,
+              rented_at: rental.rented_at.toISOString().slice(0, 10),
+              due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+              overdue_days: overdueDays,
+              rental_fee_yen: rental.rental_fee_yen,
+              action_href: '/admin/pca-pumps',
+              action_label: 'PCAポンプ貸出を確認',
+            },
+          });
+        });
+      }
+
+      return { processedCount: overdueRentals.length };
+    },
+    context.orgId,
+  );
 }
 
 export async function checkIntakeToVisitLinkage() {
@@ -1974,6 +2069,7 @@ export async function runDailyOperations() {
     const settled = await Promise.allSettled([
       checkMedicationDeadlines(),
       checkRefillPrescriptions(),
+      checkPcaPumpRentalOverdues(),
       checkIntakeToVisitLinkage(),
       checkPrescriptionExpiry(),
       checkVisitRecordRetention(),

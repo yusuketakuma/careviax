@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   prescriptionIntakeFindManyMock,
+  pcaPumpRentalFindManyMock,
   visitScheduleFindManyMock,
   visitScheduleContactLogFindManyMock,
   conferenceNoteFindManyMock,
@@ -18,6 +19,7 @@ const {
   runJobMock,
 } = vi.hoisted(() => ({
   prescriptionIntakeFindManyMock: vi.fn(),
+  pcaPumpRentalFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
@@ -38,6 +40,9 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
+    },
+    pcaPumpRental: {
+      findMany: pcaPumpRentalFindManyMock,
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
@@ -119,10 +124,117 @@ import {
   checkCallbackFollowups,
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
+  checkPcaPumpRentalOverdues,
   cleanupAbandonedQrDrafts,
   cleanupTerminalQrDraftPayloads,
 } from './daily';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
+
+describe('checkPcaPumpRentalOverdues', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-08T09:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('marks due active rentals overdue and creates follow-up tasks', async () => {
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const today = new Date(2026, 5, 8);
+    pcaPumpRentalFindManyMock.mockResolvedValue([
+      {
+        id: 'rental_1',
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: new Date('2026-05-20T00:00:00.000Z'),
+        due_at: new Date('2026-06-01T00:00:00.000Z'),
+        rental_fee_yen: 12000,
+        pump: {
+          asset_code: 'PCA-001',
+          model_name: 'CADD Legacy',
+        },
+        institution: {
+          name: 'サンプル在宅クリニック',
+        },
+      },
+    ]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pcaPumpRental: {
+          updateMany: updateManyMock,
+        },
+        task: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await checkPcaPumpRentalOverdues({ orgId: 'org_1' });
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(runJobMock).toHaveBeenCalledWith(
+      'pca_pump_rental_overdue_check',
+      expect.any(Function),
+      'org_1',
+    );
+    expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          status: { in: ['scheduled', 'active'] },
+          due_at: { lt: today },
+        }),
+      }),
+    );
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'rental_1',
+        org_id: 'org_1',
+        status: { in: ['scheduled', 'active'] },
+        due_at: { lt: today },
+      },
+      data: {
+        status: 'overdue',
+      },
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'pca_pump_rental_overdue',
+        title: 'PCAポンプの返却期限を超過しています',
+        priority: 'urgent',
+        relatedEntityType: 'pca_pump_rental',
+        relatedEntityId: 'rental_1',
+        dedupeKey: 'pca-pump-rental-overdue:rental_1',
+        metadata: expect.objectContaining({
+          rental_id: 'rental_1',
+          pump_id: 'pump_1',
+          pump_asset_code: 'PCA-001',
+          institution_id: 'institution_1',
+          institution_name: 'サンプル在宅クリニック',
+          due_at: '2026-06-01',
+          overdue_days: 7,
+          action_href: '/admin/pca-pumps',
+        }),
+      }),
+    );
+  });
+
+  it('does not mutate when no PCA rentals are past due', async () => {
+    pcaPumpRentalFindManyMock.mockResolvedValue([]);
+
+    const result = await checkPcaPumpRentalOverdues();
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('checkPrescriptionOriginalRetention', () => {
   beforeEach(() => {
