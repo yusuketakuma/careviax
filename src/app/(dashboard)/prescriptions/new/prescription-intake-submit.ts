@@ -18,6 +18,58 @@ type PrescriptionSubmitState = {
   inquiryContent: string;
 };
 
+type PrescriptionApiErrorBody = {
+  message?: string;
+  details?: {
+    blocked_lines?: Array<{
+      line_number?: number;
+      drug_name?: string;
+      reason?: string;
+    }>;
+  };
+};
+
+export class PrescriptionSubmitError extends Error {
+  constructor(
+    message: string,
+    public readonly blockedLines: NonNullable<
+      NonNullable<PrescriptionApiErrorBody['details']>['blocked_lines']
+    > = [],
+  ) {
+    super(message);
+    this.name = 'PrescriptionSubmitError';
+  }
+}
+
+export function formatPrescriptionSubmitError(error: unknown, fallbackMessage: string): string {
+  if (error instanceof PrescriptionSubmitError && error.blockedLines.length > 0) {
+    return [
+      error.message,
+      ...error.blockedLines.map((line) => {
+        const lineLabel =
+          typeof line.line_number === 'number' ? `${line.line_number}行目` : '行番号未設定';
+        const drugName = line.drug_name?.trim() || '薬剤名未設定';
+        const reason = line.reason?.trim();
+        return reason ? `${lineLabel}: ${drugName} - ${reason}` : `${lineLabel}: ${drugName}`;
+      }),
+    ].join('\n');
+  }
+
+  if (error instanceof Error) return error.message;
+  return fallbackMessage;
+}
+
+export async function parsePrescriptionSubmitError(
+  response: Response,
+  fallbackMessage: string,
+): Promise<PrescriptionSubmitError> {
+  const body = (await response.json().catch(() => null)) as PrescriptionApiErrorBody | null;
+  return new PrescriptionSubmitError(
+    body?.message ?? fallbackMessage,
+    Array.isArray(body?.details?.blocked_lines) ? body.details.blocked_lines : [],
+  );
+}
+
 export function getPrescriptionSubmitBlockers({
   sourceType,
   selectedPatientId,

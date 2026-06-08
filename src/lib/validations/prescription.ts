@@ -120,6 +120,7 @@ export const createPrescriptionIntakeSchema = z
     prescriber_name: optionalTrimmedStringSchema,
     prescriber_institution_id: optionalTrimmedStringSchema,
     prescriber_institution: optionalTrimmedStringSchema,
+    prescription_expiry_date: optionalDateStringSchema,
     original_document_url: optionalUrlStringSchema,
     refill_remaining_count: z.number().int().min(0).optional(),
     refill_next_dispense_date: optionalDateStringSchema,

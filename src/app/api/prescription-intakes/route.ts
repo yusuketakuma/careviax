@@ -40,6 +40,7 @@ import {
 const prescriptionSourceTypeSchema = z.enum(PRESCRIPTION_SOURCE_TYPES);
 const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
 
+type CreatePrescriptionIntakeInput = z.infer<typeof createPrescriptionIntakeSchema>;
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
 type IntakeInTxSuccessResult = Extract<IntakeInTxResult, { kind: 'intake' }>;
 type IntakeInTxErrorResult = Extract<IntakeInTxResult, { kind: 'error' }>;
@@ -76,6 +77,104 @@ function validateSplitDispense(input: {
     return { error: 'missing_split_next_dispense_date' as const };
   }
   return null;
+}
+
+const PACKAGING_METHOD_VALUES = [
+  'none',
+  'unit_dose',
+  'morning_evening_unit_dose',
+  'medication_box',
+  'calendar_pack',
+  'blister_pack',
+  'crush_and_pack',
+  'other',
+] as const;
+const PACKAGING_TAG_VALUES = [
+  'cold_storage',
+  'narcotic',
+  'half_tablet',
+  'crush_prohibited',
+  'separate_pack',
+  'unit_dose',
+  'staple_required',
+  'label_required',
+] as const;
+const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
+const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
+
+function readDraftLineAt(parsedData: Record<string, unknown> | null | undefined, index: number) {
+  const lines = Array.isArray(parsedData?.lines) ? parsedData.lines : [];
+  const line = lines[index];
+  return readJsonObject(line);
+}
+
+function readString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.flatMap((item): string[] => {
+    const text = readString(item);
+    return text ? [text] : [];
+  });
+  return values.length > 0 ? values : undefined;
+}
+
+function readEnumValue<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): T[number] | undefined {
+  const text = readString(value);
+  return text && (allowed as readonly string[]).includes(text) ? (text as T[number]) : undefined;
+}
+
+function readEnumArray<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): T[number][] | undefined {
+  const values = readStringArray(value)?.filter((item): item is T[number] =>
+    (allowed as readonly string[]).includes(item),
+  );
+  return values && values.length > 0 ? values : undefined;
+}
+
+function enrichQrIntakeInputFromDraft(
+  input: CreatePrescriptionIntakeInput,
+  parsedData: Record<string, unknown> | null | undefined,
+): CreatePrescriptionIntakeInput {
+  return {
+    ...input,
+    prescription_expiry_date:
+      input.prescription_expiry_date ?? readString(parsedData?.prescriptionExpirationDate),
+    lines: input.lines.map((line, index) => {
+      const draftLine = readDraftLineAt(parsedData, index);
+      return {
+        ...line,
+        drug_code: line.drug_code ?? readString(draftLine?.drugCode),
+        dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
+        unit: line.unit ?? readString(draftLine?.unit),
+        is_generic: line.is_generic || Boolean(draftLine?.isGeneric),
+        packaging_method:
+          line.packaging_method ??
+          readEnumValue(draftLine?.packagingMethod, PACKAGING_METHOD_VALUES),
+        packaging_instructions:
+          line.packaging_instructions ?? readString(draftLine?.packagingInstructions),
+        packaging_instruction_tags:
+          line.packaging_instruction_tags ??
+          readEnumArray(draftLine?.packagingInstructionTags, PACKAGING_TAG_VALUES),
+        route: line.route ?? readEnumValue(draftLine?.route, ROUTE_VALUES),
+        dispensing_method:
+          line.dispensing_method ??
+          readEnumValue(draftLine?.dispensingMethod, DISPENSING_METHOD_VALUES),
+        start_date: line.start_date ?? readString(draftLine?.startDate),
+        end_date: line.end_date ?? readString(draftLine?.endDate),
+        notes: line.notes ?? readString(draftLine?.notes),
+      };
+    }),
+  };
 }
 
 function createIntakeErrorResponse(result: IntakeInTxErrorResult, cycleId: string | undefined) {
@@ -293,7 +392,7 @@ export const POST = withAuth(
 
       const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
       const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
-      const intakeInput = { ...parsed.data };
+      let intakeInput = { ...parsed.data };
       delete intakeInput.qr_draft_id;
 
       let qrResult:
@@ -338,6 +437,7 @@ export const POST = withAuth(
           }
 
           const parsedData = readJsonObject(qrDraft.parsed_data);
+          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData);
           const identityAssessment = assessQrPatientIdentity(
             readQrPatientIdentityFromDraftParsedData(parsedData),
             targetPatient,

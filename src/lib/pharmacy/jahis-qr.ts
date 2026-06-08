@@ -78,6 +78,31 @@ export interface JahisSplitInfo {
   sequenceNumber: number; // このQRの順番
 }
 
+export interface JahisPrescriptionPublicSubsidy {
+  rank: 1 | 2 | 3;
+  payerNumber: string;
+  recipientNumber?: string;
+}
+
+export interface JahisPrescriptionInsurance {
+  insuranceType?: string;
+  insurerNumber?: string;
+  symbol?: string;
+  number?: string;
+  branchNumber?: string;
+  insuredPersonType?: string;
+  patientCopayRatio?: number;
+  benefitRatio?: number;
+  publicSubsidies: JahisPrescriptionPublicSubsidy[];
+}
+
+export interface JahisRawRecord {
+  recordType: string;
+  lineNumber: number;
+  fields: string[];
+  rawLine: string;
+}
+
 export type JahisSupplementalRecordType = '3' | '31' | '4' | '411' | '421' | '601' | '701';
 
 export interface JahisSupplementalRecordDetail {
@@ -104,6 +129,10 @@ export interface JahisQRData {
   prescribingDoctor?: string; // record 55: 処方-医師名
   prescribingDepartment?: string; // record 55: 診療科
   dispensingDate?: string; // record 5: 調剤日 YYYY-MM-DD
+  prescriptionIssueDate?: string; // JAHIS院外処方箋 record 51: 交付年月日
+  prescriptionExpirationDate?: string; // JAHIS院外処方箋 record 52: 使用期限
+  prescriptionInsurance?: JahisPrescriptionInsurance;
+  rawRecords?: JahisRawRecord[];
   remarks: string[]; // record 401, 501
   patientNotes: string[]; // record 2
   supplementalRecords?: JahisSupplementalRecord[];
@@ -208,7 +237,8 @@ export async function decodeShiftJIS(bytes: Uint8Array): Promise<string> {
  * JAHIS ヘッダ確認。先頭が "JAHISTC" で始まるか判定する。
  */
 export function isJahisQR(text: string): boolean {
-  return text.trimStart().startsWith('JAHISTC');
+  const header = text.trimStart().split(/\r?\n/, 1)[0]?.trim() ?? '';
+  return header.startsWith('JAHISTC') || /^JAHIS\d{1,2}$/.test(header);
 }
 
 /**
@@ -646,6 +676,11 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
     .map((l) => l.trim())
     .filter(Boolean);
 
+  const header = lines[0] ?? '';
+  if (/^JAHIS\d{1,2}$/.test(header) && !header.startsWith('JAHISTC')) {
+    return parseJahisPrescriptionQRSafe(text, lines, warnings, errors);
+  }
+
   const patient: JahisPatient = { name: '' };
   const medications: JahisMedication[] = [];
   const prescribingInstitution: JahisInstitution = {};
@@ -659,6 +694,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
   const supplementalRecords: JahisSupplementalRecord[] = [];
   let splitInfo: JahisSplitInfo | undefined;
   let currentMed: JahisMedication | null = null;
+  const rawRecords: JahisRawRecord[] = [];
 
   const flushMed = () => {
     if (currentMed) {
@@ -673,6 +709,12 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
 
     const parts = line.split(',');
     const recordType = parts[0];
+    rawRecords.push({
+      recordType,
+      lineNumber: i + 1,
+      fields: parts.slice(1),
+      rawLine: line,
+    });
 
     try {
       switch (recordType) {
@@ -846,6 +888,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
     patientNotes,
     supplementalRecords,
     splitInfo,
+    rawRecords,
     rawText: text,
     pharmacy: {
       institutionName: prescribingInstitution.name,
@@ -860,6 +903,297 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
   }
 
   return { success: true, data, warnings };
+}
+
+type PrescriptionRpContext = {
+  usage?: string;
+  usageQuantity?: string;
+  usageUnit?: string;
+  formCode?: number;
+  supplements: string[];
+};
+
+function getPrescriptionRpContext(
+  rpContexts: Map<number, PrescriptionRpContext>,
+  rpNumber: number,
+) {
+  let context = rpContexts.get(rpNumber);
+  if (!context) {
+    context = { supplements: [] };
+    rpContexts.set(rpNumber, context);
+  }
+  return context;
+}
+
+function parseJahisPrescriptionQRSafe(
+  text: string,
+  lines: string[],
+  warnings: JahisParseWarning[],
+  errors: JahisParseError[],
+): JahisParseResult {
+  const patient: JahisPatient = { name: '' };
+  const medications: JahisMedication[] = [];
+  const prescribingInstitution: JahisInstitution = {};
+  const dispensingInstitution: JahisInstitution = {};
+  let prescribingDoctor: string | undefined;
+  let prescribingDepartment: string | undefined;
+  let prescriptionIssueDate: string | undefined;
+  let prescriptionExpirationDate: string | undefined;
+  const remarks: string[] = [];
+  const patientNotes: string[] = [];
+  const rpContexts = new Map<number, PrescriptionRpContext>();
+  const medicationByRpAndSequence = new Map<string, JahisMedication>();
+  const prescriptionInsurance: JahisPrescriptionInsurance = { publicSubsidies: [] };
+  const rawRecords: JahisRawRecord[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^JAHIS\d{1,2}$/.test(line)) continue;
+
+    const parts = line.split(',');
+    const recordType = parts[0];
+    rawRecords.push({
+      recordType,
+      lineNumber: i + 1,
+      fields: parts.slice(1),
+      rawLine: line,
+    });
+
+    try {
+      switch (recordType) {
+        case '1': {
+          prescribingInstitution.scoreTableCode = parts[1] || undefined;
+          prescribingInstitution.institutionCode = parts[2] || undefined;
+          prescribingInstitution.prefCode = parts[3] || undefined;
+          prescribingInstitution.name = parts[4] || undefined;
+          break;
+        }
+        case '2': {
+          prescribingInstitution.address = parts[2] || undefined;
+          break;
+        }
+        case '3': {
+          prescribingInstitution.phone = parts[1] || undefined;
+          break;
+        }
+        case '4': {
+          prescribingDepartment = parts[3] || parts[2] || undefined;
+          break;
+        }
+        case '5': {
+          prescribingDoctor = parts[3] || parts[2] || undefined;
+          break;
+        }
+        case '11': {
+          patient.name = parts[2] || parts[3] || '';
+          patient.nameKana = parts[3] || undefined;
+          break;
+        }
+        case '12': {
+          if (parts[1]) {
+            patient.gender = parts[1] === '1' ? 'male' : parts[1] === '2' ? 'female' : 'other';
+          }
+          break;
+        }
+        case '13': {
+          if (parts[1]) patient.birthDate = parseJahisDate(parts[1]);
+          break;
+        }
+        case '21': {
+          prescriptionInsurance.insuranceType = parts[1] || undefined;
+          break;
+        }
+        case '22': {
+          prescriptionInsurance.insurerNumber = parts[1] || undefined;
+          break;
+        }
+        case '23': {
+          prescriptionInsurance.symbol = parts[1] || undefined;
+          prescriptionInsurance.number = parts[2] || undefined;
+          prescriptionInsurance.insuredPersonType = parts[3] || undefined;
+          prescriptionInsurance.branchNumber = parts[4] || undefined;
+          break;
+        }
+        case '24': {
+          const copay = parts[1] ? parseInt(parts[1], 10) : NaN;
+          const benefit = parts[2] ? parseInt(parts[2], 10) : NaN;
+          prescriptionInsurance.patientCopayRatio = Number.isFinite(copay) ? copay : undefined;
+          prescriptionInsurance.benefitRatio = Number.isFinite(benefit) ? benefit : undefined;
+          break;
+        }
+        case '27':
+        case '28':
+        case '29': {
+          const rank = recordType === '27' ? 1 : recordType === '28' ? 2 : 3;
+          if (parts[1]) {
+            prescriptionInsurance.publicSubsidies.push({
+              rank,
+              payerNumber: parts[1],
+              recipientNumber: parts[2] || undefined,
+            });
+          }
+          break;
+        }
+        case '30': {
+          if (parts[1]) {
+            remarks.push(`特殊公費: ${[parts[1], parts[2]].filter(Boolean).join(' / ')}`);
+          }
+          break;
+        }
+        case '51': {
+          if (parts[1]) prescriptionIssueDate = parseJahisDate(parts[1]);
+          break;
+        }
+        case '52': {
+          if (parts[1]) prescriptionExpirationDate = parseJahisDate(parts[1]);
+          break;
+        }
+        case '81': {
+          if (parts[1]) remarks.push(parts[1]);
+          break;
+        }
+        case '101': {
+          const rpNumber = parts[1] ? parseInt(parts[1], 10) : NaN;
+          if (Number.isFinite(rpNumber)) {
+            const context = getPrescriptionRpContext(rpContexts, rpNumber);
+            context.formCode = parts[2] ? parseInt(parts[2], 10) || undefined : undefined;
+            context.usageQuantity = parts[4] || undefined;
+            context.usageUnit = context.usageQuantity
+              ? inferPrescriptionUsageUnit(context.formCode)
+              : undefined;
+          }
+          break;
+        }
+        case '111': {
+          const rpNumber = parts[1] ? parseInt(parts[1], 10) : NaN;
+          if (Number.isFinite(rpNumber)) {
+            const context = getPrescriptionRpContext(rpContexts, rpNumber);
+            context.usage = parts[4] || undefined;
+          }
+          break;
+        }
+        case '181': {
+          const rpNumber = parts[1] ? parseInt(parts[1], 10) : NaN;
+          if (Number.isFinite(rpNumber) && parts[4]) {
+            getPrescriptionRpContext(rpContexts, rpNumber).supplements.push(parts[4]);
+          }
+          break;
+        }
+        case '201': {
+          const rpNumber = parts[1] ? parseInt(parts[1], 10) : NaN;
+          const sequence = parts[2] ? parseInt(parts[2], 10) : NaN;
+          const safeRpNumber = Number.isFinite(rpNumber) ? rpNumber : undefined;
+          const context = safeRpNumber ? rpContexts.get(safeRpNumber) : undefined;
+          const medication: JahisMedication = {
+            rpNumber: safeRpNumber,
+            drugCodeType: parts[4] ? parseInt(parts[4], 10) || undefined : undefined,
+            drugCode: parts[5] || undefined,
+            drugName: parts[6] || '不明',
+            dose: parts[7] || undefined,
+            unit: parts[9] || undefined,
+            usage: context?.usage,
+            usageQuantity: context?.usageQuantity,
+            usageUnit: context?.usageUnit,
+            daysOrTimes:
+              context?.usageQuantity && context?.usageUnit
+                ? `${context.usageQuantity}${context.usageUnit}`
+                : undefined,
+            formCode: context?.formCode,
+            supplements: [...(context?.supplements ?? [])],
+            usageNotes: [],
+          };
+          medications.push(medication);
+          if (safeRpNumber && Number.isFinite(sequence)) {
+            medicationByRpAndSequence.set(`${safeRpNumber}:${sequence}`, medication);
+          }
+          break;
+        }
+        case '211': {
+          appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '単位変換係数');
+          break;
+        }
+        case '221': {
+          appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '不均等服用');
+          break;
+        }
+        case '231': {
+          appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '一日量');
+          break;
+        }
+        case '241': {
+          appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '薬品補足');
+          break;
+        }
+        case '281': {
+          appendPrescriptionMedicationSupplement(medicationByRpAndSequence, parts, '薬品補足');
+          break;
+        }
+        default:
+          warnings.push({
+            recordType,
+            field: 'unknown',
+            message: `Unknown JAHIS prescription record type ${recordType} at line ${i + 1}`,
+          });
+          break;
+      }
+    } catch (err) {
+      errors.push({
+        recordType,
+        lineNumber: i + 1,
+        field: 'parse',
+        message: err instanceof Error ? err.message : `Failed to parse record type ${recordType}`,
+      });
+    }
+  }
+
+  const data: JahisQRData = {
+    patient,
+    medications,
+    prescribingInstitution,
+    dispensingInstitution,
+    prescribingDoctor,
+    prescribingDepartment,
+    dispensingDate: prescriptionIssueDate,
+    prescriptionIssueDate,
+    prescriptionExpirationDate,
+    prescriptionInsurance,
+    rawRecords,
+    remarks,
+    patientNotes,
+    supplementalRecords: [],
+    rawText: text,
+    pharmacy: {
+      institutionName: prescribingInstitution.name,
+      institutionCode: prescribingInstitution.institutionCode,
+      doctorName: prescribingDoctor,
+    },
+    prescriptionDate: prescriptionIssueDate,
+  };
+
+  if (errors.length > 0) {
+    return { success: false, data, errors, warnings };
+  }
+  return { success: true, data, warnings };
+}
+
+function inferPrescriptionUsageUnit(formCode: number | undefined) {
+  if (formCode === 3) return '回分';
+  return '日分';
+}
+
+function appendPrescriptionMedicationSupplement(
+  medicationByRpAndSequence: Map<string, JahisMedication>,
+  parts: string[],
+  label: string,
+) {
+  const rpNumber = parts[1] ? parseInt(parts[1], 10) : NaN;
+  const sequence = parts[2] ? parseInt(parts[2], 10) : NaN;
+  if (!Number.isFinite(rpNumber) || !Number.isFinite(sequence)) return;
+  const medication = medicationByRpAndSequence.get(`${rpNumber}:${sequence}`);
+  if (!medication) return;
+  const values = parts.slice(3).filter((value) => value.trim().length > 0);
+  if (values.length === 0) return;
+  medication.supplements.push(`${label}: ${values.join(' / ')}`);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

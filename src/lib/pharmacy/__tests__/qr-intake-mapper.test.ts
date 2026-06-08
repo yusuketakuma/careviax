@@ -12,8 +12,10 @@ vi.mock('@/lib/db/client', () => ({
   prisma: prismaMock,
 }));
 
+import { parseJahisQR } from '../jahis-qr';
 import { mapJahisToIntake } from '../qr-intake-mapper';
 import type { JahisQRData } from '../jahis-qr';
+import { OUTPATIENT_PRESCRIPTION_QR_V11 } from './fixtures/jahis-samples';
 
 type DrugMasterFindManyArgs = {
   where?: {
@@ -213,6 +215,44 @@ describe('mapJahisToIntake', () => {
       const qrData = makeQrData({ medications: [], dispensingDate: undefined });
       const result = await mapJahisToIntake(qrData, baseInput);
       expect(result.prescribedDate).toBeNull();
+    });
+  });
+
+  describe('JAHIS11 outpatient prescription QR', () => {
+    it('maps prescription QR issue date, medication line, and raw insurance metadata without losing data', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce({
+        ...mockDrugMaster,
+        yj_code: '7999401A1010',
+        receipt_code: '799940101',
+        drug_name: '自己注射対象確認済み注射液',
+        dosage_form: '注射液',
+      });
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = parseJahisQR(OUTPATIENT_PRESCRIPTION_QR_V11);
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.prescribedDate).toBe('2026-06-08');
+      expect(result.prescriberName).toBe('在宅 一郎');
+      expect(result.prescriberInstitution).toBe('テスト医院');
+      expect(qrData.prescriptionExpirationDate).toBe('2026-06-12');
+      expect(qrData.prescriptionInsurance?.publicSubsidies).toEqual([
+        { rank: 1, payerNumber: '54123456', recipientNumber: '7654321' },
+      ]);
+      expect(qrData.rawRecords?.map((record) => record.recordType)).toEqual(
+        expect.arrayContaining(['21', '22', '23', '24', '27', '51', '52', '201']),
+      );
+      expect(result.lines[0]).toMatchObject({
+        drug_name: '自己注射対象確認済み注射液',
+        drug_code: '7999401A1010',
+        dosage_form: '注射液',
+        dose: '1キット',
+        frequency: '1日1回朝食後服用',
+        days: 7,
+        packaging_instructions: expect.stringContaining('一包化'),
+        route: 'injection',
+      });
+      expect(result.lines[0].packaging_instructions).toContain('冷所保管');
     });
   });
 
@@ -755,19 +795,17 @@ describe('mapJahisToIntake', () => {
       prismaMock.drugMaster.findMany
         .mockResolvedValueOnce([mockDrugMaster])
         .mockResolvedValueOnce([{ id: 'drug_generic_1', drug_name: 'アムロジピン錠5mg「GE」' }]);
-      prismaMock.pharmacyDrugStock.findMany
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([
-          {
-            id: 'stock_generic_1',
-            site_id: 'site_1',
-            drug_master_id: 'drug_generic_1',
-            is_stocked: true,
-            preferred_generic_id: null,
-            stock_qty: 50,
-            drug_master: mockDrugMasterGeneric,
-          },
-        ]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+        {
+          id: 'stock_generic_1',
+          site_id: 'site_1',
+          drug_master_id: 'drug_generic_1',
+          is_stocked: true,
+          preferred_generic_id: null,
+          stock_qty: 50,
+          drug_master: mockDrugMasterGeneric,
+        },
+      ]);
 
       const qrData = makeQrData({
         medications: [

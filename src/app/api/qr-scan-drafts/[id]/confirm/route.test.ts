@@ -161,6 +161,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
                 patientNameKana: 'ヤマダ タロウ',
                 patientBirthdate: '1950-03-15',
                 patientGender: 'male',
+                prescriptionExpirationDate: '2026-06-12',
                 supplementalRecords: [
                   {
                     recordType: '421',
@@ -263,7 +264,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
             frequency: ' 1日1回朝食後 ',
             days: 14,
             packaging_instructions: ' 一包化 ',
-            packaging_instruction_tags: [' unit_dose '],
+            packaging_instruction_tags: ['unit_dose'],
             route: ' internal ',
             dispensing_method: ' unit_dose ',
             notes: ' ',
@@ -292,6 +293,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         case_id: 'case_1',
         patient_id: 'patient_1',
         source_type: 'qr_scan',
+        prescription_expiry_date: '2026-06-12',
         prescriber_institution_id: 'institution_1',
         lines: [
           expect.objectContaining({

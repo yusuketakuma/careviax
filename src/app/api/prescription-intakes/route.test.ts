@@ -796,6 +796,22 @@ describe('/api/prescription-intakes POST', () => {
         patientNameKana: 'ヤマダ タロウ',
         patientBirthdate: '1950-03-15',
         patientGender: 'male',
+        prescriptionExpirationDate: '2026-06-12',
+        lines: [
+          {
+            drugName: 'アムロジピン錠5mg',
+            drugCode: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            packagingMethod: 'unit_dose',
+            packagingInstructions: '一包化',
+            packagingInstructionTags: ['unit_dose', 'label_required'],
+            route: 'internal',
+            dispensingMethod: 'unit_dose',
+            notes: 'QR備考',
+          },
+        ],
         supplementalRecords: [
           {
             recordType: '421',
@@ -812,6 +828,7 @@ describe('/api/prescription-intakes POST', () => {
     const qrDraftUpdateMock = vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' });
     const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
     const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const intakeCreateMock = vi.fn().mockResolvedValue({ id: 'intake_qr' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -843,7 +860,7 @@ describe('/api/prescription-intakes POST', () => {
           create: vi.fn(),
         },
         prescriptionIntake: {
-          create: vi.fn().mockResolvedValue({ id: 'intake_qr' }),
+          create: intakeCreateMock,
         },
         inquiryRecord: {
           count: vi.fn().mockResolvedValue(0),
@@ -887,6 +904,24 @@ describe('/api/prescription-intakes POST', () => {
         patient_id: 'patient_qr',
         status: 'confirmed',
       },
+    });
+    expect(intakeCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prescription_expiry_date: new Date('2026-06-12T00:00:00.000Z'),
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_name: 'アムロジピン錠5mg',
+              packaging_method: 'unit_dose',
+              packaging_instructions: '一包化',
+              packaging_instruction_tags: ['unit_dose', 'label_required'],
+              route: 'internal',
+              dispensing_method: 'unit_dose',
+              notes: 'QR備考',
+            }),
+          ],
+        },
+      }),
     });
     expect(supplementalUpdateManyMock).toHaveBeenCalledWith({
       where: {

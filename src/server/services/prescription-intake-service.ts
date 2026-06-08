@@ -9,6 +9,7 @@ import {
 import {
   extractPackagingInstructionTags,
   parsePackagingMethod,
+  type PackagingMethodValue,
 } from '@/lib/prescription/packaging';
 import {
   collectDuplicatePrescriptionLines,
@@ -39,7 +40,18 @@ export interface CreateIntakeLineInput {
   unit?: string;
   is_generic?: boolean;
   is_generic_name_prescription?: boolean;
+  packaging_method?: PackagingMethodValue;
   packaging_instructions?: string;
+  packaging_instruction_tags?: Array<
+    | 'cold_storage'
+    | 'narcotic'
+    | 'half_tablet'
+    | 'crush_prohibited'
+    | 'separate_pack'
+    | 'unit_dose'
+    | 'staple_required'
+    | 'label_required'
+  >;
   notes?: string;
   route?: 'internal' | 'external' | 'injection' | 'other';
   dispensing_method?: 'standard' | 'unit_dose' | 'crushed' | 'other';
@@ -53,6 +65,7 @@ export interface CreateIntakeInput {
   patient_id?: string;
   source_type: PrescriptionSourceType;
   prescribed_date: string;
+  prescription_expiry_date?: string;
   prescriber_name?: string;
   prescriber_institution_id?: string;
   prescriber_institution?: string;
@@ -557,6 +570,7 @@ export async function createPrescriptionIntakeInTx(
     patient_id,
     source_type,
     prescribed_date,
+    prescription_expiry_date,
     refill_remaining_count,
     refill_next_dispense_date,
     split_dispense_total,
@@ -569,7 +583,9 @@ export async function createPrescriptionIntakeInTx(
   } = input;
 
   const prescribedDateObj = new Date(prescribed_date);
-  const expiryDate = addDays(prescribedDateObj, 4);
+  const expiryDate = prescription_expiry_date
+    ? new Date(prescription_expiry_date)
+    : addDays(prescribedDateObj, 4);
 
   if (!options.skipExpiryCheck) {
     const dateWindow = validatePrescriptionDateWindow(prescribed_date);
@@ -731,15 +747,21 @@ export async function createPrescriptionIntakeInTx(
       lines: {
         create: lines.map((line) => {
           const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
+          const packagingMethod =
+            line.packaging_method ??
+            (parsedPackaging.method === 'other' ? 'other' : parsedPackaging.method);
           return {
             org_id: orgId,
             ...line,
-            packaging_method: parsedPackaging.method,
-            packaging_instruction_tags: extractPackagingInstructionTags({
-              packagingInstructions: line.packaging_instructions,
-              notes: line.notes,
-              packagingMethod: parsedPackaging.method,
-            }),
+            packaging_method: packagingMethod,
+            packaging_instruction_tags:
+              line.packaging_instruction_tags && line.packaging_instruction_tags.length > 0
+                ? line.packaging_instruction_tags
+                : extractPackagingInstructionTags({
+                    packagingInstructions: line.packaging_instructions,
+                    notes: line.notes,
+                    packagingMethod,
+                  }),
           };
         }),
       },

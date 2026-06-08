@@ -49,6 +49,7 @@ function isUniqueConstraintError(error: unknown) {
 function buildDraftParsedData(args: {
   qrData: JahisQRData;
   mapResult: Awaited<ReturnType<typeof mapJahisToIntake>> | null;
+  parseWarnings?: unknown[];
 }) {
   const mapResult = args.mapResult;
 
@@ -57,6 +58,11 @@ function buildDraftParsedData(args: {
     medications: args.qrData.medications,
     prescribingInstitution: args.qrData.prescribingInstitution,
     dispensingInstitution: args.qrData.dispensingInstitution,
+    prescriptionIssueDate: args.qrData.prescriptionIssueDate ?? null,
+    prescriptionExpirationDate: args.qrData.prescriptionExpirationDate ?? null,
+    prescriptionInsurance: args.qrData.prescriptionInsurance ?? null,
+    rawRecords: args.qrData.rawRecords ?? [],
+    parseWarnings: args.parseWarnings ?? [],
     remarks: args.qrData.remarks,
     patientNotes: args.qrData.patientNotes,
     supplementalRecords: args.qrData.supplementalRecords ?? [],
@@ -252,7 +258,11 @@ export const POST = withAuth(
     const expected_qr_count = multiQrInfo?.splitCount ?? null;
 
     let autoCompleted: unknown = null;
-    let draftParsedData = buildDraftParsedData({ qrData: mergedData, mapResult: null });
+    let draftParsedData = buildDraftParsedData({
+      qrData: mergedData,
+      mapResult: null,
+      parseWarnings: allWarnings,
+    });
     try {
       const mapResult = await mapJahisToIntake(mergedData, {
         orgId: req.orgId,
@@ -262,7 +272,11 @@ export const POST = withAuth(
         scannedBy: req.userId,
       });
       autoCompleted = mapResult.autoCompletedFields;
-      draftParsedData = buildDraftParsedData({ qrData: mergedData, mapResult });
+      draftParsedData = buildDraftParsedData({
+        qrData: mergedData,
+        mapResult,
+        parseWarnings: allWarnings,
+      });
     } catch {
       // Mapper failure is non-fatal; continue with raw parsed data only
     }

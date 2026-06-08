@@ -24,6 +24,7 @@ import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { Badge } from '@/components/ui/badge';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
 import {
@@ -41,7 +42,16 @@ import {
   SOURCE_CONFIG,
   SOURCE_LABELS,
 } from './prescription-form.shared';
-import { getPrescriptionSubmitBlockers } from './prescription-intake-submit';
+import {
+  formatPrescriptionSubmitError,
+  getPrescriptionSubmitBlockers,
+  parsePrescriptionSubmitError,
+} from './prescription-intake-submit';
+import {
+  normalizeJahisSupplementalRecords,
+  type JahisSupplementalRecordDbView,
+  type JahisSupplementalRecordView,
+} from '@/lib/pharmacy/jahis-supplemental-records-view';
 
 type PrescriptionLineInput = {
   line_number: number;
@@ -668,8 +678,7 @@ export function PrescriptionIntakeForm() {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: '処方受付に失敗しました' }));
-        throw new Error(err.message);
+        throw await parsePrescriptionSubmitError(res, '処方受付に失敗しました');
       }
       return res.json();
     },
@@ -701,10 +710,7 @@ export function PrescriptionIntakeForm() {
         }),
       });
       if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ message: '施設まとめ処方の登録に失敗しました' }));
-        throw new Error(err.message);
+        throw await parsePrescriptionSubmitError(res, '施設まとめ処方の登録に失敗しました');
       }
       return res.json();
     },
@@ -801,11 +807,32 @@ export function PrescriptionIntakeForm() {
       patientName?: string;
       patientNameKana?: string;
       prescriptionDate?: string;
+      prescriptionIssueDate?: string | null;
+      prescriptionExpirationDate?: string | null;
       prescriberName?: string;
       prescriberInstitution?: string;
       prescriberInstitutionCode?: string;
       prescriberInstitutionId?: string | null;
       isNewInstitution?: boolean;
+      prescriptionInsurance?: {
+        insurerNumber?: string;
+        symbol?: string;
+        number?: string;
+        branchNumber?: string;
+        patientCopayRatio?: number;
+        publicSubsidies?: Array<{
+          rank: number;
+          payerNumber: string;
+          recipientNumber?: string;
+        }>;
+      } | null;
+      dispensingInstitution?: { name?: string; institutionCode?: string };
+      remarks?: string[];
+      patientNotes?: string[];
+      splitInfo?: { dataId: string; splitCount: number; sequenceNumber: number } | null;
+      parseWarnings?: Array<{ recordType?: string; message: string }>;
+      rawRecords?: Array<{ recordType: string; lineNumber: number }>;
+      supplementalRecords?: JahisSupplementalRecordView[];
       lines?: QrDraftImportLine[];
       unmatchedDrugs?: Array<{
         lineIndex: number;
@@ -824,6 +851,7 @@ export function PrescriptionIntakeForm() {
         stockQty: number | null;
       }>;
     };
+    jahis_supplemental_records?: JahisSupplementalRecordDbView[];
   };
 
   type LineBadgeTone = 'neutral' | 'info' | 'success' | 'warning';
@@ -1110,7 +1138,7 @@ export function PrescriptionIntakeForm() {
         allowNavigation();
         router.push('/prescriptions');
       } catch (err) {
-        setError(err instanceof Error ? err.message : '施設まとめ処方の登録に失敗しました');
+        setError(formatPrescriptionSubmitError(err, '施設まとめ処方の登録に失敗しました'));
       }
       return;
     }
@@ -1133,7 +1161,7 @@ export function PrescriptionIntakeForm() {
       allowNavigation();
       router.push('/prescriptions');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '処方受付に失敗しました');
+      setError(formatPrescriptionSubmitError(err, '処方受付に失敗しました'));
     }
   };
 
@@ -1255,6 +1283,10 @@ export function PrescriptionIntakeForm() {
     ],
   );
   const canSubmit = submitBlockers.length === 0 && !isSubmitting;
+  const qrSupplementalRecords = normalizeJahisSupplementalRecords(
+    qrDraftData?.parsed_data.supplementalRecords,
+    qrDraftData?.jahis_supplemental_records,
+  );
 
   return (
     <form
@@ -1266,7 +1298,7 @@ export function PrescriptionIntakeForm() {
       {error && (
         <div
           role="alert"
-          className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          className="whitespace-pre-line rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           {error}
         </div>
@@ -1349,6 +1381,58 @@ export function PrescriptionIntakeForm() {
                     {qrDraftData.parsed_data.isNewInstitution ? ' / 新規候補' : ''}
                   </p>
                 ) : null}
+                {qrDraftData?.parsed_data.prescriptionExpirationDate ? (
+                  <p className="text-xs text-sky-900/80">
+                    使用期限: {qrDraftData.parsed_data.prescriptionExpirationDate}
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.prescriptionInsurance ? (
+                  <p className="text-xs text-sky-900/80">
+                    保険:
+                    {[
+                      qrDraftData.parsed_data.prescriptionInsurance.insurerNumber,
+                      qrDraftData.parsed_data.prescriptionInsurance.symbol,
+                      qrDraftData.parsed_data.prescriptionInsurance.number,
+                      qrDraftData.parsed_data.prescriptionInsurance.branchNumber,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ') || 'QR記録あり'}
+                    {qrDraftData.parsed_data.prescriptionInsurance.publicSubsidies?.length
+                      ? ` / 公費 ${qrDraftData.parsed_data.prescriptionInsurance.publicSubsidies
+                          .map((item) => item.payerNumber)
+                          .join(', ')}`
+                      : ''}
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.rawRecords?.length ? (
+                  <p className="text-xs text-sky-900/80">
+                    QR原文レコード: {qrDraftData.parsed_data.rawRecords.length}件を下書きに保持
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.dispensingInstitution?.name ? (
+                  <p className="text-xs text-sky-900/80">
+                    調剤機関: {qrDraftData.parsed_data.dispensingInstitution.name}
+                    {qrDraftData.parsed_data.dispensingInstitution.institutionCode
+                      ? ` (${qrDraftData.parsed_data.dispensingInstitution.institutionCode})`
+                      : ''}
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.splitInfo ? (
+                  <p className="text-xs text-sky-900/80">
+                    分割QR: {qrDraftData.parsed_data.splitInfo.sequenceNumber}/
+                    {qrDraftData.parsed_data.splitInfo.splitCount}
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.remarks?.length ? (
+                  <p className="text-xs text-sky-900/80">
+                    QR備考: {qrDraftData.parsed_data.remarks.join(' / ')}
+                  </p>
+                ) : null}
+                {qrDraftData?.parsed_data.patientNotes?.length ? (
+                  <p className="text-xs text-sky-900/80">
+                    患者特記: {qrDraftData.parsed_data.patientNotes.join(' / ')}
+                  </p>
+                ) : null}
               </div>
               {latestPreviousIntake ? (
                 <button
@@ -1373,6 +1457,30 @@ export function PrescriptionIntakeForm() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+
+            {qrDraftData?.parsed_data.parseWarnings?.length ? (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <p className="font-medium">QR解析時の確認事項</p>
+                <ul className="mt-1 space-y-1">
+                  {qrDraftData.parsed_data.parseWarnings.map((item, index) => (
+                    <li key={`${item.recordType ?? 'warning'}-${index}`}>
+                      {item.recordType ? `[${item.recordType}] ` : ''}
+                      {item.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {qrSupplementalRecords.length > 0 ? (
+              <div className="mt-3">
+                <JahisSupplementalRecordsCard
+                  records={qrSupplementalRecords}
+                  description="OTC薬、残薬、患者等記入、かかりつけ薬剤師など、処方登録前に確認するQR補足データです。"
+                  gridClassName="grid gap-2 md:grid-cols-2"
+                />
               </div>
             ) : null}
 

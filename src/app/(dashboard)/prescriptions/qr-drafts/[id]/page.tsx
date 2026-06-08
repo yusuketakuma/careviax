@@ -45,6 +45,10 @@ import {
   type JahisSupplementalRecordDbView,
   type JahisSupplementalRecordView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
+import {
+  formatPrescriptionSubmitError,
+  parsePrescriptionSubmitError,
+} from '../../new/prescription-intake-submit';
 
 // ── Types ──
 
@@ -74,10 +78,30 @@ interface JahisQRData {
   patientBirthdate?: string;
   patientGender?: string;
   prescriptionDate?: string;
+  prescriptionIssueDate?: string | null;
+  prescriptionExpirationDate?: string | null;
   prescriberName?: string;
   prescriberInstitution?: string;
   prescriberInstitutionId?: string | null;
   prescriberInstitutionCode?: string;
+  prescriptionInsurance?: {
+    insurerNumber?: string;
+    symbol?: string;
+    number?: string;
+    branchNumber?: string;
+    patientCopayRatio?: number;
+    publicSubsidies?: Array<{
+      rank: number;
+      payerNumber: string;
+      recipientNumber?: string;
+    }>;
+  } | null;
+  dispensingInstitution?: { name?: string; institutionCode?: string };
+  remarks?: string[];
+  patientNotes?: string[];
+  splitInfo?: { dataId: string; splitCount: number; sequenceNumber: number } | null;
+  parseWarnings?: Array<{ recordType?: string; field?: string; message: string }>;
+  rawRecords?: Array<{ recordType: string; lineNumber: number; fields?: string[] }>;
   lines?: JahisQRLine[];
   supplementalRecords?: JahisSupplementalRecordView[];
 }
@@ -230,6 +254,7 @@ export default function QrDraftReviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const orgId = useOrgId();
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const [formState, setFormState] = useState<DraftFormState>({
     draftId: null,
@@ -291,6 +316,7 @@ export default function QrDraftReviewPage() {
   // Confirm mutation
   const confirmMutation = useMutation({
     mutationFn: async () => {
+      setConfirmError(null);
       const res = await fetch(`/api/qr-scan-drafts/${id}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
@@ -323,8 +349,7 @@ export default function QrDraftReviewPage() {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { message?: string }).message ?? '確定に失敗しました');
+        throw await parsePrescriptionSubmitError(res, '確定に失敗しました');
       }
       return res.json() as Promise<{ intake: { id: string }; cycle: { id: string } }>;
     },
@@ -333,7 +358,9 @@ export default function QrDraftReviewPage() {
       router.push(QR_DRAFT_CONFIRM_SUCCESS_HREF);
     },
     onError: (err: Error) => {
-      toast.error('確定エラー', { description: err.message });
+      const message = formatPrescriptionSubmitError(err, '確定に失敗しました');
+      setConfirmError(message);
+      toast.error('確定エラー', { description: message });
     },
   });
 
@@ -462,11 +489,107 @@ export default function QrDraftReviewPage() {
         </div>
       )}
 
+      {pd.parseWarnings?.length ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="mb-1 font-medium">QR解析時の確認事項</p>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {pd.parseWarnings.map((warning, index) => (
+              <li key={`${warning.recordType ?? 'warning'}-${index}`} className="text-xs">
+                {warning.recordType ? `[${warning.recordType}] ` : ''}
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <JahisSupplementalRecordsCard
         records={supplementalRecords}
         description="OTC薬、残薬、患者等記入、かかりつけ薬剤師など、訪問前後の確認に回す補足データです。"
         gridClassName="grid gap-3 md:grid-cols-2"
       />
+
+      {(pd.prescriptionExpirationDate ||
+        pd.prescriptionInsurance ||
+        (pd.rawRecords?.length ?? 0) > 0) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">QR原文から保持した請求・期限情報</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-3">
+            <InfoRow
+              label="交付日"
+              value={pd.prescriptionIssueDate ?? pd.prescriptionDate ?? '—'}
+            />
+            <InfoRow label="使用期限" value={pd.prescriptionExpirationDate ?? '—'} />
+            <InfoRow
+              label="原文レコード"
+              value={
+                pd.rawRecords?.length
+                  ? `${pd.rawRecords.length}件 (${Array.from(
+                      new Set(pd.rawRecords.map((record) => record.recordType)),
+                    ).join(', ')})`
+                  : '—'
+              }
+            />
+            {pd.prescriptionInsurance ? (
+              <>
+                <InfoRow
+                  label="保険"
+                  value={
+                    [
+                      pd.prescriptionInsurance.insurerNumber,
+                      pd.prescriptionInsurance.symbol,
+                      pd.prescriptionInsurance.number,
+                      pd.prescriptionInsurance.branchNumber,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ') || 'QR記録あり'
+                  }
+                />
+                <InfoRow
+                  label="負担割合"
+                  value={
+                    typeof pd.prescriptionInsurance.patientCopayRatio === 'number'
+                      ? `${pd.prescriptionInsurance.patientCopayRatio}%`
+                      : '—'
+                  }
+                />
+                <InfoRow
+                  label="公費"
+                  value={
+                    pd.prescriptionInsurance.publicSubsidies?.length
+                      ? pd.prescriptionInsurance.publicSubsidies
+                          .map((item) =>
+                            [item.payerNumber, item.recipientNumber].filter(Boolean).join(' / '),
+                          )
+                          .join('、')
+                      : '—'
+                  }
+                />
+              </>
+            ) : null}
+            {pd.dispensingInstitution?.name ? (
+              <InfoRow
+                label="調剤機関"
+                value={[pd.dispensingInstitution.name, pd.dispensingInstitution.institutionCode]
+                  .filter(Boolean)
+                  .join(' / ')}
+              />
+            ) : null}
+            {pd.splitInfo ? (
+              <InfoRow
+                label="分割QR"
+                value={`${pd.splitInfo.sequenceNumber}/${pd.splitInfo.splitCount} (${pd.splitInfo.dataId})`}
+              />
+            ) : null}
+            {pd.remarks?.length ? <InfoRow label="QR備考" value={pd.remarks.join(' / ')} /> : null}
+            {pd.patientNotes?.length ? (
+              <InfoRow label="患者特記" value={pd.patientNotes.join(' / ')} />
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Patient info */}
@@ -829,6 +952,15 @@ export default function QrDraftReviewPage() {
           )}
         </CardContent>
       </Card>
+
+      {confirmError ? (
+        <div
+          role="alert"
+          className="whitespace-pre-line rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {confirmError}
+        </div>
+      ) : null}
 
       {/* Validation summary */}
       {!allRequiredFilled && (

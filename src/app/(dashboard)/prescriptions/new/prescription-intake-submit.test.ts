@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getPrescriptionSubmitBlockers } from './prescription-intake-submit';
+import {
+  formatPrescriptionSubmitError,
+  getPrescriptionSubmitBlockers,
+  parsePrescriptionSubmitError,
+} from './prescription-intake-submit';
 
 describe('getPrescriptionSubmitBlockers', () => {
   it('returns blockers for an incomplete standard prescription', () => {
@@ -31,7 +35,9 @@ describe('getPrescriptionSubmitBlockers', () => {
         inquiryReason: '疑義',
         inquiryToPhysician: '',
         inquiryContent: '確認したい内容',
-        lines: [{ drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' }],
+        lines: [
+          { drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' },
+        ],
       }),
     ).toEqual(['疑義照会を起票する場合は、理由・照会先医師・内容をすべて入力してください']);
   });
@@ -85,7 +91,9 @@ describe('getPrescriptionSubmitBlockers', () => {
         inquiryReason: '',
         inquiryToPhysician: '',
         inquiryContent: '',
-        lines: [{ drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' }],
+        lines: [
+          { drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' },
+        ],
       }),
     ).toEqual([]);
   });
@@ -102,8 +110,40 @@ describe('getPrescriptionSubmitBlockers', () => {
         inquiryReason: '',
         inquiryToPhysician: '',
         inquiryContent: '',
-        lines: [{ drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' }],
+        lines: [
+          { drug_name: 'アムロジピン錠', drug_code: '2149001', dose: '1錠', frequency: '1日1回' },
+        ],
       }),
     ).toEqual(['緊急処方の場合は緊急区分を選択してください']);
+  });
+});
+
+describe('prescription submit API errors', () => {
+  it('preserves blocked line details from API validation responses', async () => {
+    const error = await parsePrescriptionSubmitError(
+      new Response(
+        JSON.stringify({
+          message: '外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+          details: {
+            blocked_lines: [
+              {
+                line_number: 2,
+                drug_name: 'ヒドロモルフォン注射液',
+                reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+              },
+            ],
+          },
+        }),
+        { status: 400 },
+      ),
+      '処方受付に失敗しました',
+    );
+
+    expect(formatPrescriptionSubmitError(error, '処方受付に失敗しました')).toBe(
+      [
+        '外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+        '2行目: ヒドロモルフォン注射液 - 薬剤マスターで外来/在宅自己注射対象として確認されていません',
+      ].join('\n'),
+    );
   });
 });

@@ -71,6 +71,35 @@ const dispensingMethodSchema = z.preprocess(
     .pipe(z.enum(['standard', 'unit_dose', 'crushed', 'other']))
     .optional(),
 );
+const packagingMethodSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
+  z
+    .string()
+    .trim()
+    .pipe(
+      z.enum([
+        'none',
+        'unit_dose',
+        'morning_evening_unit_dose',
+        'medication_box',
+        'calendar_pack',
+        'blister_pack',
+        'crush_and_pack',
+        'other',
+      ]),
+    )
+    .optional(),
+);
+const packagingInstructionTagSchema = z.enum([
+  'cold_storage',
+  'narcotic',
+  'half_tablet',
+  'crush_prohibited',
+  'separate_pack',
+  'unit_dose',
+  'staple_required',
+  'label_required',
+]);
 
 const confirmQrDraftLineSchema = z
   .object({
@@ -83,9 +112,9 @@ const confirmQrDraftLineSchema = z
     quantity: z.number().finite().positive().optional(),
     unit: optionalTrimmedStringSchema,
     is_generic: z.boolean().optional(),
-    packaging_method: optionalTrimmedStringSchema,
+    packaging_method: packagingMethodSchema,
     packaging_instructions: optionalTrimmedStringSchema,
-    packaging_instruction_tags: z.array(requiredTrimmedStringSchema).optional(),
+    packaging_instruction_tags: z.array(packagingInstructionTagSchema).optional(),
     route: prescriptionRouteSchema,
     dispensing_method: dispensingMethodSchema,
     start_date: optionalDateStringSchema,
@@ -180,6 +209,62 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult) {
 
 function validateConfirmPrescriptionDate(prescribedDate: string) {
   return validatePrescriptionDateWindow(prescribedDate);
+}
+
+function readDraftLineAt(parsedData: Record<string, unknown> | null, index: number) {
+  const lines = Array.isArray(parsedData?.lines) ? parsedData.lines : [];
+  return readJsonObject(lines[index]);
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : undefined;
+}
+
+const PACKAGING_METHOD_VALUES = [
+  'none',
+  'unit_dose',
+  'morning_evening_unit_dose',
+  'medication_box',
+  'calendar_pack',
+  'blister_pack',
+  'crush_and_pack',
+  'other',
+] as const;
+const PACKAGING_TAG_VALUES = [
+  'cold_storage',
+  'narcotic',
+  'half_tablet',
+  'crush_prohibited',
+  'separate_pack',
+  'unit_dose',
+  'staple_required',
+  'label_required',
+] as const;
+const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
+const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
+
+function readEnumValue<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): T[number] | undefined {
+  const text = readString(value);
+  return text && (allowed as readonly string[]).includes(text) ? (text as T[number]) : undefined;
+}
+
+function readEnumArray<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): T[number][] | undefined {
+  const values = readStringArray(value)?.filter((item): item is T[number] =>
+    (allowed as readonly string[]).includes(item),
+  );
+  return values && values.length > 0 ? values : undefined;
 }
 
 export const POST = withAuth(
@@ -303,26 +388,46 @@ export const POST = withAuth(
           patient_id,
           source_type: 'qr_scan' as const,
           prescribed_date,
+          prescription_expiry_date:
+            typeof parsedData?.prescriptionExpirationDate === 'string'
+              ? parsedData.prescriptionExpirationDate
+              : undefined,
           prescriber_name,
           prescriber_institution_id,
           prescriber_institution,
           lines: lines.map((line, index) => ({
-            line_number: index + 1,
-            drug_name: line.drug_name,
-            drug_code: line.drug_code,
-            dosage_form: line.dosage_form,
-            dose: line.dose,
-            frequency: line.frequency,
-            days: line.days,
-            quantity: line.quantity,
-            unit: line.unit,
-            is_generic: line.is_generic,
-            packaging_instructions: line.packaging_instructions,
-            route: line.route,
-            dispensing_method: line.dispensing_method,
-            start_date: line.start_date,
-            end_date: line.end_date,
-            notes: line.notes,
+            ...(() => {
+              const draftLine = readDraftLineAt(parsedData, index);
+              return {
+                line_number: index + 1,
+                drug_name: line.drug_name,
+                drug_code: line.drug_code ?? readString(draftLine?.drugCode),
+                dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
+                dose: line.dose,
+                frequency: line.frequency,
+                days: line.days,
+                quantity: line.quantity,
+                unit: line.unit ?? readString(draftLine?.unit),
+                is_generic:
+                  line.is_generic ??
+                  (typeof draftLine?.isGeneric === 'boolean' ? draftLine.isGeneric : undefined),
+                packaging_method:
+                  line.packaging_method ??
+                  readEnumValue(draftLine?.packagingMethod, PACKAGING_METHOD_VALUES),
+                packaging_instructions:
+                  line.packaging_instructions ?? readString(draftLine?.packagingInstructions),
+                packaging_instruction_tags:
+                  line.packaging_instruction_tags ??
+                  readEnumArray(draftLine?.packagingInstructionTags, PACKAGING_TAG_VALUES),
+                route: line.route ?? readEnumValue(draftLine?.route, ROUTE_VALUES),
+                dispensing_method:
+                  line.dispensing_method ??
+                  readEnumValue(draftLine?.dispensingMethod, DISPENSING_METHOD_VALUES),
+                start_date: line.start_date ?? readString(draftLine?.startDate),
+                end_date: line.end_date ?? readString(draftLine?.endDate),
+                notes: line.notes ?? readString(draftLine?.notes),
+              };
+            })(),
           })),
         };
 

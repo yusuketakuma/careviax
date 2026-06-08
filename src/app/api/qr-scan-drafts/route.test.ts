@@ -137,8 +137,27 @@ describe('/api/qr-scan-drafts POST', () => {
         dispensingInstitution: {},
         prescribingDoctor: '鈴木医師',
         dispensingDate: '2026-04-01',
+        prescriptionIssueDate: '2026-04-01',
+        prescriptionExpirationDate: '2026-04-05',
+        prescriptionInsurance: {
+          insurerNumber: '06012345',
+          symbol: '記号A',
+          number: '1234567',
+          branchNumber: '05',
+          patientCopayRatio: 30,
+          publicSubsidies: [{ rank: 1, payerNumber: '54123456', recipientNumber: '7654321' }],
+        },
         remarks: ['一包化'],
         patientNotes: ['他職種共有あり'],
+        rawRecords: [
+          { recordType: '21', lineNumber: 8, fields: ['1'], rawLine: '21,1' },
+          {
+            recordType: '27',
+            lineNumber: 12,
+            fields: ['54123456', '7654321'],
+            rawLine: '27,54123456,7654321',
+          },
+        ],
         supplementalRecords: [
           {
             recordType: '421',
@@ -293,6 +312,18 @@ describe('/api/qr-scan-drafts POST', () => {
           qr_payload_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
           parsed_data: expect.objectContaining({
             patientName: '山田 太郎',
+            prescriptionIssueDate: '2026-04-01',
+            prescriptionExpirationDate: '2026-04-05',
+            prescriptionInsurance: expect.objectContaining({
+              insurerNumber: '06012345',
+              publicSubsidies: [
+                expect.objectContaining({ payerNumber: '54123456', recipientNumber: '7654321' }),
+              ],
+            }),
+            rawRecords: [
+              expect.objectContaining({ recordType: '21' }),
+              expect.objectContaining({ recordType: '27' }),
+            ],
             prescriberInstitutionId: 'inst_1',
             unmatchedDrugs: expect.any(Array),
             formularyStatus: [

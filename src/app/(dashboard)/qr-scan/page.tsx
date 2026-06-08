@@ -33,8 +33,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { cn } from '@/lib/utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import {
   isJahisQR,
   parseJahisQRSafe,
@@ -366,6 +368,24 @@ export default function QRScanPage() {
     totalQRCount != null
       ? `${scannedCount}/${totalQRCount} スキャン済み`
       : `${scannedCount}枚 スキャン済み`;
+  const supplementalRecords = normalizeJahisSupplementalRecords(
+    mergedQRData?.supplementalRecords,
+    undefined,
+  );
+  const publicSubsidies = mergedQRData?.prescriptionInsurance?.publicSubsidies ?? [];
+  const rawRecordTypes = Array.from(
+    new Set((mergedQRData?.rawRecords ?? []).map((record) => record.recordType)),
+  );
+  const hasQrMetadata =
+    Boolean(mergedQRData?.prescriptionIssueDate) ||
+    Boolean(mergedQRData?.prescriptionExpirationDate) ||
+    Boolean(mergedQRData?.prescriptionInsurance) ||
+    Boolean(mergedQRData?.dispensingInstitution?.name) ||
+    Boolean(mergedQRData?.splitInfo) ||
+    Boolean(mergedQRData?.remarks.length) ||
+    Boolean(mergedQRData?.patientNotes.length) ||
+    Boolean(mergedQRData?.rawRecords?.length) ||
+    Boolean(parseResult?.warnings.length);
 
   return (
     <div className="space-y-4 p-3 pb-20 md:p-4 md:pb-4 xl:p-5" data-testid="qr-scan-workspace">
@@ -576,6 +596,123 @@ export default function QRScanPage() {
                 </div>
               </div>
             )}
+
+            {/* QR付帯情報 */}
+            {hasQrMetadata && (
+              <div>
+                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  QR付帯情報
+                </h3>
+                <dl className="grid gap-2 text-sm md:grid-cols-2">
+                  {mergedQRData.prescriptionIssueDate ? (
+                    <div>
+                      <dt className="text-muted-foreground">処方日</dt>
+                      <dd className="font-medium">{mergedQRData.prescriptionIssueDate}</dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.prescriptionExpirationDate ? (
+                    <div>
+                      <dt className="text-muted-foreground">使用期限</dt>
+                      <dd className="font-medium">{mergedQRData.prescriptionExpirationDate}</dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.prescriptionInsurance ? (
+                    <div>
+                      <dt className="text-muted-foreground">保険</dt>
+                      <dd className="font-medium">
+                        {[
+                          mergedQRData.prescriptionInsurance.insurerNumber,
+                          mergedQRData.prescriptionInsurance.symbol,
+                          mergedQRData.prescriptionInsurance.number,
+                          mergedQRData.prescriptionInsurance.branchNumber,
+                        ]
+                          .filter(Boolean)
+                          .join(' / ') || '記録あり'}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {publicSubsidies.length > 0 ? (
+                    <div>
+                      <dt className="text-muted-foreground">公費</dt>
+                      <dd className="font-medium">
+                        {publicSubsidies
+                          .map((subsidy) =>
+                            [subsidy.payerNumber, subsidy.recipientNumber]
+                              .filter(Boolean)
+                              .join(':'),
+                          )
+                          .filter(Boolean)
+                          .join(' / ')}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.dispensingInstitution?.name ? (
+                    <div>
+                      <dt className="text-muted-foreground">調剤機関</dt>
+                      <dd className="font-medium">
+                        {[
+                          mergedQRData.dispensingInstitution.name,
+                          mergedQRData.dispensingInstitution.institutionCode,
+                        ]
+                          .filter(Boolean)
+                          .join(' / ')}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.splitInfo ? (
+                    <div>
+                      <dt className="text-muted-foreground">分割QR</dt>
+                      <dd className="font-medium">
+                        {mergedQRData.splitInfo.sequenceNumber}/{mergedQRData.splitInfo.splitCount}{' '}
+                        ({mergedQRData.splitInfo.dataId})
+                      </dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.rawRecords?.length ? (
+                    <div>
+                      <dt className="text-muted-foreground">原文レコード</dt>
+                      <dd className="font-medium">
+                        {mergedQRData.rawRecords.length}件
+                        {rawRecordTypes.length ? ` (${rawRecordTypes.join(', ')})` : ''}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.remarks.length ? (
+                    <div>
+                      <dt className="text-muted-foreground">QR備考</dt>
+                      <dd className="font-medium">{mergedQRData.remarks.join(' / ')}</dd>
+                    </div>
+                  ) : null}
+                  {mergedQRData.patientNotes.length ? (
+                    <div>
+                      <dt className="text-muted-foreground">患者特記</dt>
+                      <dd className="font-medium">{mergedQRData.patientNotes.join(' / ')}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {parseResult?.warnings.length ? (
+                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <p className="font-medium">解析時の確認事項</p>
+                    <ul className="mt-1 space-y-1">
+                      {parseResult.warnings.map((warning, index) => (
+                        <li key={`${warning.recordType ?? 'warning'}-${index}`}>
+                          {warning.recordType ? `[${warning.recordType}] ` : ''}
+                          {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {supplementalRecords.length > 0 ? (
+              <JahisSupplementalRecordsCard
+                records={supplementalRecords}
+                description="OTC薬、残薬、患者等記入、かかりつけ薬剤師など、送信前に確認するQR補足データです。"
+                gridClassName="grid gap-2 md:grid-cols-2"
+              />
+            ) : null}
 
             {/* 薬剤一覧 */}
             <div>

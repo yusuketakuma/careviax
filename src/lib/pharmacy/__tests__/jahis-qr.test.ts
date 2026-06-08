@@ -19,6 +19,7 @@ import {
   MULTI_QR_PART2,
   ERA_DATE_QR,
   SUPPLEMENTAL_RECORDS_QR,
+  OUTPATIENT_PRESCRIPTION_QR_V11,
 } from './fixtures/jahis-samples';
 
 // ── parseJahisDate ──
@@ -83,6 +84,7 @@ describe('isJahisQR', () => {
   it('returns true for valid JAHIS headers', () => {
     expect(isJahisQR('JAHISTC\n1,患者名')).toBe(true);
     expect(isJahisQR('JAHISTC08,1\n1,患者名')).toBe(true);
+    expect(isJahisQR('JAHIS11\n11,,患者名,ｶﾝｼﾞｬﾒｲ')).toBe(true);
   });
 
   it('returns false for invalid headers', () => {
@@ -383,6 +385,72 @@ describe('parseJahisQR', () => {
       expect(primaryPharmacist?.details).toContainEqual({
         label: '連絡先',
         value: '03-3506-8010',
+      });
+    });
+  });
+
+  describe('with OUTPATIENT_PRESCRIPTION_QR_V11', () => {
+    it('parses JAHIS11 outpatient prescription QR core route data', () => {
+      const result = parseJahisQR(OUTPATIENT_PRESCRIPTION_QR_V11);
+
+      expect(result.patient).toMatchObject({
+        name: '山田 太郎',
+        nameKana: 'ﾔﾏﾀﾞ ﾀﾛｳ',
+        gender: 'male',
+        birthDate: '1950-03-15',
+      });
+      expect(result.prescribingInstitution).toMatchObject({
+        name: '在宅テストクリニック',
+        prefCode: '13',
+        institutionCode: '9876543',
+        address: '東京都港区新橋1丁目11番',
+        phone: '03-3506-8010',
+      });
+      expect(result.prescribingDoctor).toBe('在宅 一郎');
+      expect(result.prescribingDepartment).toBe('内科');
+      expect(result.prescriptionIssueDate).toBe('2026-06-08');
+      expect(result.prescriptionExpirationDate).toBe('2026-06-12');
+      expect(result.dispensingDate).toBe('2026-06-08');
+    });
+
+    it('keeps insurance and public subsidy records from JAHIS11 prescription QR', () => {
+      const result = parseJahisQR(OUTPATIENT_PRESCRIPTION_QR_V11);
+
+      expect(result.prescriptionInsurance).toEqual({
+        insuranceType: '1',
+        insurerNumber: '06012345',
+        symbol: '記号A',
+        number: '1234567',
+        insuredPersonType: '1',
+        branchNumber: '05',
+        patientCopayRatio: 30,
+        benefitRatio: 70,
+        publicSubsidies: [
+          {
+            rank: 1,
+            payerNumber: '54123456',
+            recipientNumber: '7654321',
+          },
+        ],
+      });
+    });
+
+    it('maps JAHIS11 RP and medication records into medication lines', () => {
+      const result = parseJahisQR(OUTPATIENT_PRESCRIPTION_QR_V11);
+      expect(result.medications).toHaveLength(1);
+      expect(result.medications[0]).toMatchObject({
+        rpNumber: 1,
+        drugCodeType: 2,
+        drugCode: '799940101',
+        drugName: '自己注射対象確認済み注射液',
+        dose: '1',
+        unit: 'キット',
+        usage: '1日1回朝食後服用',
+        usageQuantity: '7',
+        usageUnit: '日分',
+        daysOrTimes: '7日分',
+        formCode: 1,
+        supplements: ['一包化', '薬品補足: 冷所保管'],
       });
     });
   });
