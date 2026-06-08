@@ -31,19 +31,22 @@ import {
   createReturnHandoffHandler,
 } from './handoffs-handlers';
 import type { PhosHandoffsRepository } from './handoffs-repository';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 import type { TenantContext } from './tenant-context';
 
 type DynamoItem = Record<string, AttributeValue>;
 type HandoffLambdaHandler = ReturnType<typeof withTenantContext>;
 
-type HandoffsLambdaDependencies = {
+type HandoffsLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosHandoffsRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoHandoffStoreClient<DynamoItem, DynamoItem>;
   mapper?: DynamoHandoffStoreMapper<DynamoItem, DynamoItem>;
   createHandoffId?: () => string;
-  now?: () => Date;
 };
 
 function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
@@ -305,31 +308,46 @@ export function createHandoffRepository(
 export function createHandoffSearchLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createHandoffSearchHandler(createHandoffRepository(deps)));
+  return withTenantContext(createHandoffSearchHandler(createHandoffRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createCreateHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createCreateHandoffHandler(createHandoffRepository(deps)));
+  return withTenantContext(createCreateHandoffHandler(createHandoffRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createOpenHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createOpenHandoffHandler(createHandoffRepository(deps)));
+  return withTenantContext(createOpenHandoffHandler(createHandoffRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createResolveHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createResolveHandoffHandler(createHandoffRepository(deps)));
+  return withTenantContext(createResolveHandoffHandler(createHandoffRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createReturnHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createReturnHandoffHandler(createHandoffRepository(deps)));
+  return withTenantContext(createReturnHandoffHandler(createHandoffRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export const handoffSearchHandler = createHandoffSearchLambdaHandler();

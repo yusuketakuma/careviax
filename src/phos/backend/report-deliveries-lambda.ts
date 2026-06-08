@@ -26,16 +26,19 @@ import {
   createReportDeliverySearchHandler,
 } from './report-deliveries-handlers';
 import type { PhosReportDeliveriesRepository } from './report-deliveries-repository';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
 type DynamoItem = Record<string, AttributeValue>;
 
-type ReportDeliveriesLambdaDependencies = {
+type ReportDeliveriesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosReportDeliveriesRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoReportDeliveriesClient;
   lifecycle_client?: DynamoReportDeliveryLifecycleClient<DynamoItem, DynamoItem>;
-  now?: () => Date;
 };
 
 function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
@@ -182,6 +185,10 @@ export function createReportDeliverySearchLambdaHandler(
 ) {
   return withTenantContext(
     createReportDeliverySearchHandler(createReportDeliveriesRepository(deps)),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 
@@ -192,6 +199,10 @@ export function createRegisterReportReplyLambdaHandler(
 ) {
   return withTenantContext(
     createRegisterReportReplyHandler(createReportDeliveriesRepository(deps)),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 
@@ -200,6 +211,10 @@ export function createMarkReportActionDoneLambdaHandler(
 ) {
   return withTenantContext(
     createMarkReportActionDoneHandler(createReportDeliveriesRepository(deps)),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 

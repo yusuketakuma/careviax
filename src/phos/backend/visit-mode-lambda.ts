@@ -13,13 +13,16 @@ import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createVisitModeLifecycleRepository } from './visit-mode-lifecycle-repository';
 import { createGetVisitModeHandler, createUpdateVisitStepHandler } from './visit-mode-handlers';
 import type { PhosVisitModeRepository } from './visit-mode-repository';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
-type VisitModeLambdaDependencies = {
+type VisitModeLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosVisitModeRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoVisitModeClient;
-  now?: () => Date;
 };
 
 export function createDynamoVisitModeClient(input: {
@@ -96,11 +99,17 @@ export function createVisitModeRepository(
 }
 
 export function createGetVisitModeLambdaHandler(deps: VisitModeLambdaDependencies = {}) {
-  return withTenantContext(createGetVisitModeHandler(createVisitModeRepository(deps)));
+  return withTenantContext(createGetVisitModeHandler(createVisitModeRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createUpdateVisitStepLambdaHandler(deps: VisitModeLambdaDependencies = {}) {
-  return withTenantContext(createUpdateVisitStepHandler(createVisitModeRepository(deps)));
+  return withTenantContext(createUpdateVisitStepHandler(createVisitModeRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export const getVisitModeHandler = createGetVisitModeLambdaHandler();

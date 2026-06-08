@@ -22,6 +22,7 @@ import {
 import { PhosDomainError } from './cards-repository';
 import type { PhosCardsRepository } from './cards-repository';
 import type { PhosHttpEvent } from './lambda-handler';
+import { createInMemoryObservabilitySink, hashTenantId } from './observability';
 
 const cardHandlerFixtures = {
   actionableNextAction: {
@@ -202,7 +203,8 @@ describe('PH-OS cards Lambda handlers', () => {
 
   it('executes card actions with idempotency and client version', async () => {
     const repo = repository();
-    const handler = withTenantContext(createExecuteCardActionHandler(repo));
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(createExecuteCardActionHandler(repo), { observability });
 
     const response = await handler(
       event({
@@ -230,6 +232,22 @@ describe('PH-OS cards Lambda handlers', () => {
       display_status: DisplayStatus.IN_PROGRESS,
       server_version: 2,
     } satisfies Partial<ActionResponse>);
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'ActionLatencyMs',
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id: 'tenant_abc123',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      }),
+    );
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        current_step: CurrentStep.DIFF_REVIEW,
+      }),
+    );
   });
 
   it('rejects card actions when write scope is missing', async () => {
@@ -345,6 +363,7 @@ describe('PH-OS cards Lambda handlers', () => {
   });
 
   it('maps repository stale version errors to 409 ErrorResponse', async () => {
+    const observability = createInMemoryObservabilitySink();
     const repo = repository({
       executeCardAction: vi.fn(async () => {
         throw new PhosDomainError({
@@ -355,7 +374,7 @@ describe('PH-OS cards Lambda handlers', () => {
         });
       }),
     });
-    const handler = withTenantContext(createExecuteCardActionHandler(repo));
+    const handler = withTenantContext(createExecuteCardActionHandler(repo), { observability });
 
     const response = await handler(
       event({
@@ -376,5 +395,20 @@ describe('PH-OS cards Lambda handlers', () => {
       message_key: 'api.error.stale_version',
       details: { server_version: 2 },
     });
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'ActionLatencyMs',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        error_code: 'STALE_VERSION',
+      }),
+    );
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        error_code: 'STALE_VERSION',
+      }),
+    );
   });
 });

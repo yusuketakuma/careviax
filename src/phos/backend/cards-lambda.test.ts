@@ -19,6 +19,7 @@ import {
   createExecuteCardActionLambdaHandler,
 } from './cards-lambda';
 import type { PhosHttpEvent } from './lambda-handler';
+import { createInMemoryObservabilitySink } from './observability';
 
 const card: CardSummaryView = {
   card_id: 'card_1',
@@ -137,7 +138,8 @@ describe('PH-OS cards Lambda composition', () => {
 
   it('wires POST /cards/{card_id}/actions through a composed Lambda export', async () => {
     const repo = repository();
-    const handler = createExecuteCardActionLambdaHandler({ repository: repo });
+    const observability = createInMemoryObservabilitySink();
+    const handler = createExecuteCardActionLambdaHandler({ repository: repo, observability });
 
     const response = await handler(
       event({
@@ -160,6 +162,12 @@ describe('PH-OS cards Lambda composition', () => {
         idempotency_key: 'idem_1',
         client_version: 1,
       },
+    );
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'ActionLatencyMs',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      }),
     );
   });
 });

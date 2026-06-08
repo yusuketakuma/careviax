@@ -1,7 +1,8 @@
 import { ActionCode } from '@/phos/contracts/phos_contracts';
-import type { ActionRequest, ErrorResponse } from '@/phos/contracts/phos_contracts';
+import type { ActionRequest, ActionResponse, ErrorResponse } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
+import { hashTenantId } from './observability';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import type { CardSearchQuery, PhosCardsRepository } from './cards-repository';
@@ -154,6 +155,33 @@ function logHandlerSuccess(input: {
   );
 }
 
+function emitActionObservability(input: {
+  ctx: TenantContext;
+  route_key: string;
+  action_code: ActionCode;
+  started_at_ms: number;
+  current_step?: ActionResponse['card']['current_step'];
+  error_code?: string;
+}) {
+  const latency_ms = Math.max(0, Date.now() - input.started_at_ms);
+  input.ctx.observability?.emitMetric({
+    name: 'ActionLatencyMs',
+    value: latency_ms,
+    unit: 'Milliseconds',
+    route_key: input.route_key,
+    tenant_id: input.ctx.tenant_id,
+    action_code: input.action_code,
+    ...(input.error_code ? { error_code: input.error_code } : {}),
+  });
+  input.ctx.observability?.annotateTrace({
+    route_key: input.route_key,
+    tenant_id_hash: hashTenantId(input.ctx.tenant_id),
+    action_code: input.action_code,
+    ...(input.current_step ? { current_step: input.current_step } : {}),
+    ...(input.error_code ? { error_code: input.error_code } : {}),
+  });
+}
+
 export function createCardSearchHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx }) => {
     const route_key = event.routeKey ?? 'GET /cards';
@@ -242,10 +270,21 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
       return domainErrorResponse(ctx, validationError(ctx, { field: 'card_id' }));
     }
 
+    let action_code: ActionCode | undefined;
+    let started_at_ms = 0;
     try {
       assertRouteAccess(ctx, route_key);
       const request = parseActionRequest(ctx, body);
+      action_code = request.action_code;
+      started_at_ms = Date.now();
       const response = await repository.executeCardAction(ctx, card_id, request);
+      emitActionObservability({
+        ctx,
+        route_key,
+        action_code: request.action_code,
+        current_step: response.card.current_step,
+        started_at_ms,
+      });
       logHandlerSuccess({
         ctx,
         route_key,
@@ -255,6 +294,15 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
       return response;
     } catch (error) {
       if (error instanceof PhosDomainError) {
+        if (action_code && started_at_ms > 0) {
+          emitActionObservability({
+            ctx,
+            route_key,
+            action_code,
+            started_at_ms,
+            error_code: error.error_code,
+          });
+        }
         logHandlerError({
           ctx,
           route_key,

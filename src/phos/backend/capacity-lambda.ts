@@ -8,13 +8,16 @@ import type { PhosCapacityRepository } from './capacity-repository';
 import { createDynamoCapacityRepository } from './dynamo-capacity-repository';
 import type { DynamoCapacityClient } from './dynamo-capacity-repository';
 import { dynamoKey } from './dynamodb-attribute-values';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
-type CapacityLambdaDependencies = {
+type CapacityLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosCapacityRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoCapacityClient;
-  now?: () => Date;
 };
 
 export function createDynamoCapacityClient(input: {
@@ -43,7 +46,10 @@ export function createCapacityRepository(
 }
 
 export function createCapacityLambdaHandler(deps: CapacityLambdaDependencies = {}) {
-  return withTenantContext(createCapacityHandler(createCapacityRepository(deps)));
+  return withTenantContext(createCapacityHandler(createCapacityRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export const capacityHandler = createCapacityLambdaHandler();

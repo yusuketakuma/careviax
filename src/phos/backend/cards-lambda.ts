@@ -36,18 +36,21 @@ import {
   type DynamoQueryOutput,
 } from './dynamo-cards-repository';
 import { dynamoKey, fromDynamoAttributeValue } from './dynamodb-attribute-values';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
 type DynamoItem = Record<string, AttributeValue>;
 
-type CardsLambdaDependencies = {
+type CardsLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosCardsRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   cards_client?: DynamoCardsClient<DynamoItem, DynamoItem>;
   action_client?: DynamoCardActionStoreClient<DynamoItem, DynamoItem>;
   cards_mapper?: DynamoCardsMapper<DynamoItem, DynamoItem>;
   action_mapper?: DynamoCardActionStoreMapper<DynamoItem, DynamoItem>;
-  now?: () => Date;
 };
 
 function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
@@ -269,15 +272,24 @@ export function createCardsRepository(deps: CardsLambdaDependencies = {}): PhosC
 }
 
 export function createCardSearchLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createCardSearchHandler(createCardsRepository(deps)));
+  return withTenantContext(createCardSearchHandler(createCardsRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createCardDetailLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createCardDetailHandler(createCardsRepository(deps)));
+  return withTenantContext(createCardDetailHandler(createCardsRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createExecuteCardActionLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createExecuteCardActionHandler(createCardsRepository(deps)));
+  return withTenantContext(createExecuteCardActionHandler(createCardsRepository(deps)), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export const cardSearchHandler = createCardSearchLambdaHandler();

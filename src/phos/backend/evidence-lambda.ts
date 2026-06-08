@@ -4,9 +4,13 @@ import {
   createS3EvidenceUploadPresigner,
   type EvidenceUploadPresigner,
 } from './evidence-handlers';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
-type EvidenceLambdaDependencies = {
+type EvidenceLambdaDependencies = PhosLambdaRuntimeDependencies & {
   presigner?: EvidenceUploadPresigner;
   s3_client?: S3Client;
   bucket?: string;
@@ -36,6 +40,10 @@ export function createEvidencePresignUploadLambdaHandler(deps: EvidenceLambdaDep
       generateEvidenceId: deps.generateEvidenceId,
       max_size_bytes: deps.max_size_bytes,
     }),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 

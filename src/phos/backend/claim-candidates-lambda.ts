@@ -25,15 +25,18 @@ import {
   fromDynamoAttributeValue,
   toDynamoAttributeValue,
 } from './dynamodb-attribute-values';
+import {
+  createLambdaObservabilitySink,
+  type PhosLambdaRuntimeDependencies,
+} from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 
 type DynamoItem = Record<string, AttributeValue>;
 
-type ClaimCandidatesLambdaDependencies = {
+type ClaimCandidatesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosClaimCandidatesRepository;
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoClaimCandidatesClient;
-  now?: () => Date;
 };
 
 function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
@@ -202,6 +205,10 @@ export function createClaimCandidateSearchLambdaHandler(
 ) {
   return withTenantContext(
     createClaimCandidateSearchHandler(createClaimCandidatesRepository(deps)),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 
@@ -212,6 +219,10 @@ export function createExcludeClaimCandidateLambdaHandler(
 ) {
   return withTenantContext(
     createExcludeClaimCandidateHandler(createClaimCandidatesRepository(deps)),
+    {
+      observability: createLambdaObservabilitySink(deps),
+      now: deps.now,
+    },
   );
 }
 
