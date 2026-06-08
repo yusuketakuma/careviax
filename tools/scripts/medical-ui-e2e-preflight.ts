@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import net from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
+import {
+  assertMatchingE2eTargets,
+  DEFAULT_E2E_DATABASE_URL,
+  parseLocalE2eDatabaseTarget,
+} from './prepare-e2e-db-core';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -23,13 +28,31 @@ const REQUIRED_RLS_TABLES = [
   'DispensingDecision',
   'DocumentDeliveryRule',
   'HandoffBoard',
-  'HandoffItem',
   'PatientInsurance',
   'PcaPump',
   'PcaPumpRental',
   'PushSubscription',
   'ServiceArea',
   'TaskComment',
+] as const;
+
+const ORG_ID_RLS_EXEMPT_TABLES = [
+  // Org-scoped configuration/master/auth tables still use route/service guards
+  // and need separate migration planning before app-role RLS enforcement.
+  'BillingRule',
+  'BusinessHoliday',
+  'FacilityUnit',
+  'FormularyChangeRequest',
+  'FormularyTemplate',
+  'IntegrationJob',
+  'NotificationRule',
+  'PackagingMethodMaster',
+  'PatientPackagingProfile',
+  'PharmacySiteInsuranceConfig',
+  'PrescriberInstitution',
+  'User',
+  'VisitScheduleContactLog',
+  'VisitScheduleOverride',
 ] as const;
 
 const REQUIRED_AUDIT_TRIGGERS = [
@@ -122,27 +145,40 @@ async function checkTcpPort(name: string, port: number): Promise<CheckResult> {
 }
 
 function checkDatabaseUrl(envName: 'DATABASE_URL' | 'DIRECT_URL'): CheckResult {
-  const databaseUrl =
-    process.env[envName] ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
+  const databaseUrl = process.env[envName] ?? DEFAULT_E2E_DATABASE_URL;
 
   try {
-    const url = new URL(databaseUrl);
-    const databaseName = url.pathname.replace(/^\//, '');
-    const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-    const isE2eDatabase = databaseName === 'ph_os_e2e';
+    const target = parseLocalE2eDatabaseTarget(databaseUrl, envName);
     return {
       name: envName,
-      status: isLocalHost && isE2eDatabase ? 'pass' : 'fail',
-      detail:
-        isLocalHost && isE2eDatabase
-          ? `local ${databaseName} database target`
-          : `expected local ph_os_e2e, got host=${url.hostname} database=${databaseName}`,
+      status: 'pass',
+      detail: `local ${target.label} database target`,
     };
   } catch (error) {
     return {
       name: envName,
       status: 'fail',
       detail: error instanceof Error ? error.message : `invalid ${envName}`,
+    };
+  }
+}
+
+function checkDatabaseUrlPair(): CheckResult {
+  const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_E2E_DATABASE_URL;
+  const directUrl = process.env.DIRECT_URL ?? DEFAULT_E2E_DATABASE_URL;
+
+  try {
+    const target = assertMatchingE2eTargets(databaseUrl, directUrl);
+    return {
+      name: 'DATABASE_URL/DIRECT_URL',
+      status: 'pass',
+      detail: `matching ${target.label} database target`,
+    };
+  } catch (error) {
+    return {
+      name: 'DATABASE_URL/DIRECT_URL',
+      status: 'fail',
+      detail: error instanceof Error ? error.message : 'database URLs do not match',
     };
   }
 }
@@ -220,8 +256,7 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
 }
 
 async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
-  const databaseUrl =
-    process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
+  const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_E2E_DATABASE_URL;
   const client = new Client({ connectionString: databaseUrl });
 
   try {
@@ -241,20 +276,24 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
           COUNT(p.polname)::int AS policy_count
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attribute a
+          ON a.attrelid = c.oid
+         AND a.attname = 'org_id'
+         AND NOT a.attisdropped
         LEFT JOIN pg_policy p ON p.polrelid = c.oid
         WHERE n.nspname = 'public'
-          AND c.relname = ANY($1::text[])
+          AND c.relkind IN ('r', 'p')
+          AND c.relname <> ALL($1::text[])
         GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
       `,
-      [REQUIRED_RLS_TABLES],
+      [ORG_ID_RLS_EXEMPT_TABLES],
     );
 
     const rlsByTable = new Map(rlsResult.rows.map((row) => [row.relname, row]));
     const missingTables = REQUIRED_RLS_TABLES.filter((table) => !rlsByTable.has(table));
-    const weakRlsTables = REQUIRED_RLS_TABLES.filter((table) => {
-      const row = rlsByTable.get(table);
-      return !row?.relrowsecurity || !row.relforcerowsecurity || row.policy_count < 1;
-    });
+    const weakRlsTables = rlsResult.rows.filter(
+      (row) => !row.relrowsecurity || !row.relforcerowsecurity || row.policy_count < 1,
+    );
 
     const triggerResult = await client.query<{ tgname: string; function_name: string }>(
       `
@@ -284,7 +323,14 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
         status: 'fail',
         detail: [
           missingTables.length ? `missing tables: ${missingTables.join(', ')}` : null,
-          weakRlsTables.length ? `weak RLS: ${weakRlsTables.join(', ')}` : null,
+          weakRlsTables.length
+            ? `weak RLS: ${weakRlsTables
+                .map(
+                  (row) =>
+                    `${row.relname}(rls=${row.relrowsecurity},force=${row.relforcerowsecurity},policies=${row.policy_count})`,
+                )
+                .join(', ')}`
+            : null,
           missingTriggers.length ? `missing audit triggers: ${missingTriggers.join(', ')}` : null,
           wrongFunctionTriggers.length
             ? `wrong audit functions: ${wrongFunctionTriggers
@@ -300,7 +346,7 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
     return {
       name: 'db:rls-audit-contract',
       status: 'pass',
-      detail: `${REQUIRED_RLS_TABLES.length} RLS tables and ${REQUIRED_AUDIT_TRIGGERS.length} audit triggers verified`,
+      detail: `${rlsResult.rows.length} org-scoped RLS tables and ${REQUIRED_AUDIT_TRIGGERS.length} audit triggers verified`,
     };
   } catch (error) {
     return {
@@ -335,6 +381,7 @@ async function main() {
   const results: CheckResult[] = [
     checkDatabaseUrl('DATABASE_URL'),
     checkDatabaseUrl('DIRECT_URL'),
+    checkDatabaseUrlPair(),
     checkCommand('pnpm'),
     checkCommand('node'),
     ...checkPackageScripts(packageScripts),

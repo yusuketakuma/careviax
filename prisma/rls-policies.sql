@@ -73,6 +73,11 @@ CREATE POLICY tenant_isolation ON "PatientInsurance"
   USING (org_id = public.app_enforced_org_id())
   WITH CHECK (org_id = public.app_enforced_org_id());
 
+ALTER TABLE "PatientLabObservation" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientLabObservation"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 -- ─── Prescription / Workflow Domain ─────────────────────────────────────────
 
 ALTER TABLE "MedicationCycle" ENABLE ROW LEVEL SECURITY;
@@ -418,6 +423,11 @@ CREATE POLICY tenant_isolation ON "PcaPumpRental"
   USING (org_id = public.app_enforced_org_id())
   WITH CHECK (org_id = public.app_enforced_org_id());
 
+ALTER TABLE "WebhookRegistration" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "WebhookRegistration"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 -- ─── IntegrationJob (org_id is nullable) ────────────────────────────────────
 -- IntegrationJob.org_id is String? (nullable) — skip RLS for safety
 -- Jobs with null org_id are system-level and should be accessible regardless
@@ -437,6 +447,7 @@ ALTER TABLE "ConsentRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ManagementPlan" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PatientSchedulePreference" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PatientInsurance" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientLabObservation" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "MedicationCycle" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PrescriptionIntake" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PrescriptionLine" FORCE ROW LEVEL SECURITY;
@@ -496,3 +507,4 @@ ALTER TABLE "QrScanDraft" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitScheduleProposal" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPump" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpRental" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "WebhookRegistration" FORCE ROW LEVEL SECURITY;

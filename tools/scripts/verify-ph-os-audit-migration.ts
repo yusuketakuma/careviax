@@ -23,6 +23,16 @@ async function queryValue<T>(client: Client, sql: string, params: unknown[] = []
   return result.rows[0]?.value;
 }
 
+async function expectQueryFailure(client: Client, sql: string, params: unknown[] = []) {
+  try {
+    await client.query(sql, params);
+  } catch {
+    return;
+  }
+
+  throw new Error('Expected query to fail, but it succeeded');
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -170,12 +180,74 @@ async function main() {
       await client.query('ROLLBACK');
     }
 
+    const rlsTaskId = `rls_verify_${Date.now()}`;
+    const rlsOrgId = `rls_verify_org_${Date.now()}`;
+    await client.query('BEGIN');
+    try {
+      await client.query('SET LOCAL ROLE app_user');
+      await expectQueryFailure(
+        client,
+        `
+          INSERT INTO "Task" ("id", "org_id", "title", "created_at", "updated_at")
+          VALUES ($1, $2, 'RLS context missing should fail', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `,
+        [`${rlsTaskId}_missing`, rlsOrgId],
+      );
+    } finally {
+      await client.query('ROLLBACK');
+    }
+
+    await client.query('BEGIN');
+    try {
+      await client.query('SET LOCAL ROLE app_user');
+      await client.query("SELECT set_config('app.rls_context_applied', $1, true)", ['true']);
+      await client.query("SELECT set_config('app.current_org_id', $1, true)", [rlsOrgId]);
+      await client.query("SELECT set_config('app.current_actor_id', $1, true)", [
+        'rls_verify_user',
+      ]);
+      await client.query("SELECT set_config('app.current_member_role', $1, true)", ['admin']);
+      await client.query("SELECT set_config('app.current_ip_address', $1, true)", ['127.0.0.1']);
+      await client.query("SELECT set_config('app.current_user_agent', $1, true)", [
+        'ph-os-rls-migration-check',
+      ]);
+      await client.query(
+        `
+          INSERT INTO "Task" ("id", "org_id", "title", "created_at", "updated_at")
+          VALUES ($1, $2, 'RLS same-org verification', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `,
+        [rlsTaskId, rlsOrgId],
+      );
+      const sameOrgCount = await queryValue<number>(
+        client,
+        'SELECT COUNT(*)::int AS value FROM "Task" WHERE "id" = $1',
+        [rlsTaskId],
+      );
+      if (sameOrgCount !== 1) {
+        throw new Error('RLS same-org Task row was not visible to app_user');
+      }
+
+      await client.query("SELECT set_config('app.current_org_id', $1, true)", [
+        'rls_verify_other_org',
+      ]);
+      const crossOrgCount = await queryValue<number>(
+        client,
+        'SELECT COUNT(*)::int AS value FROM "Task" WHERE "id" = $1',
+        [rlsTaskId],
+      );
+      if (crossOrgCount !== 0) {
+        throw new Error('RLS cross-org Task row was unexpectedly visible to app_user');
+      }
+    } finally {
+      await client.query('ROLLBACK');
+    }
+
     console.log(
       JSON.stringify({
         ok: true,
         ph_os_functions: phOsFunctionCount,
         triggers: triggerResult.rows.length,
         dml_actions_verified: ['task.create', 'task.update', 'task.delete'],
+        rls_verified: ['missing_context_denied', 'same_org_allowed', 'cross_org_denied'],
       }),
     );
   } finally {

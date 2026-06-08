@@ -97,20 +97,20 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: ph-os
-          POSTGRES_PASSWORD: ph-os
-          POSTGRES_DB: ph-os_migration
+          POSTGRES_USER: ph_os
+          POSTGRES_PASSWORD: ph_os
+          POSTGRES_DB: ph_os_migration
         ports:
           - 5434:5432
         options: >-
-          --health-cmd "pg_isready -U ph-os -d ph-os_migration"
+          --health-cmd "pg_isready -U ph_os -d ph_os_migration"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
 
     env:
-      DATABASE_URL: postgresql://ph-os:ph-os@localhost:5434/ph-os_migration?schema=public
-      DIRECT_URL: postgresql://ph-os:ph-os@localhost:5434/ph-os_migration?schema=public
+      DATABASE_URL: postgresql://ph_os:ph_os@localhost:5434/ph_os_migration?schema=public
+      DIRECT_URL: postgresql://ph_os:ph_os@localhost:5434/ph_os_migration?schema=public
 
     steps:
       - uses: actions/checkout@v4

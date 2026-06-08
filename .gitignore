@@ -61,6 +61,13 @@ audits/
 reports/
 tmp/
 
+# Local E2E runtime state
+.codex/postgres-e2e/
+.codex/postgres-e2e.log
+.codex/tmux-e2e-local.log
+.codex/dev-e2e-local.*
+.codex/start-e2e-local.*
+
 # Accidental local worktree state directory
 {"decision":"approve","reason":"WorktreeCreate: initialized worktree state"}/
 
