@@ -69,6 +69,7 @@ const SEED_IDS = {
   pcaPumpAvailable: 'cmnhseedpca001amq9ph-os',
   pcaPumpRented: 'cmnhseedpca002amq9ph-os',
   pcaRentalActive: 'cmnhseedrental001amq9ph-os',
+  vehicleResource: 'cmnhseedveh001amq9ph-os',
   injectionEligibleDrug: 'cmnhseeddrug001amq9ph-os',
   injectionBlockedDrug: 'cmnhseeddrug002amq9ph-os',
   patients: [
@@ -119,6 +120,36 @@ async function main() {
       address: '東京都千代田区丸の内1-1-1',
       lat: 35.6812,
       lng: 139.7671,
+    },
+  });
+
+  const vehicleResource = await prisma.visitVehicleResource.upsert({
+    where: {
+      org_id_vehicle_code: {
+        org_id: org.id,
+        vehicle_code: 'VEH-SEED-001',
+      },
+    },
+    create: {
+      id: SEED_IDS.vehicleResource,
+      org_id: org.id,
+      site_id: site.id,
+      label: 'E2E社用車A',
+      vehicle_code: 'VEH-SEED-001',
+      travel_mode: 'DRIVE',
+      max_stops: 6,
+      max_route_duration_minutes: 180,
+      available: true,
+      notes: 'E2E/デモ用の訪問ルート検証車両',
+    },
+    update: {
+      site_id: site.id,
+      label: 'E2E社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 6,
+      max_route_duration_minutes: 180,
+      available: true,
+      notes: 'E2E/デモ用の訪問ルート検証車両',
     },
   });
 
@@ -738,6 +769,7 @@ async function main() {
     patients: patients.length,
     careCases: careCases.length,
     prescriberInstitution: institution.id,
+    vehicleResource: vehicleResource.id,
     pcaPumps: [availablePump.id, rentedPump.id],
     sourceOfTruthEntries: DEFAULT_SOURCE_OF_TRUTH_MATRIX.length,
   });

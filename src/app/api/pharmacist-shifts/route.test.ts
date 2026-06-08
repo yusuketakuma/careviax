@@ -89,6 +89,56 @@ describe('/api/pharmacist-shifts', () => {
     });
   });
 
+  it('rejects invalid month filters before querying shifts', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts?month=foo'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        month: expect.arrayContaining(['日付形式が不正です（YYYY-MM-DD）']),
+      },
+    });
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid date range filters before querying shifts', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts?date_from=2026-02-31'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        date_from: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed date ranges before querying shifts', async () => {
+    const response = (await GET(
+      createRequest(
+        'http://localhost/api/pharmacist-shifts?date_from=2026-04-20&date_to=2026-04-01',
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        date_to: ['date_to は date_from 以降を指定してください'],
+      },
+    });
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object shift payloads before reference checks or upsert', async () => {
     const response = (await POST(createRequest('http://localhost/api/pharmacist-shifts', [])))!;
 
@@ -196,6 +246,29 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed shift times before reference checks', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
+        site_id: 'site_2',
+        user_id: 'user_2',
+        date: '2026-04-15',
+        available_from: '13:00',
+        available_to: '09:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        available_to: ['終了時刻は開始時刻以降を指定してください'],
+      },
+    });
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacistShiftUpsertMock).not.toHaveBeenCalled();

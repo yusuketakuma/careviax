@@ -7,6 +7,7 @@ const {
   pharmacistShiftFindManyMock,
   businessHolidayFindManyMock,
   visitScheduleFindManyMock,
+  visitVehicleResourceFindManyMock,
   evaluateVisitWorkflowGateMock,
 } = vi.hoisted(() => ({
   careCaseFindFirstMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   pharmacistShiftFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitVehicleResourceFindManyMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
 }));
 
@@ -33,6 +35,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+    },
+    visitVehicleResource: {
+      findMany: visitVehicleResourceFindManyMock,
     },
   },
 }));
@@ -80,8 +85,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_primary',
         site_id: 'site_1',
@@ -104,8 +109,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
       },
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_backup',
         site_id: 'site_1',
@@ -129,6 +134,15 @@ describe('generateVisitScheduleProposalDrafts', () => {
     ]);
     businessHolidayFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+      },
+    ]);
     evaluateVisitWorkflowGateMock.mockResolvedValue({
       ok: true,
       issues: [],
@@ -188,6 +202,102 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('places emergency proposals before lower-priority unlocked visits without crossing locked visits', async () => {
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_primary',
+        route_order: 1,
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'ready',
+        confirmed_at: new Date('2026-03-27T03:00:00.000Z'),
+        case_: {
+          patient: {
+            id: 'locked_patient',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.01, lng: 139.01 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        pharmacist_id: 'pharmacist_primary',
+        route_order: 2,
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 11, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        case_: {
+          patient: {
+            id: 'normal_patient',
+            residences: [{ address: '東京都港区1-1-2', lat: 35.0, lng: 139.0 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'emergency',
+      priority: 'emergency',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      proposed_pharmacist_id: 'pharmacist_primary',
+      priority: 'emergency',
+      route_order: 2,
+    });
+    expect(result.drafts[0]?.proposal_reason).toContain('緊急訪問のため即応枠を優先');
+    expect(result.diagnostics.accepted[0]).toMatchObject({
+      route_order: 2,
+      score_breakdown: expect.objectContaining({
+        lockPenalty: 2,
+      }),
+    });
+  });
+
   it('emits reason_code=evaluation_error when candidate evaluation throws unexpectedly', async () => {
     createRoadTravelEstimatorMock.mockReturnValue(() => {
       throw new Error('simulated upstream failure');
@@ -220,8 +330,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_primary',
         site_id: 'site_1',
@@ -244,8 +354,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
       },
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_backup',
         site_id: 'site_1',
@@ -272,8 +382,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
         pharmacist_id: 'pharmacist_primary',
         route_order: 1,
         scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-        time_window_start: new Date(1970, 0, 1, 9, 0, 0, 0),
-        time_window_end: new Date(1970, 0, 1, 10, 0, 0, 0),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
         schedule_status: 'planned',
         case_: {
           patient: {
@@ -310,6 +420,186 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
+  it('assigns an available vehicle resource to accepted proposal drafts', async () => {
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts[0]).toMatchObject({
+      vehicle_resource_id: 'vehicle_1',
+    });
+    expect(result.drafts[0]?.proposal_reason).toContain('社用車A を割当');
+    expect(result.diagnostics.accepted[0]).toMatchObject({
+      vehicle_resource_id: 'vehicle_1',
+      vehicle_resource_label: '社用車A',
+      vehicle_load: 1,
+      score_breakdown: expect.objectContaining({
+        vehiclePenalty: 0,
+      }),
+    });
+  });
+
+  it('rejects candidates when the requested vehicle resource is at capacity', async () => {
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 1,
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_primary',
+        vehicle_resource_id: 'vehicle_1',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'planned',
+        case_: {
+          patient: {
+            id: 'other',
+            residences: [{ address: '東京都港区3-3-3', lat: 35.02, lng: 139.02 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        pharmacist_id: 'pharmacist_backup',
+        vehicle_resource_id: 'vehicle_1',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'planned',
+        case_: {
+          patient: {
+            id: 'other_2',
+            residences: [{ address: '東京都港区4-4-4', lat: 35.03, lng: 139.03 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+      vehicleResourceId: 'vehicle_1',
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'vehicle_capacity',
+          detail: '社用車A で訪問できる件数は最大 1 件です',
+        }),
+      ]),
+    );
+  });
+
+  it('counts vehicle capacity across all pharmacists on the same day', async () => {
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-28T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'vehicle_1',
+        site_id: 'site_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 1,
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'pharmacist_backup',
+        vehicle_resource_id: 'vehicle_1',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
+        schedule_status: 'planned',
+        confirmed_at: null,
+        case_: {
+          patient: {
+            id: 'other',
+            residences: [{ address: '東京都港区3-3-3', lat: 35.02, lng: 139.02 }],
+          },
+        },
+        site: {
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+      vehicleResourceId: 'vehicle_1',
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_primary',
+          reason_code: 'vehicle_capacity',
+          detail: '社用車A で訪問できる件数は最大 1 件です',
+        }),
+      ]),
+    );
+  });
+
   it('rejects visit candidates after the day before the latest medication end date', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
@@ -323,8 +613,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
         date: new Date('2026-03-29T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_primary',
         site_id: 'site_1',
@@ -347,8 +637,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
       },
       {
         date: new Date('2026-03-30T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_backup',
         site_id: 'site_1',
@@ -400,8 +690,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 18, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_backup',
         site_id: 'site_1',
@@ -459,8 +749,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
       patient: {
         scheduling_preference: {
           preferred_weekdays: [],
-          preferred_time_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-          preferred_time_to: new Date(1970, 0, 1, 12, 0, 0, 0),
+          preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+          preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
           facility_time_from: null,
           facility_time_to: null,
           family_presence_required: false,
@@ -479,8 +769,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 12, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_primary',
         site_id: 'site_1',
@@ -507,8 +797,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
         pharmacist_id: 'pharmacist_primary',
         route_order: 1,
         scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-        time_window_start: new Date(1970, 0, 1, 9, 0, 0, 0),
-        time_window_end: new Date(1970, 0, 1, 10, 0, 0, 0),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
         schedule_status: 'planned',
         confirmed_at: null,
         case_: {
@@ -549,8 +839,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
       patient: {
         scheduling_preference: {
           preferred_weekdays: [],
-          preferred_time_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-          preferred_time_to: new Date(1970, 0, 1, 12, 0, 0, 0),
+          preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+          preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
           facility_time_from: null,
           facility_time_to: null,
           family_presence_required: false,
@@ -569,8 +859,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
-        available_from: new Date(1970, 0, 1, 9, 0, 0, 0),
-        available_to: new Date(1970, 0, 1, 12, 0, 0, 0),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 0, 0)),
         available: true,
         user_id: 'pharmacist_primary',
         site_id: 'site_1',
@@ -597,8 +887,8 @@ describe('generateVisitScheduleProposalDrafts', () => {
         pharmacist_id: 'pharmacist_primary',
         route_order: 1,
         scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-        time_window_start: new Date(1970, 0, 1, 9, 0, 0, 0),
-        time_window_end: new Date(1970, 0, 1, 10, 0, 0, 0),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0, 0, 0)),
         schedule_status: 'planned',
         confirmed_at: null,
         case_: {

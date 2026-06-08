@@ -10,8 +10,11 @@ const {
   proposalUpdateManyMock,
   scheduleFindFirstMock,
   scheduleFindManyMock,
+  scheduleCountMock,
   scheduleUpdateManyMock,
   scheduleCreateMock,
+  pharmacistShiftFindFirstMock,
+  vehicleResourceFindFirstMock,
   contactLogCreateMock,
   contactLogUpdateManyMock,
   auditLogCreateMock,
@@ -32,8 +35,11 @@ const {
   proposalUpdateManyMock: vi.fn(),
   scheduleFindFirstMock: vi.fn(),
   scheduleFindManyMock: vi.fn(),
+  scheduleCountMock: vi.fn(),
   scheduleUpdateManyMock: vi.fn(),
   scheduleCreateMock: vi.fn(),
+  pharmacistShiftFindFirstMock: vi.fn(),
+  vehicleResourceFindFirstMock: vi.fn(),
   contactLogCreateMock: vi.fn(),
   contactLogUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -59,6 +65,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: scheduleFindManyMock,
+      count: scheduleCountMock,
     },
     auditLog: {
       findFirst: auditLogFindFirstMock,
@@ -137,6 +144,8 @@ function buildProposal(overrides?: Record<string, unknown>) {
     proposed_pharmacist_id: 'pharmacist_1',
     assignment_mode: 'primary',
     route_order: 1,
+    vehicle_resource_id: null,
+    vehicle_resource: null,
     created_at: new Date('2026-03-26T09:00:00.000Z'),
     medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
     visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
@@ -178,6 +187,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     proposalUpdateManyMock.mockResolvedValue({ count: 2 });
     scheduleFindFirstMock.mockResolvedValue(null);
     scheduleFindManyMock.mockResolvedValue([]);
+    scheduleCountMock.mockResolvedValue(0);
     scheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     scheduleCreateMock.mockResolvedValue({
       id: 'schedule_1',
@@ -195,6 +205,17 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       route_order: 1,
       confirmed_at: new Date('2026-03-26T10:00:00.000Z'),
       confirmed_by: 'user_1',
+    });
+    pharmacistShiftFindFirstMock.mockResolvedValue({
+      site_id: 'site_1',
+      available: true,
+      available_from: new Date('1970-01-01T08:30:00.000Z'),
+      available_to: new Date('1970-01-01T17:30:00.000Z'),
+    });
+    vehicleResourceFindFirstMock.mockResolvedValue({
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
     });
     contactLogCreateMock.mockResolvedValue({ id: 'contact_log_1' });
     contactLogUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -242,8 +263,16 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       callback({
         visitSchedule: {
           findFirst: scheduleFindFirstMock,
+          findMany: scheduleFindManyMock,
+          count: scheduleCountMock,
           updateMany: scheduleUpdateManyMock,
           create: scheduleCreateMock,
+        },
+        pharmacistShift: {
+          findFirst: pharmacistShiftFindFirstMock,
+        },
+        visitVehicleResource: {
+          findFirst: vehicleResourceFindFirstMock,
         },
         visitScheduleProposal: {
           update: proposalUpdateMock,
@@ -285,6 +314,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           address: '東京都千代田区2-2-2',
           lat: 35.1,
           lng: 139.1,
+        },
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_resource: {
+          id: 'vehicle_1',
+          label: '社用車A',
+          travel_mode: 'DRIVE',
+          max_stops: 6,
+          max_route_duration_minutes: 180,
         },
         contact_logs: [
           {
@@ -330,6 +367,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
             lat: 35.1,
             lng: 139.1,
           },
+          vehicle_resource_id: 'vehicle_1',
+          vehicle_resource: {
+            id: 'vehicle_1',
+            label: '社用車A',
+            travel_mode: 'DRIVE',
+            max_stops: 6,
+            max_route_duration_minutes: 180,
+          },
         }),
       },
     ]);
@@ -362,6 +407,13 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           lat: 35.1,
           lng: 139.1,
         },
+        vehicle_resource: {
+          id: 'vehicle_2',
+          label: '社用車B',
+          travel_mode: 'DRIVE',
+          max_stops: 4,
+          max_route_duration_minutes: 120,
+        },
       },
     ]);
 
@@ -383,7 +435,19 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         id: 'proposal_1',
-        related_proposals: [expect.objectContaining({ id: 'proposal_2' })],
+        vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
+        related_proposals: [
+          expect.objectContaining({
+            id: 'proposal_2',
+            vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
+          }),
+        ],
+        pharmacist_day_schedules: [
+          expect.objectContaining({
+            id: 'schedule_1',
+            vehicle_resource: expect.objectContaining({ id: 'vehicle_2', label: '社用車B' }),
+          }),
+        ],
         creation_diagnostics: null,
         route_preview: expect.objectContaining({
           plan: expect.objectContaining({
@@ -911,6 +975,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_1',
       }),
     );
 
@@ -927,6 +992,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         case_id: 'case_1',
         pharmacist_id: 'pharmacist_1',
         schedule_status: 'planned',
+        vehicle_resource_id: 'vehicle_1',
         confirmed_by: 'user_1',
       }),
     });
@@ -961,6 +1027,212 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         schedule_id: 'schedule_1',
       },
     });
+  });
+
+  it('does not shift locked route orders when confirming a stale early proposal order', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        priority: 'emergency',
+        route_order: 1,
+      }),
+    );
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        route_order: 1,
+      },
+    ]);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(scheduleFindManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        route_order: {
+          not: null,
+        },
+        OR: [
+          { confirmed_at: { not: null } },
+          { schedule_status: { in: ['ready', 'departed', 'in_progress', 'completed'] } },
+        ],
+      }),
+      select: {
+        route_order: true,
+      },
+    });
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        route_order: {
+          gte: 2,
+        },
+      }),
+      data: {
+        route_order: {
+          increment: 1,
+        },
+      },
+    });
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 2,
+      }),
+    });
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: expect.objectContaining({
+        proposal_status: 'confirmed',
+        route_order: 2,
+      }),
+    });
+  });
+
+  it('rejects proposal confirmation when the selected pharmacist shift is missing', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した薬剤師のシフトがありません',
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ proposal_status: 'confirmed' }),
+      }),
+    );
+  });
+
+  it('rejects proposal confirmation when the selected pharmacist shift no longer covers the time window', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce({
+      site_id: 'site_1',
+      available: true,
+      available_from: new Date('1970-01-01T09:30:00.000Z'),
+      available_to: new Date('1970-01-01T17:30:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問開始時刻が薬剤師シフトの開始前です',
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal confirmation when the selected vehicle resource is unavailable', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    );
+    vehicleResourceFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した車両リソースが見つからないか利用できません',
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal confirmation when the selected vehicle belongs to another site', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_2',
+      }),
+    );
+    vehicleResourceFindFirstMock.mockResolvedValueOnce({
+      site_id: 'site_2',
+      label: '社用車B',
+      max_stops: 8,
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した車両リソースは訪問予定の拠点では利用できません',
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal confirmation when the selected vehicle reaches same-day capacity after proposal generation', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    );
+    vehicleResourceFindFirstMock.mockResolvedValueOnce({
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    scheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(scheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+    });
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
   });
 
   it('copies a suggested recurrence rule into the finalized visit schedule', async () => {

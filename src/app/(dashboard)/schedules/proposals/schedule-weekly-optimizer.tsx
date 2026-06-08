@@ -13,7 +13,7 @@ import {
   subWeeks,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { CalendarClock, GripVertical, Sparkles } from 'lucide-react';
+import { CalendarClock, Car, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +46,7 @@ import {
   type CaseOption,
   type Proposal,
   type VisitPriority,
+  type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
   type VisitSchedule,
   type VisitType,
@@ -96,7 +97,16 @@ type ProposalPayload = {
   preferred_time_from?: string;
   preferred_time_to?: string;
   preferred_pharmacist_id: string;
+  vehicle_resource_id?: string;
   candidate_count: number;
+};
+
+type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
+  available: boolean;
+  site: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 type DragSchedule = {
@@ -120,6 +130,8 @@ const EMPTY_CASES: CaseOption[] = [];
 const EMPTY_SCHEDULES: VisitSchedule[] = [];
 const EMPTY_PROPOSALS: Proposal[] = [];
 const EMPTY_SHIFTS: PharmacistShift[] = [];
+const EMPTY_VEHICLE_RESOURCES: VisitVehicleResourceOption[] = [];
+const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
 
 function dateKey(value: string) {
   return value.slice(0, 10);
@@ -136,6 +148,17 @@ function timeRangeLabel(start: string | null | undefined, end: string | null | u
   if (!normalizedStart && !normalizedEnd) return null;
   if (normalizedStart && normalizedEnd) return `${normalizedStart} - ${normalizedEnd}`;
   return normalizedStart ?? normalizedEnd;
+}
+
+function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
+  if (!vehicle) return '自動割当';
+  const constraints = [
+    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
+    vehicle.max_route_duration_minutes != null
+      ? `${vehicle.max_route_duration_minutes}分以内`
+      : null,
+  ].filter(Boolean);
+  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
 }
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
@@ -335,6 +358,7 @@ export function ScheduleWeeklyOptimizer({
         : ('DRIVE' as TravelMode),
     preferred_time_from: initialPreferredTimeFrom ?? '09:00',
     preferred_time_to: initialPreferredTimeTo ?? '12:00',
+    vehicle_resource_id: '',
   });
   const [draggingSchedule, setDraggingSchedule] = useState<DragSchedule | null>(null);
   const [hoveredCell, setHoveredCell] = useState<string | null>(null);
@@ -438,6 +462,18 @@ export function ScheduleWeeklyOptimizer({
     enabled: !!orgId,
   });
 
+  const vehicleResourcesQuery = useQuery({
+    queryKey: ['visit-vehicle-resources', orgId, 'weekly-optimizer', 'available'],
+    queryFn: async () => {
+      const response = await fetch('/api/visit-vehicle-resources?available=true', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
+      return response.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+
   const cases = useMemo(() => casesQuery.data?.data ?? EMPTY_CASES, [casesQuery.data]);
   const caseSearchResults = useMemo(
     () => caseSearchQuery.data?.data ?? EMPTY_CASES,
@@ -452,6 +488,12 @@ export function ScheduleWeeklyOptimizer({
     [proposalsQuery.data],
   );
   const shifts = useMemo(() => shiftsQuery.data?.data ?? EMPTY_SHIFTS, [shiftsQuery.data]);
+  const vehicleResources = useMemo(
+    () => vehicleResourcesQuery.data?.data ?? EMPTY_VEHICLE_RESOURCES,
+    [vehicleResourcesQuery.data],
+  );
+  const selectedPlannerVehicle =
+    vehicleResources.find((vehicle) => vehicle.id === plannerSettings.vehicle_resource_id) ?? null;
 
   const activeCase =
     cases.find((careCase) => careCase.id === selectedCaseId) ??
@@ -876,6 +918,7 @@ export function ScheduleWeeklyOptimizer({
       preferred_time_from: plannerSettings.preferred_time_from || undefined,
       preferred_time_to: plannerSettings.preferred_time_to || undefined,
       preferred_pharmacist_id: pharmacistId,
+      vehicle_resource_id: plannerSettings.vehicle_resource_id || undefined,
       candidate_count: 1,
     });
   };
@@ -1086,6 +1129,50 @@ export function ScheduleWeeklyOptimizer({
                   <SelectItem value="TWO_WHEELER">二輪</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="weekly-vehicle-resource">社用車</Label>
+              <Select
+                value={plannerSettings.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
+                onValueChange={(value) => {
+                  const selectedVehicleResourceId =
+                    value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
+                  const selectedVehicle = vehicleResources.find(
+                    (vehicle) => vehicle.id === selectedVehicleResourceId,
+                  );
+                  setPlannerSettings((current) => ({
+                    ...current,
+                    vehicle_resource_id: selectedVehicleResourceId,
+                    travel_mode: selectedVehicle?.travel_mode ?? current.travel_mode,
+                  }));
+                  replaceOptimizerUrl({
+                    optimizer_travel_mode:
+                      selectedVehicle?.travel_mode ?? plannerSettings.travel_mode,
+                  });
+                }}
+              >
+                <SelectTrigger id="weekly-vehicle-resource" className="w-[14rem]">
+                  <Car className="mr-2 size-4 text-muted-foreground" />
+                  <SelectValue placeholder="自動割当" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AUTO_VEHICLE_RESOURCE_VALUE}>自動割当</SelectItem>
+                  {vehicleResources.map((vehicle) => (
+                    <SelectItem key={vehicle.id} value={vehicle.id}>
+                      {vehicle.site?.name
+                        ? `${vehicle.label} / ${vehicle.site.name}`
+                        : vehicle.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="max-w-[14rem] text-xs text-muted-foreground">
+                {selectedPlannerVehicle
+                  ? formatVehicleResourceLabel(selectedPlannerVehicle)
+                  : vehicleResourcesQuery.isLoading
+                    ? '社用車候補を読み込み中'
+                    : '未指定なら自動割当'}
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="weekly-time-from">希望枠</Label>
@@ -1431,6 +1518,10 @@ export function ScheduleWeeklyOptimizer({
                             timeLabel(proposal.time_window_end) ??
                             plannerSettings.preferred_time_to,
                           preferred_pharmacist_id: suggestion.targetPharmacistId,
+                          vehicle_resource_id:
+                            plannerSettings.vehicle_resource_id ||
+                            proposal.vehicle_resource?.id ||
+                            undefined,
                           candidate_count: 1,
                         });
                       }

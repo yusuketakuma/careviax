@@ -4,6 +4,7 @@ import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } fr
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -47,6 +48,8 @@ const rescheduleSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
     .optional(),
   priority: z.enum(['normal', 'urgent', 'emergency']).optional(),
+  preferred_pharmacist_id: z.string().trim().min(1).optional(),
+  vehicle_resource_id: z.union([z.string().trim().min(1), z.null()]).optional(),
 });
 
 const RESCHEDULE_REASON_LABELS: Record<z.infer<typeof rescheduleSchema>['reason_code'], string> = {
@@ -71,6 +74,7 @@ type RescheduleSourceSchedule = {
   pharmacist_id: string;
   assignment_mode: VisitAssignmentMode;
   route_order: number | null;
+  vehicle_resource_id: string | null;
   schedule_status: ScheduleStatus;
   confirmed_at: Date | null;
   confirmed_by: string | null;
@@ -90,7 +94,25 @@ type ImpactedSchedule = RescheduleSourceSchedule & {
 };
 
 function toTimeString(value: Date | null) {
-  return value ? format(value, 'HH:mm') : undefined;
+  return timeDateToString(value);
+}
+
+function resolveRequestedVehicleResourceId(
+  requestedVehicleResourceId: string | null | undefined,
+  currentVehicleResourceId: string | null,
+) {
+  if (requestedVehicleResourceId === null) return undefined;
+  return requestedVehicleResourceId ?? currentVehicleResourceId ?? undefined;
+}
+
+function resolvePreferredReschedulePharmacistId(
+  requestedPharmacistId: string | undefined,
+  currentPharmacistId: string,
+  reasonCode: z.infer<typeof rescheduleSchema>['reason_code'],
+) {
+  if (requestedPharmacistId) return requestedPharmacistId;
+  if (reasonCode === 'pharmacist_unavailable') return undefined;
+  return currentPharmacistId;
 }
 
 function isPotentiallyImpactedByEmergencyInsert(
@@ -158,6 +180,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       pharmacist_id: true,
       assignment_mode: true,
       route_order: true,
+      vehicle_resource_id: true,
       schedule_status: true,
       confirmed_at: true,
       confirmed_by: true,
@@ -221,6 +244,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('この訪問予定はリスケできません');
   }
 
+  const requestedVehicleResourceId = resolveRequestedVehicleResourceId(
+    parsed.data.vehicle_resource_id,
+    schedule.vehicle_resource_id,
+  );
+  const vehicleReassignmentMode =
+    parsed.data.vehicle_resource_id === null
+      ? 'auto'
+      : parsed.data.vehicle_resource_id
+        ? 'requested'
+        : 'preserve_current';
+  const preferredPharmacistId = resolvePreferredReschedulePharmacistId(
+    parsed.data.preferred_pharmacist_id,
+    schedule.pharmacist_id,
+    parsed.data.reason_code,
+  );
+
   let drafts;
   try {
     drafts = (
@@ -235,6 +274,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : addDays(schedule.scheduled_date, 1),
         preferredTimeFrom: toTimeString(schedule.time_window_start),
         preferredTimeTo: toTimeString(schedule.time_window_end),
+        preferredPharmacistId,
+        vehicleResourceId: requestedVehicleResourceId,
         rescheduleSourceScheduleId: id,
       })
     ).drafts;
@@ -319,6 +360,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             pharmacist_id: true,
             assignment_mode: true,
             route_order: true,
+            vehicle_resource_id: true,
             schedule_status: true,
             confirmed_at: true,
             confirmed_by: true,
@@ -372,6 +414,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 startDate: schedule.scheduled_date,
                 preferredTimeFrom: toTimeString(impactedSchedule.time_window_start),
                 preferredTimeTo: toTimeString(impactedSchedule.time_window_end),
+                preferredPharmacistId: impactedSchedule.pharmacist_id,
+                vehicleResourceId: impactedSchedule.vehicle_resource_id ?? undefined,
                 rescheduleSourceScheduleId: impactedSchedule.id,
               })
             ).drafts;
@@ -456,6 +500,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 time_window_start: proposal.time_window_start?.toISOString() ?? null,
                 time_window_end: proposal.time_window_end?.toISOString() ?? null,
                 proposed_pharmacist_id: proposal.proposed_pharmacist_id,
+                vehicle_resource_id: proposal.vehicle_resource_id ?? null,
               })),
             },
           });
@@ -539,6 +584,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               createdProposals.length +
               autoRescheduleSummary.reduce((sum, item) => sum + item.proposal_ids.length, 0),
             pharmacist_id: schedule.pharmacist_id,
+            preferred_pharmacist_id: preferredPharmacistId ?? null,
+            requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
+            current_vehicle_resource_id: schedule.vehicle_resource_id,
+            vehicle_reassignment_mode: vehicleReassignmentMode,
             reason_code: parsed.data.reason_code,
             communication_channel: parsed.data.communication_channel,
             communication_result: parsed.data.communication_result,
@@ -551,6 +600,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             time_window_start: proposal.time_window_start?.toISOString() ?? null,
             time_window_end: proposal.time_window_end?.toISOString() ?? null,
             proposed_pharmacist_id: proposal.proposed_pharmacist_id,
+            vehicle_resource_id: proposal.vehicle_resource_id ?? null,
           })),
         },
       });
@@ -722,6 +772,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             communication_target_count: communicationTargets.length,
             priority: parsed.data.priority ?? schedule.priority,
             proposals: createdProposals.map((proposal) => proposal.id),
+            preferred_pharmacist_id: preferredPharmacistId ?? null,
+            requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
+            current_vehicle_resource_id: schedule.vehicle_resource_id,
+            vehicle_reassignment_mode: vehicleReassignmentMode,
           },
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,

@@ -40,17 +40,62 @@ function timeToSeconds(value: string) {
   return hours * 60 * 60 + minutes * 60 + seconds;
 }
 
-export const pharmacistShiftRowSchema = z.object({
-  site_id: requiredTrimmedStringSchema('店舗IDは必須です'),
-  user_id: requiredTrimmedStringSchema('薬剤師IDは必須です'),
-  date: dateKeySchema,
-  available: z.boolean().default(true),
-  available_from: optionalTimeSchema,
-  available_to: optionalTimeSchema,
-  note: optionalNoteSchema,
-});
+export const pharmacistShiftRowSchema = z
+  .object({
+    site_id: requiredTrimmedStringSchema('店舗IDは必須です'),
+    user_id: requiredTrimmedStringSchema('薬剤師IDは必須です'),
+    date: dateKeySchema,
+    available: z.boolean().default(true),
+    available_from: optionalTimeSchema,
+    available_to: optionalTimeSchema,
+    note: optionalNoteSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.available_from &&
+      value.available_to &&
+      timeToSeconds(value.available_from) > timeToSeconds(value.available_to)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['available_to'],
+        message: '終了時刻は開始時刻以降を指定してください',
+      });
+    }
+  });
 
 export const createPharmacistShiftSchema = pharmacistShiftRowSchema;
+
+const optionalTrimmedIdSchema = z
+  .string()
+  .trim()
+  .transform((value) => (value === '' ? undefined : value))
+  .optional();
+
+export const pharmacistShiftQuerySchema = z
+  .object({
+    month: dateKeySchema.optional(),
+    date_from: dateKeySchema.optional(),
+    date_to: dateKeySchema.optional(),
+    user_id: optionalTrimmedIdSchema,
+    site_id: optionalTrimmedIdSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.month && (value.date_from || value.date_to)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['month'],
+        message: 'month と date_from/date_to は同時に指定できません',
+      });
+    }
+    if (value.date_from && value.date_to && value.date_to < value.date_from) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['date_to'],
+        message: 'date_to は date_from 以降を指定してください',
+      });
+    }
+  });
 
 export const bulkPharmacistShiftSchema = z.object({
   rows: z

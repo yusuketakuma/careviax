@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Building2, CheckCircle2, CloudOff, PlayCircle, Navigation } from 'lucide-react';
+import { Building2, Car, CheckCircle2, CloudOff, PlayCircle, Navigation } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -103,6 +103,7 @@ import {
   type VisitPreparation,
   type VisitPreparationPack,
   type VisitPriority,
+  type VisitVehicleResourceSummary,
   type VisitSchedule,
   type VisitType,
   type BillingRequirementAlert,
@@ -154,6 +155,16 @@ type VisitRoutePlan = {
   }>;
 };
 
+type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
+  available: boolean;
+  site: {
+    id: string;
+    name: string;
+  } | null;
+};
+
+const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
+
 const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 1, label: '月' },
   { value: 2, label: '火' },
@@ -167,6 +178,17 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
 const GANTT_SLOT_MINUTES = 30;
 const GANTT_DEFAULT_START_MINUTES = 8 * 60;
 const GANTT_DEFAULT_END_MINUTES = 18 * 60;
+
+function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
+  if (!vehicle) return '自動割当';
+  const constraints = [
+    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
+    vehicle.max_route_duration_minutes != null
+      ? `${vehicle.max_route_duration_minutes}分以内`
+      : null,
+  ].filter(Boolean);
+  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
+}
 
 function getHomeVisit2026PreparationItems(pack: VisitPreparationPack) {
   return buildHomeVisit2026ReadinessItems({
@@ -207,6 +229,7 @@ export function ScheduleDayView({
     start_date: format(new Date(), 'yyyy-MM-dd'),
     preferred_time_from: '09:00',
     preferred_time_to: '12:00',
+    vehicle_resource_id: '',
     candidate_count: '3',
   });
   const [rescheduleTarget, setRescheduleTarget] = useState<VisitSchedule | null>(null);
@@ -425,6 +448,23 @@ export function ScheduleDayView({
     [pharmacists],
   );
   const selectedPlannerSiteId = pharmacistSiteIdById.get(selectedPlannerPharmacistId) ?? null;
+  const { data: vehicleResourcesData, isLoading: vehicleResourcesLoading } = useQuery({
+    queryKey: ['visit-vehicle-resources', orgId, 'schedule-planner', selectedPlannerSiteId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ available: 'true' });
+      if (selectedPlannerSiteId) params.set('site_id', selectedPlannerSiteId);
+      const res = await fetch(`/api/visit-vehicle-resources?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('社用車リソースの取得に失敗しました');
+      return res.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+  const plannerVehicleResources = vehicleResourcesData?.data ?? [];
+  const selectedPlannerVehicle =
+    plannerVehicleResources.find((vehicle) => vehicle.id === plannerForm.vehicle_resource_id) ??
+    null;
   const proposalById = useMemo(
     () => new Map(proposals.map((proposal) => [proposal.id, proposal])),
     [proposals],
@@ -1364,6 +1404,7 @@ export function ScheduleDayView({
           start_date: plannerForm.start_date,
           preferred_time_from: plannerForm.preferred_time_from || undefined,
           preferred_time_to: plannerForm.preferred_time_to || undefined,
+          vehicle_resource_id: plannerForm.vehicle_resource_id || undefined,
           candidate_count: Number(effectivePlannerCandidateCount),
         }),
       });
@@ -2386,6 +2427,48 @@ export function ScheduleDayView({
                     <SelectItem value="5">5件</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
+                <Label htmlFor="planner-vehicle-resource">社用車</Label>
+                <Select
+                  value={plannerForm.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
+                  onValueChange={(value) => {
+                    const selectedVehicleResourceId =
+                      value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
+                    const selectedVehicle = plannerVehicleResources.find(
+                      (vehicle) => vehicle.id === selectedVehicleResourceId,
+                    );
+                    setPlannerForm((current) => ({
+                      ...current,
+                      vehicle_resource_id: selectedVehicleResourceId,
+                    }));
+                    if (selectedVehicle) {
+                      setRouteTravelMode(selectedVehicle.travel_mode);
+                    }
+                  }}
+                >
+                  <SelectTrigger id="planner-vehicle-resource" className="w-full">
+                    <Car className="mr-2 size-4 text-muted-foreground" />
+                    <SelectValue placeholder="自動割当" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO_VEHICLE_RESOURCE_VALUE}>自動割当</SelectItem>
+                    {plannerVehicleResources.map((vehicle) => (
+                      <SelectItem key={vehicle.id} value={vehicle.id}>
+                        {vehicle.site?.name
+                          ? `${vehicle.label} / ${vehicle.site.name}`
+                          : vehicle.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPlannerVehicle
+                    ? formatVehicleResourceLabel(selectedPlannerVehicle)
+                    : vehicleResourcesLoading
+                      ? '社用車候補を読み込み中'
+                      : '未指定の場合は患者住所とルート条件から自動割当します'}
+                </p>
               </div>
             </div>
 

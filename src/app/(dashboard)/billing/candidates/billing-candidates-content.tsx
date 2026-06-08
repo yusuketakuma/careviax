@@ -112,6 +112,8 @@ type BillingCandidate = {
   } | null;
 };
 
+type BillingDomain = 'home_care' | 'pca_rental';
+
 type CandidateValidationLayers = NonNullable<
   NonNullable<BillingCandidate['source_snapshot']>['validation_layers']
 >;
@@ -170,6 +172,10 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; cl
 
 const VALIDATION_OK = ['confirmed', 'exported'];
 const VALIDATION_NG = ['excluded'];
+const BILLING_DOMAIN_OPTIONS: Array<{ value: BillingDomain; label: string; shortLabel: string }> = [
+  { value: 'home_care', label: '医療・介護請求', shortLabel: '医療・介護' },
+  { value: 'pca_rental', label: 'PCAレンタル請求', shortLabel: 'PCAレンタル' },
+];
 
 function ValidationBadge({
   status,
@@ -306,6 +312,7 @@ export function BillingCandidatesContent({
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [billingDomain, setBillingDomain] = useState<BillingDomain>('home_care');
   const patientIdFilter = initialPatientId?.trim() || null;
   const visitRecordIdFilter = initialVisitRecordId?.trim() || null;
   const isVisitRecordContext =
@@ -318,9 +325,13 @@ export function BillingCandidatesContent({
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
+    queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter, billingDomain],
     queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams({ billing_month: billingMonthStr, limit: '50' });
+      const params = new URLSearchParams({
+        billing_month: billingMonthStr,
+        billing_domain: billingDomain,
+        limit: '50',
+      });
       if (patientIdFilter) params.set('patient_id', patientIdFilter);
       if (pageParam) params.set('cursor', pageParam);
       const res = await fetch(`/api/billing-candidates?${params}`, {
@@ -345,7 +356,7 @@ export function BillingCandidatesContent({
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ billing_month: billingMonthStr }),
+        body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -355,9 +366,7 @@ export function BillingCandidatesContent({
     },
     onSuccess: async (result) => {
       toast.success(result.message);
-      await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
-      });
+      await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
     onError: (error: Error) => {
@@ -383,9 +392,7 @@ export function BillingCandidatesContent({
     },
     onSuccess: async () => {
       toast.success('請求候補を更新しました');
-      await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
-      });
+      await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
     onError: (error: Error) => {
@@ -401,19 +408,21 @@ export function BillingCandidatesContent({
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ billing_month: billingMonthStr }),
+        body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '月次締めに失敗しました');
       }
-      return res.json() as Promise<{ message: string; exported_count?: number }>;
+      return res.json() as Promise<{
+        message: string;
+        exported_count?: number;
+        billing_domain?: BillingDomain;
+      }>;
     },
     onSuccess: async (result) => {
       toast.success(result.message);
-      await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
-      });
+      await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
     onError: (error: Error) => {
@@ -661,6 +670,7 @@ export function BillingCandidatesContent({
     setIsExporting(true);
     try {
       const params = new URLSearchParams({ billing_month: billingMonthStr });
+      params.set('billing_domain', billingDomain);
       if (patientIdFilter) params.set('patient_id', patientIdFilter);
       const response = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
         headers: { 'x-org-id': orgId },
@@ -675,7 +685,7 @@ export function BillingCandidatesContent({
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = `billing_${billingMonthStr}.csv`;
+      link.download = `billing_${billingDomain}_${billingMonthStr}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -810,6 +820,21 @@ export function BillingCandidatesContent({
         contentClassName="space-y-3"
       >
         <ActionRail align="start">
+          <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-border bg-muted/30 p-1">
+            {BILLING_DOMAIN_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={billingDomain === option.value ? 'default' : 'ghost'}
+                onClick={() => setBillingDomain(option.value)}
+                aria-pressed={billingDomain === option.value}
+                className="h-7 px-2 text-xs"
+              >
+                {option.shortLabel}
+              </Button>
+            ))}
+          </div>
           <Button
             size="sm"
             variant="outline"
@@ -817,7 +842,9 @@ export function BillingCandidatesContent({
             disabled={generateMutation.isPending}
           >
             <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
-            {generateMutation.isPending ? '生成中...' : '候補生成'}
+            {generateMutation.isPending
+              ? '生成中...'
+              : `${BILLING_DOMAIN_OPTIONS.find((option) => option.value === billingDomain)?.shortLabel}候補生成`}
           </Button>
           <Button
             size="sm"
@@ -827,7 +854,9 @@ export function BillingCandidatesContent({
               closeMutation.isPending || closeBlocked > 0 || closeReady === 0 || !!patientIdFilter
             }
           >
-            {closeMutation.isPending ? '締め処理中...' : '月次締め'}
+            {closeMutation.isPending
+              ? '締め処理中...'
+              : `${BILLING_DOMAIN_OPTIONS.find((option) => option.value === billingDomain)?.shortLabel}月次締め`}
           </Button>
           <Button
             size="sm"
@@ -866,7 +895,7 @@ export function BillingCandidatesContent({
           enableColumnVisibility: true,
           enableExport: true,
           enablePrint: true,
-          exportFileName: `billing-candidates-${billingMonthStr}.csv`,
+          exportFileName: `billing-candidates-${billingDomain}-${billingMonthStr}.csv`,
           filterFields: [
             {
               columnId: 'billing_code',

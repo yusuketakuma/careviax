@@ -4,7 +4,11 @@ import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { createPharmacistShiftSchema, toShiftTimeValue } from '@/lib/validations/pharmacist-shift';
+import {
+  createPharmacistShiftSchema,
+  pharmacistShiftQuerySchema,
+  toShiftTimeValue,
+} from '@/lib/validations/pharmacist-shift';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -15,19 +19,28 @@ export const GET = withAuth(
     const userId = searchParams.get('user_id');
     const siteId = searchParams.get('site_id');
 
-    const monthDate = month ? new Date(month) : null;
-    const resolvedDateFrom =
-      monthDate && !Number.isNaN(monthDate.getTime())
-        ? new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
-        : dateFrom
-          ? new Date(dateFrom)
-          : null;
-    const resolvedDateTo =
-      monthDate && !Number.isNaN(monthDate.getTime())
-        ? new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
-        : dateTo
-          ? new Date(dateTo)
-          : null;
+    const parsed = pharmacistShiftQuerySchema.safeParse({
+      ...(month !== null ? { month } : {}),
+      ...(dateFrom !== null ? { date_from: dateFrom } : {}),
+      ...(dateTo !== null ? { date_to: dateTo } : {}),
+      ...(userId !== null ? { user_id: userId } : {}),
+      ...(siteId !== null ? { site_id: siteId } : {}),
+    });
+    if (!parsed.success) {
+      return validationError('検索条件が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const monthDate = parsed.data.month ? new Date(parsed.data.month) : null;
+    const resolvedDateFrom = monthDate
+      ? new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+      : parsed.data.date_from
+        ? new Date(parsed.data.date_from)
+        : null;
+    const resolvedDateTo = monthDate
+      ? new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+      : parsed.data.date_to
+        ? new Date(parsed.data.date_to)
+        : null;
 
     const shifts = await prisma.pharmacistShift.findMany({
       where: {
@@ -40,8 +53,8 @@ export const GET = withAuth(
               },
             }
           : {}),
-        ...(userId ? { user_id: userId } : {}),
-        ...(siteId ? { site_id: siteId } : {}),
+        ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
+        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
       },
       orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
       include: {

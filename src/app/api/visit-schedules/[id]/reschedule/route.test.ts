@@ -110,11 +110,12 @@ function buildSchedule(overrides?: Record<string, unknown>) {
     visit_type: 'regular',
     priority: 'normal',
     scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
-    time_window_start: new Date('1970-01-01T09:00:00'),
-    time_window_end: new Date('1970-01-01T10:00:00'),
+    time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+    time_window_end: new Date('1970-01-01T10:00:00.000Z'),
     pharmacist_id: 'user_1',
     assignment_mode: 'primary',
     route_order: 1,
+    vehicle_resource_id: 'vehicle_1',
     schedule_status: 'planned',
     confirmed_at: new Date('2026-03-25T10:00:00.000Z'),
     confirmed_by: 'user_1',
@@ -137,11 +138,12 @@ function buildImpactedSchedule(overrides?: Record<string, unknown>) {
     visit_type: 'regular',
     priority: 'normal',
     scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
-    time_window_start: new Date('1970-01-01T10:00:00'),
-    time_window_end: new Date('1970-01-01T11:00:00'),
+    time_window_start: new Date('1970-01-01T10:00:00.000Z'),
+    time_window_end: new Date('1970-01-01T11:00:00.000Z'),
     pharmacist_id: 'user_1',
     assignment_mode: 'primary',
     route_order: 2,
+    vehicle_resource_id: 'vehicle_2',
     schedule_status: 'planned',
     confirmed_at: new Date('2026-03-25T11:00:00.000Z'),
     confirmed_by: 'user_2',
@@ -189,6 +191,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
                 proposed_pharmacist_id: 'pharmacist_1',
                 assignment_mode: 'primary',
                 route_order: 3,
+                vehicle_resource_id: 'vehicle_2',
                 route_distance_score: 2.4,
                 medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
                 visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
@@ -218,6 +221,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
               proposed_pharmacist_id: 'pharmacist_2',
               assignment_mode: 'fallback',
               route_order: 2,
+              vehicle_resource_id: 'vehicle_1',
               route_distance_score: 4.2,
               medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
               visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
@@ -477,6 +481,8 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       startDate: new Date('2026-03-28'),
       preferredTimeFrom: '09:00',
       preferredTimeTo: '10:00',
+      preferredPharmacistId: 'user_1',
+      vehicleResourceId: 'vehicle_1',
       rescheduleSourceScheduleId: 'schedule_1',
     });
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenNthCalledWith(2, {
@@ -488,6 +494,8 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       startDate: new Date('2026-03-27T00:00:00.000Z'),
       preferredTimeFrom: '10:00',
       preferredTimeTo: '11:00',
+      preferredPharmacistId: 'user_1',
+      vehicleResourceId: 'vehicle_2',
       rescheduleSourceScheduleId: 'schedule_2',
     });
     expect(visitScheduleCountMock).toHaveBeenCalledWith({
@@ -530,8 +538,16 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         case_id: 'case_1',
+        vehicle_resource_id: 'vehicle_1',
         reschedule_source_schedule_id: 'schedule_1',
         proposal_reason: '担当者不在のため再配置 / リスケ理由: 緊急訪問が割り込んだため',
+      }),
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_2',
+        vehicle_resource_id: 'vehicle_2',
+        reschedule_source_schedule_id: 'schedule_2',
       }),
     });
     expect(visitScheduleProposalCreateMock).toHaveBeenCalledTimes(2);
@@ -571,6 +587,10 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
             impacted_schedule_count: 1,
             proposed_replacements: 2,
             impacted_patient_names: ['佐藤次郎'],
+            preferred_pharmacist_id: 'user_1',
+            requested_vehicle_resource_id: 'vehicle_1',
+            current_vehicle_resource_id: 'vehicle_1',
+            vehicle_reassignment_mode: 'preserve_current',
           }),
         }),
       }),
@@ -631,12 +651,79 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           communication_channel: 'phone',
           communication_result: 'pending',
           communication_target_count: 4,
+          preferred_pharmacist_id: 'user_1',
+          requested_vehicle_resource_id: 'vehicle_1',
+          current_vehicle_resource_id: 'vehicle_1',
+          vehicle_reassignment_mode: 'preserve_current',
         }),
       }),
     });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
+    });
+  });
+
+  it('allows reschedule requests to prefer a substitute pharmacist and release the current vehicle for auto reassignment', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          reason: '担当薬剤師が訪問できないため',
+          reason_code: 'pharmacist_unavailable',
+          preferred_pharmacist_id: 'pharmacist_backup',
+          vehicle_resource_id: null,
+          start_date: '2026-03-29',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenNthCalledWith(1, {
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 3,
+      startDate: new Date('2026-03-29'),
+      preferredTimeFrom: '09:00',
+      preferredTimeTo: '10:00',
+      preferredPharmacistId: 'pharmacist_backup',
+      vehicleResourceId: undefined,
+      rescheduleSourceScheduleId: 'schedule_1',
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_1',
+        vehicle_resource_id: 'vehicle_1',
+        reschedule_source_schedule_id: 'schedule_1',
+      }),
+    });
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source_schedule_id: 'schedule_1',
+          impact_summary: expect.objectContaining({
+            preferred_pharmacist_id: 'pharmacist_backup',
+            requested_vehicle_resource_id: null,
+            current_vehicle_resource_id: 'vehicle_1',
+            vehicle_reassignment_mode: 'auto',
+          }),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          reason_code: 'pharmacist_unavailable',
+          preferred_pharmacist_id: 'pharmacist_backup',
+          requested_vehicle_resource_id: null,
+          current_vehicle_resource_id: 'vehicle_1',
+          vehicle_reassignment_mode: 'auto',
+        }),
+      }),
     });
   });
 

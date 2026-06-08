@@ -383,6 +383,7 @@ describe('billing-evidence service', () => {
         where: {
           org_id: 'org_1',
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
         },
       }),
     );
@@ -457,6 +458,90 @@ describe('billing-evidence service', () => {
       }),
     );
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('does not use home-care billing evidence blockers for PCA rental close', async () => {
+    const updateMock = vi.fn().mockResolvedValue({});
+    const tx = {
+      billingCandidate: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: 'candidate_pca_1',
+              status: 'confirmed',
+              source_snapshot: {
+                billing_close: {
+                  review_state: 'reviewed',
+                  resolution_state: 'confirmed',
+                  reviewed_at: '2026-06-30T00:00:00.000Z',
+                  reviewed_by: 'user_1',
+                },
+              },
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'candidate_pca_1',
+              status: 'exported',
+              source_snapshot: {
+                billing_close: {
+                  review_state: 'reviewed',
+                  resolution_state: 'confirmed',
+                  reviewed_at: '2026-06-30T00:00:00.000Z',
+                  reviewed_by: 'user_1',
+                },
+              },
+            },
+          ]),
+        update: updateMock,
+      },
+      billingEvidence: {
+        count: vi.fn().mockResolvedValue(99),
+        findMany: vi.fn().mockResolvedValue([{ exclusion_reason: '同意未取得' }]),
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
+    };
+
+    const result = await closeBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth: new Date(Date.UTC(2026, 5, 1)),
+      actorId: 'user_1',
+      billingDomain: 'pca_rental',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.exported_count).toBe(1);
+    expect(tx.billingEvidence.count).not.toHaveBeenCalled();
+    expect(tx.billingEvidence.findMany).not.toHaveBeenCalled();
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-06-01T00:00:00.000Z'),
+          billing_domain: 'pca_rental',
+        },
+      }),
+    );
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'candidate_pca_1' },
+        data: expect.objectContaining({
+          status: 'exported',
+        }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'billing_candidates_month_closed',
+        changes: expect.objectContaining({
+          billing_domain: 'pca_rental',
+          exported_count: 1,
+        }),
+      }),
+    });
   });
 
   it('generates information provision and duplicate-interaction candidates with validation layers', async () => {

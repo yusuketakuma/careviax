@@ -26,6 +26,11 @@ import {
 } from '@/server/services/home-care-ops';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import {
+  computeOptimizedVisitRoute,
+  type VisitRoutePlan,
+  type VisitRouteTravelMode,
+} from '@/server/services/visit-route-engine';
 
 type IntakeLineSummary = {
   drug_name: string;
@@ -48,6 +53,104 @@ function isInputJsonObject(
 function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
   const normalized = normalizeJsonInput(value);
   return isInputJsonObject(normalized) ? normalized : {};
+}
+
+function readRouteSnapshotVehicleResourceId(value: Prisma.InputJsonObject | null) {
+  if (!value) return null;
+  if (typeof value.vehicle_resource_id === 'string' && value.vehicle_resource_id.trim()) {
+    return value.vehicle_resource_id.trim();
+  }
+  const vehicleResource = readJsonObject(value.vehicle_resource);
+  const vehicleId = vehicleResource?.vehicle_id;
+  return typeof vehicleId === 'string' && vehicleId.trim() ? vehicleId.trim() : null;
+}
+
+function readRouteSnapshotTravelMode(
+  value: Prisma.InputJsonObject | null,
+): VisitRouteTravelMode | null {
+  if (!value) return null;
+  const rawValue = value.travelMode ?? value.travel_mode;
+  return rawValue === 'DRIVE' ||
+    rawValue === 'BICYCLE' ||
+    rawValue === 'WALK' ||
+    rawValue === 'TWO_WHEELER'
+    ? rawValue
+    : null;
+}
+
+function appendRouteNote(note: string | null, next: string) {
+  return note ? `${note} / ${next}` : next;
+}
+
+function buildVisitDayRange(date: Date) {
+  const start = new Date(date);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
+function normalizeRoutePlanSnapshotForWrite(
+  plan: VisitRoutePlan,
+  args: {
+    scheduleIds: string[];
+    routeOrder: number | null;
+    vehicleResource: {
+      id: string;
+      label: string;
+      max_stops: number | null;
+      max_route_duration_minutes: number | null;
+    } | null;
+    generatedAt: Date;
+  },
+): Prisma.InputJsonObject {
+  const vehicleLabel = args.vehicleResource?.label ?? args.vehicleResource?.id ?? '選択中の社用車';
+  const vehicleConstraintExceeded =
+    args.vehicleResource?.max_route_duration_minutes != null &&
+    plan.totalDurationSeconds != null &&
+    plan.totalDurationSeconds > args.vehicleResource.max_route_duration_minutes * 60;
+  const vehicleConstraintUnverified =
+    args.vehicleResource?.max_route_duration_minutes != null && plan.totalDurationSeconds == null;
+  const note =
+    args.vehicleResource == null
+      ? plan.note
+      : vehicleConstraintExceeded
+        ? appendRouteNote(
+            plan.note,
+            `${vehicleLabel} の稼働上限 ${args.vehicleResource.max_route_duration_minutes}分を超えています`,
+          )
+        : vehicleConstraintUnverified
+          ? appendRouteNote(plan.note, `${vehicleLabel} の稼働上限は経路時間未計算のため未確認です`)
+          : appendRouteNote(plan.note, `${vehicleLabel} の車両リソース条件を確認済み`);
+
+  return normalizeInputJsonObject({
+    ...plan,
+    note,
+    ordered_schedule_ids: args.scheduleIds,
+    orderedScheduleIds: plan.orderedScheduleIds,
+    route_order: args.routeOrder,
+    generated_by: 'server',
+    generated_at: args.generatedAt.toISOString(),
+    ...(args.vehicleResource
+      ? {
+          vehicle_resource_id: args.vehicleResource.id,
+          vehicle_resource: {
+            vehicle_id: args.vehicleResource.id,
+            label: vehicleLabel,
+            max_stops: args.vehicleResource.max_stops,
+            max_route_duration_minutes: args.vehicleResource.max_route_duration_minutes,
+            stop_count: args.scheduleIds.length,
+            route_duration_minutes:
+              plan.totalDurationSeconds == null ? null : Math.ceil(plan.totalDurationSeconds / 60),
+            constraint_status: vehicleConstraintExceeded
+              ? 'exceeded'
+              : vehicleConstraintUnverified
+                ? 'unverified'
+                : 'ok',
+          },
+        }
+      : {}),
+  });
 }
 
 type FacilityParallelSchedule = {
@@ -1036,8 +1139,11 @@ export async function PUT(
     select: {
       id: true,
       case_id: true,
+      site_id: true,
+      vehicle_resource_id: true,
       schedule_status: true,
       scheduled_date: true,
+      route_order: true,
       pharmacist_id: true,
       case_: {
         select: {
@@ -1071,6 +1177,210 @@ export async function PUT(
       ? buildChecklistFromTemplate()
       : parsed.data.checklist;
   const normalizedChecklist = normalizeInputJsonObject(effectiveChecklist);
+  const submittedRoutePlanSnapshot = parsed.data.route_plan_snapshot
+    ? normalizeInputJsonObject(parsed.data.route_plan_snapshot)
+    : null;
+  const routeVehicleResourceId =
+    readRouteSnapshotVehicleResourceId(submittedRoutePlanSnapshot) ?? schedule.vehicle_resource_id;
+  let routePlanSnapshotWriteValue: Prisma.InputJsonValue | typeof Prisma.JsonNull = Prisma.JsonNull;
+
+  if (parsed.data.route_confirmed) {
+    const { start, end } = buildVisitDayRange(schedule.scheduled_date);
+    const [vehicleResource, routeCellSchedules] = await Promise.all([
+      routeVehicleResourceId
+        ? prisma.visitVehicleResource.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              id: routeVehicleResourceId,
+              available: true,
+            },
+            select: {
+              id: true,
+              site_id: true,
+              label: true,
+              travel_mode: true,
+              max_stops: true,
+              max_route_duration_minutes: true,
+            },
+          })
+        : Promise.resolve(null),
+      prisma.visitSchedule.findMany({
+        where: schedule.pharmacist_id
+          ? {
+              org_id: ctx.orgId,
+              pharmacist_id: schedule.pharmacist_id,
+              scheduled_date: {
+                gte: start,
+                lt: end,
+              },
+              schedule_status: {
+                notIn: ['cancelled', 'rescheduled'],
+              },
+              ...(schedule.site_id ? { site_id: schedule.site_id } : {}),
+            }
+          : {
+              org_id: ctx.orgId,
+              id: schedule.id,
+            },
+        orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }, { created_at: 'asc' }],
+        select: {
+          id: true,
+          route_order: true,
+          priority: true,
+          site: {
+            select: {
+              id: true,
+              name: true,
+              lat: true,
+              lng: true,
+            },
+          },
+          case_: {
+            select: {
+              patient: {
+                select: {
+                  name: true,
+                  residences: {
+                    where: { is_primary: true },
+                    select: {
+                      address: true,
+                      lat: true,
+                      lng: true,
+                    },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (routeVehicleResourceId && !vehicleResource) {
+      return validationError('選択した車両リソースが見つからないか利用できません');
+    }
+    if (vehicleResource && schedule.site_id && vehicleResource.site_id !== schedule.site_id) {
+      return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
+    }
+    if (
+      vehicleResource?.max_stops != null &&
+      routeCellSchedules.length > vehicleResource.max_stops
+    ) {
+      return validationError(
+        `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+      );
+    }
+
+    const currentScheduleInRoute = routeCellSchedules.some((item) => item.id === schedule.id);
+    const orderedRouteCellSchedules = currentScheduleInRoute
+      ? routeCellSchedules
+      : [
+          ...routeCellSchedules,
+          ...(await prisma.visitSchedule.findMany({
+            where: {
+              org_id: ctx.orgId,
+              id: schedule.id,
+            },
+            select: {
+              id: true,
+              route_order: true,
+              priority: true,
+              site: {
+                select: {
+                  id: true,
+                  name: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      name: true,
+                      residences: {
+                        where: { is_primary: true },
+                        select: {
+                          address: true,
+                          lat: true,
+                          lng: true,
+                        },
+                        take: 1,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })),
+        ];
+    const originSite = orderedRouteCellSchedules[0]?.site ?? null;
+    const origin =
+      originSite?.lat != null && originSite.lng != null
+        ? {
+            lat: originSite.lat,
+            lng: originSite.lng,
+            label: originSite.name,
+          }
+        : null;
+    const routableSchedules = orderedRouteCellSchedules.filter(
+      (item) =>
+        item.case_.patient.residences[0]?.lat != null &&
+        item.case_.patient.residences[0]?.lng != null,
+    );
+    const routePlan = await computeOptimizedVisitRoute({
+      origin,
+      travelMode:
+        vehicleResource?.travel_mode ??
+        readRouteSnapshotTravelMode(submittedRoutePlanSnapshot) ??
+        'DRIVE',
+      waypoints: routableSchedules.map((item) => {
+        const residence = item.case_.patient.residences[0]!;
+        return {
+          scheduleId: item.id,
+          patientName: item.case_.patient.name,
+          address: residence.address,
+          lat: residence.lat!,
+          lng: residence.lng!,
+          priority: item.priority,
+        };
+      }),
+    });
+    const missingCoordinatePatientNames = orderedRouteCellSchedules
+      .filter((item) => !routableSchedules.some((candidate) => candidate.id === item.id))
+      .map((item) => item.case_.patient.name);
+    const routePlanWithCellNotes =
+      missingCoordinatePatientNames.length > 0
+        ? {
+            ...routePlan,
+            note: appendRouteNote(
+              routePlan.note,
+              `座標未設定: ${missingCoordinatePatientNames.join('、')}`,
+            ),
+          }
+        : routePlan;
+    const generatedSnapshot = normalizeRoutePlanSnapshotForWrite(routePlanWithCellNotes, {
+      scheduleIds: orderedRouteCellSchedules.map((item) => item.id),
+      routeOrder: schedule.route_order,
+      vehicleResource: vehicleResource
+        ? {
+            id: vehicleResource.id,
+            label: vehicleResource.label,
+            max_stops: vehicleResource.max_stops,
+            max_route_duration_minutes: vehicleResource.max_route_duration_minutes,
+          }
+        : null,
+      generatedAt: new Date(),
+    });
+    const generatedVehicleStatus = readJsonObject(
+      generatedSnapshot.vehicle_resource,
+    )?.constraint_status;
+    if (generatedVehicleStatus === 'exceeded') {
+      return validationError('選択した車両リソースの稼働上限を超えるためルート確認できません');
+    }
+    routePlanSnapshotWriteValue = generatedSnapshot;
+  }
 
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     const preparation = await tx.visitPreparation.upsert({
@@ -1085,6 +1395,7 @@ export async function PUT(
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,
         route_confirmed: parsed.data.route_confirmed,
+        route_plan_snapshot: routePlanSnapshotWriteValue,
         offline_synced: parsed.data.offline_synced,
         prepared_by: ctx.userId,
         prepared_at: allChecklistComplete ? new Date() : null,
@@ -1095,11 +1406,22 @@ export async function PUT(
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,
         route_confirmed: parsed.data.route_confirmed,
+        route_plan_snapshot: routePlanSnapshotWriteValue,
         offline_synced: parsed.data.offline_synced,
         prepared_by: ctx.userId,
         prepared_at: allChecklistComplete ? new Date() : null,
       },
     });
+
+    if (routeVehicleResourceId) {
+      await tx.visitSchedule.update({
+        where: { id: schedule.id },
+        data: {
+          vehicle_resource_id: routeVehicleResourceId,
+          version: { increment: 1 },
+        },
+      });
+    }
 
     if (allChecklistComplete) {
       await resolveOperationalTasks(tx, {

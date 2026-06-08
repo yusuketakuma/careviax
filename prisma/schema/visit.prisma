@@ -60,50 +60,85 @@ enum VisitOutcome {
   completed_with_issue
 }
 
+enum VisitVehicleTravelMode {
+  DRIVE
+  BICYCLE
+  WALK
+  TWO_WHEELER
+}
+
 enum VisitScheduleOverrideStatus {
   pending
   completed
   cancelled
 }
 
+model VisitVehicleResource {
+  id                         String                 @id @default(cuid())
+  org_id                     String
+  org                        Organization           @relation(fields: [org_id], references: [id])
+  site_id                    String
+  site                       PharmacySite           @relation(fields: [site_id, org_id], references: [id, org_id])
+  label                      String
+  vehicle_code               String?
+  travel_mode                VisitVehicleTravelMode @default(DRIVE)
+  max_stops                  Int                    @default(8)
+  max_route_duration_minutes Int?
+  available                  Boolean                @default(true)
+  notes                      String?
+  created_at                 DateTime               @default(now())
+  updated_at                 DateTime               @updatedAt
+
+  visit_schedules          VisitSchedule[]         @relation("VisitScheduleVehicleResource")
+  visit_schedule_proposals VisitScheduleProposal[] @relation("VisitScheduleProposalVehicleResource")
+
+  @@unique([id, org_id])
+  @@unique([org_id, vehicle_code])
+  @@index([org_id])
+  @@index([org_id, site_id, available])
+  @@index([site_id])
+}
+
 model VisitSchedule {
-  id                            String              @id @default(cuid())
+  id                            String                @id @default(cuid())
   org_id                        String
   cycle_id                      String?
-  cycle                         MedicationCycle?    @relation(fields: [cycle_id], references: [id])
+  cycle                         MedicationCycle?      @relation(fields: [cycle_id], references: [id])
   case_id                       String
-  case_                         CareCase            @relation(fields: [case_id], references: [id])
+  case_                         CareCase              @relation(fields: [case_id], references: [id])
   site_id                       String?
-  site                          PharmacySite?       @relation(fields: [site_id], references: [id])
+  site                          PharmacySite?         @relation(fields: [site_id], references: [id])
   visit_type                    VisitType
-  priority                      VisitPriority       @default(normal)
-  schedule_status               ScheduleStatus      @default(planned)
-  scheduled_date                DateTime            @db.Date
-  time_window_start             DateTime?           @db.Time()
-  time_window_end               DateTime?           @db.Time()
+  priority                      VisitPriority         @default(normal)
+  schedule_status               ScheduleStatus        @default(planned)
+  scheduled_date                DateTime              @db.Date
+  time_window_start             DateTime?             @db.Time()
+  time_window_end               DateTime?             @db.Time()
   pharmacist_id                 String // User ID
-  assignment_mode               VisitAssignmentMode @default(primary)
+  assignment_mode               VisitAssignmentMode   @default(primary)
   escalation_reason             String?
   route_order                   Int?
+  vehicle_resource_id           String?
+  vehicle_resource              VisitVehicleResource? @relation("VisitScheduleVehicleResource", fields: [vehicle_resource_id, org_id], references: [id, org_id])
   carry_items                   Json? // 持参薬情報
   carry_items_status            String? // ready/partial/blocked
-  pre_visit_checklist_completed Boolean             @default(false)
+  pre_visit_checklist_completed Boolean               @default(false)
   recurrence_rule               String? // RRULE
   recurrence_parent_id          String? // 繰返しの親スケジュールID
   facility_batch_id             String?
-  facility_batch                FacilityVisitBatch? @relation(fields: [facility_batch_id], references: [id])
+  facility_batch                FacilityVisitBatch?   @relation(fields: [facility_batch_id], references: [id])
   facility_unit_id              String?
-  facility_unit                 FacilityUnit?       @relation(fields: [facility_unit_id], references: [id])
-  time_constraint_start         DateTime?           @db.Time()
-  time_constraint_end           DateTime?           @db.Time()
-  medication_start_date         DateTime?           @db.Date
-  medication_end_date           DateTime?           @db.Date
-  visit_deadline_date           DateTime?           @db.Date
+  facility_unit                 FacilityUnit?         @relation(fields: [facility_unit_id], references: [id])
+  time_constraint_start         DateTime?             @db.Time()
+  time_constraint_end           DateTime?             @db.Time()
+  medication_start_date         DateTime?             @db.Date
+  medication_end_date           DateTime?             @db.Date
+  visit_deadline_date           DateTime?             @db.Date
   confirmed_at                  DateTime?
   confirmed_by                  String?
-  version                       Int                 @default(1)
-  created_at                    DateTime            @default(now())
-  updated_at                    DateTime            @updatedAt
+  version                       Int                   @default(1)
+  created_at                    DateTime              @default(now())
+  updated_at                    DateTime              @updatedAt
 
   visit_record          VisitRecord?
   preparation           VisitPreparation?
@@ -122,6 +157,7 @@ model VisitSchedule {
   @@index([facility_unit_id])
   @@index([org_id, scheduled_date, schedule_status])
   @@index([org_id, pharmacist_id, scheduled_date])
+  @@index([org_id, vehicle_resource_id])
 }
 
 model FacilityVisitBatch {
@@ -189,6 +225,7 @@ model VisitPreparation {
   carry_items_confirmed       Boolean       @default(false)
   previous_issues_reviewed    Boolean       @default(false)
   route_confirmed             Boolean       @default(false)
+  route_plan_snapshot         Json?
   offline_synced              Boolean       @default(false)
   prepared_by                 String // User ID
   prepared_at                 DateTime?
@@ -219,6 +256,8 @@ model VisitScheduleProposal {
   assignment_mode               VisitAssignmentMode       @default(primary)
   route_order                   Int?
   route_distance_score          Float?
+  vehicle_resource_id           String?
+  vehicle_resource              VisitVehicleResource?     @relation("VisitScheduleProposalVehicleResource", fields: [vehicle_resource_id, org_id], references: [id, org_id])
   medication_end_date           DateTime?                 @db.Date
   visit_deadline_date           DateTime?                 @db.Date
   proposal_reason               String?
@@ -240,6 +279,7 @@ model VisitScheduleProposal {
   @@index([org_id, proposal_status])
   @@index([case_id, proposed_date])
   @@index([site_id, proposed_date])
+  @@index([org_id, vehicle_resource_id])
 }
 
 model VisitScheduleContactLog {

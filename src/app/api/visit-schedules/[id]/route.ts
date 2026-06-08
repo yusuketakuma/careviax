@@ -6,12 +6,18 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 import { prisma } from '@/lib/db/client';
+import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
+import {
+  validateManualSchedulePreferences,
+  validateVisitVehicleResourceForSchedule,
+} from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -81,6 +87,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       case_id: true,
       confirmed_at: true,
       pharmacist_id: true,
+      site_id: true,
+      vehicle_resource_id: true,
+      scheduled_date: true,
+      time_window_start: true,
+      time_window_end: true,
       case_: {
         select: {
           primary_pharmacist_id: true,
@@ -101,6 +112,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     time_window_start,
     time_window_end,
     notes: _notes,
+    vehicle_resource_id,
     ...rest
   } = parsed.data;
   void _notes;
@@ -157,6 +169,139 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!refResult.ok) return refResult.response;
 
+  const changesScheduleTimingOrAssignment =
+    scheduled_date !== undefined ||
+    time_window_start !== undefined ||
+    time_window_end !== undefined ||
+    rest.pharmacist_id !== undefined;
+  if (changesScheduleTimingOrAssignment) {
+    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
+    const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
+    const targetTimeWindowStart =
+      time_window_start !== undefined
+        ? time_window_start || undefined
+        : readPatchTimeString(existing.time_window_start);
+    const targetTimeWindowEnd =
+      time_window_end !== undefined
+        ? time_window_end || undefined
+        : readPatchTimeString(existing.time_window_end);
+
+    const shift = await prisma.pharmacistShift.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        user_id: targetPharmacistId,
+        date: targetDate,
+      },
+      select: {
+        site_id: true,
+        available: true,
+        available_from: true,
+        available_to: true,
+      },
+    });
+    if (!shift) {
+      return validationError('選択した薬剤師のシフトがありません');
+    }
+    const shiftValidationError = validateScheduleTimeStringsFitShift(
+      shift,
+      targetTimeWindowStart,
+      targetTimeWindowEnd,
+    );
+    if (shiftValidationError) {
+      return validationError(shiftValidationError);
+    }
+  }
+
+  if (
+    case_id !== undefined ||
+    scheduled_date !== undefined ||
+    time_window_start !== undefined ||
+    time_window_end !== undefined
+  ) {
+    const targetCaseId = case_id ?? existing.case_id;
+    const careCase = await prisma.careCase.findFirst({
+      where: { id: targetCaseId, org_id: ctx.orgId },
+      select: {
+        patient: {
+          select: {
+            scheduling_preference: true,
+            residences: {
+              where: { is_primary: true },
+              take: 1,
+              select: {
+                facility: {
+                  select: {
+                    acceptance_time_from: true,
+                    acceptance_time_to: true,
+                    regular_visit_weekdays: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!careCase) {
+      return validationError('ケースが見つかりません');
+    }
+
+    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
+    const targetTimeWindowStart =
+      time_window_start !== undefined
+        ? time_window_start
+        : readPatchTimeString(existing.time_window_start);
+    const targetTimeWindowEnd =
+      time_window_end !== undefined
+        ? time_window_end
+        : readPatchTimeString(existing.time_window_end);
+    const preferenceValidationError = validateManualSchedulePreferences({
+      scheduledDate: targetDate,
+      timeWindowStart: targetTimeWindowStart,
+      timeWindowEnd: targetTimeWindowEnd,
+      schedulingPreference: careCase.patient.scheduling_preference,
+      facility: careCase.patient.residences[0]?.facility ?? null,
+    });
+    if (preferenceValidationError) {
+      return validationError(preferenceValidationError);
+    }
+  }
+
+  const targetVehicleResourceId =
+    vehicle_resource_id !== undefined ? vehicle_resource_id : existing.vehicle_resource_id;
+  if (targetVehicleResourceId) {
+    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
+    const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
+    const targetSiteId = site_id !== undefined ? site_id || null : existing.site_id;
+    const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
+      orgId: ctx.orgId,
+      vehicleResourceId: targetVehicleResourceId,
+      siteId: targetSiteId,
+      pharmacistId: targetPharmacistId,
+      scheduledDate: targetDate,
+      excludeScheduleId: id,
+    });
+    if (!vehicleValidation.ok) return vehicleValidation.response;
+  }
+
+  if (rest.route_order !== undefined) {
+    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
+    const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
+    const routeOrderConflict = await prisma.visitSchedule.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        id: { not: id },
+        pharmacist_id: targetPharmacistId,
+        scheduled_date: targetDate,
+        route_order: rest.route_order,
+      },
+      select: { id: true },
+    });
+    if (routeOrderConflict) {
+      return validationError('同一薬剤師・同一日付で route_order は重複できません');
+    }
+  }
+
   const schedule = await withOrgContext(
     ctx.orgId,
     async (tx) => {
@@ -179,6 +324,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             : {}),
           ...(rest.schedule_status === 'ready' ? { pre_visit_checklist_completed: true } : {}),
           ...(case_id !== undefined ? { case_id } : {}),
+          ...(vehicle_resource_id !== undefined
+            ? { vehicle_resource_id: vehicle_resource_id || null }
+            : {}),
           ...rest,
           version: { increment: 1 },
         },
@@ -193,6 +341,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   return success(schedule);
+}
+
+function readPatchTimeString(value: Date | null | undefined) {
+  return timeDateToString(value);
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

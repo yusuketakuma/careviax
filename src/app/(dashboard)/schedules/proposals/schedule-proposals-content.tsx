@@ -8,6 +8,7 @@ import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
   CalendarClock,
+  Car,
   CheckCircle2,
   ChevronRight,
   PhoneCall,
@@ -69,6 +70,7 @@ import {
   statusBadgeClass,
   timeLabel,
   type Proposal,
+  type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
 } from '../day-view.shared';
 
@@ -117,6 +119,7 @@ type ProposalDetail = Proposal & {
       lat?: number | null;
       lng?: number | null;
     } | null;
+    vehicle_resource: VisitVehicleResourceSummary | null;
   }>;
   route_preview: {
     plan: {
@@ -180,6 +183,14 @@ type CreateProposalResponse = {
   diagnostics?: ProposalGenerationDiagnostics;
 };
 type CaseSearchResponse = { data: CaseOption[] };
+type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
+  available: boolean;
+  site: {
+    id: string;
+    name: string;
+  } | null;
+};
+type VisitVehicleResourcesResponse = { data: VisitVehicleResourceOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 type ContactFormState = {
@@ -231,6 +242,7 @@ const CONTACT_METHOD_LABELS: Record<ContactMethod, string> = {
 };
 
 const AUTO_DETAIL_ID = '__auto__';
+const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '未設定';
@@ -259,6 +271,70 @@ function formatEtaLabel(
   const parsed = parseISO(`${baseDate}T09:00:00`);
   const eta = new Date(parsed.getTime() + offsetSeconds * 1000);
   return format(eta, 'HH:mm', { locale: ja });
+}
+
+function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
+  if (!vehicle) return '未割当';
+  const constraints = [
+    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
+    vehicle.max_route_duration_minutes != null
+      ? `${vehicle.max_route_duration_minutes}分以内`
+      : null,
+  ].filter(Boolean);
+  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
+}
+
+function isPriorityRouteProposal(proposal: Pick<Proposal, 'priority' | 'proposal_reason'>) {
+  return (
+    (proposal.priority === 'emergency' || proposal.priority === 'urgent') &&
+    proposal.proposal_reason.includes('即応枠')
+  );
+}
+
+function isPatientPreferenceAlignedProposal(proposal: Pick<Proposal, 'proposal_reason'>) {
+  return proposal.proposal_reason.includes('患者条件');
+}
+
+function proposalRouteDecisionLabel(
+  proposal: Pick<Proposal, 'priority' | 'proposal_reason' | 'route_order'>,
+) {
+  if (isPriorityRouteProposal(proposal)) {
+    return `緊急度優先で順路 ${proposal.route_order ?? '未設定'}`;
+  }
+  if (isPatientPreferenceAlignedProposal(proposal)) {
+    return `患者希望枠で順路 ${proposal.route_order ?? '未設定'}`;
+  }
+  return `順路 ${proposal.route_order ?? '未設定'}`;
+}
+
+function ProposalDecisionBadges({ proposal }: { proposal: Proposal }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {proposal.assignment_mode === 'fallback' ? (
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
+          代替担当
+        </Badge>
+      ) : (
+        <Badge variant="outline">主担当</Badge>
+      )}
+      {isPriorityRouteProposal(proposal) ? (
+        <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
+          緊急度で前倒し
+        </Badge>
+      ) : null}
+      {isPatientPreferenceAlignedProposal(proposal) ? (
+        <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
+          患者希望枠内
+        </Badge>
+      ) : null}
+      {proposal.vehicle_resource ? (
+        <Badge variant="outline">
+          <Car className="mr-1 size-3" />
+          {proposal.vehicle_resource.label}
+        </Badge>
+      ) : null}
+    </div>
+  );
 }
 
 function ProposalRankingCard({
@@ -297,6 +373,22 @@ function ProposalRankingCard({
           <Badge variant="outline">
             配置 {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
           </Badge>
+          {isPriorityRouteProposal(candidate) ? (
+            <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
+              緊急度で前倒し
+            </Badge>
+          ) : null}
+          {isPatientPreferenceAlignedProposal(candidate) ? (
+            <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
+              患者希望枠内
+            </Badge>
+          ) : null}
+          {candidate.vehicle_resource ? (
+            <Badge variant="outline">
+              <Car className="mr-1 size-3" />
+              {candidate.vehicle_resource.label}
+            </Badge>
+          ) : null}
           <Badge variant="outline">期限 {formatDateLabel(candidate.visit_deadline_date)}</Badge>
         </div>
       </div>
@@ -331,6 +423,12 @@ function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
         <span className="text-muted-foreground">担当拠点</span>
         <span className="font-medium text-foreground">{proposal.site?.name ?? '未設定'}</span>
       </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">社用車</span>
+        <span className="text-right font-medium text-foreground">
+          {formatVehicleResourceLabel(proposal.vehicle_resource)}
+        </span>
+      </div>
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">期限</span>
         <span className="font-medium text-foreground">
@@ -345,7 +443,17 @@ function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
       </div>
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">ルート順</span>
-        <span className="font-medium text-foreground">{proposal.route_order ?? '未設定'}</span>
+        <span className="text-right font-medium text-foreground">
+          {proposalRouteDecisionLabel(proposal)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-muted-foreground">担当判定</span>
+        <span className="text-right font-medium text-foreground">
+          {proposal.assignment_mode === 'fallback'
+            ? (proposal.escalation_reason ?? '代替薬剤師を割り当て')
+            : '主担当薬剤師を優先'}
+        </span>
       </div>
     </div>
   );
@@ -410,6 +518,7 @@ export function ScheduleProposalsContent({
     priority: Proposal['priority'];
     preferred_time_from: string;
     preferred_time_to: string;
+    vehicle_resource_id: string;
     note: string;
     candidate_count: string;
   } | null>(null);
@@ -483,6 +592,18 @@ export function ScheduleProposalsContent({
       return response.json() as Promise<CaseSearchResponse>;
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
+  });
+
+  const vehicleResourcesQuery = useQuery({
+    queryKey: ['visit-vehicle-resources', orgId, 'available'],
+    queryFn: async () => {
+      const response = await fetch('/api/visit-vehicle-resources?available=true', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
+      return response.json() as Promise<VisitVehicleResourcesResponse>;
+    },
+    enabled: !!orgId,
   });
 
   const tabCounts = useMemo(
@@ -676,6 +797,7 @@ export function ScheduleProposalsContent({
       priority: detail?.priority ?? 'normal',
       preferred_time_from: '09:00',
       preferred_time_to: '12:00',
+      vehicle_resource_id: detail?.vehicle_resource?.id ?? '',
       note: '',
       candidate_count: '3',
     };
@@ -936,6 +1058,7 @@ export function ScheduleProposalsContent({
           start_date: reproposalForm.start_date || detail.proposed_date.slice(0, 10),
           preferred_time_from: reproposalForm.preferred_time_from || undefined,
           preferred_time_to: reproposalForm.preferred_time_to || undefined,
+          vehicle_resource_id: reproposalForm.vehicle_resource_id || undefined,
           candidate_count: Number(
             reproposalForm.candidate_count ||
               proposalPreviewMap?.get(detail.id)?.suggested_schedule_slot_count ||
@@ -1046,6 +1169,10 @@ export function ScheduleProposalsContent({
     visibleProposals.length > 0 &&
     visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
   const caseSearchResults = casesQuery.data?.data ?? [];
+  const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
+  const selectedReproposalVehicle = vehicleResourceOptions.find(
+    (vehicle) => vehicle.id === reproposalForm.vehicle_resource_id,
+  );
   const rescheduleFilterActive = filterPreset === 'reschedule';
   const todayFilterActive =
     filterPreset === 'today' ||
@@ -1494,7 +1621,14 @@ export function ScheduleProposalsContent({
                             <Route className="size-4" />
                             スコア {formatDistanceLabel(proposal.route_distance_score)}
                           </span>
+                          {proposal.vehicle_resource ? (
+                            <span className="inline-flex items-center gap-1">
+                              <Car className="size-4" />
+                              {proposal.vehicle_resource.label}
+                            </span>
+                          ) : null}
                         </div>
+                        <ProposalDecisionBadges proposal={proposal} />
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1617,6 +1751,7 @@ export function ScheduleProposalsContent({
                     </Badge>
                     <Badge variant="outline">{PRIORITY_LABELS[detail.priority]}</Badge>
                   </div>
+                  <ProposalDecisionBadges proposal={detail} />
                   <div className="flex flex-wrap gap-2">
                     {detail.proposal_status !== 'patient_contact_pending' &&
                     ['proposed', 'reschedule_pending'].includes(detail.proposal_status) ? (
@@ -1811,7 +1946,15 @@ export function ScheduleProposalsContent({
                             {schedule.route_order ?? '未設定'}
                           </p>
                         </div>
-                        <Badge variant="outline">{schedule.site?.name ?? '拠点未設定'}</Badge>
+                        <div className="flex flex-wrap gap-2">
+                          {schedule.vehicle_resource ? (
+                            <Badge variant="outline">
+                              <Car className="mr-1 size-3" />
+                              {schedule.vehicle_resource.label}
+                            </Badge>
+                          ) : null}
+                          <Badge variant="outline">{schedule.site?.name ?? '拠点未設定'}</Badge>
+                        </div>
                       </div>
                     ))
                   )}
@@ -2073,6 +2216,41 @@ export function ScheduleProposalsContent({
                           }))
                         }
                       />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label htmlFor="reproposal-vehicle-resource">社用車</Label>
+                      <Select
+                        value={reproposalForm.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
+                        onValueChange={(value) => {
+                          const selectedVehicleResourceId =
+                            value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
+                          setReproposalFormDraft((current) => ({
+                            ...(current ?? reproposalForm),
+                            vehicle_resource_id: selectedVehicleResourceId,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger id="reproposal-vehicle-resource">
+                          <SelectValue placeholder="自動割当" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={AUTO_VEHICLE_RESOURCE_VALUE}>自動割当</SelectItem>
+                          {vehicleResourceOptions.map((vehicle) => (
+                            <SelectItem key={vehicle.id} value={vehicle.id}>
+                              {vehicle.site?.name
+                                ? `${vehicle.label} / ${vehicle.site.name}`
+                                : vehicle.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedReproposalVehicle
+                          ? formatVehicleResourceLabel(selectedReproposalVehicle)
+                          : vehicleResourcesQuery.isLoading
+                            ? '社用車候補を読み込み中'
+                            : '未指定の場合は患者希望時間とルート条件から自動割当します'}
+                      </p>
                     </div>
                   </div>
                   <div className="space-y-1.5">

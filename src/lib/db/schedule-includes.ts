@@ -77,6 +77,15 @@ export const SCHEDULE_LIST_INCLUDE = {
       lng: true,
     },
   },
+  vehicle_resource: {
+    select: {
+      id: true,
+      label: true,
+      travel_mode: true,
+      max_stops: true,
+      max_route_duration_minutes: true,
+    },
+  },
 } as const;
 
 export const SCHEDULE_DETAIL_INCLUDE = {

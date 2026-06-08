@@ -15,6 +15,7 @@ type ScheduleSnapshotInput = Pick<
   | 'pharmacist_id'
   | 'assignment_mode'
   | 'route_order'
+  | 'vehicle_resource_id'
   | 'confirmed_at'
   | 'confirmed_by'
 >;
@@ -34,6 +35,7 @@ export function buildVisitScheduleSnapshot(schedule: ScheduleSnapshotInput) {
     pharmacist_id: schedule.pharmacist_id,
     assignment_mode: schedule.assignment_mode,
     route_order: schedule.route_order,
+    vehicle_resource_id: schedule.vehicle_resource_id,
     confirmed_at: schedule.confirmed_at?.toISOString() ?? null,
     confirmed_by: schedule.confirmed_by ?? null,
   } satisfies Prisma.InputJsonValue;
@@ -55,7 +57,7 @@ export async function createVisitScheduleContactLog(
     callbackDueAt?: Date | null;
     calledAt?: Date;
     calledBy: string;
-  }
+  },
 ) {
   return tx.visitScheduleContactLog.create({
     data: {

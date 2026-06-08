@@ -7,6 +7,11 @@ import { closeBillingCandidatesForMonth } from '@/server/services/billing-eviden
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
+function parseBillingDomain(value: unknown) {
+  if (value === undefined || value === null || value === '') return 'home_care';
+  return value === 'home_care' || value === 'pca_rental' ? value : null;
+}
+
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
@@ -25,13 +30,17 @@ export async function POST(req: NextRequest) {
   if (!parsedBillingMonth) {
     return validationError(BILLING_MONTH_FORMAT_MESSAGE);
   }
+  const billingDomain = parseBillingDomain(payload.billing_domain);
+  if (!billingDomain) {
+    return validationError('billing_domain は home_care または pca_rental を指定してください');
+  }
 
   const result = await withOrgContext(ctx.orgId, (tx) =>
     closeBillingCandidatesForMonth(tx, {
       orgId: ctx.orgId,
       billingMonth: parsedBillingMonth.start,
       actorId: ctx.userId,
-      billingDomain: 'home_care',
+      billingDomain,
     }),
   );
 
@@ -49,11 +58,13 @@ export async function POST(req: NextRequest) {
 
   await notifyWebhookEventForOrg(ctx.orgId, 'billing.exported', {
     billingMonth: parsedBillingMonth.start.toISOString(),
+    billingDomain,
     exportedCount: result.exported_count,
   });
 
   return success({
     message: `${parsedBillingMonth.canonical} を月次締めしました`,
+    billing_domain: billingDomain,
     exported_count: result.exported_count,
     summary: result.summary,
   });

@@ -2,6 +2,7 @@ import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from '
 import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
+import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import { createRoadTravelEstimator } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
 import type { VisitRouteTravelMode } from './visit-route-engine';
@@ -23,6 +24,7 @@ type GenerateProposalParams = {
   preferredTimeFrom?: string;
   preferredTimeTo?: string;
   preferredPharmacistId?: string;
+  vehicleResourceId?: string;
   rescheduleSourceScheduleId?: string;
 };
 
@@ -32,6 +34,13 @@ type SchedulePoint = {
   lng: number | null;
   address: string | null;
   startsAt: Date | null;
+};
+
+type RouteOrderSchedule = {
+  route_order: number | null;
+  priority?: VisitPriority | null;
+  confirmed_at?: Date | null;
+  schedule_status?: string | null;
 };
 
 type ProposalDraft = {
@@ -55,6 +64,7 @@ type ProposalDraft = {
   proposal_reason: string;
   escalation_reason: string | null;
   reschedule_source_schedule_id: string | null;
+  vehicle_resource_id?: string | null;
 };
 
 type TravelCost = {
@@ -69,6 +79,7 @@ type CandidateScoreBreakdown = {
   slackPenalty: number;
   lockPenalty: number;
   cadencePenalty: number;
+  vehiclePenalty: number;
 };
 
 export type ProposalCandidateRejectionCode =
@@ -79,6 +90,8 @@ export type ProposalCandidateRejectionCode =
   | 'business_holiday'
   | 'daily_capacity'
   | 'weekly_capacity'
+  | 'vehicle_site_mismatch'
+  | 'vehicle_capacity'
   | 'no_slot'
   | 'travel_limit'
   | 'billing_constraint'
@@ -107,6 +120,9 @@ export type AcceptedProposalDiagnostic = {
   route_order: number;
   route_distance_score: number;
   travel_summary: string;
+  vehicle_resource_id: string | null;
+  vehicle_resource_label: string | null;
+  vehicle_load: number | null;
   assignment_mode: VisitAssignmentMode;
   care_relationship: 'primary' | 'backup' | 'fallback';
   score: number;
@@ -128,6 +144,14 @@ type PreferenceWindow = {
   to?: string;
 };
 
+type PlannerVehicleResource = {
+  id: string;
+  site_id: string;
+  label: string;
+  travel_mode: VisitRouteTravelMode;
+  max_stops: number | null;
+};
+
 const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = {
   locked_date_mismatch: '固定日と不一致',
   beyond_deadline: '提案期限超過',
@@ -136,6 +160,8 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   business_holiday: '休業日',
   daily_capacity: '日次上限超過',
   weekly_capacity: '週次上限超過',
+  vehicle_site_mismatch: '車両拠点不一致',
+  vehicle_capacity: '車両上限超過',
   no_slot: '空き枠なし',
   travel_limit: '移動上限超過',
   billing_constraint: '算定制約',
@@ -148,14 +174,7 @@ function toDateKey(value: Date) {
 }
 
 function setTime(baseDate: Date, timeLike: Date | null | undefined, fallback: string) {
-  const [fallbackHour, fallbackMinute] = fallback.split(':').map(Number);
-  const result = new Date(baseDate);
-  if (!timeLike) {
-    result.setHours(fallbackHour, fallbackMinute, 0, 0);
-    return result;
-  }
-  result.setHours(timeLike.getHours(), timeLike.getMinutes(), 0, 0);
-  return result;
+  return applyTimeDateToDate(baseDate, timeLike, fallback);
 }
 
 function setClock(baseDate: Date, time: string, fallback: string) {
@@ -219,7 +238,7 @@ function endOfMonthDate(value: Date) {
 }
 
 function readTimeString(value: Date | null | undefined) {
-  return value ? format(value, 'HH:mm') : undefined;
+  return timeDateToString(value);
 }
 
 function intersectWindows(...windows: Array<PreferenceWindow | null | undefined>) {
@@ -488,6 +507,58 @@ function countLockedSchedules(
   ).length;
 }
 
+function visitPriorityRank(priority: VisitPriority | null | undefined) {
+  switch (priority) {
+    case 'emergency':
+      return 0;
+    case 'urgent':
+      return 1;
+    default:
+      return 2;
+  }
+}
+
+function isRouteOrderLocked(schedule: RouteOrderSchedule) {
+  return (
+    schedule.confirmed_at != null ||
+    ['ready', 'departed', 'in_progress', 'completed'].includes(schedule.schedule_status ?? '')
+  );
+}
+
+function resolvePriorityAwareRouteOrder(args: {
+  baseRouteOrder: number;
+  priority: VisitPriority;
+  existingSchedules: RouteOrderSchedule[];
+}) {
+  const lockedFloor = args.existingSchedules.reduce((maxOrder, schedule) => {
+    if (!isRouteOrderLocked(schedule) || schedule.route_order == null) return maxOrder;
+    return Math.max(maxOrder, schedule.route_order);
+  }, 0);
+  const minimumOrder = lockedFloor + 1;
+  const baseOrder = Math.max(args.baseRouteOrder, minimumOrder);
+  const candidateRank = visitPriorityRank(args.priority);
+
+  if (candidateRank >= visitPriorityRank('normal')) {
+    return baseOrder;
+  }
+
+  const lowerPriorityOrders = args.existingSchedules
+    .filter(
+      (schedule) =>
+        !isRouteOrderLocked(schedule) &&
+        schedule.route_order != null &&
+        schedule.route_order >= minimumOrder &&
+        visitPriorityRank(schedule.priority) > candidateRank,
+    )
+    .map((schedule) => schedule.route_order as number);
+
+  if (lowerPriorityOrders.length === 0) {
+    return baseOrder;
+  }
+
+  return Math.min(baseOrder, Math.min(...lowerPriorityOrders));
+}
+
 function calculateRemainingSlackMinutes(args: {
   baseDate: Date;
   shiftStart: Date;
@@ -547,6 +618,70 @@ function calculateRemainingSlackMinutes(args: {
     slackMinutes += Math.round((args.shiftEnd.getTime() - cursor.getTime()) / 60_000);
   }
   return Math.max(0, slackMinutes);
+}
+
+function selectVehicleResourceForCandidate(args: {
+  requestedVehicleResourceId?: string;
+  shiftSiteId: string | null;
+  travelMode: VisitRouteTravelMode;
+  existingSchedules: Array<{
+    vehicle_resource_id?: string | null;
+  }>;
+  vehicleResources: PlannerVehicleResource[];
+}):
+  | { ok: true; vehicleResource: PlannerVehicleResource | null; vehicleLoad: number }
+  | { ok: false; reasonCode: 'vehicle_site_mismatch' | 'vehicle_capacity'; detail: string } {
+  const matchingSiteVehicles = args.vehicleResources.filter(
+    (vehicle) => vehicle.site_id === args.shiftSiteId && vehicle.travel_mode === args.travelMode,
+  );
+  const selectedVehicles = args.requestedVehicleResourceId
+    ? args.vehicleResources.filter((vehicle) => vehicle.id === args.requestedVehicleResourceId)
+    : matchingSiteVehicles;
+  const requestedVehicle = args.requestedVehicleResourceId ? selectedVehicles[0] : null;
+
+  if (
+    args.requestedVehicleResourceId &&
+    (!requestedVehicle || requestedVehicle.site_id !== args.shiftSiteId)
+  ) {
+    return {
+      ok: false,
+      reasonCode: 'vehicle_site_mismatch',
+      detail: '選択した車両リソースは候補日の勤務拠点では利用できません',
+    };
+  }
+
+  if (selectedVehicles.length === 0) {
+    return { ok: true, vehicleResource: null, vehicleLoad: 0 };
+  }
+
+  const candidates = selectedVehicles
+    .map((vehicle) => {
+      const load = args.existingSchedules.filter(
+        (schedule) => schedule.vehicle_resource_id === vehicle.id,
+      ).length;
+      return { vehicle, load };
+    })
+    .filter(({ vehicle, load }) => vehicle.max_stops == null || load + 1 <= vehicle.max_stops)
+    .sort((left, right) => {
+      if (left.load !== right.load) return left.load - right.load;
+      return left.vehicle.label.localeCompare(right.vehicle.label, 'ja');
+    });
+
+  const [best] = candidates;
+  if (best) {
+    return { ok: true, vehicleResource: best.vehicle, vehicleLoad: best.load };
+  }
+
+  const label = requestedVehicle?.label ?? '利用可能な車両';
+  const maxStops = requestedVehicle?.max_stops;
+  return {
+    ok: false,
+    reasonCode: 'vehicle_capacity',
+    detail:
+      maxStops == null
+        ? `${label} の車両リソース容量に空きがありません`
+        : `${label} で訪問できる件数は最大 ${maxStops} 件です`,
+  };
 }
 
 export async function generateVisitScheduleProposalDrafts(
@@ -748,6 +883,21 @@ export async function generateVisitScheduleProposalDrafts(
       },
     },
   });
+
+  const vehicleResources = await prisma.visitVehicleResource.findMany({
+    where: {
+      org_id: params.orgId,
+      available: true,
+      ...(params.vehicleResourceId ? { id: params.vehicleResourceId } : {}),
+    },
+    select: {
+      id: true,
+      site_id: true,
+      label: true,
+      travel_mode: true,
+      max_stops: true,
+    },
+  });
   const holidayByDate = new Map<string, typeof holidays>();
   for (const holiday of holidays) {
     const key = toDateKey(holiday.date);
@@ -768,6 +918,11 @@ export async function generateVisitScheduleProposalDrafts(
       },
     },
     include: {
+      vehicle_resource: {
+        select: {
+          id: true,
+        },
+      },
       case_: {
         include: {
           patient: {
@@ -797,10 +952,16 @@ export async function generateVisitScheduleProposalDrafts(
 
   const confirmedSchedulesByDayAndPharmacist = new Map<string, typeof confirmedSchedules>();
   const confirmedSchedulesByWeekAndPharmacist = new Map<string, typeof confirmedSchedules>();
+  const confirmedSchedulesByDay = new Map<string, typeof confirmedSchedules>();
   const confirmedSchedulesForPatient = confirmedSchedules.filter(
     (schedule) => schedule.case_.patient.id === careCase.patient_id,
   );
   for (const schedule of confirmedSchedules) {
+    const dayKey = toDateKey(schedule.scheduled_date);
+    const daySchedules = confirmedSchedulesByDay.get(dayKey);
+    if (daySchedules) daySchedules.push(schedule);
+    else confirmedSchedulesByDay.set(dayKey, [schedule]);
+
     const key = `${schedule.pharmacist_id}:${toDateKey(schedule.scheduled_date)}`;
     const list = confirmedSchedulesByDayAndPharmacist.get(key);
     if (list) list.push(schedule);
@@ -926,6 +1087,23 @@ export async function generateVisitScheduleProposalDrafts(
               shift,
               reasonCode: 'weekly_capacity',
               detail: `週次上限 ${shift.user.max_weekly_visits} 件に到達しています`,
+            }),
+          };
+        }
+        const vehicleSelection = selectVehicleResourceForCandidate({
+          requestedVehicleResourceId: params.vehicleResourceId,
+          shiftSiteId: shift.site_id ?? null,
+          travelMode,
+          existingSchedules: confirmedSchedulesByDay.get(toDateKey(shift.date)) ?? [],
+          vehicleResources,
+        });
+        if (!vehicleSelection.ok) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: vehicleSelection.reasonCode,
+              detail: vehicleSelection.detail,
             }),
           };
         }
@@ -1062,6 +1240,9 @@ export async function generateVisitScheduleProposalDrafts(
         const cadencePenalty =
           (monthlyCountForCandidate >= monthlyCap ? 120 : 0) +
           (weeklyCap != null && weeklyCountForCandidate >= weeklyCap ? 80 : 0);
+        const vehiclePenalty = vehicleSelection.vehicleResource
+          ? vehicleSelection.vehicleLoad * 3
+          : 0;
         const scoreBreakdown: CandidateScoreBreakdown = {
           geocodePenalty,
           facilityBonus,
@@ -1069,6 +1250,7 @@ export async function generateVisitScheduleProposalDrafts(
           slackPenalty,
           lockPenalty,
           cadencePenalty,
+          vehiclePenalty,
         };
         const score =
           routeInsertion.travelScore +
@@ -1081,6 +1263,7 @@ export async function generateVisitScheduleProposalDrafts(
           scoreBreakdown.slackPenalty +
           scoreBreakdown.lockPenalty +
           scoreBreakdown.cadencePenalty +
+          scoreBreakdown.vehiclePenalty +
           priorityBonus +
           preferredPharmacistBonus;
 
@@ -1097,6 +1280,13 @@ export async function generateVisitScheduleProposalDrafts(
           existingDailyVisits: schedulesForShift.length,
           lockedSchedules,
           remainingSlackMinutes,
+          vehicleResource: vehicleSelection.vehicleResource,
+          vehicleLoad: vehicleSelection.vehicleLoad,
+          priorityAwareRouteOrder: resolvePriorityAwareRouteOrder({
+            baseRouteOrder: routeInsertion.routeOrder,
+            priority: params.priority,
+            existingSchedules: schedulesForShift,
+          }),
         };
       } catch (error) {
         return {
@@ -1133,7 +1323,7 @@ export async function generateVisitScheduleProposalDrafts(
 
     return {
       candidate,
-      routeOrder: candidate.routeInsertion.routeOrder + offset,
+      routeOrder: candidate.priorityAwareRouteOrder + offset,
     };
   });
 
@@ -1155,6 +1345,7 @@ export async function generateVisitScheduleProposalDrafts(
     assignment_mode: candidate.assignmentMode,
     route_order: routeOrder,
     route_distance_score: candidate.routeInsertion.travelScore,
+    vehicle_resource_id: candidate.vehicleResource?.id ?? null,
     medication_end_date: medicationEndDate,
     visit_deadline_date: visitDeadlineDate,
     proposal_reason: buildReason({
@@ -1186,6 +1377,11 @@ export async function generateVisitScheduleProposalDrafts(
         ...(candidate.remainingSlackMinutes < DEFAULT_VISIT_DURATION_MINUTES
           ? ['当日余力が少ないため緊急割込余地は限定的']
           : [`差込余白 約${candidate.remainingSlackMinutes}分を確保`]),
+        ...(candidate.vehicleResource
+          ? [
+              `${candidate.vehicleResource.label} を割当（当日同車両 ${candidate.vehicleLoad + 1} 件目）`,
+            ]
+          : []),
         `当日担当件数 ${candidate.existingDailyVisits + 1} 件目として配置`,
         ...preferenceNotes,
       ],
@@ -1208,6 +1404,9 @@ export async function generateVisitScheduleProposalDrafts(
       route_order: routeOrder,
       route_distance_score: candidate.routeInsertion.travelScore,
       travel_summary: candidate.routeInsertion.travelSummary,
+      vehicle_resource_id: candidate.vehicleResource?.id ?? null,
+      vehicle_resource_label: candidate.vehicleResource?.label ?? null,
+      vehicle_load: candidate.vehicleResource ? candidate.vehicleLoad + 1 : null,
       assignment_mode: candidate.assignmentMode,
       care_relationship: candidate.careRelationship,
       score: candidate.score,

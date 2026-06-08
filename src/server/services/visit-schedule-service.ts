@@ -10,6 +10,7 @@ import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { forbiddenResponse, validationError } from '@/lib/api/response';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
 import {
   evaluateVisitWorkflowGate,
@@ -20,6 +21,20 @@ import type { z } from 'zod';
 import type { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 
 type CreateScheduleData = z.infer<typeof createVisitScheduleSchema>;
+
+type VisitVehicleResourceValidationArgs = {
+  orgId: string;
+  vehicleResourceId: string;
+  siteId: string | null;
+  pharmacistId: string;
+  scheduledDate: Date;
+  excludeScheduleId?: string;
+};
+
+type PreferenceWindow = {
+  from?: string;
+  to?: string;
+};
 
 export type ListSchedulesFilters = {
   cursor?: string;
@@ -94,6 +109,66 @@ export async function listSchedules(
   };
 }
 
+export async function validateVisitVehicleResourceForSchedule(
+  prisma: PrismaClient,
+  args: VisitVehicleResourceValidationArgs,
+) {
+  const vehicleResource = await prisma.visitVehicleResource.findFirst({
+    where: {
+      org_id: args.orgId,
+      id: args.vehicleResourceId,
+      available: true,
+    },
+    select: {
+      id: true,
+      site_id: true,
+      label: true,
+      max_stops: true,
+    },
+  });
+  if (!vehicleResource) {
+    return {
+      ok: false as const,
+      response: validationError('選択した車両リソースが見つからないか利用できません'),
+    };
+  }
+  if (!args.siteId) {
+    return {
+      ok: false as const,
+      response: validationError('車両リソースを指定する場合は訪問拠点が必要です'),
+    };
+  }
+  if (vehicleResource.site_id !== args.siteId) {
+    return {
+      ok: false as const,
+      response: validationError('選択した車両リソースは訪問予定の拠点では利用できません'),
+    };
+  }
+  if (vehicleResource.max_stops != null) {
+    const sameCellScheduleCount = await prisma.visitSchedule.count({
+      where: {
+        org_id: args.orgId,
+        ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+        pharmacist_id: args.pharmacistId,
+        scheduled_date: args.scheduledDate,
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+    });
+    if (sameCellScheduleCount + 1 > vehicleResource.max_stops) {
+      return {
+        ok: false as const,
+        response: validationError(
+          `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+        ),
+      };
+    }
+  }
+
+  return { ok: true as const, vehicleResource };
+}
+
 export async function createSchedule(
   prisma: PrismaClient,
   orgId: string,
@@ -107,6 +182,7 @@ export async function createSchedule(
     scheduled_date,
     time_window_start,
     time_window_end,
+    vehicle_resource_id,
     notes: _notes,
     ...rest
   } = data;
@@ -125,6 +201,9 @@ export async function createSchedule(
       available_to: true,
     },
   });
+  if (!shift) {
+    return validationError('選択した薬剤師のシフトがありません');
+  }
   const shiftValidationError = validateScheduleTimeStringsFitShift(
     shift,
     time_window_start,
@@ -150,10 +229,20 @@ export async function createSchedule(
       backup_pharmacist_id: true,
       patient: {
         select: {
+          scheduling_preference: true,
           residences: {
             where: { is_primary: true },
             take: 1,
-            select: { facility_unit_id: true },
+            select: {
+              facility_unit_id: true,
+              facility: {
+                select: {
+                  acceptance_time_from: true,
+                  acceptance_time_to: true,
+                  regular_visit_weekdays: true,
+                },
+              },
+            },
           },
         },
       },
@@ -181,6 +270,28 @@ export async function createSchedule(
     return validationError(formatVisitWorkflowGateIssues(gate.issues));
   }
 
+  const preferenceValidationError = validateManualSchedulePreferences({
+    scheduledDate,
+    timeWindowStart: time_window_start,
+    timeWindowEnd: time_window_end,
+    schedulingPreference: careCase.patient.scheduling_preference,
+    facility: careCase.patient.residences[0]?.facility ?? null,
+  });
+  if (preferenceValidationError) {
+    return validationError(preferenceValidationError);
+  }
+
+  if (vehicle_resource_id) {
+    const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
+      orgId,
+      vehicleResourceId: vehicle_resource_id,
+      siteId: effectiveSiteId,
+      pharmacistId: rest.pharmacist_id,
+      scheduledDate,
+    });
+    if (!vehicleValidation.ok) return vehicleValidation.response;
+  }
+
   const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
 
   return withOrgContext(orgId, async (tx) => {
@@ -188,6 +299,7 @@ export async function createSchedule(
       data: {
         org_id: orgId,
         site_id: effectiveSiteId,
+        vehicle_resource_id: vehicle_resource_id ?? null,
         priority: priority ?? 'normal',
         facility_unit_id: facilityUnitId,
         assignment_mode:
@@ -223,4 +335,97 @@ export async function createSchedule(
       },
     });
   });
+}
+
+function readTimeString(value: Date | null | undefined) {
+  return timeDateToString(value);
+}
+
+function intersectWindows(...windows: Array<PreferenceWindow | null | undefined>) {
+  let from: string | undefined;
+  let to: string | undefined;
+
+  for (const window of windows) {
+    if (!window) continue;
+    if (window.from && (!from || window.from > from)) from = window.from;
+    if (window.to && (!to || window.to < to)) to = window.to;
+  }
+
+  if (from && to && from >= to) return null;
+  return { from, to };
+}
+
+function normalizeWeekdays(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value.filter(
+        (entry): entry is number => typeof entry === 'number' && entry >= 0 && entry <= 6,
+      ),
+    ),
+  );
+}
+
+export function validateManualSchedulePreferences(args: {
+  scheduledDate: Date;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
+  schedulingPreference:
+    | {
+        preferred_weekdays: unknown;
+        preferred_time_from: Date | null;
+        preferred_time_to: Date | null;
+        facility_time_from: Date | null;
+        facility_time_to: Date | null;
+      }
+    | null
+    | undefined;
+  facility:
+    | {
+        acceptance_time_from: Date | null;
+        acceptance_time_to: Date | null;
+        regular_visit_weekdays: unknown;
+      }
+    | null
+    | undefined;
+}) {
+  const preferredWeekdays = normalizeWeekdays(args.schedulingPreference?.preferred_weekdays);
+  const facilityWeekdays = normalizeWeekdays(args.facility?.regular_visit_weekdays);
+  const effectiveWeekdays = preferredWeekdays.length > 0 ? preferredWeekdays : facilityWeekdays;
+  if (effectiveWeekdays.length > 0 && !effectiveWeekdays.includes(args.scheduledDate.getDay())) {
+    return '患者または施設の訪問希望曜日と一致しない日付です';
+  }
+
+  const mergedWindow = intersectWindows(
+    {
+      from: readTimeString(args.schedulingPreference?.preferred_time_from),
+      to: readTimeString(args.schedulingPreference?.preferred_time_to),
+    },
+    {
+      from: readTimeString(args.schedulingPreference?.facility_time_from),
+      to: readTimeString(args.schedulingPreference?.facility_time_to),
+    },
+    {
+      from: readTimeString(args.facility?.acceptance_time_from),
+      to: readTimeString(args.facility?.acceptance_time_to),
+    },
+  );
+  if (mergedWindow == null) {
+    return '患者在宅時間帯と施設受入時間帯が重ならないため訪問枠を確定できません';
+  }
+
+  if (mergedWindow.from && !args.timeWindowStart) {
+    return `訪問開始時刻を患者または施設の希望開始時刻 ${mergedWindow.from} 以降で指定してください`;
+  }
+  if (mergedWindow.to && !args.timeWindowEnd) {
+    return `訪問終了時刻を患者または施設の希望終了時刻 ${mergedWindow.to} 以前で指定してください`;
+  }
+  if (args.timeWindowStart && mergedWindow.from && args.timeWindowStart < mergedWindow.from) {
+    return `訪問開始時刻が患者または施設の希望開始時刻 ${mergedWindow.from} より前です`;
+  }
+  if (args.timeWindowEnd && mergedWindow.to && args.timeWindowEnd > mergedWindow.to) {
+    return `訪問終了時刻が患者または施設の希望終了時刻 ${mergedWindow.to} を超えています`;
+  }
+
+  return null;
 }

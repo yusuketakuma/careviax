@@ -245,7 +245,9 @@ describe('/api/billing-candidates', () => {
     ]);
     patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '佐藤 花子' }]);
 
-    const response = await GET(createGetRequest('http://localhost/api/billing-candidates'));
+    const response = await GET(
+      createGetRequest('http://localhost/api/billing-candidates?billing_domain=pca_rental'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -366,6 +368,7 @@ describe('/api/billing-candidates', () => {
       },
     );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
+      billing_domain: 'all',
       generated: 4,
       home_care_generated: 3,
       pca_rental_generated: 1,
@@ -373,6 +376,50 @@ describe('/api/billing-candidates', () => {
       review_required: 2,
       excluded: 1,
     });
+  });
+
+  it('generates only PCA rental candidates when billing_domain is pca_rental', async () => {
+    const response = await POST(
+      createRequest({ billing_month: '2026-06-01', billing_domain: 'pca_rental' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(200);
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
+    expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(generatePcaRentalBillingCandidatesForMonthMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+      }),
+      {
+        orgId: 'org_1',
+        billingMonth: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    );
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      billing_domain: 'pca_rental',
+      generated: 1,
+      home_care_generated: 0,
+      pca_rental_generated: 1,
+    });
+  });
+
+  it('rejects invalid billing_domain on generation before database work', async () => {
+    const response = await POST(
+      createRequest({ billing_month: '2026-03-01', billing_domain: 'unknown' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
+    expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(generatePcaRentalBillingCandidatesForMonthMock).not.toHaveBeenCalled();
   });
 
   it.each([

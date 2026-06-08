@@ -1925,12 +1925,13 @@ export async function getBillingCandidateWorkbenchSummary(
   args: { orgId: string; billingMonth: Date; patientId?: string; billingDomain?: string },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
+  const billingDomain = args.billingDomain ?? 'home_care';
   const [candidates, blockedEvidences] = await Promise.all([
     tx.billingCandidate.findMany({
       where: {
         org_id: args.orgId,
         billing_month: billingMonth,
-        ...(args.billingDomain ? { billing_domain: args.billingDomain } : {}),
+        billing_domain: billingDomain,
         ...(args.patientId ? { patient_id: args.patientId } : {}),
       },
       select: {
@@ -1940,18 +1941,20 @@ export async function getBillingCandidateWorkbenchSummary(
       },
       orderBy: [{ created_at: 'asc' }],
     }),
-    tx.billingEvidence.findMany({
-      where: {
-        org_id: args.orgId,
-        billing_month: billingMonth,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
-        claimable: false,
-      },
-      select: {
-        exclusion_reason: true,
-      },
-      orderBy: [{ created_at: 'asc' }],
-    }),
+    billingDomain === 'home_care'
+      ? tx.billingEvidence.findMany({
+          where: {
+            org_id: args.orgId,
+            billing_month: billingMonth,
+            ...(args.patientId ? { patient_id: args.patientId } : {}),
+            claimable: false,
+          },
+          select: {
+            exclusion_reason: true,
+          },
+          orderBy: [{ created_at: 'asc' }],
+        })
+      : Promise.resolve([]),
   ]);
 
   const summary = {
@@ -2114,13 +2117,16 @@ export async function closeBillingCandidatesForMonth(
   });
 
   const pendingReview = candidates.filter((candidate) => candidate.status === 'candidate');
-  const blockedEvidenceCount = await tx.billingEvidence.count({
-    where: {
-      org_id: args.orgId,
-      billing_month: billingMonth,
-      claimable: false,
-    },
-  });
+  const blockedEvidenceCount =
+    billingDomain === 'home_care'
+      ? await tx.billingEvidence.count({
+          where: {
+            org_id: args.orgId,
+            billing_month: billingMonth,
+            claimable: false,
+          },
+        })
+      : 0;
   if (pendingReview.length > 0 || blockedEvidenceCount > 0) {
     return {
       blocked: true,
@@ -2170,6 +2176,7 @@ export async function closeBillingCandidatesForMonth(
       target_id: monthLabel(billingMonth),
       changes: {
         billing_month: billingMonth.toISOString(),
+        billing_domain: billingDomain,
         exported_count: exported.length,
       },
     },

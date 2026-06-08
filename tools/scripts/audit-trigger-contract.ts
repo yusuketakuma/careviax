@@ -5,6 +5,7 @@ export const EXPECTED_AUDIT_TRIGGER_CONTRACTS = [
   { name: 'audit_log_consent_record', tableName: 'ConsentRecord' },
   { name: 'audit_log_management_plan', tableName: 'ManagementPlan' },
   { name: 'audit_log_visit_schedule', tableName: 'VisitSchedule' },
+  { name: 'audit_log_visit_preparation', tableName: 'VisitPreparation' },
   { name: 'audit_log_visit_record', tableName: 'VisitRecord' },
   { name: 'audit_log_communication_request', tableName: 'CommunicationRequest' },
   { name: 'audit_log_care_report', tableName: 'CareReport' },
@@ -18,6 +19,7 @@ export const EXPECTED_AUDIT_TRIGGER_CONTRACTS = [
   { name: 'audit_log_pca_pump_rental', tableName: 'PcaPumpRental' },
   { name: 'audit_log_pca_pump_rental_accessory', tableName: 'PcaPumpRentalAccessory' },
   { name: 'audit_log_pca_pump_maintenance_event', tableName: 'PcaPumpMaintenanceEvent' },
+  { name: 'audit_log_visit_vehicle_resource', tableName: 'VisitVehicleResource' },
 ] as const;
 
 export type ExpectedAuditTriggerContract = (typeof EXPECTED_AUDIT_TRIGGER_CONTRACTS)[number];

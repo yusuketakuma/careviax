@@ -95,7 +95,14 @@ describe('ScheduleWeeklyOptimizer', () => {
 
     expect(useRouterMock().replace).toHaveBeenCalledWith(
       expect.stringContaining('optimizer_case_id=case_1'),
-      { scroll: false }
+      { scroll: false },
     );
+  });
+
+  it('shows the vehicle resource selector in planner settings', () => {
+    render(<ScheduleWeeklyOptimizer />);
+
+    expect(screen.getByLabelText('社用車')).toBeTruthy();
+    expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
   });
 });

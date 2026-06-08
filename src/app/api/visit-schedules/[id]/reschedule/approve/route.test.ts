@@ -73,6 +73,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       id: 'override_1',
       requested_by: 'user_2',
       approved_at: null,
+      status: 'pending',
       source_schedule_id: 'schedule_1',
       source_schedule: {
         pharmacist_id: 'user_3',
@@ -127,6 +128,32 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       message: '訪問予定IDが不正です',
     });
     expect(visitScheduleOverrideFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not approve completed or cancelled override requests', async () => {
+    visitScheduleOverrideFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(visitScheduleOverrideFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          source_schedule_id: 'schedule_1',
+          status: 'pending',
+        },
+      }),
+    );
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();

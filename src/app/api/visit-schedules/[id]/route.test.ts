@@ -5,7 +5,10 @@ const {
   authMock,
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
+  visitScheduleCountMock,
   visitScheduleUpdateMock,
+  visitVehicleResourceFindFirstMock,
+  pharmacistShiftFindFirstMock,
   visitPreparationFindFirstMock,
   careCaseFindFirstMock,
   validateOrgReferencesMock,
@@ -15,7 +18,10 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
+  visitVehicleResourceFindFirstMock: vi.fn(),
+  pharmacistShiftFindFirstMock: vi.fn(),
   visitPreparationFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
@@ -34,9 +40,16 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
+      count: visitScheduleCountMock,
+    },
+    visitVehicleResource: {
+      findFirst: visitVehicleResourceFindFirstMock,
     },
     visitPreparation: {
       findFirst: visitPreparationFindFirstMock,
+    },
+    pharmacistShift: {
+      findFirst: pharmacistShiftFindFirstMock,
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
@@ -97,6 +110,19 @@ describe('/api/visit-schedules/[id] GET', () => {
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1', schedule_status: 'in_progress' });
+    visitScheduleCountMock.mockResolvedValue(0);
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
+    });
+    pharmacistShiftFindFirstMock.mockResolvedValue({
+      site_id: 'site_1',
+      available: true,
+      available_from: new Date('1970-01-01T09:00:00.000Z'),
+      available_to: new Date('1970-01-01T18:00:00.000Z'),
+    });
     visitPreparationFindFirstMock.mockResolvedValue({
       medication_changes_reviewed: true,
       carry_items_confirmed: true,
@@ -116,9 +142,13 @@ describe('/api/visit-schedules/[id] GET', () => {
       case_id: 'case_1',
       cycle_id: 'cycle_1',
       visit_type: 'regular',
-      scheduled_date: '2026-03-26',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
       confirmed_at: null,
       pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
       visit_record: null,
       preparation: null,
       case_: {
@@ -128,6 +158,10 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
+      patient: {
+        scheduling_preference: null,
+        residences: [{ facility: null }],
+      },
     });
   });
 
@@ -224,6 +258,216 @@ describe('/api/visit-schedules/[id] GET', () => {
         }),
       }),
     );
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('assigns selected vehicle resources during schedule PATCH', async () => {
+    const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'vehicle_1',
+        available: true,
+      },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        max_stops: true,
+      },
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+    });
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicle_resource_id: 'vehicle_1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects schedule PATCH when the selected vehicle belongs to another site', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_2',
+      site_id: 'site_2',
+      label: '別拠点車両',
+      max_stops: 8,
+    });
+
+    const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_2' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した車両リソースは訪問予定の拠点では利用できません',
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('revalidates an existing vehicle resource when moving schedule date', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient: {
+        scheduling_preference: null,
+        residences: [{ facility: null }],
+      },
+    });
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: 'vehicle_1',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-03-27' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'vehicle_1' }),
+      }),
+    );
+    expect(visitScheduleCountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: new Date('2026-03-27'),
+        }),
+      }),
+    );
+  });
+
+  it('rejects schedule date changes when the selected pharmacist has no shift', async () => {
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-03-27' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '選択した薬剤師のシフトがありません',
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schedule time changes outside the selected pharmacist shift', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        time_window_start: '08:30',
+        time_window_end: '09:30',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問開始時刻が薬剤師シフトの開始前です',
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schedule date changes outside patient preferred weekdays', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [4],
+          preferred_time_from: null,
+          preferred_time_to: null,
+          facility_time_from: null,
+          facility_time_to: null,
+        },
+        residences: [],
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-03-27' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '患者または施設の訪問希望曜日と一致しない日付です',
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schedule time changes outside patient and facility visit windows', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [],
+          preferred_time_from: new Date('1970-01-01T09:00:00.000Z'),
+          preferred_time_to: new Date('1970-01-01T12:00:00.000Z'),
+          facility_time_from: null,
+          facility_time_to: null,
+        },
+        residences: [
+          {
+            facility: {
+              acceptance_time_from: new Date('1970-01-01T10:00:00.000Z'),
+              acceptance_time_to: new Date('1970-01-01T11:00:00.000Z'),
+              regular_visit_weekdays: [],
+            },
+          },
+        ],
+      },
+    });
+
+    const response = await PATCH(
+      createPatchRequest({
+        time_window_start: '09:30',
+        time_window_end: '10:30',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問開始時刻が患者または施設の希望開始時刻 10:00 より前です',
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 when an assigned pharmacist attempts to reassign case or pharmacist', async () => {
@@ -326,6 +570,32 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects route_order changes that conflict within the same pharmacist day', async () => {
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '同一薬剤師・同一日付で route_order は重複できません',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenLastCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        route_order: 2,
+      },
+      select: { id: true },
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

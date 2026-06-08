@@ -70,6 +70,7 @@ model Organization {
   pca_pump_rental_accessories PcaPumpRentalAccessory[]
   pca_pump_maintenance_events PcaPumpMaintenanceEvent[]
   service_areas               ServiceArea[]
+  visit_vehicle_resources     VisitVehicleResource[]
   webhook_registrations       WebhookRegistration[]
 
   @@index([name])
@@ -104,7 +105,9 @@ model PharmacySite {
   business_holidays          BusinessHoliday[]
   insurance_configs          PharmacySiteInsuranceConfig[]
   service_areas              ServiceArea[]
+  visit_vehicle_resources    VisitVehicleResource[]
 
+  @@unique([id, org_id])
   @@index([org_id])
 }
 

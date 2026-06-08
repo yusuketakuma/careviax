@@ -25,6 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: {
       org_id: ctx.orgId,
       source_schedule_id: id,
+      status: 'pending',
     },
     include: {
       source_schedule: {

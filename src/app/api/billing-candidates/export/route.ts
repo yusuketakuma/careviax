@@ -43,7 +43,7 @@ export const GET = withAuth(
     const { searchParams } = new URL(req.url);
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
-    const billingDomain = parseBillingDomain(searchParams.get('billing_domain'));
+    const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
 
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
@@ -52,9 +52,10 @@ export const GET = withAuth(
     if (!isSafeFilterId(patientId)) {
       return validationError('patient_id の形式が不正です');
     }
-    if (billingDomain === null) {
+    if (requestedBillingDomain === null) {
       return validationError('billing_domain は home_care または pca_rental を指定してください');
     }
+    const billingDomain = requestedBillingDomain ?? 'home_care';
 
     const candidates = await withOrgContext(req.orgId, async (tx) => {
       const records = await tx.billingCandidate.findMany({
@@ -62,7 +63,7 @@ export const GET = withAuth(
           org_id: req.orgId,
           ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
-          ...(billingDomain ? { billing_domain: billingDomain } : {}),
+          billing_domain: billingDomain,
           status: { in: ['confirmed', 'exported'] },
         },
         orderBy: [{ billing_month: 'desc' }, { billing_code: 'asc' }],
@@ -196,7 +197,7 @@ export const GET = withAuth(
         filters: {
           billing_month: parsedBillingMonth?.canonical ?? null,
           patient_id: patientId ?? null,
-          billing_domain: billingDomain ?? null,
+          billing_domain: billingDomain,
           statuses: ['confirmed', 'exported'],
         },
         ipAddress: req.ipAddress,
@@ -255,9 +256,11 @@ export const GET = withAuth(
     });
 
     const csv = [header, ...rows].join('\n');
+    const filenamePrefix =
+      billingDomain === 'pca_rental' ? 'billing_pca_rental' : 'billing_home_care';
     const filename = parsedBillingMonth
-      ? `billing_${parsedBillingMonth.canonical.slice(0, 7)}.csv`
-      : 'billing_candidates.csv';
+      ? `${filenamePrefix}_${parsedBillingMonth.canonical.slice(0, 7)}.csv`
+      : `${filenamePrefix}_candidates.csv`;
     const encodedFilename = encodeURIComponent(filename);
 
     return new NextResponse(csv, {

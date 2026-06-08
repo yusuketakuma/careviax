@@ -13,7 +13,11 @@ vi.mock('@/components/features/visits/visit-route-preview-panel', () => ({
 }));
 
 vi.mock('@/components/features/visits/visit-proposal-diagnostics-card', () => ({
-  VisitProposalDiagnosticsCard: ({ actions }: { actions: Array<{ label: string; onClick: () => void }> }) => (
+  VisitProposalDiagnosticsCard: ({
+    actions,
+  }: {
+    actions: Array<{ label: string; onClick: () => void }>;
+  }) => (
     <div>
       diagnostics-card
       {actions.map((action) => (
@@ -47,6 +51,7 @@ describe('WeeklyCellInspector', () => {
       carry_items_status: 'unknown',
       case_: { patient: { id: 'patient_1', name: '患者A', residences: [] } },
       site: null,
+      vehicle_resource: null,
       preparation: null,
       override_request: null,
       applied_override: null,
@@ -80,6 +85,7 @@ describe('WeeklyCellInspector', () => {
       reschedule_source_schedule_id: null,
       case_: { patient: { id: 'patient_2', name: '患者B', residences: [] } },
       site: null,
+      vehicle_resource: null,
       finalized_schedule: null,
       reschedule_source_schedule: null,
       contact_logs: [],
@@ -141,7 +147,7 @@ describe('WeeklyCellInspector', () => {
         }}
         onApplyTimeExpansion={expandMock}
         onSwitchToDrive={driveMock}
-      />
+      />,
     );
 
     expect(screen.getByText('セルインスペクタ')).toBeTruthy();

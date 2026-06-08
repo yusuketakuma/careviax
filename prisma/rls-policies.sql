@@ -162,6 +162,13 @@ CREATE POLICY tenant_isolation ON "VisitPreparation"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "VisitVehicleResource" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitVehicleResource";
+CREATE POLICY tenant_isolation ON "VisitVehicleResource"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "VisitVehicleResource" FORCE ROW LEVEL SECURITY;
+
 -- ─── Communication Domain ───────────────────────────────────────────────────
 
 ALTER TABLE "CommunicationEvent" ENABLE ROW LEVEL SECURITY;

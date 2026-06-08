@@ -73,6 +73,7 @@ const createVisitScheduleBaseSchema = z.object({
   time_window_start: timeWindowSchema.optional(),
   time_window_end: timeWindowSchema.optional(),
   pharmacist_id: z.string().min(1, '薬剤師IDは必須です'),
+  vehicle_resource_id: z.string().trim().min(1).optional(),
   recurrence_rule: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -85,6 +86,7 @@ export const updateVisitScheduleSchema = createVisitScheduleBaseSchema
   .extend({
     schedule_status: z.enum(scheduleStatusValues).optional(),
     route_order: z.number().int().nonnegative().optional(),
+    vehicle_resource_id: z.string().trim().min(1).nullable().optional(),
   })
   .superRefine(validateTimeWindowOrder);
 
@@ -99,6 +101,7 @@ export const generateVisitSchedulesSchema = z
     end_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
     time_window_start: timeWindowSchema.optional(),
     time_window_end: timeWindowSchema.optional(),
+    vehicle_resource_id: z.string().trim().min(1).optional(),
   })
   .superRefine(validateTimeWindowOrder);
 

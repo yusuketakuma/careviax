@@ -43,6 +43,7 @@ const REQUIRED_RLS_TABLES = [
   'PushSubscription',
   'ServiceArea',
   'TaskComment',
+  'VisitVehicleResource',
 ] as const;
 
 const ORG_ID_RLS_EXEMPT_TABLES = [

@@ -47,6 +47,13 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       },
       "time_window_end": "1970-01-01T10:00:00.000Z",
       "time_window_start": "1970-01-01T09:00:00.000Z",
+      "vehicle_resource": {
+        "id": "vehicle_1",
+        "label": "社用車A",
+        "max_route_duration_minutes": 240,
+        "max_stops": 8,
+        "travel_mode": "DRIVE",
+      },
       "visit_record": null,
       "workload_hint": {
         "daily_visit_count": 1,

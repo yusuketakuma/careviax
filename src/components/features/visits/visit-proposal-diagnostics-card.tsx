@@ -20,6 +20,9 @@ type AcceptedDiagnostic = {
   route_order: number;
   score: number;
   travel_summary: string;
+  vehicle_resource_id?: string | null;
+  vehicle_resource_label?: string | null;
+  vehicle_load?: number | null;
   assignment_mode?: string;
   care_relationship?: string;
   score_breakdown?: Record<string, number>;
@@ -57,6 +60,7 @@ const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
   slackPenalty: '余白',
   lockPenalty: '固定予定',
   cadencePenalty: '算定制約',
+  vehiclePenalty: '車両負荷',
 };
 
 function formatSignedNumber(value: number) {
@@ -90,7 +94,7 @@ export function VisitProposalDiagnosticsCard({
     diagnostics.rejected.reduce((map, item) => {
       map.set(item.reason_label, (map.get(item.reason_label) ?? 0) + 1);
       return map;
-    }, new Map<string, number>())
+    }, new Map<string, number>()),
   ).sort((left, right) => right[1] - left[1]);
 
   return (
@@ -143,7 +147,7 @@ export function VisitProposalDiagnosticsCard({
             ) : (
               diagnostics.accepted.map((item) => {
                 const scoreBreakdown = Object.entries(item.score_breakdown ?? {}).filter(
-                  ([, value]) => value !== 0
+                  ([, value]) => value !== 0,
                 );
                 return (
                   <div
@@ -171,12 +175,23 @@ export function VisitProposalDiagnosticsCard({
                             {item.care_relationship}
                           </Badge>
                         ) : null}
+                        {item.vehicle_resource_label ? (
+                          <Badge variant="outline" className="border-emerald-300 bg-white/80">
+                            車両 {item.vehicle_resource_label}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
                     {item.time_window_start || item.time_window_end ? (
                       <p className="text-xs text-emerald-900">
                         候補時間 {formatTimeValue(item.time_window_start) ?? '未定'} -{' '}
                         {formatTimeValue(item.time_window_end) ?? '未定'}
+                      </p>
+                    ) : null}
+                    {item.vehicle_resource_label || item.vehicle_load != null ? (
+                      <p className="text-xs text-emerald-900">
+                        社用車 {item.vehicle_resource_label ?? '自動割当'} / 当日同車両{' '}
+                        {item.vehicle_load ?? '未計算'} 件目
                       </p>
                     ) : null}
                     {scoreBreakdown.length > 0 ? (
@@ -189,7 +204,7 @@ export function VisitProposalDiagnosticsCard({
                               variant="outline"
                               className="border-emerald-300 bg-white/80 text-emerald-950"
                             >
-                              {(SCORE_BREAKDOWN_LABELS[key] ?? key)} {formatSignedNumber(value)}
+                              {SCORE_BREAKDOWN_LABELS[key] ?? key} {formatSignedNumber(value)}
                             </Badge>
                           ))}
                         </div>

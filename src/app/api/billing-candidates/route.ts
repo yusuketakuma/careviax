@@ -32,6 +32,13 @@ function parseBillingDomain(value: string | null) {
   return value === 'home_care' || value === 'pca_rental' ? value : null;
 }
 
+function parseBillingDomainBodyValue(value: unknown) {
+  if (value == null || value === '') return undefined;
+  return typeof value === 'string' && (value === 'home_care' || value === 'pca_rental')
+    ? value
+    : null;
+}
+
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
@@ -40,14 +47,15 @@ export const GET = withAuth(
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
-    const billingDomain = parseBillingDomain(searchParams.get('billing_domain'));
+    const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
       return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
-    if (billingDomain === null) {
+    if (requestedBillingDomain === null) {
       return validationError('billing_domain は home_care または pca_rental を指定してください');
     }
+    const billingDomain = requestedBillingDomain ?? 'home_care';
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       const candidates = await tx.billingCandidate.findMany({
@@ -55,7 +63,7 @@ export const GET = withAuth(
           org_id: req.orgId,
           ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
-          ...(billingDomain ? { billing_domain: billingDomain } : {}),
+          billing_domain: billingDomain,
           ...(status ? { status } : {}),
         },
         take: limit + 1,
@@ -129,45 +137,63 @@ export const POST = withAuth(
 
     const { billing_month } = payload;
     if (!billing_month) return validationError('billing_month は必須です');
+    const billingDomain = parseBillingDomainBodyValue(payload.billing_domain);
+    if (billingDomain === null) {
+      return validationError('billing_domain は home_care または pca_rental を指定してください');
+    }
 
     const billingMonth = parseStrictBillingMonth(billing_month);
     if (!billingMonth) {
       return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
 
-    const billingMonthRange = japanMonthRangeForBillingMonth(billingMonth.start);
-    const visitRecords = await prisma.visitRecord.findMany({
-      where: {
-        org_id: req.orgId,
-        visit_date: {
-          gte: billingMonthRange.start,
-          lt: billingMonthRange.nextStart,
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
+    const generateHomeCare = billingDomain === undefined || billingDomain === 'home_care';
+    const generatePcaRental = billingDomain === undefined || billingDomain === 'pca_rental';
+
+    const billingMonthRange = generateHomeCare
+      ? japanMonthRangeForBillingMonth(billingMonth.start)
+      : null;
+    const visitRecords = billingMonthRange
+      ? await prisma.visitRecord.findMany({
+          where: {
+            org_id: req.orgId,
+            visit_date: {
+              gte: billingMonthRange.start,
+              lt: billingMonthRange.nextStart,
+            },
+          },
+          select: {
+            id: true,
+          },
+        })
+      : [];
 
     const created = await withOrgContext(req.orgId, async (tx) => {
-      for (const visitRecord of visitRecords) {
-        await upsertBillingEvidenceForVisit(tx, {
-          orgId: req.orgId,
-          visitRecordId: visitRecord.id,
-        });
+      if (generateHomeCare) {
+        for (const visitRecord of visitRecords) {
+          await upsertBillingEvidenceForVisit(tx, {
+            orgId: req.orgId,
+            visitRecordId: visitRecord.id,
+          });
+        }
       }
 
-      const candidates = await generateBillingCandidatesForMonth(tx, {
-        orgId: req.orgId,
-        billingMonth: billingMonth.start,
-      });
-      const pcaRentalCandidates = await generatePcaRentalBillingCandidatesForMonth(tx, {
-        orgId: req.orgId,
-        billingMonth: billingMonth.start,
-      });
+      const candidates = generateHomeCare
+        ? await generateBillingCandidatesForMonth(tx, {
+            orgId: req.orgId,
+            billingMonth: billingMonth.start,
+          })
+        : [];
+      const pcaRentalCandidates = generatePcaRental
+        ? await generatePcaRentalBillingCandidatesForMonth(tx, {
+            orgId: req.orgId,
+            billingMonth: billingMonth.start,
+          })
+        : [];
       const allCandidates = [...candidates, ...pcaRentalCandidates];
 
       return {
+        billing_domain: billingDomain ?? 'all',
         generated: allCandidates.length,
         home_care_generated: candidates.length,
         pca_rental_generated: pcaRentalCandidates.length,

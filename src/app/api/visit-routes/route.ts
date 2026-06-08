@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import {
+  buildVisitScheduleAssignmentWhere,
+  buildVisitScheduleProposalAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import {
   computeOptimizedVisitRoute,
   type VisitRouteTravelMode,
@@ -12,6 +16,20 @@ const computeVisitRouteSchema = z
   .object({
     schedule_ids: z.array(z.string().trim().min(1)).max(50).default([]),
     proposal_ids: z.array(z.string().trim().min(1)).max(50).default([]),
+    vehicle_resource_id: z.string().trim().min(1).optional(),
+    vehicle_resource: z
+      .object({
+        vehicle_id: z.string().trim().min(1).optional(),
+        label: z.string().trim().min(1).optional(),
+        max_stops: z.number().int().min(1).max(50).optional(),
+        max_route_duration_minutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 60)
+          .optional(),
+      })
+      .optional(),
     travel_mode: z
       .enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'] satisfies [
         VisitRouteTravelMode,
@@ -35,7 +53,43 @@ const computeVisitRouteSchema = z
         message: 'ルート計算の対象は最大 50 件です',
       });
     }
+    if (value.vehicle_resource_id && value.vehicle_resource) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vehicle_resource'],
+        message: 'vehicle_resource_id と vehicle_resource は同時に指定できません',
+      });
+    }
+    if (value.vehicle_resource?.max_stops && totalCount > value.vehicle_resource.max_stops) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vehicle_resource', 'max_stops'],
+        message: `この車両リソースで訪問できる件数は最大 ${value.vehicle_resource.max_stops} 件です`,
+      });
+    }
   });
+
+function appendRouteNote(note: string | null, next: string) {
+  return note ? `${note} / ${next}` : next;
+}
+
+type RoutePlanLookupError =
+  | { error: 'route_target_not_found' }
+  | { error: 'vehicle_resource_not_found' }
+  | { error: 'vehicle_resource_site_mismatch'; message: string }
+  | { error: 'vehicle_resource_capacity_exceeded'; message: string };
+
+function hasRoutePlanLookupError(value: unknown): value is RoutePlanLookupError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'error' in value &&
+    (value.error === 'route_target_not_found' ||
+      value.error === 'vehicle_resource_not_found' ||
+      value.error === 'vehicle_resource_site_mismatch' ||
+      value.error === 'vehicle_resource_capacity_exceeded')
+  );
+}
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -52,12 +106,16 @@ export const POST = withAuth(
     const routePlan = await withOrgContext(
       req.orgId,
       async (tx) => {
-        const [schedules, proposals] = await Promise.all([
+        const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(req);
+        const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+
+        const [schedules, proposals, persistedVehicleResource] = await Promise.all([
           parsed.data.schedule_ids.length > 0
             ? tx.visitSchedule.findMany({
                 where: {
                   org_id: req.orgId,
                   id: { in: parsed.data.schedule_ids },
+                  ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
                 },
                 select: {
                   id: true,
@@ -96,6 +154,7 @@ export const POST = withAuth(
                 where: {
                   org_id: req.orgId,
                   id: { in: parsed.data.proposal_ids },
+                  ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
                 },
                 select: {
                   id: true,
@@ -129,7 +188,66 @@ export const POST = withAuth(
                 },
               })
             : Promise.resolve([]),
+          parsed.data.vehicle_resource_id
+            ? tx.visitVehicleResource.findFirst({
+                where: {
+                  org_id: req.orgId,
+                  id: parsed.data.vehicle_resource_id,
+                  available: true,
+                },
+                select: {
+                  id: true,
+                  site_id: true,
+                  label: true,
+                  travel_mode: true,
+                  max_stops: true,
+                  max_route_duration_minutes: true,
+                },
+              })
+            : Promise.resolve(null),
         ]);
+
+        if (parsed.data.vehicle_resource_id && !persistedVehicleResource) {
+          return { error: 'vehicle_resource_not_found' } satisfies RoutePlanLookupError;
+        }
+
+        const effectiveVehicleResource = persistedVehicleResource
+          ? {
+              vehicle_id: persistedVehicleResource.id,
+              label: persistedVehicleResource.label,
+              max_stops: persistedVehicleResource.max_stops,
+              max_route_duration_minutes: persistedVehicleResource.max_route_duration_minutes,
+            }
+          : parsed.data.vehicle_resource;
+        const effectiveTravelMode =
+          persistedVehicleResource?.travel_mode ?? parsed.data.travel_mode;
+
+        if (
+          effectiveVehicleResource?.max_stops &&
+          parsed.data.schedule_ids.length + parsed.data.proposal_ids.length >
+            effectiveVehicleResource.max_stops
+        ) {
+          const vehicleLabel =
+            effectiveVehicleResource.label ??
+            effectiveVehicleResource.vehicle_id ??
+            '選択中の社用車';
+          return {
+            error: 'vehicle_resource_capacity_exceeded',
+            message: `${vehicleLabel} で訪問できる件数は最大 ${effectiveVehicleResource.max_stops} 件です`,
+          } satisfies RoutePlanLookupError;
+        }
+
+        const foundScheduleIds = new Set(schedules.map((schedule) => schedule.id));
+        const foundProposalIds = new Set(proposals.map((proposal) => proposal.id));
+        const hasMissingSchedule = parsed.data.schedule_ids.some(
+          (scheduleId) => !foundScheduleIds.has(scheduleId),
+        );
+        const hasMissingProposal = parsed.data.proposal_ids.some(
+          (proposalId) => !foundProposalIds.has(proposalId),
+        );
+        if (hasMissingSchedule || hasMissingProposal) {
+          return { error: 'route_target_not_found' } satisfies RoutePlanLookupError;
+        }
 
         const orderedItems = [
           ...parsed.data.schedule_ids
@@ -159,13 +277,29 @@ export const POST = withAuth(
         if (orderedItems.length === 0) {
           return computeOptimizedVisitRoute({
             origin: null,
-            travelMode: parsed.data.travel_mode,
+            travelMode: effectiveTravelMode,
             waypoints: [],
           });
         }
 
         const originSite = orderedItems[0]?.site ?? null;
         const sameSite = orderedItems.every((item) => item.site?.id === originSite?.id);
+
+        if (persistedVehicleResource) {
+          if (!sameSite || !originSite?.id) {
+            return {
+              error: 'vehicle_resource_site_mismatch',
+              message:
+                '車両リソースを指定する場合は、同一拠点の訪問予定または候補だけを選択してください',
+            } satisfies RoutePlanLookupError;
+          }
+          if (persistedVehicleResource.site_id !== originSite.id) {
+            return {
+              error: 'vehicle_resource_site_mismatch',
+              message: '選択した車両リソースは訪問予定の拠点では利用できません',
+            } satisfies RoutePlanLookupError;
+          }
+        }
 
         const origin =
           sameSite && originSite?.lat != null && originSite.lng != null
@@ -182,7 +316,7 @@ export const POST = withAuth(
 
         const plan = await computeOptimizedVisitRoute({
           origin,
-          travelMode: parsed.data.travel_mode,
+          travelMode: effectiveTravelMode,
           waypoints: routableItems.map((item) => {
             const residence = item.residence!;
             return {
@@ -196,12 +330,65 @@ export const POST = withAuth(
           }),
         });
 
+        const vehicleResource = effectiveVehicleResource;
+        const vehicleLabel =
+          vehicleResource?.label ?? vehicleResource?.vehicle_id ?? '選択中の社用車';
+        const vehicleConstraintExceeded =
+          vehicleResource?.max_route_duration_minutes != null &&
+          plan.totalDurationSeconds != null &&
+          plan.totalDurationSeconds > vehicleResource.max_route_duration_minutes * 60;
+        const vehicleConstraintUnverified =
+          vehicleResource?.max_route_duration_minutes != null && plan.totalDurationSeconds == null;
+        const planWithVehicleResource = vehicleResource
+          ? {
+              ...plan,
+              ...(vehicleConstraintExceeded
+                ? {
+                    status: 'unavailable' as const,
+                    note: appendRouteNote(
+                      plan.note,
+                      `${vehicleLabel} の稼働上限 ${vehicleResource.max_route_duration_minutes}分を超えています`,
+                    ),
+                  }
+                : vehicleConstraintUnverified
+                  ? {
+                      note: appendRouteNote(
+                        plan.note,
+                        `${vehicleLabel} の稼働上限は経路時間未計算のため未確認です`,
+                      ),
+                    }
+                  : {
+                      note: appendRouteNote(
+                        plan.note,
+                        `${vehicleLabel} の車両リソース条件を確認済み`,
+                      ),
+                    }),
+              vehicle_resource: {
+                vehicle_id: vehicleResource.vehicle_id ?? null,
+                label: vehicleLabel,
+                max_stops: vehicleResource.max_stops ?? null,
+                max_route_duration_minutes: vehicleResource.max_route_duration_minutes ?? null,
+                stop_count: orderedItems.length,
+                route_duration_minutes:
+                  plan.totalDurationSeconds == null
+                    ? null
+                    : Math.ceil(plan.totalDurationSeconds / 60),
+                constraint_status: vehicleConstraintExceeded
+                  ? 'exceeded'
+                  : vehicleConstraintUnverified
+                    ? 'unverified'
+                    : 'ok',
+              },
+            }
+          : plan;
+
         if (!sameSite && orderedItems.length > 0) {
           return {
-            ...plan,
-            note: plan.note
-              ? `複数拠点が混在しているため先頭拠点を起点にできません / ${plan.note}`
-              : '複数拠点が混在しているため先頭拠点を起点にできません',
+            ...planWithVehicleResource,
+            note: appendRouteNote(
+              planWithVehicleResource.note,
+              '複数拠点が混在しているため先頭拠点を起点にできません',
+            ),
           };
         }
 
@@ -211,17 +398,31 @@ export const POST = withAuth(
             .map((item) => item.patient_name);
 
           return {
-            ...plan,
-            note: plan.note
-              ? `${plan.note} / 座標未設定: ${missing.join('、')}`
-              : `座標未設定のため経路計算に含めていない患者: ${missing.join('、')}`,
+            ...planWithVehicleResource,
+            note: appendRouteNote(
+              planWithVehicleResource.note,
+              `座標未設定: ${missing.join('、')}`,
+            ),
           };
         }
 
-        return plan;
+        return planWithVehicleResource;
       },
       { requestContext: req },
     );
+
+    if (hasRoutePlanLookupError(routePlan)) {
+      if (routePlan.error === 'vehicle_resource_not_found') {
+        return notFound('車両リソースが見つかりません');
+      }
+      if (routePlan.error === 'vehicle_resource_capacity_exceeded') {
+        return validationError(routePlan.message);
+      }
+      if (routePlan.error === 'vehicle_resource_site_mismatch') {
+        return validationError(routePlan.message);
+      }
+      return notFound('訪問ルートの対象が見つかりません');
+    }
 
     return success(routePlan);
   },

@@ -1,3 +1,5 @@
+import { timeDateToMinutes as visitTimeDateToMinutes } from '@/lib/visits/time-of-day';
+
 export type PharmacistShiftWindow = {
   site_id: string;
   available: boolean;
@@ -13,8 +15,7 @@ export function timeStringToMinutes(value: string | undefined) {
 }
 
 export function timeDateToMinutes(value: Date | null) {
-  if (!value) return null;
-  return value.getHours() * 60 + value.getMinutes();
+  return visitTimeDateToMinutes(value);
 }
 
 function validateScheduleWindowFitsShift(

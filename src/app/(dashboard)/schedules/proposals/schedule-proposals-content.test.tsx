@@ -84,6 +84,13 @@ function buildProposal(overrides?: Record<string, unknown>) {
       },
     },
     site: { id: 'site_1', name: '本店', address: '東京都千代田区2-2-2', lat: 35.0, lng: 139.0 },
+    vehicle_resource: {
+      id: 'vehicle_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 6,
+      max_route_duration_minutes: 180,
+    },
     finalized_schedule: null,
     reschedule_source_schedule: null,
     contact_logs: [],
@@ -197,5 +204,48 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
     ).toBeTruthy();
+    expect(screen.getAllByText('社用車A').length).toBeGreaterThan(0);
+  });
+
+  it('surfaces substitute, urgency, patient-window, and vehicle decisions on proposal cards', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: {
+            data: [
+              buildProposal({
+                priority: 'emergency',
+                assignment_mode: 'fallback',
+                route_order: 2,
+                proposal_reason:
+                  '緊急訪問のため即応枠を優先 / 患者条件 09:00-12:00 内で配置 / 社用車A を割当',
+                escalation_reason: '担当薬剤師の勤務枠が見つからなかったため代替薬剤師を割り当て',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    expect(screen.getByText('代替担当')).toBeTruthy();
+    expect(screen.getByText('緊急度で前倒し')).toBeTruthy();
+    expect(screen.getByText('患者希望枠内')).toBeTruthy();
+    expect(screen.getAllByText('社用車A').length).toBeGreaterThan(0);
   });
 });

@@ -7,6 +7,8 @@ const {
   pharmacistShiftFindFirstMock,
   visitScheduleFindManyMock,
   visitScheduleFindFirstMock,
+  visitScheduleCountMock,
+  visitVehicleResourceFindFirstMock,
   careCaseFindFirstMock,
   validateOrgReferencesMock,
   evaluateVisitWorkflowGateMock,
@@ -19,6 +21,8 @@ const {
   pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
+  visitVehicleResourceFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
@@ -38,6 +42,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+      count: visitScheduleCountMock,
+    },
+    visitVehicleResource: {
+      findFirst: visitVehicleResourceFindFirstMock,
     },
     pharmacistShift: {
       findFirst: pharmacistShiftFindFirstMock,
@@ -128,14 +136,37 @@ describe('/api/visit-schedules', () => {
         },
         cycle: { overall_status: 'visit_ready' },
         site: { id: 'site_1', name: '本店', address: '東京都', lat: 35, lng: 139 },
+        vehicle_resource: {
+          id: 'vehicle_1',
+          label: '社用車A',
+          travel_mode: 'DRIVE',
+          max_stops: 8,
+          max_route_duration_minutes: 240,
+        },
       },
     ]);
-    pharmacistShiftFindFirstMock.mockResolvedValue(null);
+    pharmacistShiftFindFirstMock.mockResolvedValue({
+      site_id: 'site_1',
+      available: true,
+      available_from: new Date('1970-01-01T08:30:00.000Z'),
+      available_to: new Date('1970-01-01T17:30:00.000Z'),
+    });
     visitScheduleFindFirstMock.mockResolvedValue(null);
+    visitScheduleCountMock.mockResolvedValue(0);
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 8,
+    });
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'user_2',
       backup_pharmacist_id: 'user_1',
+      patient: {
+        scheduling_preference: null,
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
     });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
@@ -182,6 +213,10 @@ describe('/api/visit-schedules', () => {
           }),
           workload_hint: expect.objectContaining({
             daily_visit_count: 1,
+          }),
+          vehicle_resource: expect.objectContaining({
+            id: 'vehicle_1',
+            label: '社用車A',
           }),
         }),
       ],
@@ -303,8 +338,8 @@ describe('/api/visit-schedules', () => {
     pharmacistShiftFindFirstMock.mockResolvedValueOnce({
       site_id: 'shift_site_1',
       available: true,
-      available_from: new Date('1970-01-01T08:30:00'),
-      available_to: new Date('1970-01-01T17:30:00'),
+      available_from: new Date('1970-01-01T08:30:00.000Z'),
+      available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
     visitScheduleFindFirstMock.mockResolvedValueOnce({ route_order: 3 });
 
@@ -333,11 +368,117 @@ describe('/api/visit-schedules', () => {
     });
   });
 
+  it('assigns selected vehicle resources during manual schedule creation', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'vehicle_1',
+        available: true,
+      },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        max_stops: true,
+      },
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        pharmacist_id: 'user_2',
+        scheduled_date: new Date('2026-03-31'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+    });
+    expect(visitScheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    });
+  });
+
+  it('rejects manual schedule creation when the selected vehicle belongs to another site', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_2',
+      site_id: 'site_2',
+      label: '別拠点車両',
+      max_stops: 8,
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        vehicle_resource_id: 'vehicle_2',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した車両リソースは訪問予定の拠点では利用できません',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when the selected vehicle stop limit is exceeded', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    visitScheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects visit schedule creation for an unassigned non-admin user', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'primary_user',
       backup_pharmacist_id: 'backup_user',
+      patient: {
+        scheduling_preference: null,
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
     });
 
     const response = (await POST(
@@ -365,6 +506,10 @@ describe('/api/visit-schedules', () => {
       patient_id: 'patient_1',
       primary_pharmacist_id: 'primary_user',
       backup_pharmacist_id: 'backup_user',
+      patient: {
+        scheduling_preference: null,
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
     });
 
     const response = (await POST(
@@ -387,8 +532,8 @@ describe('/api/visit-schedules', () => {
     pharmacistShiftFindFirstMock.mockResolvedValueOnce({
       site_id: 'shift_site_1',
       available: true,
-      available_from: new Date('1970-01-01T09:30:00'),
-      available_to: new Date('1970-01-01T17:30:00'),
+      available_from: new Date('1970-01-01T09:30:00.000Z'),
+      available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
 
     const response = (await POST(
@@ -407,6 +552,134 @@ describe('/api/visit-schedules', () => {
       message: '訪問開始時刻が薬剤師シフトの開始前です',
     });
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when the selected pharmacist has no shift', async () => {
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した薬剤師のシフトがありません',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation outside patient preferred time windows', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [],
+          preferred_time_from: new Date('1970-01-01T10:00:00.000Z'),
+          preferred_time_to: new Date('1970-01-01T12:00:00.000Z'),
+          facility_time_from: null,
+          facility_time_to: null,
+        },
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問開始時刻が患者または施設の希望開始時刻 10:00 より前です',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation without a time window when patient preferences define one', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [],
+          preferred_time_from: new Date('1970-01-01T10:00:00.000Z'),
+          preferred_time_to: new Date('1970-01-01T12:00:00.000Z'),
+          facility_time_from: null,
+          facility_time_to: null,
+        },
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問開始時刻を患者または施設の希望開始時刻 10:00 以降で指定してください',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation outside patient preferred weekdays', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
+      patient: {
+        scheduling_preference: {
+          preferred_weekdays: [1],
+          preferred_time_from: null,
+          preferred_time_to: null,
+          facility_time_from: null,
+          facility_time_to: null,
+        },
+        residences: [{ facility_unit_id: null, facility: null }],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者または施設の訪問希望曜日と一致しない日付です',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed visit time windows before service-side schedule creation', async () => {

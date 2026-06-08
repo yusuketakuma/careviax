@@ -19,6 +19,9 @@ const {
   scheduleFeatureHighlightsMock,
   scheduleVisitBriefMock,
   visitPreparationUpsertMock,
+  visitVehicleResourceFindFirstMock,
+  visitScheduleUpdateMock,
+  computeOptimizedVisitRouteMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
@@ -40,6 +43,9 @@ const {
   scheduleFeatureHighlightsMock: vi.fn(),
   scheduleVisitBriefMock: vi.fn(),
   visitPreparationUpsertMock: vi.fn(),
+  visitVehicleResourceFindFirstMock: vi.fn(),
+  visitScheduleUpdateMock: vi.fn(),
+  computeOptimizedVisitRouteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -57,6 +63,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
       findMany: peerVisitScheduleFindManyMock,
+    },
+    visitVehicleResource: {
+      findFirst: visitVehicleResourceFindFirstMock,
     },
     visitRecord: {
       findFirst: visitRecordFindFirstMock,
@@ -98,6 +107,10 @@ vi.mock('@/server/services/billing-evidence', () => ({
 
 vi.mock('@/server/services/visit-brief', () => ({
   getScheduleVisitBrief: scheduleVisitBriefMock,
+}));
+
+vi.mock('@/server/services/visit-route-engine', () => ({
+  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
 }));
 
 vi.mock('@/server/services/operational-tasks', async (importOriginal) => {
@@ -986,8 +999,11 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
       schedule_status: 'planned',
       scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      route_order: 1,
       pharmacist_id: 'user_1',
       case_: {
         primary_pharmacist_id: 'user_primary',
@@ -1006,10 +1022,73 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       prepared_by: 'user_1',
       prepared_at: new Date('2026-03-27T00:00:00Z'),
     });
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 8,
+      max_route_duration_minutes: 120,
+    });
+    peerVisitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        route_order: 1,
+        priority: 'normal',
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.681236,
+          lng: 139.767125,
+        },
+        case_: {
+          patient: {
+            name: '山田太郎',
+            residences: [
+              {
+                address: '東京都千代田区1-1',
+                lat: 35.684,
+                lng: 139.77,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    computeOptimizedVisitRouteMock.mockResolvedValue({
+      status: 'ok',
+      note: 'ヒューリスティック順序を表示しています',
+      travelMode: 'DRIVE',
+      origin: {
+        lat: 35.681236,
+        lng: 139.767125,
+        label: '本店',
+      },
+      encodedPath: null,
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: 1200,
+      totalDurationSeconds: 900,
+      stopSummaries: [
+        {
+          scheduleId: 'schedule_1',
+          optimizedOrder: 1,
+          arrivalOffsetSeconds: 900,
+          distanceFromPreviousMeters: 1200,
+          durationFromPreviousSeconds: 900,
+        },
+      ],
+    });
+    visitScheduleUpdateMock.mockResolvedValue({
+      id: 'schedule_1',
+      vehicle_resource_id: 'vehicle_1',
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitPreparation: {
           upsert: visitPreparationUpsertMock,
+        },
+        visitSchedule: {
+          update: visitScheduleUpdateMock,
         },
       }),
     );
@@ -1147,6 +1226,213 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       }),
     );
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('stores route plan snapshots and assigns the selected vehicle resource', async () => {
+    const routePlanSnapshot = {
+      status: 'ok',
+      travelMode: 'DRIVE',
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: 1200,
+      totalDurationSeconds: 900,
+      vehicle_resource: {
+        vehicle_id: 'vehicle_1',
+        label: '社用車A',
+        constraint_status: 'ok',
+      },
+    };
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: routePlanSnapshot,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'vehicle_1',
+        available: true,
+      },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        travel_mode: true,
+        max_stops: true,
+        max_route_duration_minutes: true,
+      },
+    });
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith({
+      origin: {
+        lat: 35.681236,
+        lng: 139.767125,
+        label: '本店',
+      },
+      travelMode: 'DRIVE',
+      waypoints: [
+        {
+          scheduleId: 'schedule_1',
+          patientName: '山田太郎',
+          address: '東京都千代田区1-1',
+          lat: 35.684,
+          lng: 139.77,
+          priority: 'normal',
+        },
+      ],
+    });
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          route_confirmed: true,
+          route_plan_snapshot: expect.objectContaining({
+            status: 'ok',
+            generated_by: 'server',
+            ordered_schedule_ids: ['schedule_1'],
+            orderedScheduleIds: ['schedule_1'],
+            vehicle_resource: expect.objectContaining({
+              vehicle_id: 'vehicle_1',
+              constraint_status: 'ok',
+            }),
+          }),
+        }),
+        update: expect.objectContaining({
+          route_confirmed: true,
+          route_plan_snapshot: expect.objectContaining({
+            status: 'ok',
+            orderedScheduleIds: ['schedule_1'],
+          }),
+        }),
+      }),
+    );
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1' },
+      data: {
+        vehicle_resource_id: 'vehicle_1',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('generates route plan snapshots on the server when no client snapshot is submitted', async () => {
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        travelMode: 'DRIVE',
+        waypoints: [
+          expect.objectContaining({
+            scheduleId: 'schedule_1',
+            patientName: '山田太郎',
+          }),
+        ],
+      }),
+    );
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          route_plan_snapshot: expect.objectContaining({
+            status: 'ok',
+            generated_by: 'server',
+            ordered_schedule_ids: ['schedule_1'],
+          }),
+        }),
+        update: expect.objectContaining({
+          route_plan_snapshot: expect.objectContaining({
+            status: 'ok',
+            generated_by: 'server',
+            ordered_schedule_ids: ['schedule_1'],
+          }),
+        }),
+      }),
+    );
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects route confirmation when the selected vehicle duration limit is exceeded', async () => {
+    computeOptimizedVisitRouteMock.mockResolvedValueOnce({
+      status: 'ok',
+      note: 'ヒューリスティック順序を表示しています',
+      travelMode: 'DRIVE',
+      origin: {
+        lat: 35.681236,
+        lng: 139.767125,
+        label: '本店',
+      },
+      encodedPath: null,
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: 1200,
+      totalDurationSeconds: 3 * 60 * 60,
+      stopSummaries: [],
+    });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '選択した車両リソースの稼働上限を超えるためルート確認できません',
+    });
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects route snapshots that reference a vehicle from another schedule site', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      site_id: 'site_2',
+    });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          status: 'ok',
+          travelMode: 'DRIVE',
+          orderedScheduleIds: ['schedule_1'],
+          vehicle_resource: {
+            vehicle_id: 'vehicle_2',
+            label: '別拠点車両',
+            constraint_status: 'ok',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '選択した車両リソースは訪問予定の拠点では利用できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
   it('keeps the readiness gate blocked when previous issues are not reviewed', async () => {

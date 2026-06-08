@@ -12,6 +12,7 @@ const {
   billingCandidateFindManyMock,
   visitScheduleCountMock,
   prescriptionIntakeFindFirstMock,
+  visitVehicleResourceFindFirstMock,
   validateOrgReferencesMock,
   generateVisitScheduleProposalDraftsMock,
   visitScheduleProposalUpdateManyMock,
@@ -32,6 +33,7 @@ const {
   billingCandidateFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
+  visitVehicleResourceFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   generateVisitScheduleProposalDraftsMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
@@ -73,6 +75,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     prescriptionIntake: {
       findFirst: prescriptionIntakeFindFirstMock,
+    },
+    visitVehicleResource: {
+      findFirst: visitVehicleResourceFindFirstMock,
     },
   },
 }));
@@ -143,6 +148,13 @@ describe('/api/visit-schedule-proposals', () => {
           },
         },
         site: null,
+        vehicle_resource: {
+          id: 'vehicle_1',
+          label: '社用車A',
+          travel_mode: 'DRIVE',
+          max_stops: 6,
+          max_route_duration_minutes: 180,
+        },
         finalized_schedule: null,
         reschedule_source_schedule: null,
         contact_logs: [],
@@ -162,6 +174,12 @@ describe('/api/visit-schedule-proposals', () => {
     billingCandidateFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
+    visitVehicleResourceFindFirstMock.mockResolvedValue({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+    });
     userFindFirstMock.mockResolvedValue({ max_weekly_visits: 40 });
     findActiveVisitConsentMock.mockResolvedValue({
       id: 'consent_1',
@@ -179,6 +197,7 @@ describe('/api/visit-schedule-proposals', () => {
           case_id: 'case_1',
           proposed_pharmacist_id: 'user_2',
           proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
         },
       ],
       diagnostics: {
@@ -214,6 +233,10 @@ describe('/api/visit-schedule-proposals', () => {
           proposed_pharmacist: expect.objectContaining({
             id: 'user_2',
             name: '薬剤師A',
+          }),
+          vehicle_resource: expect.objectContaining({
+            id: 'vehicle_1',
+            label: '社用車A',
           }),
         }),
       ],
@@ -317,6 +340,70 @@ describe('/api/visit-schedule-proposals', () => {
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
   });
 
+  it('persists selected vehicle resources on generated proposal drafts', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        travel_mode: 'BICYCLE',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'vehicle_1',
+        available: true,
+      },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        travel_mode: true,
+      },
+    });
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        travelMode: 'DRIVE',
+      }),
+    );
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        site_id: 'site_1',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    });
+  });
+
+  it('rejects proposal generation when the selected vehicle belongs to another draft site', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_2',
+      site_id: 'site_2',
+      label: '別拠点車両',
+      travel_mode: 'DRIVE',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        vehicle_resource_id: 'vehicle_2',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '選択した車両リソースは訪問候補の拠点では利用できません',
+    });
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object generation payloads before case lookup or planner side effects', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedule-proposals', []),
@@ -394,6 +481,67 @@ describe('/api/visit-schedule-proposals', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid preferred visit times before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+        preferred_time_from: '99:99',
+        preferred_time_to: 'abc',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        preferred_time_from: ['時刻形式が不正です（HH:mm）'],
+        preferred_time_to: ['時刻形式が不正です（HH:mm）'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed preferred visit times before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+        preferred_time_from: '15:00',
+        preferred_time_to: '13:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        preferred_time_to: ['希望終了時刻は希望開始時刻より後にしてください'],
+      },
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();

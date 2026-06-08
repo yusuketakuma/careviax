@@ -102,13 +102,58 @@ describe('/api/billing-candidates/close POST', () => {
     );
     expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
       billingMonth: '2026-03-01T00:00:00.000Z',
+      billingDomain: 'home_care',
       exportedCount: 12,
     });
     await expect(response.json()).resolves.toMatchObject({
+      billing_domain: 'home_care',
       exported_count: 12,
       summary: {
         exported: 12,
       },
+    });
+  });
+
+  it('closes PCA rental billing candidates when billing_domain is pca_rental', async () => {
+    closeBillingCandidatesForMonthMock.mockResolvedValue({
+      blocked: false,
+      exported_count: 2,
+      summary: {
+        total: 2,
+        pending_review: 0,
+        confirmed: 2,
+        excluded: 0,
+        exported: 2,
+        reviewed: 2,
+        ready_to_close: 0,
+        blocked_from_close: 0,
+        blocker_reasons: [],
+      },
+    });
+
+    const response = await POST(
+      createRequest({ billing_month: '2026-06-01', billing_domain: 'pca_rental' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(closeBillingCandidatesForMonthMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        billingMonth: new Date('2026-06-01T00:00:00.000Z'),
+        actorId: 'user_1',
+        billingDomain: 'pca_rental',
+      },
+    );
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
+      billingMonth: '2026-06-01T00:00:00.000Z',
+      billingDomain: 'pca_rental',
+      exportedCount: 2,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      billing_domain: 'pca_rental',
+      exported_count: 2,
     });
   });
 
@@ -148,6 +193,18 @@ describe('/api/billing-candidates/close POST', () => {
     ['timezone timestamp', { billing_month: '2026-03-01T00:00:00.000Z' }],
   ])('rejects %s billing_month before transaction work', async (_caseName, body) => {
     const response = await POST(createRequest(body));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid billing_domain before transaction work', async () => {
+    const response = await POST(
+      createRequest({ billing_month: '2026-03-01', billing_domain: 'unknown' }),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

@@ -22,20 +22,44 @@ export const patientContactStatusValues = [
   'unreachable',
 ] as const;
 
-export const generateVisitScheduleProposalSchema = z.object({
-  case_id: z.string().min(1, 'ケースIDは必須です'),
-  visit_type: z.enum(visitTypeValues).default('regular'),
-  priority: z.enum(visitPriorityValues).default('normal'),
-  start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
-  locked_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
-  candidate_count: z.number().int().min(1).max(5).default(3),
-  travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).default('DRIVE'),
-  preferred_time_from: z.string().optional(),
-  preferred_time_to: z.string().optional(),
-  preferred_pharmacist_id: z.string().optional(),
-  reschedule_source_schedule_id: z.string().optional(),
-  special_cap_eligible: z.boolean().optional(),
-});
+const proposalTimeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時刻形式が不正です（HH:mm）');
+
+export const generateVisitScheduleProposalSchema = z
+  .object({
+    case_id: z.string().min(1, 'ケースIDは必須です'),
+    visit_type: z.enum(visitTypeValues).default('regular'),
+    priority: z.enum(visitPriorityValues).default('normal'),
+    start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+    locked_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+    candidate_count: z.number().int().min(1).max(5).default(3),
+    travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).default('DRIVE'),
+    preferred_time_from: proposalTimeSchema.optional(),
+    preferred_time_to: proposalTimeSchema.optional(),
+    preferred_pharmacist_id: z.string().optional(),
+    vehicle_resource_id: z.string().trim().min(1).optional(),
+    reschedule_source_schedule_id: z.string().optional(),
+    special_cap_eligible: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.preferred_time_from && data.preferred_time_to) {
+      const [fromHour, fromMinute] = data.preferred_time_from
+        .split(':')
+        .map((part) => Number.parseInt(part, 10));
+      const [toHour, toMinute] = data.preferred_time_to
+        .split(':')
+        .map((part) => Number.parseInt(part, 10));
+      if (toHour * 60 + toMinute <= fromHour * 60 + fromMinute) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['preferred_time_to'],
+          message: '希望終了時刻は希望開始時刻より後にしてください',
+        });
+      }
+    }
+  });
 
 export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', [
   z.object({

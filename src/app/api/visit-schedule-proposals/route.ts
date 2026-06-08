@@ -253,6 +253,15 @@ export const GET = withAuth(
             lng: true,
           },
         },
+        vehicle_resource: {
+          select: {
+            id: true,
+            label: true,
+            travel_mode: true,
+            max_stops: true,
+            max_route_duration_minutes: true,
+          },
+        },
         finalized_schedule: {
           select: {
             id: true,
@@ -379,6 +388,26 @@ export const POST = withAuth(
       return validationError(blockingMessages.join(' / '));
     }
 
+    const vehicleResource = parsed.data.vehicle_resource_id
+      ? await prisma.visitVehicleResource.findFirst({
+          where: {
+            org_id: req.orgId,
+            id: parsed.data.vehicle_resource_id,
+            available: true,
+          },
+          select: {
+            id: true,
+            site_id: true,
+            label: true,
+            travel_mode: true,
+          },
+        })
+      : null;
+    if (parsed.data.vehicle_resource_id && !vehicleResource) {
+      return validationError('選択した車両リソースが見つからないか利用できません');
+    }
+    const effectiveTravelMode = vehicleResource?.travel_mode ?? parsed.data.travel_mode;
+
     let drafts;
     let plannerDiagnostics:
       | {
@@ -392,6 +421,9 @@ export const POST = withAuth(
             route_order: number;
             route_distance_score: number;
             travel_summary: string;
+            vehicle_resource_id: string | null;
+            vehicle_resource_label: string | null;
+            vehicle_load: number | null;
             assignment_mode: string;
             care_relationship: string;
             score: number;
@@ -409,12 +441,13 @@ export const POST = withAuth(
         visitType: resolvedVisitType,
         priority: resolvedPriority,
         candidateCount: parsed.data.candidate_count,
-        travelMode: parsed.data.travel_mode,
+        travelMode: effectiveTravelMode,
         startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
         lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
         preferredTimeFrom: parsed.data.preferred_time_from,
         preferredTimeTo: parsed.data.preferred_time_to,
         preferredPharmacistId: parsed.data.preferred_pharmacist_id,
+        vehicleResourceId: parsed.data.vehicle_resource_id,
         rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
       });
       drafts = plannerResult.drafts;
@@ -434,6 +467,17 @@ export const POST = withAuth(
       return validationError('シフト・休日・期限条件に合う候補を生成できませんでした', {
         rejections: plannerDiagnostics?.rejected ?? [],
       });
+    }
+
+    if (vehicleResource) {
+      const mismatchedDraft = drafts.find((draft) => draft.site_id !== vehicleResource.site_id);
+      if (mismatchedDraft) {
+        return validationError('選択した車両リソースは訪問候補の拠点では利用できません');
+      }
+      drafts = drafts.map((draft) => ({
+        ...draft,
+        vehicle_resource_id: vehicleResource.id,
+      }));
     }
 
     const perDraftValidationKeys = new Set<string>();
@@ -492,7 +536,7 @@ export const POST = withAuth(
         site_id: draft.site_id ?? null,
         site_name: null,
         proposed_date: draft.proposed_date.toISOString().slice(0, 10),
-        travel_mode: parsed.data.travel_mode,
+        travel_mode: effectiveTravelMode,
         reason_code: 'billing_constraint' as const,
         reason_label: '算定制約',
         detail:

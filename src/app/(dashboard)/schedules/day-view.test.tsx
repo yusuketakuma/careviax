@@ -149,6 +149,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
       },
     },
     site: { id: 'site_1', name: '本店', address: '東京都千代田区2-2-2', lat: 35.0, lng: 139.0 },
+    vehicle_resource: null,
     finalized_schedule: null,
     reschedule_source_schedule: null,
     contact_logs: [],
@@ -248,6 +249,8 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '訪問候補を生成' })).toBeTruthy();
+    expect(screen.getByLabelText('社用車')).toBeTruthy();
+    expect(screen.getByText('未指定の場合は患者住所とルート条件から自動割当します')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '運用タスク' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '関連管理' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();

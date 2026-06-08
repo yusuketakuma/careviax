@@ -91,6 +91,12 @@ type VisitRecordSavePayload = {
   };
 };
 
+type VisitProposalGenerationPayload = {
+  case_id?: unknown;
+  vehicle_resource_id?: unknown;
+  travel_mode?: unknown;
+};
+
 async function installVisitRecordSaveStub(page: Page) {
   const payloads: VisitRecordSavePayload[] = [];
 
@@ -331,6 +337,45 @@ test.describe('schedule page', () => {
     ).toBeVisible();
 
     expect(errors).toEqual([]);
+  });
+
+  test('daily proposal generator sends selected vehicle resource in the generation payload', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    const generationPayloads: VisitProposalGenerationPayload[] = [];
+
+    await page.route(apiPathPattern('/api/visit-schedule-proposals'), async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+
+      const payload = readRouteBody<VisitProposalGenerationPayload>(route);
+      if (payload) generationPayloads.push(payload);
+
+      await fulfillJson(route, {
+        data: [],
+        alerts: [],
+      });
+    });
+
+    await openScheduleBoard(page);
+
+    await page.locator('#planner-vehicle-resource').click();
+    await page.getByRole('option', { name: /E2E社用車A/ }).click();
+    await expect(page.getByText(/E2E社用車A \(最大6件 \/ 180分以内\)/)).toBeVisible();
+
+    await page.getByRole('button', { name: '訪問候補を生成' }).click();
+    await expect.poll(() => generationPayloads.length, { timeout: 10_000 }).toBeGreaterThan(0);
+
+    expect(generationPayloads[0]).toMatchObject({
+      vehicle_resource_id: 'cmnhseedveh001amq9ph-os',
+      travel_mode: 'DRIVE',
+    });
+
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
   });
 });
 

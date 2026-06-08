@@ -6,11 +6,14 @@ import { forbiddenResponse, success, validationError } from '@/lib/api/response'
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
 import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
+import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
+import { validateVisitVehicleResourceForSchedule } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
@@ -36,7 +39,7 @@ function normalizeWeekdays(value: unknown) {
 }
 
 function toTimeString(value: Date | null | undefined) {
-  return value ? format(value, 'HH:mm') : undefined;
+  return timeDateToString(value);
 }
 
 function intersectTimeWindows(
@@ -59,6 +62,10 @@ function buildWeekKey(value: Date) {
   return format(startOfWeek(value, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 }
 
+function buildDateKey(value: Date) {
+  return format(value, 'yyyy-MM-dd');
+}
+
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -79,6 +86,7 @@ export const POST = withAuth(
       end_date,
       time_window_start,
       time_window_end,
+      vehicle_resource_id,
     } = parsed.data;
 
     const startDate = new Date(start_date);
@@ -162,6 +170,47 @@ export const POST = withAuth(
       );
     }
 
+    const shifts = await prisma.pharmacistShift.findMany({
+      where: {
+        org_id: req.orgId,
+        user_id: pharmacist_id,
+        date: { in: candidateDates },
+      },
+      select: {
+        date: true,
+        site_id: true,
+        available: true,
+        available_from: true,
+        available_to: true,
+      },
+    });
+    const shiftByDate = new Map(shifts.map((shift) => [buildDateKey(shift.date), shift]));
+    for (const candidateDate of candidateDates) {
+      const dateKey = buildDateKey(candidateDate);
+      const shift = shiftByDate.get(dateKey) ?? null;
+      if (!shift) {
+        return validationError(`${dateKey}: 選択した薬剤師のシフトがありません`);
+      }
+      const shiftValidationError = validateScheduleTimeStringsFitShift(
+        shift,
+        mergedTimeWindow.from,
+        mergedTimeWindow.to,
+      );
+      if (shiftValidationError) {
+        return validationError(`${dateKey}: ${shiftValidationError}`);
+      }
+      if (vehicle_resource_id) {
+        const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
+          orgId: req.orgId,
+          vehicleResourceId: vehicle_resource_id,
+          siteId: shift.site_id ?? null,
+          pharmacistId: pharmacist_id,
+          scheduledDate: candidateDate,
+        });
+        if (!vehicleValidation.ok) return vehicleValidation.response;
+      }
+    }
+
     // Check monthly visit count limits
     if (insurance_type && MONTHLY_LIMITS[insurance_type] !== undefined) {
       const limit = MONTHLY_LIMITS[insurance_type];
@@ -192,18 +241,35 @@ export const POST = withAuth(
     }
 
     const schedules = await withOrgContext(req.orgId, async (tx) => {
+      const existingRouteOrders = await tx.visitSchedule.findMany({
+        where: {
+          org_id: req.orgId,
+          pharmacist_id,
+          scheduled_date: { in: candidateDates },
+          schedule_status: { not: 'cancelled' },
+          route_order: { not: null },
+        },
+        select: {
+          scheduled_date: true,
+          route_order: true,
+        },
+      });
+      const maxRouteOrderByDate = new Map<string, number>();
+      for (const schedule of existingRouteOrders) {
+        const routeOrder = schedule.route_order ?? 0;
+        const dateKey = buildDateKey(schedule.scheduled_date);
+        maxRouteOrderByDate.set(
+          dateKey,
+          Math.max(maxRouteOrderByDate.get(dateKey) ?? 0, routeOrder),
+        );
+      }
+
       const created = await Promise.all(
         candidateDates.map(async (date) => {
-          const shift = await prisma.pharmacistShift.findFirst({
-            where: {
-              org_id: req.orgId,
-              user_id: pharmacist_id,
-              date,
-            },
-            select: {
-              site_id: true,
-            },
-          });
+          const dateKey = buildDateKey(date);
+          const shift = shiftByDate.get(dateKey);
+          const routeOrder = (maxRouteOrderByDate.get(dateKey) ?? 0) + 1;
+          maxRouteOrderByDate.set(dateKey, routeOrder);
 
           return tx.visitSchedule.create({
             data: {
@@ -213,11 +279,13 @@ export const POST = withAuth(
               priority: 'normal',
               pharmacist_id,
               site_id: shift?.site_id ?? null,
+              vehicle_resource_id: vehicle_resource_id ?? null,
               assignment_mode:
                 careCase?.primary_pharmacist_id && careCase.primary_pharmacist_id === pharmacist_id
                   ? 'primary'
                   : 'fallback',
               scheduled_date: date,
+              route_order: routeOrder,
               recurrence_rule,
               ...(mergedTimeWindow?.from
                 ? { time_window_start: new Date(`1970-01-01T${mergedTimeWindow.from}`) }

@@ -105,7 +105,7 @@ describe('/api/billing-candidates/export GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/csv');
-    expect(response.headers.get('content-disposition')).toContain('billing_2026-03.csv');
+    expect(response.headers.get('content-disposition')).toContain('billing_home_care_2026-03.csv');
 
     const csv = await response.text();
     expect(csv).toContain('patient_name');
@@ -124,6 +124,7 @@ describe('/api/billing-candidates/export GET', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
           status: { in: ['confirmed', 'exported'] },
         }),
       }),
@@ -201,7 +202,9 @@ describe('/api/billing-candidates/export GET', () => {
     txMock.residence.findMany.mockResolvedValueOnce([]);
 
     const response = await GET(
-      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-06-01'),
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-06-01&billing_domain=pca_rental',
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -228,12 +231,13 @@ describe('/api/billing-candidates/export GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-disposition')).toContain('billing_2026-03.csv');
+    expect(response.headers.get('content-disposition')).toContain('billing_home_care_2026-03.csv');
     expect(response.headers.get('content-disposition')).not.toContain('patient_1');
     expect(txMock.billingCandidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patient_id: 'patient_1',
+          billing_domain: 'home_care',
         }),
       }),
     );
@@ -243,10 +247,24 @@ describe('/api/billing-candidates/export GET', () => {
         filters: expect.objectContaining({
           billing_month: '2026-03-01',
           patient_id: 'patient_1',
+          billing_domain: 'home_care',
           statuses: ['confirmed', 'exported'],
         }),
       }),
     );
+  });
+
+  it('rejects invalid billing_domain before entering org context', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&billing_domain=unknown',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed billing months before entering org context', async () => {

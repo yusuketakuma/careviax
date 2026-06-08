@@ -33,6 +33,7 @@ import {
   buildVisitScheduleContactFollowupTask,
   buildVisitScheduleContactTaskKey,
 } from '@/server/services/visit-schedule-communication';
+import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
 type RoutePreviewPoint = {
   schedule_id: string;
@@ -110,6 +111,8 @@ type CreationDiagnostics = {
     detail: string;
   }>;
 };
+
+const ROUTE_ORDER_LOCKED_STATUSES = ['ready', 'departed', 'in_progress', 'completed'] as const;
 
 async function buildRoutePreview(args: {
   proposal: ProposalRoutePreviewRecord | null;
@@ -327,6 +330,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           lng: true,
         },
       },
+      vehicle_resource: {
+        select: {
+          id: true,
+          label: true,
+          travel_mode: true,
+          max_stops: true,
+          max_route_duration_minutes: true,
+        },
+      },
       finalized_schedule: {
         select: {
           id: true,
@@ -362,6 +374,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
               address: true,
               lat: true,
               lng: true,
+            },
+          },
+          vehicle_resource: {
+            select: {
+              id: true,
+              label: true,
+              travel_mode: true,
+              max_stops: true,
+              max_route_duration_minutes: true,
             },
           },
         },
@@ -407,6 +428,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
               address: true,
               lat: true,
               lng: true,
+            },
+          },
+          vehicle_resource: {
+            select: {
+              id: true,
+              label: true,
+              travel_mode: true,
+              max_stops: true,
+              max_route_duration_minutes: true,
             },
           },
         },
@@ -459,6 +489,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             lng: true,
           },
         },
+        vehicle_resource: {
+          select: {
+            id: true,
+            label: true,
+            travel_mode: true,
+            max_stops: true,
+            max_route_duration_minutes: true,
+          },
+        },
       },
       orderBy: [{ route_distance_score: 'asc' }, { proposed_date: 'asc' }],
       take: 4,
@@ -507,6 +546,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             address: true,
             lat: true,
             lng: true,
+          },
+        },
+        vehicle_resource: {
+          select: {
+            id: true,
+            label: true,
+            travel_mode: true,
+            max_stops: true,
+            max_route_duration_minutes: true,
           },
         },
       },
@@ -867,13 +915,116 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    const shift = await tx.pharmacistShift.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        user_id: existing.proposed_pharmacist_id,
+        date: existing.proposed_date,
+      },
+      select: {
+        site_id: true,
+        available: true,
+        available_from: true,
+        available_to: true,
+      },
+    });
+    if (!shift) {
+      return {
+        error: 'shift_unavailable' as const,
+        message: '選択した薬剤師のシフトがありません',
+      };
+    }
+    const shiftValidationError = validateScheduleTimeDatesFitShift(
+      shift,
+      existing.time_window_start,
+      existing.time_window_end,
+    );
+    if (shiftValidationError) {
+      return {
+        error: 'shift_unavailable' as const,
+        message: shiftValidationError,
+      };
+    }
+
+    if (existing.vehicle_resource_id) {
+      const vehicleResource = await tx.visitVehicleResource.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          id: existing.vehicle_resource_id,
+          available: true,
+        },
+        select: {
+          site_id: true,
+          label: true,
+          max_stops: true,
+        },
+      });
+      if (!vehicleResource) {
+        return {
+          error: 'vehicle_resource_unavailable' as const,
+          message: '選択した車両リソースが見つからないか利用できません',
+        };
+      }
+      const targetSiteId = existing.site_id ?? shift.site_id;
+      if (targetSiteId && vehicleResource.site_id !== targetSiteId) {
+        return {
+          error: 'vehicle_resource_unavailable' as const,
+          message: '選択した車両リソースは訪問予定の拠点では利用できません',
+        };
+      }
+      if (vehicleResource.max_stops != null) {
+        const vehicleScheduleCount = await tx.visitSchedule.count({
+          where: {
+            org_id: ctx.orgId,
+            vehicle_resource_id: existing.vehicle_resource_id,
+            scheduled_date: existing.proposed_date,
+            schedule_status: {
+              notIn: ['cancelled', 'rescheduled'],
+            },
+          },
+        });
+        if (vehicleScheduleCount >= vehicleResource.max_stops) {
+          return {
+            error: 'vehicle_resource_unavailable' as const,
+            message: `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+          };
+        }
+      }
+    }
+
+    const lockedRouteSchedules = await tx.visitSchedule.findMany({
+      where: {
+        org_id: ctx.orgId,
+        pharmacist_id: existing.proposed_pharmacist_id,
+        scheduled_date: existing.proposed_date,
+        route_order: {
+          not: null,
+        },
+        OR: [
+          { confirmed_at: { not: null } },
+          { schedule_status: { in: [...ROUTE_ORDER_LOCKED_STATUSES] } },
+        ],
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: {
+        route_order: true,
+      },
+    });
+    const routeOrderFloor = lockedRouteSchedules.reduce(
+      (maxOrder, schedule) => Math.max(maxOrder, schedule.route_order ?? 0),
+      0,
+    );
+    const finalizedRouteOrder = Math.max(existing.route_order ?? 1, routeOrderFloor + 1);
+
     await tx.visitSchedule.updateMany({
       where: {
         org_id: ctx.orgId,
         pharmacist_id: existing.proposed_pharmacist_id,
         scheduled_date: existing.proposed_date,
         route_order: {
-          gte: existing.route_order ?? 1,
+          gte: finalizedRouteOrder,
         },
         schedule_status: {
           notIn: ['cancelled', 'rescheduled'],
@@ -902,7 +1053,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         pharmacist_id: existing.proposed_pharmacist_id,
         assignment_mode: existing.assignment_mode,
         escalation_reason: existing.escalation_reason,
-        route_order: existing.route_order ?? 1,
+        route_order: finalizedRouteOrder,
+        vehicle_resource_id: existing.vehicle_resource_id ?? null,
         recurrence_rule: existing.suggested_recurrence_rule ?? null,
         medication_end_date: existing.medication_end_date,
         visit_deadline_date: existing.visit_deadline_date,
@@ -948,6 +1100,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         confirmed_at: finalizedAt,
         confirmed_by: ctx.userId,
         finalized_schedule_id: schedule.id,
+        route_order: finalizedRouteOrder,
       },
     });
 
@@ -974,6 +1127,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         changes: {
           proposal_id: id,
           reschedule_source_schedule_id: existing.reschedule_source_schedule_id,
+          vehicle_resource_id: existing.vehicle_resource_id ?? null,
         },
         ip_address: ctx.ipAddress,
         user_agent: ctx.userAgent,
@@ -995,6 +1149,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (result.error === 'override_not_approved') {
       return validationError('確定済み訪問の変更は承認後に新候補を確定してください');
+    }
+    if (result.error === 'shift_unavailable') {
+      return validationError(result.message);
+    }
+    if (result.error === 'vehicle_resource_unavailable') {
+      return validationError(result.message);
     }
   }
 

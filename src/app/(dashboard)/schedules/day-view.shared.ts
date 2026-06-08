@@ -64,6 +64,14 @@ export type Pharmacist = {
   site_name: string | null;
 };
 
+export type VisitVehicleResourceSummary = {
+  id: string;
+  label: string;
+  travel_mode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+  max_stops: number | null;
+  max_route_duration_minutes: number | null;
+};
+
 export type ProposalContactLog = {
   id: string;
   outcome: PatientContactStatus;
@@ -170,6 +178,7 @@ export type Proposal = {
     lat?: number | null;
     lng?: number | null;
   } | null;
+  vehicle_resource?: VisitVehicleResourceSummary | null;
   finalized_schedule: {
     id: string;
     scheduled_date: string;
@@ -435,6 +444,7 @@ export type VisitSchedule = {
     lat?: number | null;
     lng?: number | null;
   } | null;
+  vehicle_resource?: VisitVehicleResourceSummary | null;
   preparation: VisitPreparation | null;
   override_request: PendingOverrideRequest | null;
   applied_override: AppliedOverride | null;
