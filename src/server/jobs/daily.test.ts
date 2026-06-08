@@ -124,6 +124,7 @@ import {
   checkCallbackFollowups,
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
+  checkPcaPumpReturnInspectionPending,
   checkPcaPumpRentalOverdues,
   cleanupAbandonedQrDrafts,
   cleanupTerminalQrDraftPayloads,
@@ -135,6 +136,7 @@ describe('checkPcaPumpRentalOverdues', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T09:00:00.000Z'));
+    taskFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -232,6 +234,142 @@ describe('checkPcaPumpRentalOverdues', () => {
 
     expect(result).toEqual({ processedCount: 0 });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkPcaPumpReturnInspectionPending', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-08T09:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('creates follow-up tasks for returned PCA rentals waiting for inspection', async () => {
+    pcaPumpRentalFindManyMock.mockResolvedValue([
+      {
+        id: 'rental_1',
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: new Date('2026-06-01T00:00:00.000Z'),
+        due_at: new Date('2026-06-07T00:00:00.000Z'),
+        returned_at: new Date('2026-06-06T00:00:00.000Z'),
+        pump: {
+          asset_code: 'PCA-001',
+          model_name: 'CADD Legacy',
+        },
+        institution: {
+          name: 'サンプル在宅クリニック',
+        },
+      },
+    ]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        task: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await checkPcaPumpReturnInspectionPending({ orgId: 'org_1' });
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(runJobMock).toHaveBeenCalledWith(
+      'pca_pump_return_inspection_pending_check',
+      expect.any(Function),
+      'org_1',
+    );
+    expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: 'returned',
+          return_inspection_status: 'pending',
+        },
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'pca_pump_return_inspection_pending',
+        title: 'PCAポンプの返却検品が未完了です',
+        priority: 'high',
+        relatedEntityType: 'pca_pump_rental',
+        relatedEntityId: 'rental_1',
+        dedupeKey: 'pca-pump-return-inspection-pending:rental_1',
+        metadata: expect.objectContaining({
+          rental_id: 'rental_1',
+          pump_id: 'pump_1',
+          pump_asset_code: 'PCA-001',
+          institution_id: 'institution_1',
+          institution_name: 'サンプル在宅クリニック',
+          returned_at: '2026-06-06',
+          pending_days: 2,
+          action_href: '/admin/pca-pumps',
+          action_label: '返却検品を確認',
+        }),
+      }),
+    );
+  });
+
+  it('does not create tasks when no returned rentals are waiting for inspection', async () => {
+    pcaPumpRentalFindManyMock.mockResolvedValue([]);
+
+    const result = await checkPcaPumpReturnInspectionPending();
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('completes stale inspection pending tasks without touching other orgs in scoped runs', async () => {
+    pcaPumpRentalFindManyMock.mockResolvedValue([]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        task_type: 'pca_pump_return_inspection_pending',
+        dedupe_key: 'pca-pump-return-inspection-pending:rental_stale',
+      },
+    ]);
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        task: {
+          updateMany: updateManyMock,
+        },
+      }),
+    );
+
+    const result = await checkPcaPumpReturnInspectionPending({ orgId: 'org_1' });
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: { in: ['org_1'] },
+          task_type: { in: ['pca_pump_return_inspection_pending'] },
+          status: { in: ['pending', 'in_progress'] },
+        }),
+      }),
+    );
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_type: 'pca_pump_return_inspection_pending',
+        status: { in: ['pending', 'in_progress'] },
+        dedupe_key: { in: ['pca-pump-return-inspection-pending:rental_stale'] },
+      },
+      data: {
+        status: 'completed',
+        completed_at: expect.any(Date),
+      },
+    });
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });

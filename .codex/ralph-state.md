@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-184600
+
+- current task: add synchronized operational follow-up for PCA pump rentals returned but still waiting for inspection
+- files inspected: `git status --short`, recent PCA commits, `src/server/jobs/daily.ts`, `src/server/jobs/daily-helpers.ts`, `src/server/jobs/index.ts`, `src/server/jobs/daily.test.ts`, `src/app/api/jobs/[jobType]/route.ts`, `src/app/api/jobs/[jobType]/route.test.ts`, `src/server/services/operational-tasks.ts`, local app health/preflight, and subagent findings for PCA return inspection pending tasks
+- files changed: `src/server/jobs/daily.ts`, `src/server/jobs/daily-helpers.ts`, `src/server/jobs/index.ts`, `src/server/jobs/daily.test.ts`, `src/app/api/jobs/[jobType]/route.ts`, `src/app/api/jobs/[jobType]/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: PCA rentals that were returned with `return_inspection_status=pending` could remain in maintenance without any daily operational follow-up. A naive task upsert would also leave stale pending tasks after inspection completion and could complete other orgs' tasks during a single-org job run.
+- security risks found: the new job is exposed only through the existing admin/API-key job route. Authenticated admin execution remains scoped to the caller org; `syncGeneratedOperationalTasks` now supports scoped existing-task lookup so stale completion does not touch other orgs during org-scoped runs. No RLS weakening, PHI export, external send, or production DB operation was introduced.
+- performance issues found: the job uses one bounded query for returned pending-inspection rentals and the existing generated-task sync path. Existing task lookup is narrowed by task type and, when applicable, org id. No request-path polling or unbounded loop was added.
+- validation commands: Prettier for touched job files; focused Vitest for daily jobs and job API route; targeted ESLint; `tsc --noEmit`; `git diff --check`; clean `pnpm build`; local production server restart on `localhost:3012`; `curl /api/health`; runtime `POST /api/jobs/daily-pca-pump-return-inspection-pending`; `medical-ui:e2e:preflight`
+- validation results: Prettier completed; focused Vitest passed with 2 files / 31 tests; ESLint passed; TypeScript passed; whitespace diff check passed; clean production build passed; local production server restarted successfully; health returned ok; runtime job endpoint returned `jobType=daily-pca-pump-return-inspection-pending` with `processedCount=4`; preflight passed with app port 3012, DB port 5433, 77 org-scoped RLS tables, and 17 audit triggers verified
+- remaining work: PCA return-inspection UI queue/form, maintenance event history, accessory line-item modeling, PCA rental billing/invoice/AR, and broader QR/PatientInsurance confirmed-promotion workflows remain open. The pending-inspection operational follow-up is now implemented and verified.
+- next action: commit this PCA return inspection pending task slice, then continue with PCA maintenance history or UI queue as the next highest-value remaining item.
+
 ### 20260608-183600
 
 - current task: complete the PCA pump rental return-inspection gate before pumps become available again

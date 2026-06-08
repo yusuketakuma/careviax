@@ -21,6 +21,7 @@ import {
   buildInquiryWorkbenchTaskKey,
   buildIntakeLinkageTaskKey,
   buildMobileVisitModeTaskKey,
+  buildPcaPumpReturnInspectionPendingTaskKey,
   buildPcaPumpRentalOverdueTaskKey,
   buildPreparationTaskKey,
   buildReportDeliveryTaskKey,
@@ -241,6 +242,86 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
       }
 
       return { processedCount: overdueRentals.length };
+    },
+    context.orgId,
+  );
+}
+
+export async function checkPcaPumpReturnInspectionPending(context: JobExecutionContext = {}) {
+  return runJob(
+    'pca_pump_return_inspection_pending_check',
+    async () => {
+      const today = startOfDay();
+      const rentals = await prisma.pcaPumpRental.findMany({
+        where: {
+          ...(context.orgId ? { org_id: context.orgId } : {}),
+          status: 'returned',
+          return_inspection_status: 'pending',
+        },
+        select: {
+          id: true,
+          org_id: true,
+          pump_id: true,
+          institution_id: true,
+          rented_at: true,
+          due_at: true,
+          returned_at: true,
+          pump: {
+            select: {
+              asset_code: true,
+              model_name: true,
+            },
+          },
+          institution: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ returned_at: 'asc' }, { updated_at: 'asc' }],
+        take: 200,
+      });
+
+      const taskSpecs: GeneratedTaskSpec[] = rentals.map((rental) => {
+        const returnedAt = rental.returned_at ? startOfDay(rental.returned_at) : today;
+        const pendingDays = Math.max(
+          0,
+          Math.floor((today.getTime() - returnedAt.getTime()) / 86_400_000),
+        );
+        const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
+        return {
+          orgId: rental.org_id,
+          taskType: 'pca_pump_return_inspection_pending',
+          title: 'PCAポンプの返却検品が未完了です',
+          description: `${rental.institution.name} から返却された ${pumpLabel} の返却検品が未完了です。付属品、清拭、動作確認を完了し、利用可否を確定してください。`,
+          priority: pendingDays >= 2 ? 'high' : 'normal',
+          assignedTo: null,
+          dueDate: rental.returned_at,
+          slaDueAt: rental.returned_at,
+          relatedEntityType: 'pca_pump_rental',
+          relatedEntityId: rental.id,
+          dedupeKey: buildPcaPumpReturnInspectionPendingTaskKey(rental.id),
+          metadata: {
+            rental_id: rental.id,
+            pump_id: rental.pump_id,
+            pump_asset_code: rental.pump.asset_code,
+            institution_id: rental.institution_id,
+            institution_name: rental.institution.name,
+            rented_at: rental.rented_at.toISOString().slice(0, 10),
+            due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+            returned_at: rental.returned_at?.toISOString().slice(0, 10) ?? null,
+            pending_days: pendingDays,
+            action_href: '/admin/pca-pumps',
+            action_label: '返却検品を確認',
+          },
+        };
+      });
+
+      await syncGeneratedOperationalTasks(taskSpecs, ['pca_pump_return_inspection_pending'], {
+        scopeOrgIds: context.orgId ? [context.orgId] : undefined,
+      });
+
+      return { processedCount: rentals.length };
     },
     context.orgId,
   );
@@ -2070,6 +2151,7 @@ export async function runDailyOperations() {
       checkMedicationDeadlines(),
       checkRefillPrescriptions(),
       checkPcaPumpRentalOverdues(),
+      checkPcaPumpReturnInspectionPending(),
       checkIntakeToVisitLinkage(),
       checkPrescriptionExpiry(),
       checkVisitRecordRetention(),

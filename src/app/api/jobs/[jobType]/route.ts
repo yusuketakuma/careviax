@@ -21,6 +21,7 @@ import {
   checkVisitRecordRetention,
   checkPrescriptionOriginalRetention,
   checkPcaPumpRentalOverdues,
+  checkPcaPumpReturnInspectionPending,
   runDailyOperations,
   runEveningOperations,
   refreshMhlwDrugReferences,
@@ -81,6 +82,7 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
   'daily-visit-record-retention': checkVisitRecordRetention,
   'daily-prescription-original-retention': checkPrescriptionOriginalRetention,
   'daily-pca-pump-rental-overdue': checkPcaPumpRentalOverdues,
+  'daily-pca-pump-return-inspection-pending': checkPcaPumpReturnInspectionPending,
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ jobType: string }> }) {

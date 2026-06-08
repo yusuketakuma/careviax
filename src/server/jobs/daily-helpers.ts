@@ -155,11 +155,17 @@ export function buildPcaPumpRentalOverdueTaskKey(rentalId: string) {
   return `pca-pump-rental-overdue:${rentalId}`;
 }
 
+export function buildPcaPumpReturnInspectionPendingTaskKey(rentalId: string) {
+  return `pca-pump-return-inspection-pending:${rentalId}`;
+}
+
 export async function syncGeneratedOperationalTasks(
   taskSpecs: GeneratedTaskSpec[],
   managedTaskTypes: string[],
+  options: { scopeOrgIds?: string[] } = {},
 ) {
   const taskTypes = Array.from(new Set(managedTaskTypes));
+  const scopeOrgIds = Array.from(new Set(options.scopeOrgIds?.filter(Boolean) ?? []));
   const existingTasks =
     taskTypes.length === 0
       ? []
@@ -167,6 +173,7 @@ export async function syncGeneratedOperationalTasks(
           where: {
             task_type: { in: taskTypes },
             status: { in: ['pending', 'in_progress'] },
+            ...(scopeOrgIds.length > 0 ? { org_id: { in: scopeOrgIds } } : {}),
           },
           select: {
             org_id: true,
