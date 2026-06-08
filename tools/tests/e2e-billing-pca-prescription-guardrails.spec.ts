@@ -145,6 +145,92 @@ test.describe('billing/PCA/prescription guardrails', () => {
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
   });
 
+  test('PCA rental API creates a rental and holds returned pump for maintenance', async ({
+    context,
+  }) => {
+    const { page, errors } = await createApiPage(context);
+    const suffix = Date.now().toString(36);
+    const assetCode = `PCA-E2E-${suffix}`;
+
+    const pump = await apiFetch(page, {
+      path: '/api/pca-pumps',
+      method: 'POST',
+      body: {
+        asset_code: assetCode,
+        serial_number: `SER-E2E-${suffix}`,
+        model_name: 'E2E PCA Pump',
+        manufacturer: 'E2E Medical',
+        status: 'available',
+      },
+    });
+    expect(pump.status).toBe(201);
+    expect(pump.body.data).toEqual(
+      expect.objectContaining({
+        asset_code: assetCode,
+        status: 'available',
+      }),
+    );
+
+    const rental = await apiFetch(page, {
+      path: '/api/pca-pump-rentals',
+      method: 'POST',
+      body: {
+        pump_id: pump.body.data.id,
+        institution_id: IDS.institution,
+        status: 'active',
+        rented_at: '2026-06-08',
+        due_at: '2026-06-30',
+        rental_fee_yen: 12000,
+      },
+    });
+    expect(rental.status).toBe(201);
+    expect(rental.body.data).toEqual(
+      expect.objectContaining({
+        pump_id: pump.body.data.id,
+        status: 'active',
+        due_at: '2026-06-30',
+        pump: expect.objectContaining({
+          id: pump.body.data.id,
+          status: 'rented',
+        }),
+      }),
+    );
+
+    const returned = await apiFetch(page, {
+      path: `/api/pca-pump-rentals/${rental.body.data.id}`,
+      method: 'PATCH',
+      body: {
+        status: 'returned',
+        returned_at: '2026-06-20',
+      },
+    });
+    expect(returned.status).toBe(200);
+    expect(returned.body.data).toEqual(
+      expect.objectContaining({
+        id: rental.body.data.id,
+        status: 'returned',
+        returned_at: '2026-06-20',
+      }),
+    );
+
+    const pumps = await apiFetch(page, {
+      path: `/api/pca-pumps?q=${assetCode}`,
+      method: 'GET',
+    });
+    expect(pumps.status).toBe(200);
+    expect(pumps.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: pump.body.data.id,
+          asset_code: assetCode,
+          status: 'maintenance',
+        }),
+      ]),
+    );
+
+    expect(withoutExpectedValidationConsole(errors)).toEqual([]);
+  });
+
   test('prescription intake blocks unconfirmed injections and accepts eligible outpatient injections', async ({
     context,
   }) => {
@@ -204,7 +290,7 @@ async function createApiPage(context: BrowserContext) {
 
 async function apiFetch(
   page: Page,
-  args: { path: string; method: 'GET' | 'POST'; body?: unknown },
+  args: { path: string; method: 'GET' | 'POST' | 'PATCH'; body?: unknown },
 ) {
   return page.evaluate(
     async ({ path, method, body, orgId }) => {

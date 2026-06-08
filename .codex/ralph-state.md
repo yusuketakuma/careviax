@@ -12031,3 +12031,16 @@ Backup directory:
 - validation results: Prettier completed; focused QR/API Vitest passed with 3 files / 27 tests; targeted ESLint passed; `tsc --noEmit --pretty false` passed; DB-backed QR scan Playwright smoke passed 1/1; whitespace check passed
 - remaining work: browser coverage still does not simulate an actual camera decode and POST interception. Broader QR remaining work is candidate-to-master promotion for OTC/general drugs, allergy/side-effect, lab/renal, and insurance/public-subsidy sidecars
 - next action: commit this QR site context fix, then continue with the next highest-value QR/PCA lifecycle gap
+
+### 20260608-171453
+
+- current task: add DB-backed PCA positive-path coverage for create rental, return rental, and pump maintenance hold
+- files inspected: `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `src/app/api/pca-pumps/route.ts`, `src/app/api/pca-pump-rentals/route.ts`, `src/app/api/pca-pump-rentals/[id]/route.ts`, and subagent runtime coverage findings
+- files changed: `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `.codex/ralph-state.md`
+- bugs found: existing DB-backed PCA coverage only verified open-list visibility and double-rent rejection. It did not verify the successful API path that creates a rental, marks the pump rented, returns the rental, and leaves the pump in `maintenance`
+- security risks found: no auth, RLS, PHI export, external transmission, production DB, destructive operation, or permission behavior changed. The test uses authenticated local session calls against the local e2e database and unique test-only PCA asset/serial values
+- performance issues found: no product runtime performance changed. The new E2E creates one PCA pump and rental per run to keep the test repeatable without mutating seed pumps
+- validation commands: `pnpm exec prettier --write tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`; targeted `pnpm exec eslint tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --max-warnings=0`; targeted DB-backed `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --project=chromium --grep "PCA rental API creates a rental"`; `pnpm exec tsc --noEmit --pretty false`; full DB-backed `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --project=chromium`; `git diff --check`
+- validation results: Prettier completed; targeted ESLint passed; new PCA positive-path Playwright test passed 1/1; `tsc --noEmit --pretty false` passed; full billing/PCA/prescription guardrail Playwright passed 4/4; whitespace check passed
+- remaining work: PCA inspection/release workflow, accessory checklist, maintenance event history, invoice/AR/monthly billing, overdue automation, and QR candidate-to-master promotion remain open implementation items
+- next action: commit this DB-backed PCA regression coverage and continue with the next product-level safety or billing gap
