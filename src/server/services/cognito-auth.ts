@@ -17,8 +17,42 @@ import { encodeCognitoChallenge, type CognitoChallengePayload } from '@/lib/auth
 import { parseJsonObjectOrNull } from '@/lib/db/json';
 
 const DEFAULT_REGION = 'ap-northeast-1';
+export const LOCAL_DEMO_LOGIN_EMAIL = 'demo@ph-os.example.com';
+export const LOCAL_DEMO_LOGIN_PASSWORD = 'PhOsDemo-2026';
+const LOCAL_DEMO_COGNITO_SUB = 'demo-cognito-sub-001';
+const LOCAL_DEMO_USER_NAME = '山田 太郎';
 
 let cachedClient: CognitoIdentityProviderClient | null = null;
+
+function isLocalDemoPasswordLoginAllowed() {
+  return (
+    process.env.PLAYWRIGHT === '1' ||
+    process.env.ALLOW_LOCAL_DEMO_PASSWORD_LOGIN === '1' ||
+    process.env.ALLOW_LOCAL_DEMO_PASSWORD_LOGIN === 'true'
+  );
+}
+
+function authenticateLocalDemoUser(args: { email: string; password: string }) {
+  if (!isLocalDemoPasswordLoginAllowed()) return null;
+
+  const expectedPassword =
+    process.env.LOCAL_DEMO_PASSWORD ??
+    (process.env.PLAYWRIGHT === '1' ? LOCAL_DEMO_LOGIN_PASSWORD : undefined);
+
+  if (!expectedPassword) return null;
+
+  const username = normalizeEmail(args.email);
+  if (username !== LOCAL_DEMO_LOGIN_EMAIL || args.password !== expectedPassword) {
+    return null;
+  }
+
+  return {
+    id: LOCAL_DEMO_COGNITO_SUB,
+    email: LOCAL_DEMO_LOGIN_EMAIL,
+    name: LOCAL_DEMO_USER_NAME,
+    cognitoSub: LOCAL_DEMO_COGNITO_SUB,
+  };
+}
 
 function getRequiredCognitoAuthConfig() {
   const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
@@ -112,6 +146,9 @@ function toChallengePayload(args: {
 }
 
 export async function authenticateWithPassword(args: { email: string; password: string }) {
+  const localDemoUser = authenticateLocalDemoUser(args);
+  if (localDemoUser) return localDemoUser;
+
   const { clientId } = getRequiredCognitoAuthConfig();
   const username = normalizeEmail(args.email);
   const secretHash = buildSecretHash(username);

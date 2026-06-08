@@ -26,6 +26,7 @@ import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
 import {
   extractPackagingInstructionTags,
@@ -369,11 +370,13 @@ export function PrescriptionIntakeForm() {
   const [documentUploading, setDocumentUploading] = useState(false);
   const [lines, setLines] = useState<PrescriptionLineInput[]>([emptyLine()]);
   const [appliedQrDraftId, setAppliedQrDraftId] = useState('');
+  const [qrDraftSubmissionId, setQrDraftSubmissionId] = useState('');
   const mapQrLineToForm = toFormLineFromQr;
   const hydrateLinesWithPrevious = hydrateLinesFromPrevious;
 
   const [error, setError] = useState<string | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [previousPrescriptionConfirmOpen, setPreviousPrescriptionConfirmOpen] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const submitBlockersId = 'prescription-submit-blockers';
@@ -619,6 +622,7 @@ export function PrescriptionIntakeForm() {
         : 'QR下書きに患者紐付けがありません。患者・ケースを選択して内容を確認してください',
     );
     setAppliedQrDraftId(qrDraftData.id);
+    setQrDraftSubmissionId(qrDraftData.id);
   }, [
     appliedQrDraftId,
     mapQrLineToForm,
@@ -627,11 +631,6 @@ export function PrescriptionIntakeForm() {
     updatePatientSelection,
     updatePrescriptionMeta,
   ]);
-
-  useEffect(() => {
-    if (!latestPreviousIntake) return;
-    setLines((prev) => hydrateLinesWithPrevious(prev, latestPreviousIntake));
-  }, [hydrateLinesWithPrevious, latestPreviousIntake]);
 
   // Submit prescription
   const submitMutation = useMutation({
@@ -643,7 +642,7 @@ export function PrescriptionIntakeForm() {
         body: JSON.stringify({
           case_id: selectedCaseId,
           patient_id: selectedPatientId,
-          qr_draft_id: initialQrDraftId || undefined,
+          qr_draft_id: qrDraftSubmissionId || undefined,
           source_type: sourceType,
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,
@@ -1048,6 +1047,7 @@ export function PrescriptionIntakeForm() {
       updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
     }
     setAppliedQrDraftId('');
+    setQrDraftSubmissionId('');
     setError(null);
   };
 
@@ -1105,8 +1105,23 @@ export function PrescriptionIntakeForm() {
       latestPreviousIntake,
     );
     setLines(hydratedLines);
+    if (qrDraftSubmissionId) {
+      setQrDraftSubmissionId('');
+      setAppliedQrDraftId('');
+      updatePrescriptionMeta({
+        sourceType:
+          latestPreviousIntake.source_type === 'qr_scan'
+            ? 'paper'
+            : latestPreviousIntake.source_type || 'paper',
+      });
+    }
     setError(null);
-  }, [hydrateLinesWithPrevious, latestPreviousIntake]);
+  }, [hydrateLinesWithPrevious, latestPreviousIntake, qrDraftSubmissionId, updatePrescriptionMeta]);
+
+  const requestLatestPreviousPrescription = useCallback(() => {
+    if (!latestPreviousIntake) return;
+    setPreviousPrescriptionConfirmOpen(true);
+  }, [latestPreviousIntake]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1295,6 +1310,21 @@ export function PrescriptionIntakeForm() {
       data-testid="prescription-intake-form"
       aria-label="処方受付フォーム"
     >
+      <ConfirmDialog
+        open={previousPrescriptionConfirmOpen}
+        onOpenChange={setPreviousPrescriptionConfirmOpen}
+        title="前回処方で現在の明細を置き換えますか？"
+        description={
+          initialQrDraftId
+            ? 'QR下書きから取り込んだ明細を前回処方の内容で置き換えます。QR由来の用量、日数、包装指示、注射剤判定に関わる情報が失われる可能性があります。'
+            : '現在入力中の明細を前回処方の内容で置き換えます。入力済みの用量、日数、包装指示は上書きされます。'
+        }
+        confirmLabel="前回処方で置き換える"
+        cancelLabel="現在の明細を残す"
+        variant={initialQrDraftId ? 'destructive' : 'default'}
+        onConfirm={applyLatestPreviousPrescription}
+      />
+
       {error && (
         <div
           role="alert"
@@ -1437,7 +1467,7 @@ export function PrescriptionIntakeForm() {
               {latestPreviousIntake ? (
                 <button
                   type="button"
-                  onClick={applyLatestPreviousPrescription}
+                  onClick={requestLatestPreviousPrescription}
                   className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-sky-300 bg-background px-3 text-sm font-medium text-sky-950 hover:bg-sky-100/40"
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
@@ -1541,7 +1571,7 @@ export function PrescriptionIntakeForm() {
             </div>
             <button
               type="button"
-              onClick={applyLatestPreviousPrescription}
+              onClick={requestLatestPreviousPrescription}
               className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <ClipboardCopy className="size-4" aria-hidden="true" />
@@ -1586,6 +1616,7 @@ export function PrescriptionIntakeForm() {
               });
               setLines([emptyLine()]);
               setAppliedQrDraftId('');
+              setQrDraftSubmissionId('');
               updateInquiry({
                 inquiryReason: '',
                 inquiryToPhysician: '',
@@ -1633,6 +1664,7 @@ export function PrescriptionIntakeForm() {
                       });
                       setLines([emptyLine()]);
                       setAppliedQrDraftId('');
+                      setQrDraftSubmissionId('');
                       updateInquiry({
                         inquiryReason: '',
                         inquiryToPhysician: '',

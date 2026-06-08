@@ -429,7 +429,11 @@ export default function QRScanPage() {
           <CardContent className="relative p-0">
             {/* スキャン済み進捗バー（2枚目以降） */}
             {scannedCount > 0 && (
-              <div className="flex items-center gap-2 border-b px-4 py-2 text-sm">
+              <div
+                className="flex items-center gap-2 border-b px-4 py-2 text-sm"
+                role="status"
+                aria-live="polite"
+              >
                 <ScanLine className="h-4 w-4 text-primary" />
                 <span className="font-medium text-primary">{progressLabel}</span>
                 <span className="text-muted-foreground">— 次のQRをスキャン</span>
@@ -451,8 +455,12 @@ export default function QRScanPage() {
                 </div>
               )}
               {cameraError && (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <CameraOff className="h-12 w-12 text-muted-foreground" />
+                <div
+                  className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  <CameraOff className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">{cameraError}</p>
                   <Button
                     variant="outline"
@@ -691,7 +699,11 @@ export default function QRScanPage() {
                   ) : null}
                 </dl>
                 {parseResult?.warnings.length ? (
-                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <div
+                    className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                    role="alert"
+                    aria-live="assertive"
+                  >
                     <p className="font-medium">解析時の確認事項</p>
                     <ul className="mt-1 space-y-1">
                       {parseResult.warnings.map((warning, index) => (
@@ -804,8 +816,12 @@ export default function QRScanPage() {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-4 text-center">
-                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                <div
+                  className="flex flex-col items-center gap-3 py-4 text-center"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <AlertTriangle className="h-8 w-8 text-amber-500" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">
                     該当する患者が見つかりませんでした。
                   </p>
@@ -833,7 +849,11 @@ export default function QRScanPage() {
           {/* 送信中 */}
           {phase === 'sending' && (
             <Card>
-              <CardContent className="flex items-center justify-center py-8">
+              <CardContent
+                className="flex items-center justify-center py-8"
+                role="status"
+                aria-live="polite"
+              >
                 <Spinner size="md" />
                 <span className="ml-2 text-sm text-muted-foreground">PCに送信中...</span>
               </CardContent>
@@ -843,8 +863,12 @@ export default function QRScanPage() {
           {/* 送信完了 */}
           {phase === 'done' && selectedPatient && (
             <Card>
-              <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
-                <CheckCircle className="h-10 w-10 text-green-600" />
+              <CardContent
+                className="flex flex-col items-center gap-4 py-8 text-center"
+                role="status"
+                aria-live="polite"
+              >
+                <CheckCircle className="h-10 w-10 text-green-600" aria-hidden="true" />
                 <div>
                   <p className="text-base font-semibold">PCに送信しました</p>
                   <p className="mt-1 text-sm text-muted-foreground">PCで確認・確定してください</p>
@@ -863,7 +887,7 @@ export default function QRScanPage() {
 
                     {/* 警告 */}
                     {parseResult.warnings.length > 0 && (
-                      <div className="space-y-1">
+                      <div className="space-y-1" role="alert" aria-live="assertive">
                         {parseResult.warnings.map((w, i) => (
                           <div key={i} className="flex items-start gap-2 text-sm text-amber-700">
                             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
@@ -874,15 +898,18 @@ export default function QRScanPage() {
                     )}
 
                     {/* エラー（パース失敗） */}
-                    {!parseResult.success &&
-                      parseResult.errors.map((e, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm text-destructive">
-                          <CircleX className="mt-0.5 h-4 w-4 shrink-0" />
-                          <span>
-                            行{e.lineNumber} ({e.recordType}): {e.message}
-                          </span>
-                        </div>
-                      ))}
+                    {!parseResult.success && parseResult.errors.length > 0 && (
+                      <div role="alert" aria-live="assertive" className="space-y-1">
+                        {parseResult.errors.map((e, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-destructive">
+                            <CircleX className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                            <span>
+                              行{e.lineNumber} ({e.recordType}): {e.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -899,8 +926,12 @@ export default function QRScanPage() {
           {/* エラー */}
           {phase === 'error' && (
             <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-                <AlertTriangle className="h-10 w-10 text-destructive" />
+              <CardContent
+                className="flex flex-col items-center gap-3 py-8 text-center"
+                role="alert"
+                aria-live="assertive"
+              >
+                <AlertTriangle className="h-10 w-10 text-destructive" aria-hidden="true" />
                 <p className="text-sm text-destructive">{sendError}</p>
                 <ActionRail>
                   {selectedPatient && (

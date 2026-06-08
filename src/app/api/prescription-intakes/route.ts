@@ -109,6 +109,14 @@ function readDraftLineAt(parsedData: Record<string, unknown> | null | undefined,
   return readJsonObject(line);
 }
 
+function readDraftLines(parsedData: Record<string, unknown> | null | undefined) {
+  if (!Array.isArray(parsedData?.lines)) return [];
+  return parsedData.lines.flatMap((line) => {
+    const object = readJsonObject(line);
+    return object ? [object] : [];
+  });
+}
+
 function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const text = value.trim();
@@ -140,6 +148,60 @@ function readEnumArray<const T extends readonly string[]>(
     (allowed as readonly string[]).includes(item),
   );
   return values && values.length > 0 ? values : undefined;
+}
+
+function normalizeLineComparableValue(value: unknown) {
+  if (value == null) return '';
+  return String(value).trim().replace(/\s+/g, '').toLocaleLowerCase('ja-JP');
+}
+
+function findQrDraftLineMismatches(
+  input: CreatePrescriptionIntakeInput,
+  parsedData: Record<string, unknown> | null | undefined,
+) {
+  const draftLines = readDraftLines(parsedData);
+  const mismatches: string[] = [];
+
+  if (draftLines.length !== input.lines.length) {
+    mismatches.push('line_count');
+  }
+
+  input.lines.forEach((line, index) => {
+    const draftLine = draftLines[index];
+    if (!draftLine) return;
+
+    const comparisons = [
+      {
+        key: 'drug_code',
+        requestValue: line.drug_code,
+        draftValue: readString(draftLine.drugCode),
+      },
+      {
+        key: 'drug_name',
+        requestValue: line.drug_name,
+        draftValue: readString(draftLine.drugName),
+      },
+      { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
+      {
+        key: 'frequency',
+        requestValue: line.frequency,
+        draftValue: readString(draftLine.frequency),
+      },
+      { key: 'days', requestValue: line.days, draftValue: draftLine.days },
+    ];
+
+    for (const comparison of comparisons) {
+      if (
+        comparison.draftValue != null &&
+        normalizeLineComparableValue(comparison.requestValue) !==
+          normalizeLineComparableValue(comparison.draftValue)
+      ) {
+        mismatches.push(`line_${index + 1}_${comparison.key}`);
+      }
+    }
+  });
+
+  return mismatches;
 }
 
 function enrichQrIntakeInputFromDraft(
@@ -402,6 +464,7 @@ export const POST = withAuth(
         | { kind: 'patient_mismatch' }
         | { kind: 'patient_identity_mismatch'; mismatches: string[] }
         | { kind: 'patient_identity_unverifiable'; missing: string[] }
+        | { kind: 'line_mismatch'; mismatches: string[] }
         | { kind: 'claim_conflict' }
         | {
             kind: 'created';
@@ -438,7 +501,6 @@ export const POST = withAuth(
           }
 
           const parsedData = readJsonObject(qrDraft.parsed_data);
-          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData);
           const identityAssessment = assessQrPatientIdentity(
             readQrPatientIdentityFromDraftParsedData(parsedData),
             targetPatient,
@@ -455,6 +517,13 @@ export const POST = withAuth(
               mismatches: identityAssessment.mismatches,
             };
           }
+
+          const lineMismatches = findQrDraftLineMismatches(intakeInput, parsedData);
+          if (lineMismatches.length > 0) {
+            return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
+          }
+
+          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData);
 
           const claimResult = await tx.qrScanDraft.updateMany({
             where: {
@@ -479,7 +548,7 @@ export const POST = withAuth(
             req.orgId,
             req.userId,
             {
-              skipStructuringCheck: source_type === 'qr_scan',
+              skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
               accessContext: { userId: req.userId, role: req.role },
             },
           );
@@ -562,6 +631,12 @@ export const POST = withAuth(
           missing_identity: qrResult.missing,
         });
       }
+      if (qrResult.kind === 'line_mismatch') {
+        return validationError('QR下書きの処方明細と送信された処方明細が一致しません', {
+          qr_draft_id: ['QR下書きの処方明細を再読み込みして確認してください'],
+          mismatches: qrResult.mismatches,
+        });
+      }
       if (qrResult.kind === 'claim_conflict') {
         return conflict('このQRスキャン下書きはすでに処理済みです');
       }
@@ -597,7 +672,7 @@ export const POST = withAuth(
     }
 
     const result = await createPrescriptionIntake(parsed.data, req.orgId, req.userId, {
-      skipStructuringCheck: source_type === 'qr_scan',
+      skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
       accessContext: { userId: req.userId, role: req.role },
     });
 
