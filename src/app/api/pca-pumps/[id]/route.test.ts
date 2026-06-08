@@ -6,12 +6,14 @@ const {
   withOrgContextMock,
   pcaPumpFindFirstMock,
   pcaPumpUpdateMock,
+  pcaPumpMaintenanceEventCreateMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   pcaPumpFindFirstMock: vi.fn(),
   pcaPumpUpdateMock: vi.fn(),
+  pcaPumpMaintenanceEventCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
 
@@ -49,6 +51,8 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     });
     pcaPumpFindFirstMock.mockResolvedValue({
       id: 'pump_1',
+      status: 'maintenance',
+      rentals: [],
       _count: { rentals: 0 },
     });
     pcaPumpUpdateMock.mockResolvedValue({
@@ -69,6 +73,9 @@ describe('/api/pca-pumps/[id] PATCH', () => {
           findFirst: pcaPumpFindFirstMock,
           update: pcaPumpUpdateMock,
         },
+        pcaPumpMaintenanceEvent: {
+          create: pcaPumpMaintenanceEventCreateMock,
+        },
         auditLog: {
           create: auditLogCreateMock,
         },
@@ -79,6 +86,8 @@ describe('/api/pca-pumps/[id] PATCH', () => {
   it('rejects setting a pump with open rentals to a non-rented status', async () => {
     pcaPumpFindFirstMock.mockResolvedValue({
       id: 'pump_1',
+      status: 'maintenance',
+      rentals: [],
       _count: { rentals: 1 },
     });
 
@@ -107,6 +116,15 @@ describe('/api/pca-pumps/[id] PATCH', () => {
       where: { id: 'pump_1', org_id: 'org_1' },
       select: {
         id: true,
+        status: true,
+        rentals: {
+          where: {
+            status: 'returned',
+            return_inspection_status: 'pending',
+          },
+          select: { id: true },
+          take: 1,
+        },
         _count: {
           select: {
             rentals: {
@@ -129,6 +147,62 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         target_type: 'PcaPump',
         target_id: 'pump_1',
         changes: { status: 'maintenance' },
+      }),
+    });
+  });
+
+  it('rejects marking a pump available while return inspection is pending', async () => {
+    pcaPumpFindFirstMock.mockResolvedValue({
+      id: 'pump_1',
+      status: 'maintenance',
+      rentals: [{ id: 'rental_1' }],
+      _count: { rentals: 0 },
+    });
+
+    const response = await PATCH(createRequest({ status: 'available' }), {
+      params: Promise.resolve({ id: 'pump_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '返却検品が未完了のPCAポンプは利用可能にできません',
+    });
+    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('records a maintenance completion event when a maintained pump becomes available', async () => {
+    const response = await PATCH(
+      createRequest({
+        status: 'available',
+        maintenance_event_type: 'maintenance_completed',
+        maintenance_result: 'available',
+        maintenance_notes: '整備完了',
+        maintenance_due_at: '2026-12-31',
+      }),
+      { params: Promise.resolve({ id: 'pump_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'available',
+          maintenance_due_at: new Date('2026-12-31'),
+        }),
+      }),
+    );
+    expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        event_type: 'maintenance_completed',
+        result: 'available',
+        previous_status: 'maintenance',
+        next_status: 'available',
+        performed_by: 'user_1',
+        notes: '整備完了',
+        next_maintenance_due_at: new Date('2026-12-31'),
       }),
     });
   });

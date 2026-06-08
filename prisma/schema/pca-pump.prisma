@@ -19,25 +19,63 @@ enum PcaPumpReturnInspectionStatus {
   needs_maintenance
 }
 
+enum PcaPumpMaintenanceEventType {
+  manual_status_change
+  return_inspection
+  maintenance_completed
+  repair_required
+}
+
+enum PcaPumpMaintenanceResult {
+  available
+  maintenance_continues
+  retired
+}
+
 model PcaPump {
-  id                 String          @id @default(cuid())
+  id                 String                    @id @default(cuid())
   org_id             String
-  org                Organization    @relation(fields: [org_id], references: [id])
+  org                Organization              @relation(fields: [org_id], references: [id])
   asset_code         String
   serial_number      String?
   model_name         String
   manufacturer       String?
-  status             PcaPumpStatus   @default(available)
-  maintenance_due_at DateTime?       @db.Date
+  status             PcaPumpStatus             @default(available)
+  maintenance_due_at DateTime?                 @db.Date
   notes              String?
-  created_at         DateTime        @default(now())
-  updated_at         DateTime        @default(now()) @updatedAt
+  created_at         DateTime                  @default(now())
+  updated_at         DateTime                  @default(now()) @updatedAt
   rentals            PcaPumpRental[]
+  maintenance_events PcaPumpMaintenanceEvent[]
 
   @@unique([id, org_id])
   @@unique([org_id, asset_code])
   @@index([org_id, status])
   @@index([org_id, serial_number])
+}
+
+model PcaPumpMaintenanceEvent {
+  id                      String                      @id @default(cuid())
+  org_id                  String
+  org                     Organization                @relation(fields: [org_id], references: [id])
+  pump_id                 String
+  pump                    PcaPump                     @relation(fields: [pump_id, org_id], references: [id, org_id])
+  rental_id               String?
+  rental                  PcaPumpRental?              @relation(fields: [rental_id, org_id], references: [id, org_id])
+  event_type              PcaPumpMaintenanceEventType
+  result                  PcaPumpMaintenanceResult
+  previous_status         PcaPumpStatus?
+  next_status             PcaPumpStatus?
+  performed_at            DateTime                    @default(now())
+  performed_by            String?
+  checklist               Json?
+  notes                   String?
+  next_maintenance_due_at DateTime?                   @db.Date
+  created_at              DateTime                    @default(now())
+
+  @@index([org_id, pump_id, performed_at])
+  @@index([org_id, rental_id])
+  @@index([org_id, event_type])
 }
 
 model PcaPumpRental {
@@ -63,7 +101,9 @@ model PcaPumpRental {
   notes                    String?
   created_at               DateTime                       @default(now())
   updated_at               DateTime                       @default(now()) @updatedAt
+  maintenance_events       PcaPumpMaintenanceEvent[]
 
+  @@unique([id, org_id])
   @@index([org_id, status])
   @@index([org_id, pump_id])
   @@index([org_id, institution_id])

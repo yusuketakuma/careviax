@@ -423,6 +423,12 @@ CREATE POLICY tenant_isolation ON "PcaPumpRental"
   USING (org_id = public.app_enforced_org_id())
   WITH CHECK (org_id = public.app_enforced_org_id());
 
+ALTER TABLE "PcaPumpMaintenanceEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PcaPumpMaintenanceEvent";
+CREATE POLICY tenant_isolation ON "PcaPumpMaintenanceEvent"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+
 ALTER TABLE "WebhookRegistration" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "WebhookRegistration"
   USING (org_id = current_setting('app.current_org_id', true))
@@ -507,4 +513,5 @@ ALTER TABLE "QrScanDraft" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitScheduleProposal" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPump" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpRental" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PcaPumpMaintenanceEvent" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "WebhookRegistration" FORCE ROW LEVEL SECURITY;

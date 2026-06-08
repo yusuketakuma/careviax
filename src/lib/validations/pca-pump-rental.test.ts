@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPcaPumpRentalSchema,
   createPcaPumpSchema,
+  updatePcaPumpSchema,
   updatePcaPumpRentalSchema,
 } from './pca-pump-rental';
 
@@ -26,6 +27,28 @@ describe('pca-pump-rental validations', () => {
         asset_code: 'PCA-001',
         model_name: 'CADD Legacy PCA',
         maintenance_due_at: '2026-02-30',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts maintenance event metadata only with a pump status change', () => {
+    expect(
+      updatePcaPumpSchema.parse({
+        status: 'available',
+        maintenance_event_type: 'maintenance_completed',
+        maintenance_result: 'available',
+        maintenance_notes: '整備完了',
+      }),
+    ).toMatchObject({
+      status: 'available',
+      maintenance_event_type: 'maintenance_completed',
+      maintenance_result: 'available',
+    });
+
+    expect(
+      updatePcaPumpSchema.safeParse({
+        maintenance_event_type: 'maintenance_completed',
+        maintenance_result: 'available',
       }).success,
     ).toBe(false);
   });
@@ -161,6 +184,28 @@ describe('pca-pump-rental validations', () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it('requires a reason when a return inspection needs maintenance', () => {
+    expect(
+      updatePcaPumpRentalSchema.safeParse({
+        status: 'returned',
+        returned_at: '2026-06-18',
+        return_inspection_status: 'needs_maintenance',
+        accessory_checklist: {
+          pump_body: { status: 'ok' },
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      updatePcaPumpRentalSchema.safeParse({
+        status: 'returned',
+        returned_at: '2026-06-18',
+        return_inspection_status: 'needs_maintenance',
+        return_inspection_notes: 'メーカー点検へ回す',
+      }).success,
+    ).toBe(true);
   });
 
   it('rejects unknown return inspection checklist keys', () => {

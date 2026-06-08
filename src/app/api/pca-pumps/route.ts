@@ -16,11 +16,27 @@ function parsePumpStatusParam(value: string | undefined) {
 }
 
 function serializePump<
-  T extends { maintenance_due_at: Date | null; created_at: Date; updated_at: Date },
+  T extends {
+    maintenance_due_at: Date | null;
+    created_at: Date;
+    updated_at: Date;
+    maintenance_events?: Array<{
+      performed_at: Date;
+      created_at: Date;
+      next_maintenance_due_at: Date | null;
+    }>;
+  },
 >(item: T) {
   return {
     ...item,
     maintenance_due_at: item.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
+    maintenance_events: item.maintenance_events?.map((event) => ({
+      ...event,
+      performed_at: event.performed_at.toISOString(),
+      created_at: event.created_at.toISOString(),
+      next_maintenance_due_at:
+        event.next_maintenance_due_at?.toISOString().slice(0, 10) ?? null,
+    })),
     created_at: item.created_at.toISOString(),
     updated_at: item.updated_at.toISOString(),
   };
@@ -68,6 +84,10 @@ export const GET = withAuth(
                   },
                 },
               },
+            },
+            maintenance_events: {
+              orderBy: [{ performed_at: 'desc' }, { created_at: 'desc' }],
+              take: 3,
             },
           },
           orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],

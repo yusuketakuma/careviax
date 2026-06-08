@@ -60,15 +60,16 @@ model Organization {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  sites                   PharmacySite[]
-  memberships             Membership[]
-  facilities              Facility[]
-  external_professionals  ExternalProfessional[]
-  prescriber_institutions PrescriberInstitution[]
-  pca_pumps               PcaPump[]
-  pca_pump_rentals        PcaPumpRental[]
-  service_areas           ServiceArea[]
-  webhook_registrations   WebhookRegistration[]
+  sites                       PharmacySite[]
+  memberships                 Membership[]
+  facilities                  Facility[]
+  external_professionals      ExternalProfessional[]
+  prescriber_institutions     PrescriberInstitution[]
+  pca_pumps                   PcaPump[]
+  pca_pump_rentals            PcaPumpRental[]
+  pca_pump_maintenance_events PcaPumpMaintenanceEvent[]
+  service_areas               ServiceArea[]
+  webhook_registrations       WebhookRegistration[]
 
   @@index([name])
 }

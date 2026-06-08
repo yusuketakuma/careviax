@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
+  buildPcaPumpStatusUpdatePayload,
   buildPcaReturnInspectionPayload,
   createDefaultPcaReturnInspectionChecklist,
   getPcaReturnInspectionMissingNoteLabels,
@@ -43,6 +44,17 @@ vi.mock('@tanstack/react-query', () => ({
               status: 'available',
               maintenance_due_at: '2026-12-31',
               notes: null,
+              maintenance_events: [
+                {
+                  id: 'event_1',
+                  event_type: 'maintenance_completed',
+                  result: 'available',
+                  performed_at: '2026-06-08T01:00:00.000Z',
+                  performed_by: 'user_1',
+                  notes: '整備完了',
+                  next_maintenance_due_at: '2026-12-31',
+                },
+              ],
               rentals: [],
             },
             {
@@ -54,6 +66,7 @@ vi.mock('@tanstack/react-query', () => ({
               status: 'rented',
               maintenance_due_at: '2026-12-31',
               notes: null,
+              maintenance_events: [],
               rentals: [
                 {
                   id: 'rental_active',
@@ -237,6 +250,21 @@ describe('PcaPumpsContent', () => {
         power_adapter: { status: 'missing', notes: '医療機関で紛失' },
         operation_check: { status: 'damaged', notes: 'アラーム鳴動なし' },
       },
+    });
+  });
+
+  it('adds a maintenance completion event payload when marking a maintained pump available', () => {
+    expect(
+      buildPcaPumpStatusUpdatePayload({
+        currentStatus: 'maintenance',
+        nextStatus: 'available',
+      }),
+    ).toEqual({
+      status: 'available',
+      maintenance_event_type: 'maintenance_completed',
+      maintenance_result: 'available',
+      maintenance_notes: '整備完了（台帳操作）',
+      maintenance_due_at: null,
     });
   });
 });

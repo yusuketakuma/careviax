@@ -48,6 +48,12 @@ type PcaPumpAccessoryChecklistItem = {
 };
 
 type PcaPumpAccessoryChecklistState = Record<PcaPumpAccessoryKey, PcaPumpAccessoryChecklistItem>;
+type PcaPumpMaintenanceEventType =
+  | 'manual_status_change'
+  | 'return_inspection'
+  | 'maintenance_completed'
+  | 'repair_required';
+type PcaPumpMaintenanceResult = 'available' | 'maintenance_continues' | 'retired';
 
 type Institution = {
   id: string;
@@ -64,6 +70,15 @@ type PcaPump = {
   status: PcaPumpStatus;
   maintenance_due_at: string | null;
   notes: string | null;
+  maintenance_events: Array<{
+    id: string;
+    event_type: PcaPumpMaintenanceEventType;
+    result: PcaPumpMaintenanceResult;
+    performed_at: string;
+    performed_by: string | null;
+    notes: string | null;
+    next_maintenance_due_at: string | null;
+  }>;
   rentals: Array<{
     id: string;
     status: PcaPumpRentalStatus;
@@ -126,6 +141,12 @@ type ReturnInspectionFormState = {
   checklist: PcaPumpAccessoryChecklistState;
 };
 
+type MaintenanceCompletionFormState = {
+  pump: PcaPump | null;
+  notes: string;
+  next_maintenance_due_at: string;
+};
+
 const PUMP_STATUS_LABELS: Record<PcaPumpStatus, string> = {
   available: '利用可能',
   rented: '貸出中',
@@ -146,6 +167,13 @@ const ACCESSORY_STATUS_LABELS: Record<PcaPumpAccessoryStatus, string> = {
   missing: '不足',
   damaged: '破損',
   not_applicable: '該当なし',
+};
+
+const MAINTENANCE_EVENT_LABELS: Record<PcaPumpMaintenanceEventType, string> = {
+  manual_status_change: '状態変更',
+  return_inspection: '返却検品',
+  maintenance_completed: '整備完了',
+  repair_required: '要修理',
 };
 
 export const PCA_RETURN_INSPECTION_ITEMS: Array<{
@@ -233,11 +261,49 @@ export function buildPcaReturnInspectionPayload(form: {
   };
 }
 
+export function buildPcaPumpStatusUpdatePayload(args: {
+  currentStatus: PcaPumpStatus;
+  nextStatus: PcaPumpStatus;
+  maintenanceNotes?: string;
+  nextMaintenanceDueAt?: string;
+}) {
+  if (args.currentStatus === 'maintenance' && args.nextStatus === 'available') {
+    return {
+      status: args.nextStatus,
+      maintenance_event_type: 'maintenance_completed',
+      maintenance_result: 'available',
+      maintenance_notes: toNullableString(args.maintenanceNotes ?? '') ?? '整備完了（台帳操作）',
+      maintenance_due_at: toNullableString(args.nextMaintenanceDueAt ?? ''),
+    };
+  }
+
+  if (args.nextStatus === 'maintenance') {
+    return {
+      status: args.nextStatus,
+      maintenance_event_type: 'manual_status_change',
+      maintenance_result: 'maintenance_continues',
+      maintenance_notes: 'メンテナンスへ変更（台帳操作）',
+    };
+  }
+
+  return { status: args.nextStatus };
+}
+
 function emptyReturnInspectionForm(rental: PcaPumpRental | null = null): ReturnInspectionFormState {
   return {
     rental,
     notes: '',
     checklist: createDefaultPcaReturnInspectionChecklist(),
+  };
+}
+
+function emptyMaintenanceCompletionForm(
+  pump: PcaPump | null = null,
+): MaintenanceCompletionFormState {
+  return {
+    pump,
+    notes: '',
+    next_maintenance_due_at: pump?.maintenance_due_at ?? '',
   };
 }
 
@@ -276,10 +342,14 @@ export function PcaPumpsContent() {
   const [pumpSheetOpen, setPumpSheetOpen] = useState(false);
   const [rentalSheetOpen, setRentalSheetOpen] = useState(false);
   const [inspectionSheetOpen, setInspectionSheetOpen] = useState(false);
+  const [maintenanceSheetOpen, setMaintenanceSheetOpen] = useState(false);
   const [pumpForm, setPumpForm] = useState<PumpFormState>(EMPTY_PUMP_FORM);
   const [rentalForm, setRentalForm] = useState<RentalFormState>(emptyRentalForm());
   const [inspectionForm, setInspectionForm] = useState<ReturnInspectionFormState>(
     emptyReturnInspectionForm(),
+  );
+  const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceCompletionFormState>(
+    emptyMaintenanceCompletionForm(),
   );
 
   const pumpsQuery = useQuery({
@@ -355,8 +425,13 @@ export function PcaPumpsContent() {
   );
 
   const availablePumps = useMemo(
-    () => pumps.filter((pump) => pump.status === 'available' || pump.id === rentalForm.pump_id),
-    [pumps, rentalForm.pump_id],
+    () =>
+      pumps.filter(
+        (pump) =>
+          (pump.status === 'available' || pump.id === rentalForm.pump_id) &&
+          !pendingInspectionPumpIds.has(pump.id),
+      ),
+    [pumps, pendingInspectionPumpIds, rentalForm.pump_id],
   );
 
   async function invalidateAll() {
@@ -467,14 +542,29 @@ export function PcaPumpsContent() {
   });
 
   const updatePumpStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: PcaPumpStatus }) => {
+    mutationFn: async ({
+      id,
+      currentStatus,
+      status,
+    }: {
+      id: string;
+      currentStatus: PcaPumpStatus;
+      status: PcaPumpStatus;
+    }) => {
       const response = await fetch(`/api/pca-pumps/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(
+          buildPcaPumpStatusUpdatePayload({
+            currentStatus,
+            nextStatus: status,
+            maintenanceNotes: maintenanceForm.notes,
+            nextMaintenanceDueAt: maintenanceForm.next_maintenance_due_at,
+          }),
+        ),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -484,6 +574,8 @@ export function PcaPumpsContent() {
     },
     onSuccess: async () => {
       toast.success('PCAポンプの状態を更新しました');
+      setMaintenanceSheetOpen(false);
+      setMaintenanceForm(emptyMaintenanceCompletionForm());
       await invalidateAll();
     },
     onError: (error) => {
@@ -541,6 +633,11 @@ export function PcaPumpsContent() {
     setInspectionSheetOpen(true);
   }
 
+  function openMaintenanceCompletion(pump: PcaPump) {
+    setMaintenanceForm(emptyMaintenanceCompletionForm(pump));
+    setMaintenanceSheetOpen(true);
+  }
+
   function updateInspectionItem(
     key: PcaPumpAccessoryKey,
     patch: Partial<PcaPumpAccessoryChecklistItem>,
@@ -592,6 +689,21 @@ export function PcaPumpsContent() {
       ),
     },
     {
+      id: 'maintenance_history',
+      header: '直近整備',
+      cell: ({ row }) => {
+        const latestEvent = row.original.maintenance_events[0];
+        return latestEvent ? (
+          <div>
+            <p>{MAINTENANCE_EVENT_LABELS[latestEvent.event_type]}</p>
+            <p className="text-xs text-muted-foreground">{formatDate(latestEvent.performed_at)}</p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
       id: 'current_rental',
       header: '貸出先',
       cell: ({ row }) => {
@@ -623,10 +735,13 @@ export function PcaPumpsContent() {
             size="sm"
             variant="outline"
             onClick={() =>
-              updatePumpStatusMutation.mutate({
-                id: row.original.id,
-                status: row.original.status === 'maintenance' ? 'available' : 'maintenance',
-              })
+              row.original.status === 'maintenance'
+                ? openMaintenanceCompletion(row.original)
+                : updatePumpStatusMutation.mutate({
+                    id: row.original.id,
+                    currentStatus: row.original.status,
+                    status: 'maintenance',
+                  })
             }
             disabled={
               row.original.status === 'rented' ||
@@ -639,7 +754,7 @@ export function PcaPumpsContent() {
                 : undefined
             }
           >
-            {row.original.status === 'maintenance' ? '利用可' : 'メンテ'}
+            {row.original.status === 'maintenance' ? '整備完了' : 'メンテ'}
           </Button>
         </div>
       ),
@@ -1022,6 +1137,72 @@ export function PcaPumpsContent() {
                 disabled={createRentalMutation.isPending}
               >
                 {createRentalMutation.isPending ? '登録中...' : '貸出登録'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={maintenanceSheetOpen} onOpenChange={setMaintenanceSheetOpen}>
+        <SheetContent className="sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>整備完了</SheetTitle>
+            <SheetDescription>
+              整備結果、次回メンテ予定日、作業メモを記録して利用可能に戻します。
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            {maintenanceForm.pump ? (
+              <div className="rounded-md border border-border/70 bg-muted/20 p-4">
+                <p className="font-medium text-foreground">
+                  {maintenanceForm.pump.asset_code} / {maintenanceForm.pump.model_name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  現在の状態 {PUMP_STATUS_LABELS[maintenanceForm.pump.status]}
+                </p>
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <Label htmlFor="maintenance-next-due">次回メンテ予定日</Label>
+              <Input
+                id="maintenance-next-due"
+                type="date"
+                value={maintenanceForm.next_maintenance_due_at}
+                onChange={(event) =>
+                  setMaintenanceForm((current) => ({
+                    ...current,
+                    next_maintenance_due_at: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="maintenance-notes">作業メモ</Label>
+              <Textarea
+                id="maintenance-notes"
+                rows={4}
+                value={maintenanceForm.notes}
+                onChange={(event) =>
+                  setMaintenanceForm((current) => ({ ...current, notes: event.target.value }))
+                }
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMaintenanceSheetOpen(false)}>
+                キャンセル
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!maintenanceForm.pump) return;
+                  updatePumpStatusMutation.mutate({
+                    id: maintenanceForm.pump.id,
+                    currentStatus: maintenanceForm.pump.status,
+                    status: 'available',
+                  });
+                }}
+                disabled={!maintenanceForm.pump || updatePumpStatusMutation.isPending}
+              >
+                {updatePumpStatusMutation.isPending ? '保存中...' : '整備完了'}
               </Button>
             </div>
           </div>

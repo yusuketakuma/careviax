@@ -8,6 +8,7 @@ const {
   prescriberInstitutionFindFirstMock,
   pcaPumpRentalUpdateMock,
   pcaPumpUpdateMock,
+  pcaPumpMaintenanceEventCreateMock,
   openRentalFindFirstMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   prescriberInstitutionFindFirstMock: vi.fn(),
   pcaPumpRentalUpdateMock: vi.fn(),
   pcaPumpUpdateMock: vi.fn(),
+  pcaPumpMaintenanceEventCreateMock: vi.fn(),
   openRentalFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
@@ -83,6 +85,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       due_at: new Date('2026-06-20T00:00:00.000Z'),
       returned_at: null,
       return_inspection_status: null,
+      pump: { status: 'rented' },
     });
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     openRentalFindFirstMock.mockResolvedValue(null);
@@ -101,6 +104,9 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         },
         pcaPump: {
           update: pcaPumpUpdateMock,
+        },
+        pcaPumpMaintenanceEvent: {
+          create: pcaPumpMaintenanceEventCreateMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -269,6 +275,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       due_at: new Date('2026-06-20T00:00:00.000Z'),
       returned_at: new Date('2026-06-18T00:00:00.000Z'),
       return_inspection_status: 'pending',
+      pump: { status: 'maintenance' },
     });
 
     const response = await PATCH(
@@ -316,6 +323,19 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       where: { id: 'pump_1' },
       data: { status: 'available' },
     });
+    expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        rental_id: 'rental_1',
+        event_type: 'return_inspection',
+        result: 'available',
+        previous_status: 'maintenance',
+        next_status: 'available',
+        performed_by: 'user_1',
+        notes: '動作確認済み',
+      }),
+    });
   });
 
   it('keeps the pump in maintenance when return inspection needs maintenance', async () => {
@@ -327,6 +347,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       due_at: new Date('2026-06-20T00:00:00.000Z'),
       returned_at: new Date('2026-06-18T00:00:00.000Z'),
       return_inspection_status: 'pending',
+      pump: { status: 'maintenance' },
     });
 
     const response = await PATCH(
@@ -352,6 +373,18 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpUpdateMock).toHaveBeenCalledWith({
       where: { id: 'pump_1' },
       data: { status: 'maintenance' },
+    });
+    expect(pcaPumpMaintenanceEventCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        rental_id: 'rental_1',
+        event_type: 'return_inspection',
+        result: 'maintenance_continues',
+        previous_status: 'maintenance',
+        next_status: 'maintenance',
+        performed_by: 'user_1',
+      }),
     });
   });
 

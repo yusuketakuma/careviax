@@ -5,6 +5,17 @@ import { optionalNullablePhoneNumberSchema } from '@/lib/validations/phone';
 const optionalTextSchema = z.string().trim().optional().nullable();
 const dateSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const returnInspectionStatusSchema = z.enum(['pending', 'passed', 'needs_maintenance']);
+const pcaPumpMaintenanceEventTypeSchema = z.enum([
+  'manual_status_change',
+  'return_inspection',
+  'maintenance_completed',
+  'repair_required',
+]);
+const pcaPumpMaintenanceResultSchema = z.enum([
+  'available',
+  'maintenance_continues',
+  'retired',
+]);
 
 export const pcaPumpAccessoryChecklistKeys = [
   'pump_body',
@@ -70,7 +81,26 @@ export const createPcaPumpSchema = z.object({
   notes: optionalTextSchema,
 });
 
-export const updatePcaPumpSchema = createPcaPumpSchema.partial();
+export const updatePcaPumpSchema = createPcaPumpSchema
+  .partial()
+  .extend({
+    maintenance_event_type: pcaPumpMaintenanceEventTypeSchema.optional(),
+    maintenance_result: pcaPumpMaintenanceResultSchema.optional(),
+    maintenance_notes: optionalTextSchema,
+  })
+  .superRefine((value, ctx) => {
+    const hasMaintenanceEventPayload =
+      value.maintenance_event_type !== undefined ||
+      value.maintenance_result !== undefined ||
+      value.maintenance_notes !== undefined;
+    if (hasMaintenanceEventPayload && value.status === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: '整備履歴を記録する場合は状態変更も指定してください',
+      });
+    }
+  });
 
 function validateRentalDateOrder(
   value: {
@@ -178,6 +208,21 @@ export const updatePcaPumpRentalSchema = z
           code: 'custom',
           path: ['accessory_checklist'],
           message: '検品合格には全ての付属品チェックがOKまたは該当なしである必要があります',
+        });
+      }
+    }
+    if (value.return_inspection_status === 'needs_maintenance') {
+      const hasBlockingChecklistItem =
+        value.accessory_checklist !== null &&
+        value.accessory_checklist !== undefined &&
+        Object.values(value.accessory_checklist).some(
+          (item) => item?.status === 'missing' || item?.status === 'damaged',
+        );
+      if (!hasBlockingChecklistItem && !value.return_inspection_notes?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['return_inspection_notes'],
+          message: '要整備にする場合は検品メモまたは不足・破損の詳細が必須です',
         });
       }
     }

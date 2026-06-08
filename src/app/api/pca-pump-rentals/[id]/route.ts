@@ -73,6 +73,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           due_at: true,
           returned_at: true,
           return_inspection_status: true,
+          pump: {
+            select: {
+              status: true,
+            },
+          },
         },
       }),
     { requestContext: ctx },
@@ -258,6 +263,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             institution: true,
           },
         });
+        if (nextInspectionStatus === 'passed' || nextInspectionStatus === 'needs_maintenance') {
+          await tx.pcaPumpMaintenanceEvent.create({
+            data: {
+              org_id: ctx.orgId,
+              pump_id: existing.pump_id,
+              rental_id: existing.id,
+              event_type: 'return_inspection',
+              result: nextInspectionStatus === 'passed' ? 'available' : 'maintenance_continues',
+              previous_status: existing.pump.status,
+              next_status: nextInspectionStatus === 'passed' ? 'available' : 'maintenance',
+              performed_by: ctx.userId,
+              checklist:
+                parsed.data.accessory_checklist === undefined ||
+                parsed.data.accessory_checklist === null
+                  ? Prisma.DbNull
+                  : toPrismaJson(parsed.data.accessory_checklist),
+              notes: parsed.data.return_inspection_notes || null,
+            },
+          });
+        }
         await tx.auditLog.create({
           data: {
             org_id: ctx.orgId,

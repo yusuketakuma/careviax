@@ -16,6 +16,7 @@ export const EXPECTED_AUDIT_TRIGGER_CONTRACTS = [
   { name: 'audit_log_set_audit', tableName: 'SetAudit' },
   { name: 'audit_log_pca_pump', tableName: 'PcaPump' },
   { name: 'audit_log_pca_pump_rental', tableName: 'PcaPumpRental' },
+  { name: 'audit_log_pca_pump_maintenance_event', tableName: 'PcaPumpMaintenanceEvent' },
 ] as const;
 
 export type ExpectedAuditTriggerContract = (typeof EXPECTED_AUDIT_TRIGGER_CONTRACTS)[number];
