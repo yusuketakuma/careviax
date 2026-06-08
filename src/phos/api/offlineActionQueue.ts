@@ -1,9 +1,16 @@
 'use client';
 
 import Dexie, { type Table } from 'dexie';
-import { encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import type { ActionRequest, OfflineOpClass } from '@/phos/contracts/phos_contracts';
-import type { PhosOfflineActionQueueResult, PhosOfflineCardActionQueueInput } from './types';
+import type {
+  PhosApiClient,
+  PhosOfflineActionQueueResult,
+  PhosOfflineCardActionQueueInput,
+} from './types';
+import { PhosApiError } from './types';
+
+const MAX_RETRIES = 3;
 
 export type PhosOfflineActionRecord = {
   id?: number;
@@ -16,6 +23,18 @@ export type PhosOfflineActionRecord = {
   created_at: string;
   retry_count: number;
   last_error?: string;
+  blocked_reason?: 'CONFLICT' | 'MAX_RETRIES';
+};
+
+export type PhosOfflineActionStatusView = {
+  queue_id: number;
+  card_id: string;
+  action_code: ActionRequest['action_code'];
+  offline_op_class: OfflineOpClass;
+  created_at: string;
+  retry_count: number;
+  last_error?: string;
+  blocked_reason?: 'CONFLICT' | 'MAX_RETRIES';
 };
 
 class PhosOfflineActionDb extends Dexie {
@@ -57,4 +76,79 @@ export async function enqueuePhosOfflineCardAction(
   });
 
   return { queue_id: id };
+}
+
+export async function listPhosPendingOfflineCardActions(): Promise<PhosOfflineActionStatusView[]> {
+  const records = await phosOfflineActionDb.offlineActions.orderBy('created_at').toArray();
+  return records.map((record) => ({
+    queue_id: record.id ?? 0,
+    card_id: record.card_id,
+    action_code: record.action_code,
+    offline_op_class: record.offline_op_class,
+    created_at: record.created_at,
+    retry_count: record.retry_count,
+    ...(record.last_error ? { last_error: record.last_error } : {}),
+    ...(record.blocked_reason ? { blocked_reason: record.blocked_reason } : {}),
+  }));
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof PhosApiError) return error.response.error_code;
+  if (error instanceof Error) return error.message;
+  return 'Unknown offline action replay error';
+}
+
+function blockedReasonFor(error: unknown, next_retry_count: number) {
+  if (error instanceof PhosApiError && error.status === 409) return 'CONFLICT';
+  if (next_retry_count >= MAX_RETRIES) return 'MAX_RETRIES';
+  return undefined;
+}
+
+async function readQueuedCardAction(record: PhosOfflineActionRecord): Promise<{
+  card_id: string;
+  request: ActionRequest;
+}> {
+  const payload = await decryptOfflinePayload(record.payload);
+  if (!payload) throw new Error('PH-OS offline card action payload could not be decrypted');
+  const parsed = JSON.parse(payload) as {
+    card_id?: unknown;
+    request?: unknown;
+  };
+  if (typeof parsed.card_id !== 'string' || !parsed.request || typeof parsed.request !== 'object') {
+    throw new Error('PH-OS offline card action payload is invalid');
+  }
+  return {
+    card_id: parsed.card_id,
+    request: parsed.request as ActionRequest,
+  };
+}
+
+export async function retryPhosOfflineCardActions(input: {
+  client: Pick<PhosApiClient, 'executeCardAction'>;
+}): Promise<{ synced: number; failed: number }> {
+  const pending = (
+    await phosOfflineActionDb.offlineActions.where('retry_count').below(MAX_RETRIES).toArray()
+  ).filter((record) => !record.blocked_reason);
+  let synced = 0;
+  let failed = 0;
+
+  for (const record of pending) {
+    if (record.id === undefined) continue;
+    try {
+      const payload = await readQueuedCardAction(record);
+      await input.client.executeCardAction(payload.card_id, payload.request);
+      await phosOfflineActionDb.offlineActions.delete(record.id);
+      synced++;
+    } catch (error) {
+      failed++;
+      const next_retry_count = record.retry_count + 1;
+      await phosOfflineActionDb.offlineActions.update(record.id, {
+        retry_count: next_retry_count,
+        last_error: errorMessage(error),
+        blocked_reason: blockedReasonFor(error, next_retry_count),
+      });
+    }
+  }
+
+  return { synced, failed };
 }

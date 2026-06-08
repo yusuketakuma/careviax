@@ -81,6 +81,15 @@ export function createDynamoClaimCandidatesClient(input: {
   client: Pick<AwsDynamoDBClient, 'send'>;
 }): DynamoClaimCandidatesClient {
   return {
+    async getIdempotency(query) {
+      const result = await input.client.send(
+        new GetItemCommand({
+          TableName: query.table_name,
+          Key: dynamoKey(query.partition_key, query.sort_key),
+        }),
+      );
+      return (result.Item ?? null) as DynamoItem | null;
+    },
     async queryClaimCandidates(query): Promise<DynamoClaimCandidateQueryOutput> {
       const result = await input.client.send(
         new QueryCommand({

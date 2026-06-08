@@ -42,6 +42,7 @@ function candidate(overrides: Partial<ClaimCandidateView> = {}): ClaimCandidateV
 
 function client(overrides: Partial<DynamoClaimCandidatesClient> = {}): DynamoClaimCandidatesClient {
   return {
+    getIdempotency: vi.fn(async () => null),
     queryClaimCandidates: vi.fn(async () => ({
       items: [{ claim_candidate: toDynamoAttributeValue(candidate()) }],
     })),
@@ -115,5 +116,63 @@ describe('createDynamoClaimCandidatesRepository', () => {
         reason_code: 'NOT_ELIGIBLE',
       }),
     );
+  });
+
+  it('replays matching exclude idempotency responses without loading the candidate', async () => {
+    const replayed: ClaimCandidateMutationResponse = {
+      candidate: candidate({ status: 'EXCLUDED', status_label: '除外済み', server_version: 2 }),
+      side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+      server_version: 2,
+    };
+    const fakeClient = client({
+      getIdempotency: vi.fn(async () => ({
+        request_fingerprint: toDynamoAttributeValue(
+          JSON.stringify({
+            client_version: 1,
+            reason_code: 'NOT_ELIGIBLE',
+            reason_note: null,
+          }),
+        ),
+        response_json: toDynamoAttributeValue(JSON.stringify(replayed)),
+      })),
+    });
+    const repository = createDynamoClaimCandidatesRepository(fakeClient);
+
+    await expect(
+      repository.excludeClaimCandidate(ctx, 'claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(replayed);
+
+    expect(fakeClient.getIdempotency).toHaveBeenCalledWith({
+      table_name: 'phos_core',
+      partition_key: 'TENANT#tenant_abc123',
+      sort_key: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#claim_1#idem_1',
+    });
+    expect(fakeClient.excludeClaimCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicting exclude idempotency keys before candidate mutation', async () => {
+    const fakeClient = client({
+      getIdempotency: vi.fn(async () => ({
+        request_fingerprint: toDynamoAttributeValue('different'),
+      })),
+    });
+    const repository = createDynamoClaimCandidatesRepository(fakeClient);
+
+    await expect(
+      repository.excludeClaimCandidate(ctx, 'claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      error_code: 'IDEMPOTENCY_CONFLICT',
+      details: { idempotency_key: 'idem_1' },
+    });
+    expect(fakeClient.excludeClaimCandidate).not.toHaveBeenCalled();
   });
 });

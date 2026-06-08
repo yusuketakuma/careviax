@@ -19,6 +19,8 @@ import type {
   ClaimCandidateSearchQuery,
   PhosClaimCandidatesRepository,
 } from './claim-candidates-repository';
+import { PhosDomainError } from './cards-repository';
+import type { DynamoGetInput } from './dynamo-cards-repository';
 import type { TenantContext } from './tenant-context';
 
 type DynamoItem = Record<string, AttributeValue>;
@@ -50,6 +52,7 @@ export type DynamoClaimCandidateExcludeInput = {
 };
 
 export type DynamoClaimCandidatesClient = {
+  getIdempotency(input: DynamoGetInput): Promise<DynamoItem | null>;
   queryClaimCandidates(
     input: DynamoClaimCandidateQueryInput,
   ): Promise<DynamoClaimCandidateQueryOutput>;
@@ -75,6 +78,18 @@ function numberAttr(item: DynamoItem, key: string): number | undefined {
   return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function stringAttr(item: DynamoItem, key: string): string | undefined {
+  const value = item[key];
+  if (!value) return undefined;
+  const parsed = fromDynamoAttributeValue(value);
+  return typeof parsed === 'string' ? parsed : undefined;
+}
+
+function parseJsonAttr<T>(item: DynamoItem, key: string): T | undefined {
+  const value = stringAttr(item, key);
+  return value ? (JSON.parse(value) as T) : undefined;
+}
+
 function toClaimCandidateView(item: DynamoItem): ClaimCandidateView {
   const candidate = objectAttr(item, 'claim_candidate') as ClaimCandidateView;
   return {
@@ -88,6 +103,15 @@ function requestFingerprint(command: ExcludeClaimCandidateRequest): string {
     client_version: command.client_version,
     reason_code: command.reason_code,
     reason_note: command.reason_note ?? null,
+  });
+}
+
+function idempotencyConflict(idempotency_key: string): PhosDomainError {
+  return new PhosDomainError({
+    status: 409,
+    error_code: 'IDEMPOTENCY_CONFLICT',
+    message_key: 'api.error.idempotency_conflict',
+    details: { idempotency_key },
   });
 }
 
@@ -123,17 +147,34 @@ export function createDynamoClaimCandidatesRepository(
       };
     },
     async excludeClaimCandidate(ctx, candidate_id, command) {
+      const partition_key = tenantPk(ctx);
+      const request_fingerprint = requestFingerprint(command);
       const idempotency_sort_key = claimCandidateIdempotencySk({
         mutation_key: `exclude#${candidate_id}`,
         idempotency_key: command.idempotency_key,
       });
+      const idempotencyItem = await client.getIdempotency({
+        table_name: PHOS_CORE_TABLE,
+        partition_key,
+        sort_key: idempotency_sort_key,
+      });
+      if (idempotencyItem) {
+        const existingFingerprint = stringAttr(idempotencyItem, 'request_fingerprint');
+        const response = parseJsonAttr<ClaimCandidateMutationResponse>(
+          idempotencyItem,
+          'response_json',
+        );
+        if (existingFingerprint === request_fingerprint && response) return response;
+        throw idempotencyConflict(command.idempotency_key);
+      }
+
       return client.excludeClaimCandidate({
         table_name: PHOS_CORE_TABLE,
-        partition_key: tenantPk(ctx),
+        partition_key,
         sort_key: claimCandidateSk(candidate_id),
         candidate_id,
         idempotency_sort_key,
-        request_fingerprint: requestFingerprint(command),
+        request_fingerprint,
         client_version: command.client_version,
         reason_code: command.reason_code,
         ...(command.reason_note ? { reason_note: command.reason_note } : {}),

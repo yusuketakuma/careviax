@@ -39,6 +39,30 @@ function item(): Record<string, AttributeValue> {
 }
 
 describe('claim-candidates Lambda Dynamo client', () => {
+  it('gets claim candidate idempotency records under the tenant partition', async () => {
+    const send = vi.fn(async (command: GetItemCommand) => {
+      expect(command).toBeInstanceOf(GetItemCommand);
+      return { Item: { request_fingerprint: { S: 'fp_1' } } };
+    });
+    const client = createDynamoClaimCandidatesClient({ client: { send } });
+
+    await expect(
+      client.getIdempotency({
+        table_name: 'phos_core',
+        partition_key: 'TENANT#tenant_abc123',
+        sort_key: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#claim_1#idem_1',
+      }),
+    ).resolves.toEqual({ request_fingerprint: { S: 'fp_1' } });
+
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      TableName: 'phos_core',
+      Key: {
+        PK: { S: 'TENANT#tenant_abc123' },
+        SK: { S: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#claim_1#idem_1' },
+      },
+    });
+  });
+
   it('queries claim candidates with bounded tenant GSI input', async () => {
     const send = vi.fn(async (command: QueryCommand) => {
       expect(command).toBeInstanceOf(QueryCommand);

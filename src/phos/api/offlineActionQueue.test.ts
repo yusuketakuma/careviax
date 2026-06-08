@@ -2,14 +2,29 @@ import 'fake-indexeddb/auto';
 
 import { webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActionCode } from '@/phos/contracts/phos_contracts';
+import {
+  ActionCode,
+  ActionKind,
+  ButtonState,
+  CardType,
+  CurrentStep,
+  DisplayStatus,
+  UserRole,
+  type ActionResponse,
+} from '@/phos/contracts/phos_contracts';
 import {
   clearOfflineEncryptionKey,
   decryptOfflinePayload,
   initOfflineEncryptionKey,
   isEncryptedOfflinePayload,
 } from '@/lib/offline/crypto';
-import { enqueuePhosOfflineCardAction, phosOfflineActionDb } from './offlineActionQueue';
+import {
+  enqueuePhosOfflineCardAction,
+  listPhosPendingOfflineCardActions,
+  phosOfflineActionDb,
+  retryPhosOfflineCardActions,
+} from './offlineActionQueue';
+import { PhosApiError } from './types';
 
 function installBrowserCryptoEnvironment() {
   const storage = new Map<string, string>();
@@ -32,6 +47,36 @@ function installBrowserCryptoEnvironment() {
       }),
     },
   });
+}
+
+function actionResponse(): ActionResponse {
+  return {
+    card: {
+      card_id: 'card_1',
+      card_type: CardType.PRESCRIPTION,
+      patient_name: '患者 山田太郎',
+      current_step: CurrentStep.INTAKE,
+      display_status: DisplayStatus.READY,
+      server_version: 2,
+      tags: [],
+    },
+    next_action: {
+      code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      kind: ActionKind.STEP_CHANGING,
+      label_key: 'action.confirm_prescription_diff',
+      enabled: true,
+      offline_allowed: false,
+      priority: 'PRIMARY',
+      required_role: [UserRole.PHARMACIST],
+      target_endpoint: 'POST /cards/{card_id}/actions',
+      ui_state: ButtonState.ACTIONABLE,
+      can_user_handle: true,
+    },
+    display_status: DisplayStatus.READY,
+    blockers: [],
+    side_effects: [],
+    server_version: 2,
+  };
 }
 
 describe('PH-OS offline action queue', () => {
@@ -100,5 +145,101 @@ describe('PH-OS offline action queue', () => {
 
     expect(second.queue_id).toBe(first.queue_id);
     expect(await phosOfflineActionDb.offlineActions.count()).toBe(1);
+  });
+
+  it('replays queued card actions through the PH-OS API client and removes synced records', async () => {
+    const request = {
+      action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      idempotency_key: 'idem_sync',
+      client_version: 1,
+    };
+    await enqueuePhosOfflineCardAction({
+      card_id: 'card_1',
+      request,
+      offline_op_class: 'NON_BLOCKING',
+    });
+    const executeCardAction = vi.fn(async () => ({
+      ...actionResponse(),
+    }));
+
+    await expect(retryPhosOfflineCardActions({ client: { executeCardAction } })).resolves.toEqual({
+      synced: 1,
+      failed: 0,
+    });
+
+    expect(executeCardAction).toHaveBeenCalledWith('card_1', request);
+    expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
+  });
+
+  it('keeps failed queued card actions with retry status for the scheduler', async () => {
+    await enqueuePhosOfflineCardAction({
+      card_id: 'card_1',
+      request: {
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_retry',
+        client_version: 1,
+      },
+      offline_op_class: 'BLOCKING',
+    });
+
+    await expect(
+      retryPhosOfflineCardActions({
+        client: {
+          executeCardAction: vi.fn(async () => {
+            throw new TypeError('fetch failed');
+          }),
+        },
+      }),
+    ).resolves.toEqual({ synced: 0, failed: 1 });
+
+    await expect(listPhosPendingOfflineCardActions()).resolves.toEqual([
+      expect.objectContaining({
+        card_id: 'card_1',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        retry_count: 1,
+        last_error: 'fetch failed',
+      }),
+    ]);
+  });
+
+  it('blocks 409 conflict replays instead of retrying and overwriting drafts', async () => {
+    await enqueuePhosOfflineCardAction({
+      card_id: 'card_1',
+      request: {
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_conflict',
+        client_version: 1,
+      },
+      offline_op_class: 'BLOCKING',
+    });
+
+    await expect(
+      retryPhosOfflineCardActions({
+        client: {
+          executeCardAction: vi.fn(async () => {
+            throw new PhosApiError(409, {
+              request_id: 'req_1',
+              error_code: 'STALE_VERSION',
+              message_key: 'api.error.stale_version',
+            });
+          }),
+        },
+      }),
+    ).resolves.toEqual({ synced: 0, failed: 1 });
+
+    await expect(listPhosPendingOfflineCardActions()).resolves.toEqual([
+      expect.objectContaining({
+        card_id: 'card_1',
+        retry_count: 1,
+        last_error: 'STALE_VERSION',
+        blocked_reason: 'CONFLICT',
+      }),
+    ]);
+
+    await expect(
+      retryPhosOfflineCardActions({
+        client: { executeCardAction: vi.fn(async () => undefined as never) },
+      }),
+    ).resolves.toEqual({ synced: 0, failed: 0 });
   });
 });
