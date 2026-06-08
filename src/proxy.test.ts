@@ -671,9 +671,7 @@ describe('proxy', () => {
 
     for (let index = 0; index < RATE_LIMIT_AUTH_MAX; index += 1) {
       const pathname =
-        index % 2 === 0
-          ? '/api/auth/callback/credentials'
-          : '/api/auth/callback/credentials/';
+        index % 2 === 0 ? '/api/auth/callback/credentials' : '/api/auth/callback/credentials/';
       expect(
         (
           await proxy(

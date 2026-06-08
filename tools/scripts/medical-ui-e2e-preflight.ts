@@ -19,6 +19,7 @@ const REQUIRED_PLAYWRIGHT_SPECS = [
   'tools/tests/ui-mobile-layout.spec.ts',
   'tools/tests/ui-schedule-visit-report.spec.ts',
   'tools/tests/e2e-prescription-dispensing-flow.spec.ts',
+  'tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts',
   'tools/tests/ui-detail-layout.spec.ts',
 ];
 
@@ -85,8 +86,7 @@ async function checkTcpPort(name: string, port: number): Promise<CheckResult> {
 
 function checkDatabaseUrl(envName: 'DATABASE_URL' | 'DIRECT_URL'): CheckResult {
   const databaseUrl =
-    process.env[envName] ??
-    'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
+    process.env[envName] ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
 
   try {
     const url = new URL(databaseUrl);

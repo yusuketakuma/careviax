@@ -5,7 +5,9 @@ const ORG_ID = 'cmnhseedorg0000amq9ph-os';
 const USER_ID = 'cmnb3swgz0008wgq9gfpgjq6r';
 const IDS = {
   careChangeCase: 'cmnhseedcase002amq9ph-os',
-  publicSubsidyCase: 'cmnhseedcase003amq9ph-os',
+  publicSubsidy54Case: 'cmnhseedcase003amq9ph-os',
+  careApplyingCase: 'cmnhseedcase004amq9ph-os',
+  publicSubsidy21Case: 'cmnhseedcase005amq9ph-os',
   prescriptionPatient: 'cmnhseedpt001amq9ph-os',
   prescriptionCase: 'cmnhseedcase001amq9ph-os',
   availablePump: 'cmnhseedpca001amq9ph-os',
@@ -19,10 +21,25 @@ test.describe('billing/PCA/prescription guardrails', () => {
     await attachLocalSession(context);
   });
 
-  test('billing preview blocks care change-pending and public subsidy applying cases', async ({
+  test('billing preview blocks care applying, care change-pending, and public subsidy 21/54 applying cases', async ({
     context,
   }) => {
     const { page, errors } = await createApiPage(context);
+
+    const careApplyingPreview = await fetchBillingPreview(page, IDS.careApplyingCase);
+    expect(careApplyingPreview.status).toBe(200);
+    expect(careApplyingPreview.body.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'care_insurance_application_pending',
+          message: expect.stringContaining('介護保険資格が申請中'),
+          details: expect.objectContaining({
+            application_status: 'applying',
+            insurance_number_present: false,
+          }),
+        }),
+      ]),
+    );
 
     const careChangePreview = await apiFetch(page, {
       path: `/api/visit-schedule-proposals/billing-preview?case_id=${IDS.careChangeCase}&proposed_date=2026-06-10&pharmacist_id=${USER_ID}`,
@@ -43,12 +60,9 @@ test.describe('billing/PCA/prescription guardrails', () => {
       ]),
     );
 
-    const publicSubsidyPreview = await apiFetch(page, {
-      path: `/api/visit-schedule-proposals/billing-preview?case_id=${IDS.publicSubsidyCase}&proposed_date=2026-06-10&pharmacist_id=${USER_ID}`,
-      method: 'GET',
-    });
-    expect(publicSubsidyPreview.status).toBe(200);
-    expect(publicSubsidyPreview.body.alerts).toEqual(
+    const publicSubsidy54Preview = await fetchBillingPreview(page, IDS.publicSubsidy54Case);
+    expect(publicSubsidy54Preview.status).toBe(200);
+    expect(publicSubsidy54Preview.body.alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'public_subsidy_application_pending',
@@ -56,6 +70,23 @@ test.describe('billing/PCA/prescription guardrails', () => {
           details: expect.objectContaining({
             application_status: 'applying',
             public_program_code: '54',
+            insurer_number_present: false,
+            recipient_number_present: false,
+          }),
+        }),
+      ]),
+    );
+
+    const publicSubsidy21Preview = await fetchBillingPreview(page, IDS.publicSubsidy21Case);
+    expect(publicSubsidy21Preview.status).toBe(200);
+    expect(publicSubsidy21Preview.body.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'public_subsidy_application_pending',
+          message: expect.stringContaining('公費21が申請中'),
+          details: expect.objectContaining({
+            application_status: 'applying',
+            public_program_code: '21',
             insurer_number_present: false,
             recipient_number_present: false,
           }),
@@ -193,6 +224,13 @@ async function apiFetch(
     },
     { ...args, orgId: ORG_ID },
   );
+}
+
+async function fetchBillingPreview(page: Page, caseId: string) {
+  return apiFetch(page, {
+    path: `/api/visit-schedule-proposals/billing-preview?case_id=${caseId}&proposed_date=2026-06-10&pharmacist_id=${USER_ID}`,
+    method: 'GET',
+  });
 }
 
 function buildPrescriptionPayload(args: {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -8,13 +8,7 @@ import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
 } from '@/lib/auth/cognito-challenge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,9 +36,16 @@ const LOCKOUT_ERROR_CODES = new Set([
 ]);
 
 const NOTICE_MESSAGES: Record<string, string> = {
-  mfa_recovery_reset:
-    'リカバリーコードでMFAを解除しました。ログイン後にMFAを再設定してください。',
+  mfa_recovery_reset: 'リカバリーコードでMFAを解除しました。ログイン後にMFAを再設定してください。',
 };
+
+function canonicalizeLocalLoginHost() {
+  if (window.location.hostname !== '127.0.0.1') return;
+
+  const url = new URL(window.location.href);
+  url.hostname = 'localhost';
+  window.location.replace(url.toString());
+}
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -52,14 +53,18 @@ function LoginForm() {
   const callbackUrl = rawCallback.startsWith('/') ? rawCallback : '/dashboard';
   const errorCode = searchParams.get('error') ?? '';
   const noticeCode = searchParams.get('notice') ?? '';
-  const notice = noticeCode ? NOTICE_MESSAGES[noticeCode] ?? null : null;
+  const notice = noticeCode ? (NOTICE_MESSAGES[noticeCode] ?? null) : null;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(
-    errorCode ? (ERROR_MESSAGES[errorCode] ?? 'ログインに失敗しました。') : null
+    errorCode ? (ERROR_MESSAGES[errorCode] ?? 'ログインに失敗しました。') : null,
   );
+
+  useEffect(() => {
+    canonicalizeLocalLoginHost();
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,10 +88,7 @@ function LoginForm() {
 
         const challenge = decodeCognitoChallenge(result.error);
         if (challenge) {
-          window.sessionStorage.setItem(
-            COGNITO_CHALLENGE_STORAGE_KEY,
-            JSON.stringify(challenge)
-          );
+          window.sessionStorage.setItem(COGNITO_CHALLENGE_STORAGE_KEY, JSON.stringify(challenge));
           window.location.href =
             challenge.type === 'NEW_PASSWORD_REQUIRED'
               ? `/first-login?callbackUrl=${encodeURIComponent(callbackUrl)}`

@@ -12,9 +12,11 @@ describe('E2E seed domain coverage contract', () => {
   });
 
   it('keeps representative pending care and public subsidy records for billing blockers', () => {
+    expect(seed).toContain('介護保険申請中を想定したE2Eデータ');
     expect(seed).toContain("application_status: 'change_pending'");
     expect(seed).toContain("public_program_code: '54'");
     expect(seed).toContain("application_status: 'applying'");
+    expect(seed).toContain('自立支援医療公費21の申請中を想定したE2Eデータ');
     expect(seed).toContain("public_program_code: '21'");
     expect(seed).toContain("application_status: 'confirmed'");
   });

@@ -26,4 +26,13 @@ describe('medical UI E2E release contract', () => {
     );
     expect(preflight).toContain('db:e2e:check-care-report-duplicates');
   });
+
+  it('keeps billing, PCA, and prescription guardrails inside the targeted E2E gate', () => {
+    const packageJson = readFileSync('package.json', 'utf8');
+    const preflight = readFileSync('tools/scripts/medical-ui-e2e-preflight.ts', 'utf8');
+    const guardrailSpec = 'tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts';
+
+    expect(packageJson).toContain(guardrailSpec);
+    expect(preflight).toContain(guardrailSpec);
+  });
 });

@@ -7,6 +7,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 // conflict with the nonce-based CSP and are intentionally omitted.
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
   experimental: {
     authInterrupts: true,
   },

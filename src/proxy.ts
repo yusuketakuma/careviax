@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { canonicalizeRateLimitPath, checkAuthRateLimit, checkRateLimit } from '@/lib/api/rate-limit';
+import {
+  canonicalizeRateLimitPath,
+  checkAuthRateLimit,
+  checkRateLimit,
+} from '@/lib/api/rate-limit';
 import { logSecurityEvent } from '@/lib/auth/security-events';
 import { getClientIp, isProductionLikeRuntime } from '@/lib/api/request-ip';
 import { getAuthSecret } from '@/lib/auth/secret';

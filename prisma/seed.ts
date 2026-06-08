@@ -71,8 +71,20 @@ const SEED_IDS = {
   pcaRentalActive: 'cmnhseedrental001amq9ph-os',
   injectionEligibleDrug: 'cmnhseeddrug001amq9ph-os',
   injectionBlockedDrug: 'cmnhseeddrug002amq9ph-os',
-  patients: ['cmnhseedpt001amq9ph-os', 'cmnhseedpt002amq9ph-os', 'cmnhseedpt003amq9ph-os'],
-  careCases: ['cmnhseedcase001amq9ph-os', 'cmnhseedcase002amq9ph-os', 'cmnhseedcase003amq9ph-os'],
+  patients: [
+    'cmnhseedpt001amq9ph-os',
+    'cmnhseedpt002amq9ph-os',
+    'cmnhseedpt003amq9ph-os',
+    'cmnhseedpt004amq9ph-os',
+    'cmnhseedpt005amq9ph-os',
+  ],
+  careCases: [
+    'cmnhseedcase001amq9ph-os',
+    'cmnhseedcase002amq9ph-os',
+    'cmnhseedcase003amq9ph-os',
+    'cmnhseedcase004amq9ph-os',
+    'cmnhseedcase005amq9ph-os',
+  ],
 } as const;
 
 async function main() {
@@ -298,6 +310,42 @@ async function main() {
         gender: 'female',
       },
     }),
+    prisma.patient.upsert({
+      where: { id: SEED_IDS.patients[3] },
+      create: {
+        id: SEED_IDS.patients[3],
+        org_id: org.id,
+        name: '佐藤 介護申請',
+        name_kana: 'サトウ カイゴシンセイ',
+        birth_date: new Date('1942-05-14'),
+        gender: 'female',
+      },
+      update: {
+        org_id: org.id,
+        name: '佐藤 介護申請',
+        name_kana: 'サトウ カイゴシンセイ',
+        birth_date: new Date('1942-05-14'),
+        gender: 'female',
+      },
+    }),
+    prisma.patient.upsert({
+      where: { id: SEED_IDS.patients[4] },
+      create: {
+        id: SEED_IDS.patients[4],
+        org_id: org.id,
+        name: '高橋 公費二一',
+        name_kana: 'タカハシ コウヒニジュウイチ',
+        birth_date: new Date('1975-02-21'),
+        gender: 'male',
+      },
+      update: {
+        org_id: org.id,
+        name: '高橋 公費二一',
+        name_kana: 'タカハシ コウヒニジュウイチ',
+        birth_date: new Date('1975-02-21'),
+        gender: 'male',
+      },
+    }),
   ]);
 
   const careCases = await Promise.all(
@@ -315,7 +363,8 @@ async function main() {
           primary_pharmacist_id: user.id,
           required_visit_support: {
             home_visit_intake: {
-              care_level: index === 0 ? 'care_2' : index === 1 ? 'applying' : 'care_1',
+              care_level:
+                index === 0 ? 'care_2' : index === 1 || index === 3 ? 'applying' : 'care_1',
             },
           },
           notes: 'E2E/デモ用ケース',
@@ -330,7 +379,8 @@ async function main() {
           primary_pharmacist_id: user.id,
           required_visit_support: {
             home_visit_intake: {
-              care_level: index === 0 ? 'care_2' : index === 1 ? 'applying' : 'care_1',
+              care_level:
+                index === 0 ? 'care_2' : index === 1 || index === 3 ? 'applying' : 'care_1',
             },
           },
           notes: 'E2E/デモ用ケース',
@@ -454,6 +504,64 @@ async function main() {
         valid_from: new Date('2026-04-01'),
         is_active: true,
         notes: '自立支援医療公費21の確定済みを想定したE2Eデータ',
+      },
+    }),
+    prisma.patientInsurance.upsert({
+      where: { id: 'cmnhseedinscare005amq9ph-os' },
+      create: {
+        id: 'cmnhseedinscare005amq9ph-os',
+        org_id: org.id,
+        patient_id: patients[3].id,
+        insurance_type: 'care',
+        application_status: 'applying',
+        insurer_number: null,
+        number: null,
+        application_submitted_at: new Date('2026-06-01'),
+        valid_from: new Date('2026-06-01'),
+        is_active: true,
+        notes: '介護保険申請中を想定したE2Eデータ',
+      },
+      update: {
+        org_id: org.id,
+        patient_id: patients[3].id,
+        insurance_type: 'care',
+        application_status: 'applying',
+        insurer_number: null,
+        number: null,
+        application_submitted_at: new Date('2026-06-01'),
+        valid_from: new Date('2026-06-01'),
+        is_active: true,
+        notes: '介護保険申請中を想定したE2Eデータ',
+      },
+    }),
+    prisma.patientInsurance.upsert({
+      where: { id: 'cmnhseedinspub006amq9ph-os' },
+      create: {
+        id: 'cmnhseedinspub006amq9ph-os',
+        org_id: org.id,
+        patient_id: patients[4].id,
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+        public_program_code: '21',
+        insurer_number: null,
+        number: null,
+        application_submitted_at: new Date('2026-06-01'),
+        valid_from: new Date('2026-06-01'),
+        is_active: true,
+        notes: '自立支援医療公費21の申請中を想定したE2Eデータ',
+      },
+      update: {
+        org_id: org.id,
+        patient_id: patients[4].id,
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+        public_program_code: '21',
+        insurer_number: null,
+        number: null,
+        application_submitted_at: new Date('2026-06-01'),
+        valid_from: new Date('2026-06-01'),
+        is_active: true,
+        notes: '自立支援医療公費21の申請中を想定したE2Eデータ',
       },
     }),
   ]);
