@@ -12,5 +12,5 @@ export function isValidDateKey(value: string) {
 }
 
 export function dateKeySchema(message: string) {
-  return z.string().trim().regex(dateKeyPattern, message).refine(isValidDateKey, message);
+  return z.string().trim().refine(isValidDateKey, message);
 }

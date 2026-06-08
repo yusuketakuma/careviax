@@ -182,6 +182,74 @@ describe('/api/patients/[id]/visit-constraints', () => {
     expect(residenceUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects impossible visit constraint times before loading the patient', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        preferred_time_from: '99:99',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        preferred_time_from: ['時刻形式が不正です（HH:mm）'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed visit constraint time windows before loading the patient', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        preferred_time_from: '14:00',
+        preferred_time_to: '09:00',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        preferred_time_to: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed phone contact windows before loading the patient', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        phone_contact_from: '18:00',
+        phone_contact_to: '09:00',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        phone_contact_to: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('upserts visit constraints and geocoding fields', async () => {
     const response = (await PUT(
       createPutRequest({

@@ -7,6 +7,7 @@ import {
   buildVisitScheduleAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
@@ -16,10 +17,7 @@ const visitScheduleReorderSchema = z.object({
       z.object({
         schedule_id: z.string().trim().min(1),
         route_order: z.number().int().min(1),
-        scheduled_date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-          .optional(),
+        scheduled_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
         pharmacist_id: z.string().trim().min(1).optional(),
       }),
     )

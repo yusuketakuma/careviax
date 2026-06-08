@@ -7,6 +7,10 @@ import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-acce
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
 import { prisma } from '@/lib/db/client';
+import {
+  evaluateVisitWorkflowGate,
+  formatVisitWorkflowGateIssues,
+} from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
@@ -22,7 +26,13 @@ const WEEKLY_LIMITS: Record<string, number> = {
 
 function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is number => typeof entry === 'number');
+  return Array.from(
+    new Set(
+      value.filter(
+        (entry): entry is number => typeof entry === 'number' && entry >= 0 && entry <= 6,
+      ),
+    ),
+  );
 }
 
 function toTimeString(value: Date | null | undefined) {
@@ -84,6 +94,7 @@ export const POST = withAuth(
         org_id: req.orgId,
       },
       select: {
+        patient_id: true,
         primary_pharmacist_id: true,
         backup_pharmacist_id: true,
         patient: {
@@ -109,6 +120,20 @@ export const POST = withAuth(
 
     if (candidateDates.length === 0) {
       return validationError('指定されたRRULEから日程を生成できませんでした');
+    }
+
+    for (const candidateDate of candidateDates) {
+      const gate = await evaluateVisitWorkflowGate(prisma, {
+        orgId: req.orgId,
+        patientId: careCase.patient_id,
+        caseId: case_id,
+        asOf: candidateDate,
+      });
+      if (!gate.ok) {
+        return validationError(
+          `${format(candidateDate, 'yyyy-MM-dd')}: ${formatVisitWorkflowGateIssues(gate.issues)}`,
+        );
+      }
     }
 
     const schedulingPreference = careCase.patient.scheduling_preference;

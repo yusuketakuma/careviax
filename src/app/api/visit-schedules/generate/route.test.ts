@@ -8,6 +8,7 @@ const {
   careCaseFindFirstMock,
   pharmacistShiftFindFirstMock,
   visitScheduleCreateMock,
+  evaluateVisitWorkflowGateMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
@@ -30,6 +31,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleCreateMock: vi.fn(),
+  evaluateVisitWorkflowGateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
 }));
 
@@ -56,6 +58,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
+vi.mock('@/server/services/management-plans', () => ({
+  evaluateVisitWorkflowGate: evaluateVisitWorkflowGateMock,
+  formatVisitWorkflowGateIssues: (issues: string[]) => issues.join(' / '),
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown) {
@@ -76,6 +83,7 @@ function createMalformedJsonRequest() {
 
 function buildCareCase(overrides?: Record<string, unknown>) {
   return {
+    patient_id: 'patient_1',
     primary_pharmacist_id: 'pharmacist_1',
     backup_pharmacist_id: 'user_1',
     patient: {
@@ -96,6 +104,7 @@ describe('/api/visit-schedules/generate POST', () => {
     vi.clearAllMocks();
 
     careCaseFindFirstMock.mockResolvedValue(buildCareCase());
+    evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
     pharmacistShiftFindFirstMock.mockResolvedValue({ site_id: 'site_1' });
     visitScheduleCreateMock.mockImplementation(async ({ data }) => ({
       id: `schedule_${String(data.scheduled_date)}`,
@@ -207,6 +216,83 @@ describe('/api/visit-schedules/generate POST', () => {
       code: 'AUTH_FORBIDDEN',
     });
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation when the visit workflow gate is not satisfied', async () => {
+    evaluateVisitWorkflowGateMock.mockResolvedValueOnce({
+      ok: false,
+      issues: ['management_plan_not_approved', 'consent_missing'],
+    });
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '2026-04-07: management_plan_not_approved / consent_missing',
+    });
+    expect(evaluateVisitWorkflowGateMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      asOf: new Date('2026-04-07T00:00:00.000Z'),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation when any recurring candidate fails the visit workflow gate', async () => {
+    evaluateVisitWorkflowGateMock
+      .mockResolvedValueOnce({ ok: true, issues: [] })
+      .mockResolvedValueOnce({
+        ok: false,
+        issues: ['consent_missing'],
+      });
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-14',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '2026-04-14: consent_missing',
+    });
+    expect(evaluateVisitWorkflowGateMock).toHaveBeenCalledTimes(2);
+    expect(evaluateVisitWorkflowGateMock).toHaveBeenNthCalledWith(1, expect.any(Object), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      asOf: new Date('2026-04-07T00:00:00.000Z'),
+    });
+    expect(evaluateVisitWorkflowGateMock).toHaveBeenNthCalledWith(2, expect.any(Object), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      asOf: new Date('2026-04-14T00:00:00.000Z'),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects reversed recurring time windows before loading the case', async () => {

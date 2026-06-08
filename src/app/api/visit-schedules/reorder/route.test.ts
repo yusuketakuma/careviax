@@ -286,6 +286,62 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('rejects invalid scheduled_date values before loading schedules', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+            scheduled_date: '2026-02-30',
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        updates: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects timestamp scheduled_date values before loading schedules', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+            scheduled_date: '2026-04-09T00:00:00Z',
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        updates: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
   it('rejects existing route order conflicts before update, audit, or notify', async () => {
     scheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
 

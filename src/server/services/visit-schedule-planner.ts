@@ -172,7 +172,38 @@ function addMinutes(baseDate: Date, minutes: number) {
 
 function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is number => typeof entry === 'number');
+  return Array.from(
+    new Set(
+      value.filter(
+        (entry): entry is number => typeof entry === 'number' && entry >= 0 && entry <= 6,
+      ),
+    ),
+  );
+}
+
+function normalizeVisitBufferMinutes(value: number | null | undefined) {
+  if (!Number.isFinite(value ?? Number.NaN)) return 0;
+  return Math.max(0, Math.min(240, Math.trunc(value ?? 0)));
+}
+
+function scheduleVisitBufferMinutes(
+  schedule: {
+    case_?: {
+      patient?: {
+        scheduling_preference?: {
+          visit_buffer_minutes: number | null;
+        } | null;
+      } | null;
+    } | null;
+  },
+  fallbackBufferMinutes: number,
+) {
+  return Math.max(
+    fallbackBufferMinutes,
+    normalizeVisitBufferMinutes(
+      schedule.case_?.patient?.scheduling_preference?.visit_buffer_minutes,
+    ),
+  );
 }
 
 function buildWeekKey(value: Date) {
@@ -344,9 +375,17 @@ function findAvailableSlot(args: {
   shiftEnd: Date;
   preferredTimeFrom?: string;
   preferredTimeTo?: string;
+  visitBufferMinutes?: number;
   existingSchedules: Array<{
     time_window_start: Date | null;
     time_window_end: Date | null;
+    case_?: {
+      patient?: {
+        scheduling_preference?: {
+          visit_buffer_minutes: number | null;
+        } | null;
+      } | null;
+    } | null;
   }>;
 }) {
   const preferredStart = args.preferredTimeFrom
@@ -359,16 +398,21 @@ function findAvailableSlot(args: {
   const windowEnd = preferredEnd < args.shiftEnd ? preferredEnd : args.shiftEnd;
 
   if (windowEnd <= windowStart) return null;
+  const visitBufferMinutes = normalizeVisitBufferMinutes(args.visitBufferMinutes);
 
   const bookings = [...args.existingSchedules]
     .map((schedule) => {
+      const scheduleBufferMinutes = scheduleVisitBufferMinutes(schedule, visitBufferMinutes);
       const start = schedule.time_window_start
         ? setTime(args.baseDate, schedule.time_window_start, DEFAULT_SHIFT_START)
         : args.shiftStart;
       const end = schedule.time_window_end
         ? setTime(args.baseDate, schedule.time_window_end, DEFAULT_SHIFT_END)
         : addMinutes(start, DEFAULT_VISIT_DURATION_MINUTES);
-      return { start, end };
+      return {
+        start: addMinutes(start, -scheduleBufferMinutes),
+        end: addMinutes(end, scheduleBufferMinutes),
+      };
     })
     .sort((left, right) => left.start.getTime() - right.start.getTime());
 
@@ -451,7 +495,15 @@ function calculateRemainingSlackMinutes(args: {
   existingSchedules: Array<{
     time_window_start: Date | null;
     time_window_end: Date | null;
+    case_?: {
+      patient?: {
+        scheduling_preference?: {
+          visit_buffer_minutes: number | null;
+        } | null;
+      } | null;
+    } | null;
   }>;
+  visitBufferMinutes?: number;
   candidateSlot: {
     start: Date;
     end: Date;
@@ -459,15 +511,26 @@ function calculateRemainingSlackMinutes(args: {
 }) {
   const bookings = [
     ...args.existingSchedules.map((schedule) => {
+      const visitBufferMinutes = normalizeVisitBufferMinutes(args.visitBufferMinutes);
+      const scheduleBufferMinutes = scheduleVisitBufferMinutes(schedule, visitBufferMinutes);
       const start = schedule.time_window_start
         ? setTime(args.baseDate, schedule.time_window_start, DEFAULT_SHIFT_START)
         : args.shiftStart;
       const end = schedule.time_window_end
         ? setTime(args.baseDate, schedule.time_window_end, DEFAULT_SHIFT_END)
         : addMinutes(start, DEFAULT_VISIT_DURATION_MINUTES);
-      return { start, end };
+      return {
+        start: addMinutes(start, -scheduleBufferMinutes),
+        end: addMinutes(end, scheduleBufferMinutes),
+      };
     }),
-    args.candidateSlot,
+    {
+      start: addMinutes(
+        args.candidateSlot.start,
+        -normalizeVisitBufferMinutes(args.visitBufferMinutes),
+      ),
+      end: addMinutes(args.candidateSlot.end, normalizeVisitBufferMinutes(args.visitBufferMinutes)),
+    },
   ].sort((left, right) => left.start.getTime() - right.start.getTime());
 
   let cursor = args.shiftStart;
@@ -540,6 +603,9 @@ export async function generateVisitScheduleProposalDrafts(
   }
 
   const schedulingPreference = careCase.patient.scheduling_preference;
+  const visitBufferMinutes = normalizeVisitBufferMinutes(
+    schedulingPreference?.visit_buffer_minutes,
+  );
   const primaryFacility = careCase.patient.residences[0]?.facility ?? null;
   const preferredWeekdays = normalizeWeekdays(schedulingPreference?.preferred_weekdays);
   const facilityVisitWeekdays = normalizeWeekdays(primaryFacility?.regular_visit_weekdays);
@@ -572,6 +638,9 @@ export async function generateVisitScheduleProposalDrafts(
   }
   if (primaryFacility?.acceptance_time_from || primaryFacility?.acceptance_time_to) {
     preferenceNotes.push('施設受入時間帯を反映');
+  }
+  if (visitBufferMinutes > 0) {
+    preferenceNotes.push(`訪問前後バッファ ${visitBufferMinutes}分を反映`);
   }
   if (schedulingPreference?.family_presence_required) {
     preferenceNotes.push('家族同席条件あり');
@@ -706,6 +775,11 @@ export async function generateVisitScheduleProposalDrafts(
               residences: {
                 where: { is_primary: true },
                 take: 1,
+              },
+              scheduling_preference: {
+                select: {
+                  visit_buffer_minutes: true,
+                },
               },
             },
           },
@@ -863,6 +937,7 @@ export async function generateVisitScheduleProposalDrafts(
           shiftEnd,
           preferredTimeFrom: mergedVisitWindow?.from,
           preferredTimeTo: mergedVisitWindow?.to,
+          visitBufferMinutes,
           existingSchedules: schedulesForShift,
         });
         if (!slot) {
@@ -962,6 +1037,7 @@ export async function generateVisitScheduleProposalDrafts(
           shiftStart,
           shiftEnd,
           existingSchedules: schedulesForShift,
+          visitBufferMinutes,
           candidateSlot: slot,
         });
         const slackPenalty =
@@ -1049,8 +1125,19 @@ export async function generateVisitScheduleProposalDrafts(
 
   const selectedCandidates = acceptedCandidates.slice(0, params.candidateCount);
   const overflowCandidates = acceptedCandidates.slice(params.candidateCount);
+  const routeOrderOffsetsByCell = new Map<string, number>();
+  const selectedCandidatesWithRouteOrder = selectedCandidates.map((candidate) => {
+    const cellKey = `${candidate.shift.user_id}:${toDateKey(candidate.shift.date)}`;
+    const offset = routeOrderOffsetsByCell.get(cellKey) ?? 0;
+    routeOrderOffsetsByCell.set(cellKey, offset + 1);
 
-  const drafts = selectedCandidates.map((candidate, index) => ({
+    return {
+      candidate,
+      routeOrder: candidate.routeInsertion.routeOrder + offset,
+    };
+  });
+
+  const drafts = selectedCandidatesWithRouteOrder.map(({ candidate, routeOrder }) => ({
     org_id: params.orgId,
     cycle_id: cycle?.id ?? null,
     case_id: params.caseId,
@@ -1066,13 +1153,13 @@ export async function generateVisitScheduleProposalDrafts(
     time_window_end: candidate.slot.end,
     proposed_pharmacist_id: candidate.shift.user_id,
     assignment_mode: candidate.assignmentMode,
-    route_order: candidate.routeInsertion.routeOrder + index,
+    route_order: routeOrder,
     route_distance_score: candidate.routeInsertion.travelScore,
     medication_end_date: medicationEndDate,
     visit_deadline_date: visitDeadlineDate,
     proposal_reason: buildReason({
       medicationEndDate,
-      routeOrder: candidate.routeInsertion.routeOrder,
+      routeOrder,
       assignmentMode: candidate.assignmentMode,
       careRelationship: candidate.careRelationship,
       isEmergencyPriority: params.priority === 'emergency',
@@ -1110,15 +1197,15 @@ export async function generateVisitScheduleProposalDrafts(
     reschedule_source_schedule_id: params.rescheduleSourceScheduleId ?? null,
   }));
 
-  const acceptedDiagnostics: AcceptedProposalDiagnostic[] = selectedCandidates.map(
-    (candidate, index) => ({
+  const acceptedDiagnostics: AcceptedProposalDiagnostic[] = selectedCandidatesWithRouteOrder.map(
+    ({ candidate, routeOrder }) => ({
       pharmacist_id: candidate.shift.user_id,
       pharmacist_name: candidate.shift.user.name,
       site_id: candidate.shift.site_id ?? null,
       site_name: candidate.shift.site?.name ?? null,
       proposed_date: toDateKey(candidate.shift.date),
       travel_mode: travelMode,
-      route_order: candidate.routeInsertion.routeOrder + index,
+      route_order: routeOrder,
       route_distance_score: candidate.routeInsertion.travelScore,
       travel_summary: candidate.routeInsertion.travelSummary,
       assignment_mode: candidate.assignmentMode,

@@ -84,6 +84,71 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects reversed facility visit day windows before schedule lookup', async () => {
+    const response = await POST(
+      createRequest({
+        facility_label: 'facility_a',
+        schedule_ids: ['schedule_1'],
+        preferred_weekdays: [1],
+        facility_time_from: '15:00',
+        facility_time_to: '09:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        facility_time_to: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects impossible facility visit day times before schedule lookup', async () => {
+    const response = await POST(
+      createRequest({
+        facility_label: 'facility_a',
+        schedule_ids: ['schedule_1'],
+        preferred_weekdays: [1],
+        preferred_time_from: '24:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        preferred_time_from: ['時刻形式が不正です（HH:mm）'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed preferred visit day windows before schedule lookup', async () => {
+    const response = await POST(
+      createRequest({
+        facility_label: 'facility_a',
+        schedule_ids: ['schedule_1'],
+        preferred_weekdays: [1],
+        preferred_time_from: '14:00',
+        preferred_time_to: '10:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        preferred_time_to: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects updates when schedules span multiple facilities', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
