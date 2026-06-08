@@ -7,6 +7,7 @@ import {
   Space,
   TagToken,
   TapTarget,
+  ToastToneToken,
   TypeScale,
 } from './phos_design_tokens';
 
@@ -45,6 +46,13 @@ describe('PH-OS design tokens', () => {
 
   it('defines severity token colors with readable foreground/background contrast', () => {
     for (const token of Object.values(SeverityToken)) {
+      expect(contrastRatio(token.fg, token.bg)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('defines toast tone colors with readable foreground/background contrast', () => {
+    expect(Object.keys(ToastToneToken).sort()).toEqual(['ERROR', 'INFO', 'SUCCESS', 'WARNING']);
+    for (const token of Object.values(ToastToneToken)) {
       expect(contrastRatio(token.fg, token.bg)).toBeGreaterThanOrEqual(4.5);
     }
   });

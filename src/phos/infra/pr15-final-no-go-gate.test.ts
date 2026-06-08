@@ -203,4 +203,18 @@ describe('PH-OS Final No-Go gate', () => {
     expect(hook).toMatch(/ActionPhase\.CONFLICT/);
     expect(singleLineHook).not.toMatch(/setState\(\{\s*phase:\s*ActionPhase\.SUCCEEDED[^}]*catch/);
   });
+
+  it('keeps toast feedback paired with inline errors and duplicate debounce evidence', () => {
+    expectEvidence('src/phos/ui/feedback/PhosToastRegion.test.tsx', [
+      /debounces duplicate toast messages/,
+      /appendPhosToast/,
+      /PH-OS toast notifications/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /renders successful action toasts/,
+      /renders report delivery reply failures both inline and as a toast/,
+      /getAllByText/,
+      /PH-OS toast notifications/,
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
@@ -469,6 +469,40 @@ describe('BoardClient', () => {
     await waitFor(() => expect(screen.queryByText('山田医師')).toBeNull());
   });
 
+  it('renders report delivery reply failures both inline and as a toast', async () => {
+    const apiClient = client({
+      getReportDeliveries: vi
+        .fn()
+        .mockResolvedValueOnce(
+          reportDeliverySearchResponse([
+            reportDelivery({ target_label: '山田医師', stale_minutes: 90, server_version: 7 }),
+          ]),
+        )
+        .mockResolvedValueOnce(reportDeliverySearchResponse()),
+      registerReportReply: vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    await waitFor(() => expect(screen.getByText('山田医師')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('患者 山田太郎の返信内容'), {
+      target: { value: '問題ありません。' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '返信を登録' }));
+
+    await waitFor(() =>
+      expect(screen.getAllByText('通信できません。再試行してください。')).toHaveLength(2),
+    );
+    expect(
+      within(screen.getByRole('status', { name: 'PH-OS toast notifications' })).getByText(
+        '通信できません。再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(apiClient.registerReportReply).toHaveBeenCalled();
+  });
+
   it('marks action-required report replies done with the delivery server version', async () => {
     const apiClient = client({
       getReportDeliveries: vi
@@ -569,6 +603,26 @@ describe('BoardClient', () => {
         client_version: 1,
       }),
     );
+  });
+
+  it('renders successful action toasts from ActionResponse', async () => {
+    const apiClient = client({
+      executeCardAction: vi.fn(
+        async (): Promise<ActionResponse> => ({
+          ...actionResponse(),
+          toast: { tone: 'SUCCESS', message_key: 'toast.handoff.created' },
+        }),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
+
+    const toastRegion = await screen.findByRole('status', {
+      name: 'PH-OS toast notifications',
+    });
+    expect(within(toastRegion).getByText('薬剤師への確認依頼を作成しました。')).toBeTruthy();
   });
 
   it('keeps the board visible when selected card detail loading fails', async () => {
@@ -777,9 +831,14 @@ describe('BoardClient', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('必要な情報が不足しています。カード詳細で不足内容を確認してください。'),
-      ).toBeTruthy(),
+        screen.getAllByText('必要な情報が不足しています。カード詳細で不足内容を確認してください。'),
+      ).toHaveLength(2),
     );
+    expect(
+      within(screen.getByRole('status', { name: 'PH-OS toast notifications' })).getByText(
+        '必要な情報が不足しています。カード詳細で不足内容を確認してください。',
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('差分確認')).toBeTruthy();
     expect(screen.queryByText('調剤')).toBeNull();
   });
@@ -813,8 +872,8 @@ describe('BoardClient', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('オフラインキューに保存しました。オンライン復帰後に同期します。'),
-      ).toBeTruthy(),
+        screen.getAllByText('オフラインキューに保存しました。オンライン復帰後に同期します。'),
+      ).toHaveLength(2),
     );
     expect(offlineActionQueue.enqueueCardAction).toHaveBeenCalledWith({
       card_id: 'card_1',
@@ -849,7 +908,7 @@ describe('BoardClient', () => {
     fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
 
     await waitFor(() =>
-      expect(screen.getByText('通信できません。再試行してください。')).toBeTruthy(),
+      expect(screen.getAllByText('通信できません。再試行してください。')).toHaveLength(2),
     );
     expect(offlineActionQueue.enqueueCardAction).not.toHaveBeenCalled();
     expect(screen.getByText('差分確認')).toBeTruthy();

@@ -1,4 +1,5 @@
 import { BlockerSeverity, Tag } from './phos_contracts';
+import type { ToastTone } from './phos_contracts';
 
 export const SeverityToken = {
   [BlockerSeverity.INFO]: {
@@ -53,6 +54,17 @@ export const TagToken = {
   [Tag.CLERK_CAN_RESOLVE]: { icon: 'clipboard-check', severity: BlockerSeverity.INFO },
   [Tag.WAITING_REPLY]: { icon: 'mail-question', severity: BlockerSeverity.INFO },
 } as const satisfies Record<Tag, { icon: string; severity: BlockerSeverity }>;
+
+export const ToastToneToken = {
+  SUCCESS: {
+    fg: '#115e3b',
+    bg: '#e7f8ef',
+    border: '#72c79b',
+  },
+  INFO: SeverityToken[BlockerSeverity.INFO],
+  WARNING: SeverityToken[BlockerSeverity.WARNING],
+  ERROR: SeverityToken[BlockerSeverity.ERROR],
+} as const satisfies Record<ToastTone, { fg: string; bg: string; border: string }>;
 
 export const TypeScale = { xs: 12, sm: 14, base: 16, lg: 18, xl: 20, h2: 24, h1: 30 } as const;
 export const Space = { x1: 4, x2: 8, x3: 12, x4: 16, x5: 24, x6: 32 } as const;

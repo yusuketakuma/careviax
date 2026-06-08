@@ -37,6 +37,8 @@ import { countBoardFilters, selectBoardItems } from '@/phos/domain/board/boardFi
 import { ClerkSupportWorkbench } from '@/phos/ui/handoff/ClerkSupportWorkbench';
 import { HandoffQueue } from '@/phos/ui/handoff/HandoffQueue';
 import { ReportDeliveryQueue } from '@/phos/ui/report/ReportDeliveryQueue';
+import { appendPhosToast, PhosToastRegion } from '@/phos/ui/feedback/PhosToastRegion';
+import type { PhosToastInput, PhosToastEntry } from '@/phos/ui/feedback/PhosToastRegion';
 import type {
   ReportDeliveryActionDoneInput,
   ReportDeliveryReplyInput,
@@ -193,6 +195,14 @@ function actionErrorMessage(error: unknown): string {
   return '通信できません。再試行してください。';
 }
 
+function errorToast(message: string): PhosToastInput {
+  return {
+    tone: 'ERROR',
+    message_key: 'toast.action.error',
+    params: { message },
+  };
+}
+
 function focusSourceCardOrBoard(cardId: string): void {
   const card = Array.from(document.querySelectorAll<HTMLElement>('[data-card-id]')).find(
     (candidate) => candidate.getAttribute('data-card-id') === cardId,
@@ -230,6 +240,7 @@ export function BoardClient({
   const [submittingReportDeliveryId, setSubmittingReportDeliveryId] = useState<
     string | undefined
   >();
+  const [toasts, setToasts] = useState<PhosToastEntry[]>([]);
   const [capacity, setCapacity] = useState<CapacityResponse | undefined>();
   const [capacityPhase, setCapacityPhase] = useState<CapacityPhase>('LOADING');
   const [capacityError, setCapacityError] = useState<string | undefined>();
@@ -263,6 +274,10 @@ export function BoardClient({
       offlineQueue: offlineActionQueue ?? { enqueueCardAction: enqueuePhosOfflineCardAction },
     },
   );
+
+  const enqueueToast = useCallback((toast: PhosToastInput) => {
+    setToasts((current) => appendPhosToast(current, toast, Date.now()));
+  }, []);
 
   useEffect(() => {
     if (initialItems.length > 0) return;
@@ -408,11 +423,14 @@ export function BoardClient({
             ? updateDetailFromAction(current, response)
             : current,
         );
+        if (response.toast) enqueueToast(response.toast);
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action, items, selectedDetail],
+    [action, enqueueToast, items, selectedDetail],
   );
 
   const handleOpenCard = useCallback((cardId: string) => {
@@ -444,11 +462,14 @@ export function BoardClient({
           current ? updateDetailHandoff(current, response.handoff) : current,
         );
         setPharmacistHandoffs((current) => upsertHandoff(current, response.handoff));
+        if (response.toast) enqueueToast(response.toast);
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, selectedDetail],
+    [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
   const handleOpenHandoffReview = useCallback(
@@ -469,11 +490,14 @@ export function BoardClient({
           current ? updateDetailHandoff(current, response.handoff) : current,
         );
         setPharmacistHandoffs((current) => upsertHandoff(current, response.handoff));
+        if (response.toast) enqueueToast(response.toast);
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, pharmacistHandoffs, selectedDetail],
+    [action.phase, apiClient, enqueueToast, pharmacistHandoffs, selectedDetail],
   );
 
   const handleResolveHandoff = useCallback(
@@ -496,11 +520,14 @@ export function BoardClient({
         );
         setPharmacistHandoffs((current) => removeHandoff(current, handoffId));
         setReturnedHandoffs((current) => removeHandoff(current, handoffId));
+        if (response.toast) enqueueToast(response.toast);
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, selectedDetail],
+    [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
   const handleReturnHandoff = useCallback(
@@ -524,11 +551,14 @@ export function BoardClient({
         );
         setPharmacistHandoffs((current) => removeHandoff(current, handoffId));
         setReturnedHandoffs((current) => upsertHandoff(current, response.handoff));
+        if (response.toast) enqueueToast(response.toast);
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, selectedDetail],
+    [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
   const handleVisitArrivalOutcome = useCallback(
@@ -555,10 +585,12 @@ export function BoardClient({
           current ? updateDetailVisitMode(current, response) : current,
         );
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, selectedDetail],
+    [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
   const handleOpenVisitStep = useCallback(
@@ -577,10 +609,12 @@ export function BoardClient({
           current ? updateDetailVisitMode(current, response) : current,
         );
       } catch (error) {
-        setActionError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setActionError(message);
+        enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, selectedDetail],
+    [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
   const handleCompleteVisit = useCallback(async () => {
@@ -604,12 +638,14 @@ export function BoardClient({
         });
         setReportDeliveries((current) => upsertActiveReportDelivery(current, response.delivery));
       } catch (error) {
-        setReportDeliveryError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setReportDeliveryError(message);
+        enqueueToast(errorToast(message));
       } finally {
         setSubmittingReportDeliveryId(undefined);
       }
     },
-    [apiClient, submittingReportDeliveryId],
+    [apiClient, enqueueToast, submittingReportDeliveryId],
   );
 
   const handleMarkReportActionDone = useCallback(
@@ -629,12 +665,14 @@ export function BoardClient({
         });
         setReportDeliveries((current) => upsertActiveReportDelivery(current, response.delivery));
       } catch (error) {
-        setReportDeliveryError(actionErrorMessage(error));
+        const message = actionErrorMessage(error);
+        setReportDeliveryError(message);
+        enqueueToast(errorToast(message));
       } finally {
         setSubmittingReportDeliveryId(undefined);
       }
     },
-    [apiClient, submittingReportDeliveryId],
+    [apiClient, enqueueToast, submittingReportDeliveryId],
   );
 
   const handleWorkspaceOpenChange = useCallback(
@@ -666,6 +704,7 @@ export function BoardClient({
 
   return (
     <div className="space-y-4">
+      <PhosToastRegion toasts={toasts} />
       <div
         className={cn(
           'flex flex-col gap-2 rounded-lg border border-border/70 bg-card px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between',
