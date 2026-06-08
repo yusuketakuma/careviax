@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-165600
+
+- current task: extend QR supplemental clinical routing to OTC/general-drug records and the normal prescription-intake QR draft import path
+- files inspected: `git status --short`, JAHIS supplemental record labels for `3/31`, MedicationProfile/MedicationIssue schema, CDS checker current-medication inputs, QR draft confirm route, normal prescription-intakes QR draft import route, and supplemental-record service/tests
+- files changed: `src/server/services/jahis-supplemental-records.ts`, `src/server/services/jahis-supplemental-records.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: OTC/要指導・一般用薬 records `3/31` were saved but did not enter any review workflow, and the normal `/api/prescription-intakes` QR draft import path attached JAHIS supplemental records without creating the MedicationIssue candidates added to the dedicated QR confirm route
+- security risks found: OTC/ingredient records are not auto-promoted into MedicationProfile or treated as confirmed current meds; they become pharmacist-review MedicationIssue candidates with QR marker context. Both QR confirm paths now use the same candidate builder and dedupe behavior
+- performance issues found: no new external call or polling was added; the added work is bounded to already-parsed supplemental records and one existing issue lookup/createMany in QR draft import transactions
+- validation commands: Prettier for touched files; focused Vitest for supplemental service, prescription-intakes route, and QR confirm route; targeted ESLint; `tsc --noEmit`; DB-backed Playwright prescription/QR/dispensing/auditing flow
+- validation results: focused Vitest passed with 3 files / 46 tests; ESLint passed; TypeScript passed; DB-backed Playwright prescription flow passed 10/10
+- remaining work: true CDS inclusion for pharmacist-confirmed OTC/ingredient candidates still needs a review-to-MedicationProfile or candidate-aware CDS flow; allergy/lab structured extraction and prescription QR insurance/public subsidy sidecar routing remain open; PCA return inspection/maintenance/billing lifecycle and external migration checksum planning remain open
+- next action: commit this QR OTC/import routing slice, then continue with prescription QR insurance/public subsidy sidecar routing or allergy/lab candidate extraction.
+
 ### 20260608-165200
 
 - current task: route clinically important JAHIS supplemental QR records into reviewable MedicationIssue candidates after multi-agent QR review

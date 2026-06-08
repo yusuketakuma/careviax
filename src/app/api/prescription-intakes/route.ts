@@ -30,6 +30,7 @@ import {
 } from '@/server/services/prescription-access';
 import {
   attachJahisSupplementalRecordsToIntake,
+  createMedicationIssueCandidatesFromJahisSupplementalRecords,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -564,6 +565,15 @@ export const POST = withAuth(
             qrDraftId: qrDraft.id,
             prescriptionIntakeId: intakeResult.intake.id,
             fallbackRecords: supplementalRecords,
+          });
+
+          await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
+            orgId: req.orgId,
+            patientId: patient_id,
+            caseId: intakeInput.case_id,
+            prescriptionIntakeId: intakeResult.intake.id,
+            identifiedBy: req.userId,
+            records: supplementalRecords,
           });
 
           await tx.qrScanDraft.update({

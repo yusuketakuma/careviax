@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { readJsonObject } from '@/lib/db/json';
 import { isSupplementalRecordType, type JahisSupplementalRecord } from '@/lib/pharmacy/jahis-qr';
 
-const CLINICAL_SUPPLEMENTAL_RECORD_TYPES = new Set(['4', '411', '421', '601']);
+const CLINICAL_SUPPLEMENTAL_RECORD_TYPES = new Set(['3', '31', '4', '411', '421', '601']);
 const CLINICAL_NOTE_PATTERN =
   /(残薬|飲み忘れ|飲忘れ|服用中断|中断|自己判断|副作用|眠気|眠く|ふらつき|めまい|吐き気|発疹|かゆみ|アレルギ|アナフィラ|喘息|息苦し|eGFR|egfr|Cr|クレアチニン|K値|カリウム|PT-?INR|INR|検査値|腎機能)/i;
 const SIDE_EFFECT_PATTERN =
@@ -24,6 +24,13 @@ function classifySupplementalRecordIssue(record: JahisSupplementalRecord) {
 
   const text = buildSupplementalRecordText(record);
   if (!text.trim()) return null;
+  if (record.recordType === '3' || record.recordType === '31') {
+    return {
+      category: 'other' as const,
+      priority: 'medium' as const,
+      title: `QR由来のOTC・一般用薬確認候補: ${record.recordLabel}`,
+    };
+  }
   if (record.recordType !== '421' && !CLINICAL_NOTE_PATTERN.test(text)) return null;
 
   if (SIDE_EFFECT_PATTERN.test(text)) {

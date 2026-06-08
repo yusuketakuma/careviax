@@ -829,6 +829,8 @@ describe('/api/prescription-intakes POST', () => {
     const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
     const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const intakeCreateMock = vi.fn().mockResolvedValue({ id: 'intake_qr' });
+    const medicationIssueFindManyMock = vi.fn().mockResolvedValue([]);
+    const medicationIssueCreateManyMock = vi.fn().mockResolvedValue({ count: 1 });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -839,6 +841,10 @@ describe('/api/prescription-intakes POST', () => {
         },
         jahisSupplementalRecord: {
           updateMany: supplementalUpdateManyMock,
+        },
+        medicationIssue: {
+          findMany: medicationIssueFindManyMock,
+          createMany: medicationIssueCreateManyMock,
         },
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
@@ -933,6 +939,21 @@ describe('/api/prescription-intakes POST', () => {
         patient_id: 'patient_qr',
         prescription_intake_id: 'intake_qr',
       },
+    });
+    expect(medicationIssueCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_qr',
+          case_id: 'case_qr',
+          title: expect.stringContaining('服薬状況確認候補'),
+          description: expect.stringContaining('[qr_supplemental:intake_qr:421:4]'),
+          status: 'open',
+          priority: 'medium',
+          category: 'adherence',
+          identified_by: 'user_1',
+        }),
+      ],
     });
     expect(qrDraftUpdateMock).toHaveBeenCalledWith({
       where: { id: 'draft_qr' },

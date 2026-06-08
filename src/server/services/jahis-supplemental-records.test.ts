@@ -11,7 +11,16 @@ function record(
 ): JahisSupplementalRecord {
   return {
     recordType,
-    recordLabel: recordType === '421' ? '残薬確認' : recordType === '601' ? '患者等記入' : '備考',
+    recordLabel:
+      recordType === '3'
+        ? '要指導医薬品・一般用医薬品服用'
+        : recordType === '31'
+          ? '要指導医薬品・一般用医薬品成分'
+          : recordType === '421'
+            ? '残薬確認'
+            : recordType === '601'
+              ? '患者等記入'
+              : '備考',
     lineNumber: Number(recordType),
     fields: [summary],
     details: [{ label: '内容', value: summary }],
@@ -62,6 +71,21 @@ describe('buildMedicationIssueCandidatesFromJahisSupplementalRecords', () => {
     });
 
     expect(candidates).toEqual([]);
+  });
+
+  it('creates OTC and ingredient review candidates so non-prescription drugs do not stop at storage', () => {
+    const candidates = buildMedicationIssueCandidatesFromJahisSupplementalRecords({
+      ...baseArgs,
+      records: [record('3', 'バファリンAを服用中'), record('31', 'アスピリン')],
+    });
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0]?.data).toMatchObject({
+      category: 'other',
+      priority: 'medium',
+      title: expect.stringContaining('OTC・一般用薬確認候補'),
+    });
+    expect(candidates[1]?.data.description).toContain('[qr_supplemental:intake_1:31:31]');
   });
 });
 
