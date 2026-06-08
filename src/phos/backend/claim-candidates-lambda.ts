@@ -7,7 +7,10 @@ import {
   type AttributeValue,
   type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
-import type { ClaimCandidateMutationResponse } from '@/phos/contracts/phos_contracts';
+import {
+  ClaimCandidateStatus,
+  type ClaimCandidateMutationResponse,
+} from '@/phos/contracts/phos_contracts';
 import { buildExcludedClaimCandidateResponse } from '@/phos/domain/claim/claimCandidateLifecycle';
 import { claimCandidateStatusGsiSk } from './dynamodb-keys';
 import {
@@ -184,8 +187,8 @@ export function createDynamoClaimCandidatesClient(input: {
                   ':version': { N: String(response.server_version) },
                   ':updated_at': { S: command.updated_at },
                   ':client_version': { N: String(command.client_version) },
-                  ':approved': { S: 'APPROVED' },
-                  ':excluded': { S: 'EXCLUDED' },
+                  ':approved': { S: ClaimCandidateStatus.APPROVED },
+                  ':excluded': { S: ClaimCandidateStatus.EXCLUDED },
                   ':status_gsi_pk': { S: statusGsiPk },
                   ':status_gsi_sk': { S: statusGsiSk },
                 },

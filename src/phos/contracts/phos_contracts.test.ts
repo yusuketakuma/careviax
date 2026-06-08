@@ -14,6 +14,8 @@ import {
   HandoffUrgency,
   ReportDeliveryStatus,
   RejectReason,
+  SOURCE_REF_KINDS,
+  SourceRefKind,
   UserRole,
   VisitArrivalOutcome,
   VisitStatus,
@@ -37,6 +39,8 @@ describe('PH-OS canonical contracts', () => {
     expect(ReportDeliveryStatus.WAITING_REPLY).toBe('WAITING_REPLY');
     expect(CapacityScope.PHARMACY).toBe('PHARMACY');
     expect(CapacityStatus.OVER_CAPACITY).toBe('OVER_CAPACITY');
+    expect(SourceRefKind.RULE_DOCUMENT).toBe('RULE_DOCUMENT');
+    expect([...SOURCE_REF_KINDS].sort()).toEqual(Object.values(SourceRefKind).sort());
   });
 
   it('defines canonical claim candidate and fee rule response contracts', () => {

@@ -6,10 +6,11 @@ import {
   type AttributeValue,
   type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
-import type {
-  CreateHandoffRequest,
-  HandoffMutationResponse,
-  HandoffView,
+import {
+  HandoffStatus,
+  type CreateHandoffRequest,
+  type HandoffMutationResponse,
+  type HandoffView,
 } from '@/phos/contracts/phos_contracts';
 import type { CardActionExecutionState } from './card-action-executor';
 import type { CardActionDisplayContext } from './card-action-projection';
@@ -262,7 +263,7 @@ function createHandoffMutationResponse(input: {
   const handoff: HandoffView = {
     handoff_id: input.handoff_id,
     card_id: input.command.card_id,
-    status: 'OPEN',
+    status: HandoffStatus.OPEN,
     reason_code: input.command.reason_code,
     summary: input.command.summary,
     source_refs: input.command.source_refs,

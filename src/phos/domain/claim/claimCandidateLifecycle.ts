@@ -1,14 +1,18 @@
-import type {
+import {
   ClaimCandidateStatus,
-  ClaimCandidateMutationResponse,
-  ClaimCandidateView,
-  ExcludeClaimCandidateRequest,
+  type ClaimCandidateStatus as ClaimCandidateStatusType,
+  type ClaimCandidateMutationResponse,
+  type ClaimCandidateView,
+  type ExcludeClaimCandidateRequest,
 } from '@/phos/contracts/phos_contracts';
 import { PhosDomainError } from '@/phos/backend/cards-repository';
 
-export const FINAL_CLAIM_CANDIDATE_STATUSES = ['APPROVED', 'EXCLUDED'] as const;
+export const FINAL_CLAIM_CANDIDATE_STATUSES = [
+  ClaimCandidateStatus.APPROVED,
+  ClaimCandidateStatus.EXCLUDED,
+] as const;
 
-export function isUnresolvedClaimCandidateStatus(status: ClaimCandidateStatus): boolean {
+export function isUnresolvedClaimCandidateStatus(status: ClaimCandidateStatusType): boolean {
   return !FINAL_CLAIM_CANDIDATE_STATUSES.includes(
     status as (typeof FINAL_CLAIM_CANDIDATE_STATUSES)[number],
   );
@@ -56,7 +60,7 @@ export function buildExcludedClaimCandidateResponse(input: {
   assertCanExcludeClaimCandidate(input.candidate, input.command);
   const candidate: ClaimCandidateView = {
     ...input.candidate,
-    status: 'EXCLUDED',
+    status: ClaimCandidateStatus.EXCLUDED,
     status_label: '除外済み',
     excluded_reason_code: input.command.reason_code.trim(),
     ...(input.command.reason_note

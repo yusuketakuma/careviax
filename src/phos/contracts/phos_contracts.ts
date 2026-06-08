@@ -183,15 +183,20 @@ export type VisitStep = (typeof VisitStep)[keyof typeof VisitStep];
 
 export type OfflineOpClass = 'BLOCKING' | 'NON_BLOCKING';
 
+export const SourceRefKind = {
+  PRESCRIPTION: 'PRESCRIPTION',
+  PREVIOUS_VISIT: 'PREVIOUS_VISIT',
+  MEDICATION_HISTORY: 'MEDICATION_HISTORY',
+  OTHER_PRO_MESSAGE: 'OTHER_PRO_MESSAGE',
+  RULE_DOCUMENT: 'RULE_DOCUMENT',
+  EVIDENCE_FILE: 'EVIDENCE_FILE',
+  CARE_PLAN: 'CARE_PLAN',
+} as const;
+export type SourceRefKind = (typeof SourceRefKind)[keyof typeof SourceRefKind];
+export const SOURCE_REF_KINDS = Object.values(SourceRefKind);
+
 export type SourceRef = {
-  kind:
-    | 'PRESCRIPTION'
-    | 'PREVIOUS_VISIT'
-    | 'MEDICATION_HISTORY'
-    | 'OTHER_PRO_MESSAGE'
-    | 'RULE_DOCUMENT'
-    | 'EVIDENCE_FILE'
-    | 'CARE_PLAN';
+  kind: SourceRefKind;
   ref_id: string;
   label: string;
   uri?: string;

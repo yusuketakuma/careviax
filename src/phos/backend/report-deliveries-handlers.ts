@@ -1,5 +1,6 @@
 import {
   ReportDeliveryStatus,
+  SOURCE_REF_KINDS,
   type ErrorResponse,
   type MarkReportActionDoneRequest,
   type RegisterReportReplyRequest,
@@ -18,15 +19,6 @@ import type { TenantContext } from './tenant-context';
 
 export const REPORT_DELIVERY_DEFAULT_LIMIT = 50;
 export const REPORT_DELIVERY_MAX_LIMIT = 50;
-const SOURCE_REF_KINDS = [
-  'PRESCRIPTION',
-  'PREVIOUS_VISIT',
-  'MEDICATION_HISTORY',
-  'OTHER_PRO_MESSAGE',
-  'RULE_DOCUMENT',
-  'EVIDENCE_FILE',
-  'CARE_PLAN',
-] as const satisfies readonly SourceRef['kind'][];
 
 function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
   const value = event.queryStringParameters?.[key];

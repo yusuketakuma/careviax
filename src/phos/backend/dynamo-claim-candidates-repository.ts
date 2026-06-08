@@ -1,9 +1,10 @@
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
-import type {
-  ClaimCandidateMutationResponse,
+import {
   ClaimCandidateStatus,
-  ClaimCandidateView,
-  ExcludeClaimCandidateRequest,
+  type ClaimCandidateMutationResponse,
+  type ClaimCandidateStatus as ClaimCandidateStatusType,
+  type ClaimCandidateView,
+  type ExcludeClaimCandidateRequest,
 } from '@/phos/contracts/phos_contracts';
 import {
   assertTenantGsiKey,
@@ -121,7 +122,8 @@ export function createDynamoClaimCandidatesRepository(
 ): PhosClaimCandidatesRepository {
   return {
     async searchClaimCandidates(ctx: TenantContext, query: ClaimCandidateSearchQuery) {
-      const status: ClaimCandidateStatus = query.status ?? 'MISSING_EVIDENCE';
+      const status: ClaimCandidateStatusType =
+        query.status ?? ClaimCandidateStatus.MISSING_EVIDENCE;
       const partition_key = query.card_id
         ? claimCandidateCardGsiPk(ctx, query.card_id)
         : claimCandidateStatusGsiPk(ctx, status);

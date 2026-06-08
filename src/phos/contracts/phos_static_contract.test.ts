@@ -12,6 +12,16 @@ function listFiles(dir: string): string[] {
   });
 }
 
+function productionFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return listFiles(root).filter(
+    (file) =>
+      !file.endsWith('.test.ts') &&
+      !file.endsWith('.test.tsx') &&
+      !file.endsWith('src/phos/contracts/phos_contracts.ts'),
+  );
+}
+
 describe('PH-OS static contract checks', () => {
   it('does not contain the prohibited double-L cancellation spelling in canonical PH-OS files', () => {
     const prohibitedCanceledSpelling = ['CANCEL', 'LED'].join('');
@@ -59,6 +69,44 @@ describe('PH-OS static contract checks', () => {
       const content = readFileSync(file, 'utf8');
       for (const pattern of forbiddenLegacyOfflineImports) {
         expect(content, file).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it('keeps SourceRef kind enum literals centralized in phos_contracts.ts', () => {
+    const sourceRefKindLiterals = [
+      ['PRESCRIPTION'].join(''),
+      ['PREVIOUS', '_VISIT'].join(''),
+      ['MEDICATION', '_HISTORY'].join(''),
+      ['OTHER', '_PRO', '_MESSAGE'].join(''),
+      ['RULE', '_DOCUMENT'].join(''),
+      ['EVIDENCE', '_FILE'].join(''),
+      ['CARE', '_PLAN'].join(''),
+    ];
+
+    for (const file of [...productionFiles(canonicalRoot), ...productionFiles(phosAppRoot)]) {
+      const content = readFileSync(file, 'utf8');
+      for (const literal of sourceRefKindLiterals) {
+        expect(content, file).not.toMatch(new RegExp(`['"]${literal}['"]`));
+      }
+    }
+  });
+
+  it('keeps claim and handoff status enum literals centralized in phos_contracts.ts', () => {
+    const statusLiterals = [
+      ['APPROVED'].join(''),
+      ['EXCLUDED'].join(''),
+      ['MISSING', '_EVIDENCE'].join(''),
+      ['OPEN'].join(''),
+      ['IN', '_REVIEW'].join(''),
+      ['RESOLVED'].join(''),
+      ['RETURNED'].join(''),
+    ];
+
+    for (const file of [...productionFiles(canonicalRoot), ...productionFiles(phosAppRoot)]) {
+      const content = readFileSync(file, 'utf8');
+      for (const literal of statusLiterals) {
+        expect(content, file).not.toMatch(new RegExp(`['"]${literal}['"]`));
       }
     }
   });

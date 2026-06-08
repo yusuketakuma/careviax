@@ -1,7 +1,8 @@
-import type {
+import {
   ClaimCandidateStatus,
-  FeeRuleConditionDsl,
-  FeeRuleView,
+  type ClaimCandidateStatus as ClaimCandidateStatusType,
+  type FeeRuleConditionDsl,
+  type FeeRuleView,
 } from '@/phos/contracts/phos_contracts';
 
 export type FeeRuleFacts = Record<string, string | number | boolean | null | undefined>;
@@ -9,7 +10,7 @@ export type FeeRuleFacts = Record<string, string | number | boolean | null | und
 export type FeeRuleEvaluation = {
   matched: boolean;
   missing_evidence_keys: string[];
-  candidate_status: ClaimCandidateStatus;
+  candidate_status: ClaimCandidateStatusType;
 };
 
 export class FeeRuleDslError extends Error {
@@ -100,9 +101,9 @@ export function evaluateFeeRuleCandidate(input: {
     matched,
     missing_evidence_keys,
     candidate_status: !matched
-      ? 'EXCLUDED'
+      ? ClaimCandidateStatus.EXCLUDED
       : missing_evidence_keys.length > 0
-        ? 'MISSING_EVIDENCE'
-        : 'READY',
+        ? ClaimCandidateStatus.MISSING_EVIDENCE
+        : ClaimCandidateStatus.READY,
   };
 }

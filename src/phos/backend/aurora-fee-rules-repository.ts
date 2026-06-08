@@ -1,10 +1,11 @@
 import { Pool, type QueryResultRow } from 'pg';
-import type {
-  EvidenceRequirementView,
-  FeeRuleConditionDsl,
-  FeeRuleSearchResponse,
-  FeeRuleView,
-  SourceRef,
+import {
+  SOURCE_REF_KINDS,
+  type EvidenceRequirementView,
+  type FeeRuleConditionDsl,
+  type FeeRuleSearchResponse,
+  type FeeRuleView,
+  type SourceRef,
 } from '@/phos/contracts/phos_contracts';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
 import type { TenantContext } from './tenant-context';
@@ -82,15 +83,7 @@ LEFT JOIN LATERAL (
 WHERE (fr.tenant_id = $1 OR (fr.tenant_scope = 'SYSTEM' AND fr.tenant_id = 'SYSTEM'))
 `;
 
-const SOURCE_REF_KINDS = new Set<SourceRef['kind']>([
-  'PRESCRIPTION',
-  'PREVIOUS_VISIT',
-  'MEDICATION_HISTORY',
-  'OTHER_PRO_MESSAGE',
-  'RULE_DOCUMENT',
-  'EVIDENCE_FILE',
-  'CARE_PLAN',
-]);
+const SOURCE_REF_KIND_SET = new Set<SourceRef['kind']>(SOURCE_REF_KINDS);
 
 function assertSafeTenantId(tenant_id: string): void {
   if (!/^[A-Za-z0-9_-]+$/.test(tenant_id)) {
@@ -196,7 +189,7 @@ function asEvidenceRequirements(value: unknown): EvidenceRequirementView[] {
   return value.map((entry) => {
     if (!isObject(entry)) throw new Error('Invalid FeeRule evidence requirement');
     const source_kind = readString(entry.source_kind, 'evidence_requirement.source_kind');
-    if (!SOURCE_REF_KINDS.has(source_kind as SourceRef['kind'])) {
+    if (!SOURCE_REF_KIND_SET.has(source_kind as SourceRef['kind'])) {
       throw new Error('Invalid FeeRule evidence requirement source_kind');
     }
     return {
@@ -213,7 +206,7 @@ function asSourceRefs(value: unknown): SourceRef[] {
   return value.map((entry) => {
     if (!isObject(entry)) throw new Error('Invalid FeeRule source ref');
     const kind = readString(entry.kind, 'source_ref.kind');
-    if (!SOURCE_REF_KINDS.has(kind as SourceRef['kind'])) {
+    if (!SOURCE_REF_KIND_SET.has(kind as SourceRef['kind'])) {
       throw new Error('Invalid FeeRule source_ref.kind');
     }
     const uri = readOptionalString(entry.uri, 'source_ref.uri');

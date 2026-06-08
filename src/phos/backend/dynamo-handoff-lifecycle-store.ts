@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { HandoffUrgency } from '@/phos/contracts/phos_contracts';
+import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type {
   CreateHandoffRequest,
   HandoffMutationResponse,
@@ -132,9 +132,9 @@ function handoffAuditSummary(handoff: HandoffView) {
 }
 
 function handoffTransitionEventType(handoff: HandoffView): string {
-  if (handoff.status === 'IN_REVIEW') return 'HANDOFF_OPENED';
-  if (handoff.status === 'RESOLVED') return 'HANDOFF_RESOLVED';
-  if (handoff.status === 'RETURNED') return 'HANDOFF_RETURNED';
+  if (handoff.status === HandoffStatus.IN_REVIEW) return 'HANDOFF_OPENED';
+  if (handoff.status === HandoffStatus.RESOLVED) return 'HANDOFF_RESOLVED';
+  if (handoff.status === HandoffStatus.RETURNED) return 'HANDOFF_RETURNED';
   return 'HANDOFF_UPDATED';
 }
 

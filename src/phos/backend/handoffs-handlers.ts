@@ -1,4 +1,9 @@
-import { ActionCode, HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
+import {
+  ActionCode,
+  HandoffStatus,
+  HandoffUrgency,
+  SOURCE_REF_KINDS,
+} from '@/phos/contracts/phos_contracts';
 import type {
   CreateHandoffRequest,
   ErrorResponse,
@@ -18,15 +23,6 @@ import type { TenantContext } from './tenant-context';
 
 export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
 export const HANDOFF_SEARCH_MAX_LIMIT = 50;
-const SOURCE_REF_KINDS = [
-  'PRESCRIPTION',
-  'PREVIOUS_VISIT',
-  'MEDICATION_HISTORY',
-  'OTHER_PRO_MESSAGE',
-  'RULE_DOCUMENT',
-  'EVIDENCE_FILE',
-  'CARE_PLAN',
-] as const satisfies readonly SourceRef['kind'][];
 
 function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
   const value = event.queryStringParameters?.[key];

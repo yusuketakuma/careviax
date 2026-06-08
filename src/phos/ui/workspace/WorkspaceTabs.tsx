@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { PhosCurrentStepLabel, PhosDisplayStatusLabel } from '@/phos/contracts/phos_copy.ja';
-import type {
-  ActionPhase,
-  CardDetailResponse,
-  SourceRef,
-  TabKey,
-  VisitArrivalOutcome,
-  VisitStep,
+import {
+  SourceRefKind,
+  type ActionPhase,
+  type CardDetailResponse,
+  type SourceRef,
+  type TabKey,
+  type VisitArrivalOutcome,
+  type VisitStep,
 } from '@/phos/contracts/phos_contracts';
 import { VisitMode } from '@/phos/ui/visit/VisitMode';
 
@@ -30,10 +31,24 @@ const TAB_LABELS = {
 
 const SOURCE_KIND_BY_TAB = {
   OVERVIEW: undefined,
-  PRESCRIPTION: new Set<SourceRef['kind']>(['PRESCRIPTION', 'MEDICATION_HISTORY']),
-  SET: new Set<SourceRef['kind']>(['PRESCRIPTION', 'PREVIOUS_VISIT', 'EVIDENCE_FILE']),
-  VISIT_REPORT: new Set<SourceRef['kind']>(['PREVIOUS_VISIT', 'CARE_PLAN', 'EVIDENCE_FILE']),
-  CLAIM_HISTORY: new Set<SourceRef['kind']>(['RULE_DOCUMENT', 'EVIDENCE_FILE']),
+  PRESCRIPTION: new Set<SourceRef['kind']>([
+    SourceRefKind.PRESCRIPTION,
+    SourceRefKind.MEDICATION_HISTORY,
+  ]),
+  SET: new Set<SourceRef['kind']>([
+    SourceRefKind.PRESCRIPTION,
+    SourceRefKind.PREVIOUS_VISIT,
+    SourceRefKind.EVIDENCE_FILE,
+  ]),
+  VISIT_REPORT: new Set<SourceRef['kind']>([
+    SourceRefKind.PREVIOUS_VISIT,
+    SourceRefKind.CARE_PLAN,
+    SourceRefKind.EVIDENCE_FILE,
+  ]),
+  CLAIM_HISTORY: new Set<SourceRef['kind']>([
+    SourceRefKind.RULE_DOCUMENT,
+    SourceRefKind.EVIDENCE_FILE,
+  ]),
 } as const satisfies Record<TabKey, ReadonlySet<SourceRef['kind']> | undefined>;
 
 function selectSources(detail: CardDetailResponse, tab: TabKey): SourceRef[] {
