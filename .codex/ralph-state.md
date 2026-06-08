@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-165200
+
+- current task: route clinically important JAHIS supplemental QR records into reviewable MedicationIssue candidates after multi-agent QR review
+- files inspected: QR confirm route/tests, `src/server/services/jahis-supplemental-records.ts`, JAHIS supplemental parser/view helpers, MedicationIssue schema/API/validation, DB-backed prescription Playwright flow, and subagent findings for QR supplemental data routing
+- files changed: `src/server/services/jahis-supplemental-records.ts`, `src/server/services/jahis-supplemental-records.test.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: e-okusuri supplemental records such as `421` residual medication and `601/4/411` patient/provider notes were preserved but stopped at storage/UI review, so residual medication, self-discontinuation, suspected side effects, allergy-like notes, and lab-like clinical notes did not enter the MedicationIssue workflow
+- security risks found: QR-derived free text is not auto-applied to patient master or treated as confirmed clinical truth; it is converted only into open review candidates with a marker, original record type/label/line context, and pharmacist review wording. Candidate creation runs in the same QR confirm transaction and deduplicates by per-intake record marker against open/in-progress issues
+- performance issues found: candidate extraction is bounded to already-parsed supplemental records and uses one existing-issue lookup plus one createMany at most; no new polling, external call, or unbounded scan was added
+- validation commands: Prettier for touched QR/service files; focused Vitest for supplemental service, QR confirm route, JAHIS parser, and supplemental view tests; targeted ESLint; `tsc --noEmit`; DB-backed Playwright prescription/QR/dispensing/auditing flow
+- validation results: focused Vitest passed with 4 files / 104 tests; ESLint passed; TypeScript passed; DB-backed Playwright prescription flow passed 10/10
+- remaining work: OTC/要指導・一般用薬 `3/31` still needs structured non-prescription medication candidate/CDS routing; allergy/lab extraction from free text remains review-candidate future work beyond issue creation; prescription QR insurance/public subsidy sidecar routing is still open; PCA return inspection/maintenance/billing lifecycle and external migration checksum planning remain open
+- next action: commit this QR clinical-routing slice, then continue with OTC/CDS or prescription insurance sidecar routing as the next highest-value QR data path.
+
 ### 20260608-164800
 
 - current task: maximize subagent review, then harden audit trigger verification, migration preconditions, and PCA rental DB invariants while keeping the local runtime working

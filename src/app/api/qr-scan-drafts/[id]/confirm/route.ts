@@ -12,6 +12,7 @@ import {
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
   attachJahisSupplementalRecordsToIntake,
+  createMedicationIssueCandidatesFromJahisSupplementalRecords,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import {
@@ -455,6 +456,15 @@ export const POST = withAuth(
           qrDraftId: id,
           prescriptionIntakeId: intakeResult.intake.id,
           fallbackRecords: supplementalRecords,
+        });
+
+        await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
+          orgId: req.orgId,
+          patientId: patient_id,
+          caseId: case_id,
+          prescriptionIntakeId: intakeResult.intake.id,
+          identifiedBy: req.userId,
+          records: supplementalRecords,
         });
 
         await tx.qrScanDraft.update({

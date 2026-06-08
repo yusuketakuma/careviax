@@ -14,6 +14,8 @@ const {
   qrScanDraftClaimMock,
   qrScanDraftUpdateMock,
   jahisSupplementalRecordUpdateManyMock,
+  medicationIssueFindManyMock,
+  medicationIssueCreateManyMock,
   broadcastStatusUpdateMock,
   patientFindFirstMock,
   careCaseFindFirstMock,
@@ -43,6 +45,8 @@ const {
   qrScanDraftClaimMock: vi.fn(),
   qrScanDraftUpdateMock: vi.fn(),
   jahisSupplementalRecordUpdateManyMock: vi.fn(),
+  medicationIssueFindManyMock: vi.fn(),
+  medicationIssueCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
@@ -134,6 +138,8 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     qrScanDraftClaimMock.mockResolvedValue({ count: 1 });
     qrScanDraftUpdateMock.mockResolvedValue({ id: 'draft_1', status: 'confirmed' });
     jahisSupplementalRecordUpdateManyMock.mockResolvedValue({ count: 1 });
+    medicationIssueFindManyMock.mockResolvedValue([]);
+    medicationIssueCreateManyMock.mockResolvedValue({ count: 1 });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
@@ -180,6 +186,10 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           },
           jahisSupplementalRecord: {
             updateMany: jahisSupplementalRecordUpdateManyMock,
+          },
+          medicationIssue: {
+            findMany: medicationIssueFindManyMock,
+            createMany: medicationIssueCreateManyMock,
           },
         });
       }
@@ -341,6 +351,36 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         patient_id: 'patient_1',
         prescription_intake_id: 'intake_1',
       },
+    });
+    expect(medicationIssueFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        status: { in: ['open', 'in_progress'] },
+        OR: [
+          {
+            description: {
+              contains: '[qr_supplemental:intake_1:421:8]',
+            },
+          },
+        ],
+      },
+      select: { description: true },
+    });
+    expect(medicationIssueCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          title: expect.stringContaining('服薬状況確認候補'),
+          description: expect.stringContaining('[qr_supplemental:intake_1:421:8]'),
+          status: 'open',
+          priority: 'medium',
+          category: 'adherence',
+          identified_by: 'user_1',
+        }),
+      ],
     });
     expect(runPostCreateHooksMock).toHaveBeenCalledWith(
       expect.objectContaining({
