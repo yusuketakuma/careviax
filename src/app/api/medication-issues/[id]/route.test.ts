@@ -9,6 +9,7 @@ const {
   careCaseFindManyMock,
   medicationIssueFindFirstMock,
   medicationIssueUpdateMock,
+  patientUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   careCaseFindManyMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
   medicationIssueUpdateMock: vi.fn(),
+  patientUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -82,6 +84,9 @@ describe('/api/medication-issues/[id]', () => {
       status: 'open',
       patient_id: 'patient_1',
       case_id: 'case_1',
+      title: '服薬課題',
+      description: '説明',
+      category: 'other',
     });
     medicationIssueUpdateMock.mockResolvedValue({
       id: 'issue_1',
@@ -91,6 +96,10 @@ describe('/api/medication-issues/[id]', () => {
       callback({
         medicationIssue: {
           update: medicationIssueUpdateMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
+          update: patientUpdateMock,
         },
       }),
     );
@@ -180,7 +189,15 @@ describe('/api/medication-issues/[id]', () => {
           },
         ],
       },
-      select: { id: true, status: true, patient_id: true, case_id: true },
+      select: {
+        id: true,
+        status: true,
+        patient_id: true,
+        case_id: true,
+        title: true,
+        description: true,
+        category: true,
+      },
     });
     expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
       where: { id: 'issue_1' },
@@ -198,6 +215,9 @@ describe('/api/medication-issues/[id]', () => {
       status: 'resolved',
       patient_id: 'patient_1',
       case_id: 'case_1',
+      title: '服薬課題',
+      description: '説明',
+      category: 'other',
     });
 
     const response = (await PATCH(
@@ -245,6 +265,9 @@ describe('/api/medication-issues/[id]', () => {
       status: 'open',
       patient_id: 'patient_1',
       case_id: 'case_2',
+      title: '服薬課題',
+      description: '説明',
+      category: 'other',
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_2', patient_id: 'patient_other' });
 
@@ -260,5 +283,113 @@ describe('/api/medication-issues/[id]', () => {
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a resolved QR allergy candidate to patient allergy_info', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:7]\nペニシリンで発疹あり',
+      category: 'side_effect',
+    });
+    patientFindFirstMock.mockResolvedValueOnce({ id: 'patient_1' }).mockResolvedValueOnce({
+      id: 'patient_1',
+      allergy_info: [],
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: {
+        allergy_info: [
+          {
+            drug_name: 'ペニシリン',
+            category: 'drug',
+            severity: 'unknown',
+            confirmed_at: expect.any(String),
+            source: 'qr_supplemental:issue_1',
+          },
+        ],
+      },
+    });
+  });
+
+  it('promotes a QR allergy candidate using the updated description from the resolving patch', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:7]\nペニシリンで発疹あり',
+      category: 'side_effect',
+    });
+    patientFindFirstMock.mockResolvedValueOnce({ id: 'patient_1' }).mockResolvedValueOnce({
+      id: 'patient_1',
+      allergy_info: [],
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        description: '[qr_supplemental:intake_1:601:7]\nセフェム系で発疹あり',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: {
+        allergy_info: [
+          {
+            drug_name: 'セフェム系',
+            category: 'drug',
+            severity: 'unknown',
+            confirmed_at: expect.any(String),
+            source: 'qr_supplemental:issue_1',
+          },
+        ],
+      },
+    });
+  });
+
+  it('does not promote when the resolving patch changes the category away from side effects', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:7]\nペニシリンで発疹あり',
+      category: 'side_effect',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        category: 'other',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientUpdateMock).not.toHaveBeenCalled();
   });
 });

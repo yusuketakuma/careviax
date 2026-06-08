@@ -15,6 +15,7 @@ import {
   listAccessibleCareCaseIds,
   listAccessiblePatientIds,
 } from '@/server/services/patient-access';
+import { promoteResolvedQrAllergyIssueToPatient } from '@/server/services/qr-allergy-promotion';
 import type { Prisma } from '@prisma/client';
 
 async function buildMedicationIssueAssignmentWhere(args: {
@@ -76,7 +77,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       org_id: ctx.orgId,
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     },
-    select: { id: true, status: true, patient_id: true, case_id: true },
+    select: {
+      id: true,
+      status: true,
+      patient_id: true,
+      case_id: true,
+      title: true,
+      description: true,
+      category: true,
+    },
   });
   if (!existing) return notFound('課題が見つかりません');
 
@@ -96,11 +105,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     updateData.resolved_at = null;
   }
 
+  const resolvedAt = updateData.resolved_at instanceof Date ? updateData.resolved_at : null;
   const issue = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.medicationIssue.update({
+    const updated = await tx.medicationIssue.update({
       where: { id },
       data: updateData,
     });
+    if (parsed.data.status === 'resolved' && resolvedAt) {
+      await promoteResolvedQrAllergyIssueToPatient(tx, {
+        orgId: ctx.orgId,
+        issue: {
+          id: existing.id,
+          patient_id: existing.patient_id,
+          title: parsed.data.title ?? existing.title,
+          description: parsed.data.description ?? existing.description,
+          category: parsed.data.category ?? existing.category,
+        },
+        confirmedAt: resolvedAt,
+      });
+    }
+    return updated;
   });
 
   return success({ data: issue });
