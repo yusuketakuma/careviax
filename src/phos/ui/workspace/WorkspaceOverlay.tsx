@@ -7,6 +7,7 @@ import type {
   ActionCode,
   ActionReasonInput,
   CardDetailResponse,
+  EvidencePendingView,
 } from '@/phos/contracts/phos_contracts';
 import type { VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
 import { BlockerPanel } from './BlockerPanel';
@@ -22,6 +23,7 @@ export type WorkspaceOverlayProps = {
   detailError?: string;
   actionPhase?: ActionPhase;
   actionMessage?: string;
+  pendingEvidence?: EvidencePendingView[];
   onOpenChange(open: boolean): void;
   onExecute(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
   onCreateHandoff?(cardId: string, input: HandoffCreateInput): void;
@@ -39,6 +41,7 @@ export function WorkspaceOverlay({
   detailError,
   actionPhase,
   actionMessage,
+  pendingEvidence = [],
   onOpenChange,
   onExecute,
   onCreateHandoff,
@@ -69,6 +72,7 @@ export function WorkspaceOverlay({
                 <WorkspaceTabs
                   detail={detail}
                   actionPhase={actionPhase}
+                  pendingEvidence={pendingEvidence}
                   onVisitArrivalOutcome={onVisitArrivalOutcome}
                   onOpenVisitStep={onOpenVisitStep}
                   onCompleteVisit={onCompleteVisit}

@@ -19,18 +19,24 @@ import type {
   CapacityResponse,
   CardBoardItemView,
   CardDetailResponse,
+  EvidencePendingView,
   HandoffView,
   ReportDeliveryView,
   TriageLane,
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
 import { createPhosApiClient } from '@/phos/api/client';
+import {
+  listPhosPendingEvidence,
+  retryPhosOfflineEvidenceUploads,
+} from '@/phos/api/offlineEvidenceQueue';
 import { enqueuePhosOfflineCardAction } from '@/phos/api/offlineActionQueue';
 import {
   PhosApiError,
   PhosOfflineQueuedError,
   type PhosApiClient,
   type PhosOfflineActionQueue,
+  type PhosOfflineEvidenceQueue,
 } from '@/phos/api/types';
 import { usePhosAction } from '@/phos/api/usePhosAction';
 import { countBoardFilters, selectBoardItems } from '@/phos/domain/board/boardFilters';
@@ -54,6 +60,7 @@ export type BoardClientProps = {
   getAccessToken?: () => string | Promise<string>;
   initialItems?: CardBoardItemView[];
   offlineActionQueue?: PhosOfflineActionQueue;
+  offlineEvidenceQueue?: PhosOfflineEvidenceQueue;
 };
 
 type BoardPhase = 'LOADING' | 'READY' | 'ERROR';
@@ -213,12 +220,18 @@ function focusSourceCardOrBoard(cardId: string): void {
   (cardButton ?? fallback)?.focus();
 }
 
+const defaultOfflineEvidenceQueue: PhosOfflineEvidenceQueue = {
+  listPendingEvidence: listPhosPendingEvidence,
+  retryUploads: retryPhosOfflineEvidenceUploads,
+};
+
 export function BoardClient({
   apiBaseUrl,
   client,
   getAccessToken,
   initialItems = [],
   offlineActionQueue,
+  offlineEvidenceQueue = defaultOfflineEvidenceQueue,
 }: BoardClientProps) {
   const { data: session } = useSession();
   const phosAccessToken = session?.phosAccessToken;
@@ -241,6 +254,9 @@ export function BoardClient({
   const [submittingReportDeliveryId, setSubmittingReportDeliveryId] = useState<
     string | undefined
   >();
+  const [pendingEvidenceByPacket, setPendingEvidenceByPacket] = useState<
+    Record<string, EvidencePendingView[]>
+  >({});
   const [toasts, setToasts] = useState<PhosToastEntry[]>([]);
   const [capacity, setCapacity] = useState<CapacityResponse | undefined>();
   const [capacityPhase, setCapacityPhase] = useState<CapacityPhase>('LOADING');
@@ -396,6 +412,51 @@ export function BoardClient({
       active = false;
     };
   }, [apiClient, selectedCardId]);
+
+  useEffect(() => {
+    const visit = selectedDetail?.visit_mode;
+    if (!visit) return;
+    const packetId = visit.packet_id;
+    const visitOnline = visit.online;
+
+    let active = true;
+
+    async function loadPendingEvidence() {
+      try {
+        if (visitOnline && apiClient) {
+          await offlineEvidenceQueue.retryUploads({ client: apiClient });
+        }
+        const pendingEvidence = await offlineEvidenceQueue.listPendingEvidence(packetId);
+        if (!active) return;
+        setPendingEvidenceByPacket((current) => ({
+          ...current,
+          [packetId]: pendingEvidence,
+        }));
+      } catch (error) {
+        if (!active) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : '同期待ち証跡を読み込めません。再試行してください。';
+        setActionError(message);
+        enqueueToast(errorToast(message));
+      }
+    }
+
+    void loadPendingEvidence();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    apiClient,
+    enqueueToast,
+    offlineEvidenceQueue,
+    selectedDetail?.visit_mode,
+    selectedDetail?.visit_mode?.online,
+    selectedDetail?.visit_mode?.packet_id,
+    selectedDetail?.visit_mode?.server_version,
+  ]);
 
   const handlePrimaryAction = useCallback(
     async (cardId: string, actionCode: ActionCode, reason?: ActionReasonInput) => {
@@ -706,6 +767,9 @@ export function BoardClient({
 
   const activeDetail =
     selectedDetail && selectedDetail.card.card_id === selectedCardId ? selectedDetail : null;
+  const activePendingEvidence = activeDetail?.visit_mode
+    ? (pendingEvidenceByPacket[activeDetail.visit_mode.packet_id] ?? [])
+    : [];
   const counts = useMemo(() => countBoardFilters(items, currentUserName), [currentUserName, items]);
   const visibleItems = useMemo(
     () => selectBoardItems(items, { quickFilter, triageLane, currentUserName }),
@@ -802,6 +866,7 @@ export function BoardClient({
         detailError={detailError}
         actionPhase={action.phase === ActionPhase.IDLE ? undefined : action.phase}
         actionMessage={actionError}
+        pendingEvidence={activePendingEvidence}
         onOpenChange={handleWorkspaceOpenChange}
         onExecute={handlePrimaryAction}
         onCreateHandoff={handleCreateHandoff}

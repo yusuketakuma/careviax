@@ -36,7 +36,11 @@ import type {
   TagView,
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
-import type { PhosApiClient, PhosOfflineActionQueue } from '@/phos/api/types';
+import type {
+  PhosApiClient,
+  PhosOfflineActionQueue,
+  PhosOfflineEvidenceQueue,
+} from '@/phos/api/types';
 import { PhosApiError } from '@/phos/api/types';
 import { BoardClient } from './BoardClient';
 
@@ -699,6 +703,57 @@ describe('BoardClient', () => {
       ),
     );
     expect(screen.getByText('完了確認')).toBeTruthy();
+  });
+
+  it('loads offline evidence queue records into VisitMode completion guards', async () => {
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          visible_tabs: ['VISIT_REPORT'],
+          visit_mode: visitMode({
+            step_completed: Object.fromEntries(
+              Object.values(VisitStep).map((step) => [step, true]),
+            ) as Record<VisitStep, boolean>,
+          }),
+        }),
+      ),
+    });
+    const offlineEvidenceQueue: PhosOfflineEvidenceQueue = {
+      listPendingEvidence: vi.fn(async () => [
+        {
+          evidence_key: 'mandatory_photo',
+          label: '必須写真',
+          offline_op_class: 'BLOCKING' as const,
+          created_at: '2026-06-09T00:00:00.000Z',
+          retry_count: 0,
+        },
+      ]),
+      retryUploads: vi.fn(async () => ({ synced: 0, failed: 0 })),
+    };
+
+    render(
+      <BoardClient
+        client={apiClient}
+        initialItems={[item]}
+        offlineEvidenceQueue={offlineEvidenceQueue}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() =>
+      expect(offlineEvidenceQueue.retryUploads).toHaveBeenCalledWith({ client: apiClient }),
+    );
+    expect(offlineEvidenceQueue.listPendingEvidence).toHaveBeenCalledWith('packet_1');
+
+    await waitFor(() => expect(screen.getByRole('region', { name: '同期待ち証跡' })).toBeTruthy());
+    expect(screen.getByText('必須写真')).toBeTruthy();
+    expect(screen.getByText('必須未同期 1件')).toBeTruthy();
+
+    const complete = screen.getByRole('button', { name: '訪問を完了する（未完了）' });
+    fireEvent.click(complete);
+
+    expect(complete.getAttribute('data-enabled')).toBe('false');
+    expect(apiClient.updateVisitStep).not.toHaveBeenCalled();
   });
 
   it('filters board items through quick filters and triage lanes', async () => {

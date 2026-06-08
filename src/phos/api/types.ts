@@ -12,6 +12,7 @@ import type {
   ErrorResponse,
   ExcludeClaimCandidateRequest,
   EvidencePresignUploadResponse,
+  EvidencePendingView,
   EvidenceUploadRequest,
   FeeRuleSearchResponse,
   HandoffMutationResponse,
@@ -113,6 +114,19 @@ export type PhosOfflineActionQueueResult = {
 
 export type PhosOfflineActionQueue = {
   enqueueCardAction(input: PhosOfflineCardActionQueueInput): Promise<PhosOfflineActionQueueResult>;
+};
+
+export type PhosOfflineEvidenceRetryResult = {
+  synced: number;
+  failed: number;
+};
+
+export type PhosOfflineEvidenceQueue = {
+  listPendingEvidence(packet_id: string): Promise<EvidencePendingView[]>;
+  retryUploads(input: {
+    client: Pick<PhosApiClient, 'presignEvidenceUpload'>;
+    fetchImpl?: typeof fetch;
+  }): Promise<PhosOfflineEvidenceRetryResult>;
 };
 
 export class PhosApiError extends Error {

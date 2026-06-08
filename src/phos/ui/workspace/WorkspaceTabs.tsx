@@ -6,6 +6,7 @@ import {
   SourceRefKind,
   type ActionPhase,
   type CardDetailResponse,
+  type EvidencePendingView,
   type SourceRef,
   type TabKey,
   type VisitArrivalOutcome,
@@ -16,6 +17,7 @@ import { VisitMode } from '@/phos/ui/visit/VisitMode';
 export type WorkspaceTabsProps = {
   detail: CardDetailResponse;
   actionPhase?: ActionPhase;
+  pendingEvidence?: EvidencePendingView[];
   onVisitArrivalOutcome?(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenVisitStep?(step: VisitStep): void;
   onCompleteVisit?(): void;
@@ -79,6 +81,7 @@ function SourceList({ sources }: { sources: SourceRef[] }) {
 export function WorkspaceTabs({
   detail,
   actionPhase,
+  pendingEvidence = [],
   onVisitArrivalOutcome,
   onOpenVisitStep,
   onCompleteVisit,
@@ -122,6 +125,7 @@ export function WorkspaceTabs({
         <VisitMode
           visit={detail.visit_mode}
           actionPhase={actionPhase}
+          pendingEvidence={pendingEvidence}
           onArrivalOutcome={
             onVisitArrivalOutcome ??
             (() => {
