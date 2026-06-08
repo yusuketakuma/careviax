@@ -214,6 +214,35 @@ CREATE POLICY tenant_isolation ON "TracingReport"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "TaskComment" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "TaskComment"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "HandoffBoard" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "HandoffBoard"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "HandoffItem" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "HandoffItem"
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM "HandoffBoard"
+      WHERE "HandoffBoard"."id" = "HandoffItem"."board_id"
+        AND "HandoffBoard"."org_id" = current_setting('app.current_org_id', true)
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM "HandoffBoard"
+      WHERE "HandoffBoard"."id" = "HandoffItem"."board_id"
+        AND "HandoffBoard"."org_id" = current_setting('app.current_org_id', true)
+    )
+  );
+
 -- ─── Medication Domain ──────────────────────────────────────────────────────
 
 ALTER TABLE "MedicationProfile" ENABLE ROW LEVEL SECURITY;
@@ -305,8 +334,13 @@ CREATE POLICY tenant_isolation ON "Template"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
-ALTER TABLE "Setting" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON "Setting"
+ALTER TABLE "DocumentDeliveryRule" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "DocumentDeliveryRule"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "PushSubscription" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PushSubscription"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
@@ -362,6 +396,11 @@ CREATE POLICY tenant_isolation ON "VisitScheduleProposal"
 
 ALTER TABLE "PharmacyDrugStock" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "PharmacyDrugStock"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "ServiceArea" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "ServiceArea"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
@@ -423,6 +462,9 @@ ALTER TABLE "ConferenceNote" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "EscalationRule" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ExternalAccessGrant" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "TracingReport" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "TaskComment" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "HandoffBoard" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "HandoffItem" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "MedicationProfile" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ResidualMedication" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "MedicationIssue" FORCE ROW LEVEL SECURITY;
@@ -440,9 +482,11 @@ ALTER TABLE "BillingEvidence" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Notification" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "AuditLog" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Template" FORCE ROW LEVEL SECURITY;
-ALTER TABLE "Setting" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "DocumentDeliveryRule" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PushSubscription" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SourceOfTruthMatrix" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacyDrugStock" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "ServiceArea" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PatientMcsLink" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PatientMcsSummary" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PatientMcsMessage" FORCE ROW LEVEL SECURITY;

@@ -716,6 +716,27 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
     }
   };
 
+  const readRpNumber = (value: string | undefined) => {
+    if (!value) return undefined;
+    const rpNumber = parseInt(value, 10);
+    return Number.isFinite(rpNumber) ? rpNumber : undefined;
+  };
+
+  const getEokusuriMedicationTargets = (rpNumber: number | undefined) => {
+    const targets = medications.filter(
+      (medication) => rpNumber !== undefined && medication.rpNumber === rpNumber,
+    );
+    if (
+      currentMed &&
+      (rpNumber === undefined ||
+        currentMed.rpNumber === undefined ||
+        currentMed.rpNumber === rpNumber)
+    ) {
+      targets.push(currentMed);
+    }
+    return targets;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith('JAHISTC')) continue;
@@ -776,9 +797,9 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
         }
         case '201': {
           flushMed();
-          const rpNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
+          const rpNumber = readRpNumber(parts[1]);
           currentMed = {
-            rpNumber: rpNumber !== undefined && !isNaN(rpNumber) ? rpNumber : undefined,
+            rpNumber,
             drugCode: parts[6] || undefined,
             drugCodeType: parts[5] ? parseInt(parts[5], 10) : undefined,
             drugName: parts[2] || '不明',
@@ -805,28 +826,33 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           break;
         }
         case '301': {
-          if (currentMed) {
-            if (parts[2]) currentMed.usage = parts[2];
-            if (parts[3]) currentMed.usageQuantity = parts[3];
-            if (parts[4]) currentMed.usageUnit = parts[4];
-            if (parts[5]) currentMed.formCode = parseInt(parts[5], 10) || undefined;
+          const targets = getEokusuriMedicationTargets(readRpNumber(parts[1]));
+          for (const medication of targets) {
+            if (parts[2]) medication.usage = parts[2];
+            if (parts[3]) medication.usageQuantity = parts[3];
+            if (parts[4]) medication.usageUnit = parts[4];
+            if (parts[5]) medication.formCode = parseInt(parts[5], 10) || undefined;
             if (parts[3] && parts[4]) {
-              currentMed.daysOrTimes = `${parts[3]}${parts[4]}`;
+              medication.daysOrTimes = `${parts[3]}${parts[4]}`;
             } else if (parts[3]) {
-              currentMed.daysOrTimes = parts[3];
+              medication.daysOrTimes = parts[3];
             }
           }
           break;
         }
         case '311': {
-          if (currentMed && parts[2]) {
-            currentMed.supplements.push(parts[2]);
+          if (parts[2]) {
+            for (const medication of getEokusuriMedicationTargets(readRpNumber(parts[1]))) {
+              medication.supplements.push(parts[2]);
+            }
           }
           break;
         }
         case '391': {
-          if (currentMed && parts[2]) {
-            currentMed.usageNotes.push(parts[2]);
+          if (parts[2]) {
+            for (const medication of getEokusuriMedicationTargets(readRpNumber(parts[1]))) {
+              medication.usageNotes.push(parts[2]);
+            }
           }
           break;
         }

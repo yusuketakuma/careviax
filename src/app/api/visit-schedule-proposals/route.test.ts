@@ -8,6 +8,7 @@ const {
   userFindManyMock,
   userFindFirstMock,
   careCaseFindFirstMock,
+  patientInsuranceFindFirstMock,
   billingCandidateFindManyMock,
   visitScheduleCountMock,
   prescriptionIntakeFindFirstMock,
@@ -27,6 +28,7 @@ const {
   userFindManyMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  patientInsuranceFindFirstMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
@@ -59,6 +61,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
     },
     billingCandidate: {
       findMany: billingCandidateFindManyMock,
@@ -153,6 +158,7 @@ describe('/api/visit-schedule-proposals', () => {
         care_insurance_number: null,
       },
     });
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
     billingCandidateFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
@@ -548,6 +554,54 @@ describe('/api/visit-schedule-proposals', () => {
 
     expect(response.status).toBe(400);
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+  });
+
+  it('uses active structured patient insurance when legacy patient insurance columns are empty', async () => {
+    careCaseFindFirstMock.mockResolvedValue({
+      patient_id: 'patient_1',
+      patient: {
+        medical_insurance_number: null,
+        care_insurance_number: null,
+      },
+    });
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(patientInsuranceFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          insurance_type: 'medical',
+          is_active: true,
+        }),
+      }),
+    );
+    expect(billingCandidateFindManyMock).toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
   });
 
   it('promotes derived emergency proposals to emergency priority when priority is omitted', async () => {

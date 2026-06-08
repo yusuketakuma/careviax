@@ -98,10 +98,15 @@ describe('/api/pca-pump-rentals', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPumpRental: {
+          findMany: pcaPumpRentalFindManyMock,
           create: pcaPumpRentalCreateMock,
         },
         pcaPump: {
+          findFirst: pcaPumpFindFirstMock,
           updateMany: pcaPumpUpdateManyMock,
+        },
+        prescriberInstitution: {
+          findFirst: prescriberInstitutionFindFirstMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -116,6 +121,9 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1' }),
+    });
     expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -238,6 +246,30 @@ describe('/api/pca-pump-rentals', () => {
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
+  it('returns a validation error if the open-rental unique index rejects a race', async () => {
+    withOrgContextMock
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          pcaPump: { findFirst: pcaPumpFindFirstMock },
+          prescriberInstitution: { findFirst: prescriberInstitutionFindFirstMock },
+        }),
+      )
+      .mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: '2026-06-10',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'このPCAポンプには未完了の貸出があるため登録できません',
+    });
+  });
+
   it('rejects already rented pumps before creating a rental', async () => {
     pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'rented' });
 
@@ -250,7 +282,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
     expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
   });

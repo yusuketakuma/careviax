@@ -59,6 +59,7 @@ describe('/api/pca-pumps GET', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPump: {
+          findMany: pcaPumpFindManyMock,
           create: pcaPumpCreateMock,
         },
       }),
@@ -69,6 +70,9 @@ describe('/api/pca-pumps GET', () => {
     const response = await GET(createRequest('http://localhost/api/pca-pumps?status=available'));
 
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1' }),
+    });
     expect(pcaPumpFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {

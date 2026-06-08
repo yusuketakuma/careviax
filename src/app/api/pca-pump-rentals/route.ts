@@ -2,7 +2,6 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 
 const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
@@ -20,6 +19,10 @@ function parseRentalStatusParam(value: string | undefined) {
 
 function isOpenRentalStatus(value: RentalStatus): value is (typeof openRentalStatuses)[number] {
   return openRentalStatuses.includes(value as (typeof openRentalStatuses)[number]);
+}
+
+function isUniqueConstraintFailure(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
 function serializeRental<
@@ -49,39 +52,44 @@ export const GET = withAuth(
 
     const institutionId = req.nextUrl.searchParams.get('institution_id')?.trim();
 
-    const rentals = await prisma.pcaPumpRental.findMany({
-      where: {
-        org_id: req.orgId,
-        ...('statuses' in parsedStatus
-          ? { status: { in: parsedStatus.statuses } }
-          : parsedStatus.status
-            ? { status: parsedStatus.status }
-            : {}),
-        ...(institutionId ? { institution_id: institutionId } : {}),
-      },
-      include: {
-        pump: {
-          select: {
-            id: true,
-            asset_code: true,
-            serial_number: true,
-            model_name: true,
-            status: true,
+    const rentals = await withOrgContext(
+      req.orgId,
+      (tx) =>
+        tx.pcaPumpRental.findMany({
+          where: {
+            org_id: req.orgId,
+            ...('statuses' in parsedStatus
+              ? { status: { in: parsedStatus.statuses } }
+              : parsedStatus.status
+                ? { status: parsedStatus.status }
+                : {}),
+            ...(institutionId ? { institution_id: institutionId } : {}),
           },
-        },
-        institution: {
-          select: {
-            id: true,
-            name: true,
-            institution_code: true,
-            phone: true,
-            fax: true,
+          include: {
+            pump: {
+              select: {
+                id: true,
+                asset_code: true,
+                serial_number: true,
+                model_name: true,
+                status: true,
+              },
+            },
+            institution: {
+              select: {
+                id: true,
+                name: true,
+                institution_code: true,
+                phone: true,
+                fax: true,
+              },
+            },
           },
-        },
-      },
-      orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
-      take: 100,
-    });
+          orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
+          take: 100,
+        }),
+      { requestContext: req },
+    );
 
     return success({ data: rentals.map(serializeRental) });
   },
@@ -101,16 +109,21 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const [pump, institution] = await Promise.all([
-      prisma.pcaPump.findFirst({
-        where: { id: parsed.data.pump_id, org_id: req.orgId },
-        select: { id: true, status: true },
-      }),
-      prisma.prescriberInstitution.findFirst({
-        where: { id: parsed.data.institution_id, org_id: req.orgId },
-        select: { id: true },
-      }),
-    ]);
+    const [pump, institution] = await withOrgContext(
+      req.orgId,
+      (tx) =>
+        Promise.all([
+          tx.pcaPump.findFirst({
+            where: { id: parsed.data.pump_id, org_id: req.orgId },
+            select: { id: true, status: true },
+          }),
+          tx.prescriberInstitution.findFirst({
+            where: { id: parsed.data.institution_id, org_id: req.orgId },
+            select: { id: true },
+          }),
+        ]),
+      { requestContext: req },
+    );
     if (!pump) return notFound('PCAポンプが見つかりません');
     if (!institution) return notFound('貸出先医療機関が見つかりません');
     if (pump.status !== 'available') {
@@ -119,66 +132,74 @@ export const POST = withAuth(
 
     const status = parsed.data.status ?? 'active';
     const requiresPumpClaim = isOpenRentalStatus(status);
-    const created = await withOrgContext(
-      req.orgId,
-      async (tx) => {
-        if (requiresPumpClaim) {
-          const claim = await tx.pcaPump.updateMany({
-            where: {
-              id: parsed.data.pump_id,
-              org_id: req.orgId,
-              status: 'available',
-            },
-            data: { status: 'rented' },
-          });
-          if (claim.count !== 1) {
-            return { kind: 'error' as const, error: 'pump_not_available' as const };
+    let created;
+    try {
+      created = await withOrgContext(
+        req.orgId,
+        async (tx) => {
+          if (requiresPumpClaim) {
+            const claim = await tx.pcaPump.updateMany({
+              where: {
+                id: parsed.data.pump_id,
+                org_id: req.orgId,
+                status: 'available',
+              },
+              data: { status: 'rented' },
+            });
+            if (claim.count !== 1) {
+              return { kind: 'error' as const, error: 'pump_not_available' as const };
+            }
           }
-        }
 
-        const rental = await tx.pcaPumpRental.create({
-          data: {
-            org_id: req.orgId,
-            pump_id: parsed.data.pump_id,
-            institution_id: parsed.data.institution_id,
-            status,
-            rented_at: new Date(parsed.data.rented_at),
-            due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null,
-            returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
-            contact_name: parsed.data.contact_name || null,
-            contact_phone: parsed.data.contact_phone || null,
-            rental_fee_yen: parsed.data.rental_fee_yen ?? null,
-            notes: parsed.data.notes || null,
-          },
-          include: {
-            pump: true,
-            institution: true,
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            org_id: req.orgId,
-            actor_id: req.userId,
-            action: 'pca_pump_rental_created',
-            target_type: 'PcaPumpRental',
-            target_id: rental.id,
-            changes: {
-              pump_id: rental.pump_id,
-              institution_id: rental.institution_id,
-              status: rental.status,
-              rented_at: rental.rented_at.toISOString().slice(0, 10),
-              due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
-              rental_fee_yen: rental.rental_fee_yen,
+          const rental = await tx.pcaPumpRental.create({
+            data: {
+              org_id: req.orgId,
+              pump_id: parsed.data.pump_id,
+              institution_id: parsed.data.institution_id,
+              status,
+              rented_at: new Date(parsed.data.rented_at),
+              due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null,
+              returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
+              contact_name: parsed.data.contact_name || null,
+              contact_phone: parsed.data.contact_phone || null,
+              rental_fee_yen: parsed.data.rental_fee_yen ?? null,
+              notes: parsed.data.notes || null,
             },
-            ip_address: req.headers.get('x-forwarded-for') ?? null,
-            user_agent: req.headers.get('user-agent') ?? null,
-          },
-        });
+            include: {
+              pump: true,
+              institution: true,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              org_id: req.orgId,
+              actor_id: req.userId,
+              action: 'pca_pump_rental_created',
+              target_type: 'PcaPumpRental',
+              target_id: rental.id,
+              changes: {
+                pump_id: rental.pump_id,
+                institution_id: rental.institution_id,
+                status: rental.status,
+                rented_at: rental.rented_at.toISOString().slice(0, 10),
+                due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+                rental_fee_yen: rental.rental_fee_yen,
+              },
+              ip_address: req.headers.get('x-forwarded-for') ?? null,
+              user_agent: req.headers.get('user-agent') ?? null,
+            },
+          });
 
-        return { kind: 'rental' as const, rental };
-      },
-      { requestContext: req },
-    );
+          return { kind: 'rental' as const, rental };
+        },
+        { requestContext: req },
+      );
+    } catch (error) {
+      if (isUniqueConstraintFailure(error)) {
+        return validationError('このPCAポンプには未完了の貸出があるため登録できません');
+      }
+      throw error;
+    }
     if (created.kind === 'error') {
       return validationError('利用可能なPCAポンプだけ貸出登録できます');
     }

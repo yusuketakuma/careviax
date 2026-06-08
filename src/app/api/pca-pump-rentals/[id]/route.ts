@@ -4,7 +4,6 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { updatePcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 
 function serializeRental(item: {
@@ -28,6 +27,10 @@ function toDateKey(value: Date | null) {
   return value?.toISOString().slice(0, 10) ?? null;
 }
 
+function isUniqueConstraintFailure(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
@@ -47,17 +50,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const existing = await prisma.pcaPumpRental.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: {
-      id: true,
-      pump_id: true,
-      status: true,
-      rented_at: true,
-      due_at: true,
-      returned_at: true,
-    },
-  });
+  const existing = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.pcaPumpRental.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: {
+          id: true,
+          pump_id: true,
+          status: true,
+          rented_at: true,
+          due_at: true,
+          returned_at: true,
+        },
+      }),
+    { requestContext: ctx },
+  );
   if (!existing) return notFound('PCAポンプレンタルが見つかりません');
 
   const effectiveRentedAt = parsed.data.rented_at ?? toDateKey(existing.rented_at);
@@ -96,116 +104,129 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (parsed.data.institution_id) {
-    const institution = await prisma.prescriberInstitution.findFirst({
-      where: { id: parsed.data.institution_id, org_id: ctx.orgId },
-      select: { id: true },
-    });
+    const institution = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.prescriberInstitution.findFirst({
+          where: { id: parsed.data.institution_id, org_id: ctx.orgId },
+          select: { id: true },
+        }),
+      { requestContext: ctx },
+    );
     if (!institution) return notFound('貸出先医療機関が見つかりません');
   }
 
-  const updated = await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      const nextStatus = parsed.data.status;
-      if (nextStatus === 'active' || nextStatus === 'scheduled' || nextStatus === 'overdue') {
-        const conflictingRental = await tx.pcaPumpRental.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            pump_id: existing.pump_id,
-            id: { not: existing.id },
-            status: { in: ['scheduled', 'active', 'overdue'] },
-          },
-          select: { id: true, status: true },
-        });
-        if (conflictingRental) {
-          return {
-            kind: 'error' as const,
-            error: 'pump_already_has_open_rental' as const,
-          };
+  let updated;
+  try {
+    updated = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const nextStatus = parsed.data.status;
+        if (nextStatus === 'active' || nextStatus === 'scheduled' || nextStatus === 'overdue') {
+          const conflictingRental = await tx.pcaPumpRental.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              pump_id: existing.pump_id,
+              id: { not: existing.id },
+              status: { in: ['scheduled', 'active', 'overdue'] },
+            },
+            select: { id: true, status: true },
+          });
+          if (conflictingRental) {
+            return {
+              kind: 'error' as const,
+              error: 'pump_already_has_open_rental' as const,
+            };
+          }
         }
-      }
 
-      const rental = await tx.pcaPumpRental.update({
-        where: { id },
-        data: {
-          ...(parsed.data.institution_id !== undefined
-            ? { institution_id: parsed.data.institution_id }
-            : {}),
-          ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
-          ...(parsed.data.rented_at !== undefined
-            ? { rented_at: new Date(parsed.data.rented_at) }
-            : {}),
-          ...(parsed.data.due_at !== undefined
-            ? { due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null }
-            : {}),
-          ...(parsed.data.returned_at !== undefined
-            ? {
-                returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
-              }
-            : {}),
-          ...(parsed.data.contact_name !== undefined
-            ? { contact_name: parsed.data.contact_name || null }
-            : {}),
-          ...(parsed.data.contact_phone !== undefined
-            ? { contact_phone: parsed.data.contact_phone || null }
-            : {}),
-          ...(parsed.data.rental_fee_yen !== undefined
-            ? { rental_fee_yen: parsed.data.rental_fee_yen ?? null }
-            : {}),
-          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
-        },
-        include: {
-          pump: true,
-          institution: true,
-        },
-      });
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pca_pump_rental_updated',
-          target_type: 'PcaPumpRental',
-          target_id: id,
-          changes: {
-            previous_status: existing.status,
-            ...parsed.data,
+        const rental = await tx.pcaPumpRental.update({
+          where: { id },
+          data: {
+            ...(parsed.data.institution_id !== undefined
+              ? { institution_id: parsed.data.institution_id }
+              : {}),
+            ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+            ...(parsed.data.rented_at !== undefined
+              ? { rented_at: new Date(parsed.data.rented_at) }
+              : {}),
+            ...(parsed.data.due_at !== undefined
+              ? { due_at: parsed.data.due_at ? new Date(parsed.data.due_at) : null }
+              : {}),
+            ...(parsed.data.returned_at !== undefined
+              ? {
+                  returned_at: parsed.data.returned_at ? new Date(parsed.data.returned_at) : null,
+                }
+              : {}),
+            ...(parsed.data.contact_name !== undefined
+              ? { contact_name: parsed.data.contact_name || null }
+              : {}),
+            ...(parsed.data.contact_phone !== undefined
+              ? { contact_phone: parsed.data.contact_phone || null }
+              : {}),
+            ...(parsed.data.rental_fee_yen !== undefined
+              ? { rental_fee_yen: parsed.data.rental_fee_yen ?? null }
+              : {}),
+            ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
           },
-          ip_address: req.headers.get('x-forwarded-for') ?? null,
-          user_agent: req.headers.get('user-agent') ?? null,
-        },
-      });
-
-      if (nextStatus === 'returned' || nextStatus === 'cancelled') {
-        const remainingOpenRental = await tx.pcaPumpRental.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            pump_id: existing.pump_id,
-            id: { not: existing.id },
-            status: { in: ['scheduled', 'active', 'overdue'] },
+          include: {
+            pump: true,
+            institution: true,
           },
-          select: { id: true },
         });
-        if (!remainingOpenRental) {
+        await tx.auditLog.create({
+          data: {
+            org_id: ctx.orgId,
+            actor_id: ctx.userId,
+            action: 'pca_pump_rental_updated',
+            target_type: 'PcaPumpRental',
+            target_id: id,
+            changes: {
+              previous_status: existing.status,
+              ...parsed.data,
+            },
+            ip_address: req.headers.get('x-forwarded-for') ?? null,
+            user_agent: req.headers.get('user-agent') ?? null,
+          },
+        });
+
+        if (nextStatus === 'returned' || nextStatus === 'cancelled') {
+          const remainingOpenRental = await tx.pcaPumpRental.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              pump_id: existing.pump_id,
+              id: { not: existing.id },
+              status: { in: ['scheduled', 'active', 'overdue'] },
+            },
+            select: { id: true },
+          });
+          if (!remainingOpenRental) {
+            await tx.pcaPump.update({
+              where: { id: existing.pump_id },
+              data: { status: 'available' },
+            });
+          }
+        } else if (
+          nextStatus === 'active' ||
+          nextStatus === 'scheduled' ||
+          nextStatus === 'overdue'
+        ) {
           await tx.pcaPump.update({
             where: { id: existing.pump_id },
-            data: { status: 'available' },
+            data: { status: 'rented' },
           });
         }
-      } else if (
-        nextStatus === 'active' ||
-        nextStatus === 'scheduled' ||
-        nextStatus === 'overdue'
-      ) {
-        await tx.pcaPump.update({
-          where: { id: existing.pump_id },
-          data: { status: 'rented' },
-        });
-      }
 
-      return { kind: 'rental' as const, rental };
-    },
-    { requestContext: ctx },
-  );
+        return { kind: 'rental' as const, rental };
+      },
+      { requestContext: ctx },
+    );
+  } catch (error) {
+    if (isUniqueConstraintFailure(error)) {
+      return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');
+    }
+    throw error;
+  }
 
   if (updated.kind === 'error') {
     return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');

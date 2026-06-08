@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import net from 'node:net';
 import { spawnSync } from 'node:child_process';
+import { Client } from 'pg';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -14,6 +15,41 @@ type CheckResult = {
 const PACKAGE_JSON_PATH = 'package.json';
 const E2E_DUPLICATE_CHECK_SCRIPT = 'db:e2e:check-care-report-duplicates';
 
+const REQUIRED_RLS_TABLES = [
+  'AuditLog',
+  'BillingCandidate',
+  'BillingEvidence',
+  'CycleTransitionLog',
+  'DispensingDecision',
+  'DocumentDeliveryRule',
+  'HandoffBoard',
+  'HandoffItem',
+  'PatientInsurance',
+  'PcaPump',
+  'PcaPumpRental',
+  'PushSubscription',
+  'ServiceArea',
+  'TaskComment',
+] as const;
+
+const REQUIRED_AUDIT_TRIGGERS = [
+  'audit_log_patient',
+  'audit_log_patient_insurance',
+  'audit_log_care_case',
+  'audit_log_consent_record',
+  'audit_log_management_plan',
+  'audit_log_visit_schedule',
+  'audit_log_visit_record',
+  'audit_log_communication_request',
+  'audit_log_care_report',
+  'audit_log_external_access_grant',
+  'audit_log_workflow_exception',
+  'audit_log_task',
+  'audit_log_dispense_result',
+  'audit_log_dispense_audit',
+  'audit_log_set_audit',
+] as const;
+
 const REQUIRED_PLAYWRIGHT_SPECS = [
   'tools/tests/ui-audit-extensions.spec.ts',
   'tools/tests/ui-mobile-layout.spec.ts',
@@ -25,6 +61,7 @@ const REQUIRED_PLAYWRIGHT_SPECS = [
 
 const REQUIRED_PACKAGE_SCRIPTS = [
   'db:e2e:push',
+  'db:e2e:migrate',
   'db:e2e:seed',
   'db:e2e:prepare',
   'db:check-care-report-duplicates',
@@ -129,6 +166,22 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
       };
     }
 
+    if (scriptName === 'db:e2e:push') {
+      if (script.includes('prisma db push')) {
+        return {
+          name: `package-script:${scriptName}`,
+          status: 'fail',
+          detail: 'script must not run prisma db push because it skips raw SQL migrations',
+        };
+      }
+
+      return {
+        name: `package-script:${scriptName}`,
+        status: 'pass',
+        detail: 'deprecated guard found',
+      };
+    }
+
     const shouldPinE2eDatabase =
       scriptName.startsWith('db:e2e:') || scriptName.startsWith('medical-ui:e2e:');
     if (shouldPinE2eDatabase && !script.includes('ph_os_e2e')) {
@@ -147,6 +200,14 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
       };
     }
 
+    if (scriptName === 'db:e2e:prepare' && !script.includes('db:e2e:migrate')) {
+      return {
+        name: `package-script:${scriptName}`,
+        status: 'fail',
+        detail: 'script must run db:e2e:migrate so raw SQL migrations are verified',
+      };
+    }
+
     return {
       name: `package-script:${scriptName}`,
       status: 'pass',
@@ -156,6 +217,100 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
           : 'found',
     };
   });
+}
+
+async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
+  const databaseUrl =
+    process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
+  const client = new Client({ connectionString: databaseUrl });
+
+  try {
+    await client.connect();
+
+    const rlsResult = await client.query<{
+      relname: string;
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+      policy_count: number;
+    }>(
+      `
+        SELECT
+          c.relname,
+          c.relrowsecurity,
+          c.relforcerowsecurity,
+          COUNT(p.polname)::int AS policy_count
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_policy p ON p.polrelid = c.oid
+        WHERE n.nspname = 'public'
+          AND c.relname = ANY($1::text[])
+        GROUP BY c.relname, c.relrowsecurity, c.relforcerowsecurity
+      `,
+      [REQUIRED_RLS_TABLES],
+    );
+
+    const rlsByTable = new Map(rlsResult.rows.map((row) => [row.relname, row]));
+    const missingTables = REQUIRED_RLS_TABLES.filter((table) => !rlsByTable.has(table));
+    const weakRlsTables = REQUIRED_RLS_TABLES.filter((table) => {
+      const row = rlsByTable.get(table);
+      return !row?.relrowsecurity || !row.relforcerowsecurity || row.policy_count < 1;
+    });
+
+    const triggerResult = await client.query<{ tgname: string; function_name: string }>(
+      `
+        SELECT t.tgname, p.proname AS function_name
+        FROM pg_trigger t
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        WHERE NOT t.tgisinternal
+          AND t.tgname = ANY($1::text[])
+      `,
+      [REQUIRED_AUDIT_TRIGGERS],
+    );
+
+    const triggerByName = new Map(triggerResult.rows.map((row) => [row.tgname, row]));
+    const missingTriggers = REQUIRED_AUDIT_TRIGGERS.filter((name) => !triggerByName.has(name));
+    const wrongFunctionTriggers = triggerResult.rows.filter(
+      (row) => row.function_name !== 'ph_os_write_audit_log',
+    );
+
+    if (
+      missingTables.length > 0 ||
+      weakRlsTables.length > 0 ||
+      missingTriggers.length > 0 ||
+      wrongFunctionTriggers.length > 0
+    ) {
+      return {
+        name: 'db:rls-audit-contract',
+        status: 'fail',
+        detail: [
+          missingTables.length ? `missing tables: ${missingTables.join(', ')}` : null,
+          weakRlsTables.length ? `weak RLS: ${weakRlsTables.join(', ')}` : null,
+          missingTriggers.length ? `missing audit triggers: ${missingTriggers.join(', ')}` : null,
+          wrongFunctionTriggers.length
+            ? `wrong audit functions: ${wrongFunctionTriggers
+                .map((row) => `${row.tgname}:${row.function_name}`)
+                .join(', ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('; '),
+      };
+    }
+
+    return {
+      name: 'db:rls-audit-contract',
+      status: 'pass',
+      detail: `${REQUIRED_RLS_TABLES.length} RLS tables and ${REQUIRED_AUDIT_TRIGGERS.length} audit triggers verified`,
+    };
+  } catch (error) {
+    return {
+      name: 'db:rls-audit-contract',
+      status: 'fail',
+      detail: error instanceof Error ? error.message : 'database contract check failed',
+    };
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 }
 
 function checkScriptEntry(): CheckResult {
@@ -187,6 +342,7 @@ async function main() {
     checkScriptEntry(),
     await checkTcpPort('port:app-3012', 3012),
     await checkTcpPort('port:db-5433', 5433),
+    await checkDatabaseRlsAndAudit(),
   ];
 
   printResults(results);

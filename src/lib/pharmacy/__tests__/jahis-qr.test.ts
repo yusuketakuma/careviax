@@ -11,6 +11,7 @@ import {
 import {
   SIMPLE_QR,
   MULTI_MED_QR,
+  SAME_RP_MULTI_DRUG_QR,
   QR_WITH_ERRORS,
   EMPTY_MEDS_QR,
   QR_WITH_REMARKS,
@@ -303,6 +304,27 @@ describe('parseJahisQR', () => {
     it('parses prescribing doctor department', () => {
       const result = parseJahisQR(MULTI_MED_QR);
       expect(result.prescribingDepartment).toBe('糖尿病内科');
+    });
+  });
+
+  describe('with SAME_RP_MULTI_DRUG_QR', () => {
+    it('applies same-RP usage, supplements, and usage notes to every drug in the RP', () => {
+      const result = parseJahisQR(SAME_RP_MULTI_DRUG_QR);
+
+      expect(result.medications).toHaveLength(2);
+      expect(result.medications.map((medication) => medication.drugName)).toEqual([
+        '配合薬A錠',
+        '配合薬B錠',
+      ]);
+      for (const medication of result.medications) {
+        expect(medication.rpNumber).toBe(1);
+        expect(medication.usage).toBe('1日1回朝食後服用');
+        expect(medication.usageQuantity).toBe('14');
+        expect(medication.usageUnit).toBe('日分');
+        expect(medication.daysOrTimes).toBe('14日分');
+        expect(medication.supplements).toContain('同一RP用法補足');
+        expect(medication.usageNotes).toContain('同一RP服用注意');
+      }
     });
   });
 

@@ -82,11 +82,16 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     openRentalFindFirstMock.mockResolvedValue(null);
     pcaPumpRentalUpdateMock.mockResolvedValue(updatedRental);
     pcaPumpUpdateMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
+    let contextCall = 0;
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      contextCall += 1;
+      return callback({
         pcaPumpRental: {
-          findFirst: openRentalFindFirstMock,
+          findFirst: contextCall === 1 ? pcaPumpRentalFindFirstMock : openRentalFindFirstMock,
           update: pcaPumpRentalUpdateMock,
+        },
+        prescriberInstitution: {
+          findFirst: prescriberInstitutionFindFirstMock,
         },
         pcaPump: {
           update: pcaPumpUpdateMock,
@@ -94,8 +99,8 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      }),
-    );
+      });
+    });
   });
 
   it('rejects reactivating a rental when the same pump has another open rental', async () => {
@@ -111,6 +116,25 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     });
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
     expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a validation error if the open-rental unique index rejects a race', async () => {
+    withOrgContextMock
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          pcaPumpRental: { findFirst: pcaPumpRentalFindFirstMock },
+        }),
+      )
+      .mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await PATCH(createRequest({ status: 'active' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'このPCAポンプには未完了の貸出があるため状態を変更できません',
+    });
   });
 
   it('keeps the pump rented when returning one rental but another open rental remains', async () => {
@@ -159,7 +183,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '返却予定日は貸出日以降の日付を指定してください',
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -172,7 +196,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '返却済みにする場合は返却日が必須です',
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -185,7 +209,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '返却日は返却済み状態でのみ指定できます',
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 

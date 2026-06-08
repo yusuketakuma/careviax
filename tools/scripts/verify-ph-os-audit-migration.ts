@@ -2,6 +2,7 @@ import { Client } from 'pg';
 
 const EXPECTED_AUDIT_TRIGGERS = [
   'audit_log_patient',
+  'audit_log_patient_insurance',
   'audit_log_care_case',
   'audit_log_consent_record',
   'audit_log_management_plan',

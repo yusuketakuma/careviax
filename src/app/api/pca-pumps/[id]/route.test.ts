@@ -66,6 +66,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPump: {
+          findFirst: pcaPumpFindFirstMock,
           update: pcaPumpUpdateMock,
         },
         auditLog: {
@@ -89,7 +90,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '未完了の貸出があるPCAポンプは利用可能・点検・退役へ変更できません',
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -99,6 +100,9 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1' }),
+    });
     expect(pcaPumpFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'pump_1', org_id: 'org_1' },
       select: {

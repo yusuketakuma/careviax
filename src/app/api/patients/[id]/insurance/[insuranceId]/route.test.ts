@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientInsuranceFindFirstMock,
+  patientInsuranceOverlapFindFirstMock,
   patientInsuranceUpdateMock,
   patientInsuranceDeleteMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
+  patientInsuranceOverlapFindFirstMock: vi.fn(),
   patientInsuranceUpdateMock: vi.fn(),
   patientInsuranceDeleteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -65,12 +67,21 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         role: 'pharmacist',
       },
     });
-    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_1', insurance_type: 'care' });
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      insurance_type: 'care',
+      public_program_code: null,
+      valid_from: new Date('2026-04-01'),
+      valid_until: new Date('2027-03-31'),
+      is_active: true,
+    });
+    patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1', is_active: false });
     patientInsuranceDeleteMock.mockResolvedValue({ id: 'insurance_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientInsurance: {
+          findFirst: patientInsuranceOverlapFindFirstMock,
           update: patientInsuranceUpdateMock,
           delete: patientInsuranceDeleteMock,
         },
@@ -108,6 +119,44 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         confirmed_care_level: 'care_2',
       },
     });
+  });
+
+  it('PUT rejects overlapping active insurance before updating duplicate validity windows', async () => {
+    patientInsuranceOverlapFindFirstMock.mockResolvedValue({ id: 'insurance_existing' });
+
+    const response = await PUT(
+      createPutRequest({
+        valid_from: '2026-05-01',
+        valid_until: '2027-04-30',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ期間に有効な保険情報が既に存在します',
+      details: {
+        valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+      },
+    });
+    expect(patientInsuranceOverlapFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'care',
+        is_active: true,
+        id: { not: 'insurance_1' },
+        AND: [
+          { OR: [{ valid_from: null }, { valid_from: { lte: new Date('2027-04-30') } }] },
+          { OR: [{ valid_until: null }, { valid_until: { gte: new Date('2026-05-01') } }] },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
   it('deletes an insurance record', async () => {

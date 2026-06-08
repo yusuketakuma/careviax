@@ -1,2 +1,2 @@
-ALTER TABLE "drug_masters"
+ALTER TABLE "DrugMaster"
   ALTER COLUMN "drug_price" TYPE DECIMAL(12,2);

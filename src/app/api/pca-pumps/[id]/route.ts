@@ -4,7 +4,6 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { updatePcaPumpSchema } from '@/lib/validations/pca-pump-rental';
 
 function serializePump(item: {
@@ -39,19 +38,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const existing = await prisma.pcaPump.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: {
-      id: true,
-      _count: {
+  const existing = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.pcaPump.findFirst({
+        where: { id, org_id: ctx.orgId },
         select: {
-          rentals: {
-            where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+          id: true,
+          _count: {
+            select: {
+              rentals: {
+                where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+              },
+            },
           },
         },
-      },
-    },
-  });
+      }),
+    { requestContext: ctx },
+  );
   if (!existing) return notFound('PCAポンプが見つかりません');
   if (parsed.data.status && parsed.data.status !== 'rented' && existing._count.rentals > 0) {
     return validationError('未完了の貸出があるPCAポンプは利用可能・点検・退役へ変更できません');
@@ -113,10 +117,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('PCAポンプIDが不正です');
 
-  const existing = await prisma.pcaPump.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true, _count: { select: { rentals: true } } },
-  });
+  const existing = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.pcaPump.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: { id: true, _count: { select: { rentals: true } } },
+      }),
+    { requestContext: ctx },
+  );
   if (!existing) return notFound('PCAポンプが見つかりません');
   if (existing._count.rentals > 0) {
     return validationError('貸出履歴があるPCAポンプは削除できません。退役に変更してください');

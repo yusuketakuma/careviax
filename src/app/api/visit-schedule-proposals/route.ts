@@ -15,6 +15,7 @@ import {
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
+import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from '@/server/services/prescription-intake-classification';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 import {
@@ -91,9 +92,24 @@ async function validateProposalBillingExclusions(args: {
     return { blockingMessages: ['ケースが見つかりません'], alerts: [] };
   }
 
+  const [medicalInsurance, careInsurance] = await Promise.all([
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: careCase.patient_id,
+      type: 'medical',
+      asOf: args.targetDate,
+    }),
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: careCase.patient_id,
+      type: 'care',
+      asOf: args.targetDate,
+    }),
+  ]);
+
   const payerBasis = resolveBillingPayerBasis({
-    medicalInsuranceNumber: careCase.patient.medical_insurance_number,
-    careInsuranceNumber: careCase.patient.care_insurance_number,
+    medicalInsuranceNumber: medicalInsurance?.number ?? careCase.patient.medical_insurance_number,
+    careInsuranceNumber: careInsurance?.number ?? careCase.patient.care_insurance_number,
     visitType: args.visitType,
   });
 

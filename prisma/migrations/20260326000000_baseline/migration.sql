@@ -2043,11 +2043,6 @@ CREATE POLICY tenant_isolation ON "Template"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
-ALTER TABLE "Setting" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON "Setting"
-  USING (org_id = current_setting('app.current_org_id', true))
-  WITH CHECK (org_id = current_setting('app.current_org_id', true));
-
 ALTER TABLE "SourceOfTruthMatrix" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "SourceOfTruthMatrix"
   USING (org_id = current_setting('app.current_org_id', true))
@@ -2119,6 +2114,5 @@ ALTER TABLE "BillingEvidence" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Notification" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "AuditLog" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Template" FORCE ROW LEVEL SECURITY;
-ALTER TABLE "Setting" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SourceOfTruthMatrix" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacyDrugStock" FORCE ROW LEVEL SECURITY;

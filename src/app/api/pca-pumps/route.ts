@@ -2,7 +2,6 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
 
 const pumpStatuses = ['available', 'rented', 'maintenance', 'retired'] as const;
@@ -34,42 +33,47 @@ export const GET = withAuth(
     const parsedStatus = parsePumpStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプ状態の指定が不正です');
 
-    const pumps = await prisma.pcaPump.findMany({
-      where: {
-        org_id: req.orgId,
-        ...(parsedStatus.status ? { status: parsedStatus.status } : {}),
-        ...(query
-          ? {
-              OR: [
-                { asset_code: { contains: query, mode: 'insensitive' } },
-                { serial_number: { contains: query, mode: 'insensitive' } },
-                { model_name: { contains: query, mode: 'insensitive' } },
-                { manufacturer: { contains: query, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        _count: {
-          select: { rentals: true },
-        },
-        rentals: {
-          where: { status: { in: ['scheduled', 'active', 'overdue'] } },
-          orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
-          take: 1,
+    const pumps = await withOrgContext(
+      req.orgId,
+      (tx) =>
+        tx.pcaPump.findMany({
+          where: {
+            org_id: req.orgId,
+            ...(parsedStatus.status ? { status: parsedStatus.status } : {}),
+            ...(query
+              ? {
+                  OR: [
+                    { asset_code: { contains: query, mode: 'insensitive' } },
+                    { serial_number: { contains: query, mode: 'insensitive' } },
+                    { model_name: { contains: query, mode: 'insensitive' } },
+                    { manufacturer: { contains: query, mode: 'insensitive' } },
+                  ],
+                }
+              : {}),
+          },
           include: {
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                institution_code: true,
+            _count: {
+              select: { rentals: true },
+            },
+            rentals: {
+              where: { status: { in: ['scheduled', 'active', 'overdue'] } },
+              orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
+              take: 1,
+              include: {
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                    institution_code: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-      orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
-    });
+          orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
+        }),
+      { requestContext: req },
+    );
 
     return success({ data: pumps.map(serializePump) });
   },

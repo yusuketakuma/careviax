@@ -10,6 +10,7 @@ import {
 import { format } from 'date-fns';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -36,6 +37,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (!patient) return notFound('患者が見つかりません');
 
+  const activeMedicalInsurance = await resolvePatientInsurance(prisma, {
+    orgId: ctx.orgId,
+    patientId: patient.id,
+    type: 'medical',
+  });
+  const insuranceNumber = activeMedicalInsurance?.number ?? patient.medical_insurance_number;
+
   const adapter = createQualificationCheckAdapter({
     provider: (process.env.OQC_PROVIDER as 'stub' | 'mhlw') ?? 'stub',
     baseUrl: process.env.OQC_BASE_URL,
@@ -46,14 +54,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     const result = await adapter.checkInsurance({
-      insuranceNumber: patient.medical_insurance_number ?? undefined,
+      insuranceNumber: insuranceNumber ?? undefined,
       asOfDate: format(new Date(), 'yyyy-MM-dd'),
     });
 
     await notifyWebhookEventForOrg(ctx.orgId, 'qualification.checked', {
       patientId: patient.id,
       checkedAt: new Date().toISOString(),
-      insuranceNumberPresent: Boolean(patient.medical_insurance_number),
+      insuranceNumberPresent: Boolean(insuranceNumber),
     });
 
     return success({ data: result, capabilities: adapter.getCapabilities() });

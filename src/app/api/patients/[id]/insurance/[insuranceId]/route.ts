@@ -31,6 +31,40 @@ const careLevelSchema = z
   .optional()
   .nullable();
 
+class PatientInsuranceOverlapError extends Error {
+  constructor() {
+    super('PATIENT_INSURANCE_OVERLAP');
+  }
+}
+
+function buildOverlapWhere(args: {
+  orgId: string;
+  patientId: string;
+  insuranceId?: string;
+  insuranceType: 'medical' | 'care' | 'public_subsidy';
+  publicProgramCode?: string | null;
+  validFrom?: string | Date | null;
+  validUntil?: string | Date | null;
+}) {
+  const validFrom = args.validFrom ? new Date(args.validFrom) : null;
+  const validUntil = args.validUntil ? new Date(args.validUntil) : null;
+
+  return {
+    org_id: args.orgId,
+    patient_id: args.patientId,
+    insurance_type: args.insuranceType,
+    is_active: true,
+    ...(args.insuranceId ? { id: { not: args.insuranceId } } : {}),
+    ...(args.insuranceType === 'public_subsidy' && args.publicProgramCode
+      ? { public_program_code: args.publicProgramCode }
+      : {}),
+    AND: [
+      { OR: [{ valid_from: null }, ...(validUntil ? [{ valid_from: { lte: validUntil } }] : [])] },
+      { OR: [{ valid_until: null }, ...(validFrom ? [{ valid_until: { gte: validFrom } }] : [])] },
+    ],
+  };
+}
+
 const updateInsuranceSchema = z
   .object({
     insurance_type: z.enum(['medical', 'care', 'public_subsidy']).optional(),
@@ -142,7 +176,14 @@ export async function PUT(
       org_id: ctx.orgId,
       ...(caseAssignmentWherePut ? { patient: { cases: { some: caseAssignmentWherePut } } } : {}),
     },
-    select: { id: true, insurance_type: true },
+    select: {
+      id: true,
+      insurance_type: true,
+      public_program_code: true,
+      valid_from: true,
+      valid_until: true,
+      is_active: true,
+    },
   });
   if (!existing) return notFound('保険情報が見つかりません');
 
@@ -170,30 +211,59 @@ export async function PUT(
 
   const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 
-  const updated = await withOrgContext(ctx.orgId, (tx) =>
-    tx.patientInsurance.update({
-      where: { id: insuranceId },
-      data: {
-        ...rest,
-        ...(valid_from !== undefined
-          ? { valid_from: valid_from ? new Date(valid_from) : null }
-          : {}),
-        ...(valid_until !== undefined
-          ? { valid_until: valid_until ? new Date(valid_until) : null }
-          : {}),
-        ...(application_submitted_at !== undefined
-          ? {
-              application_submitted_at: application_submitted_at
-                ? new Date(application_submitted_at)
-                : null,
-            }
-          : {}),
-        ...(decision_at !== undefined
-          ? { decision_at: decision_at ? new Date(decision_at) : null }
-          : {}),
-      },
-    }),
-  );
+  let updated;
+  try {
+    updated = await withOrgContext(ctx.orgId, async (tx) => {
+      const nextIsActive = parsed.data.is_active ?? existing.is_active;
+      if (nextIsActive) {
+        const overlappingInsurance = await tx.patientInsurance.findFirst({
+          where: buildOverlapWhere({
+            orgId: ctx.orgId,
+            patientId: id,
+            insuranceId,
+            insuranceType: effectiveInsuranceType,
+            publicProgramCode: parsed.data.public_program_code ?? existing.public_program_code,
+            validFrom: valid_from !== undefined ? valid_from : existing.valid_from,
+            validUntil: valid_until !== undefined ? valid_until : existing.valid_until,
+          }),
+          select: { id: true },
+        });
+        if (overlappingInsurance) {
+          throw new PatientInsuranceOverlapError();
+        }
+      }
+
+      return tx.patientInsurance.update({
+        where: { id: insuranceId },
+        data: {
+          ...rest,
+          ...(valid_from !== undefined
+            ? { valid_from: valid_from ? new Date(valid_from) : null }
+            : {}),
+          ...(valid_until !== undefined
+            ? { valid_until: valid_until ? new Date(valid_until) : null }
+            : {}),
+          ...(application_submitted_at !== undefined
+            ? {
+                application_submitted_at: application_submitted_at
+                  ? new Date(application_submitted_at)
+                  : null,
+              }
+            : {}),
+          ...(decision_at !== undefined
+            ? { decision_at: decision_at ? new Date(decision_at) : null }
+            : {}),
+        },
+      });
+    });
+  } catch (cause) {
+    if (cause instanceof PatientInsuranceOverlapError) {
+      return validationError('同じ期間に有効な保険情報が既に存在します', {
+        valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+      });
+    }
+    throw cause;
+  }
 
   return success({ data: updated });
 }

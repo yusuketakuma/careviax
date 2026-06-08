@@ -5,12 +5,14 @@ const {
   requireAuthContextMock,
   patientFindFirstMock,
   patientInsuranceFindManyMock,
+  patientInsuranceOverlapFindFirstMock,
   patientInsuranceCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
+  patientInsuranceOverlapFindFirstMock: vi.fn(),
   patientInsuranceCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -97,9 +99,11 @@ describe('/api/patients/[id]/insurance', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     patientInsuranceFindManyMock.mockResolvedValue([]);
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
+    patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientInsurance: {
+          findFirst: patientInsuranceOverlapFindFirstMock,
           create: patientInsuranceCreateMock,
         },
       }),
@@ -349,6 +353,19 @@ describe('/api/patients/[id]/insurance', () => {
     expect(response.status).toBe(200);
     expectPatientAssignmentLookup();
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(patientInsuranceOverlapFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'care',
+        is_active: true,
+        AND: [
+          { OR: [{ valid_from: null }, { valid_from: { lte: new Date('2027-03-31') } }] },
+          { OR: [{ valid_until: null }, { valid_until: { gte: new Date('2026-04-01') } }] },
+        ],
+      },
+      select: { id: true },
+    });
     expect(patientInsuranceCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
@@ -371,6 +388,30 @@ describe('/api/patients/[id]/insurance', () => {
         confirmed_care_level: null,
       },
     });
+  });
+
+  it('POST rejects overlapping active insurance before creating duplicate validity windows', async () => {
+    patientInsuranceOverlapFindFirstMock.mockResolvedValue({ id: 'insurance_existing' });
+
+    const response = await POST(
+      createRequest({
+        insurance_type: 'medical',
+        number: '12345678',
+        valid_from: '2026-04-01',
+        valid_until: '2027-03-31',
+        is_active: true,
+      }),
+      routeParams,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ期間に有効な保険情報が既に存在します',
+      details: {
+        valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+      },
+    });
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
   it('POST creates public subsidy insurance application records for pending 21/54 programs', async () => {

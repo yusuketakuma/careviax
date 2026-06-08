@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  patientInsuranceFindFirstMock,
   createQualificationCheckAdapterMock,
   checkInsuranceMock,
   getCapabilitiesMock,
@@ -25,6 +26,7 @@ const {
   return {
     requireAuthContextMock: vi.fn(),
     patientFindFirstMock: vi.fn(),
+    patientInsuranceFindFirstMock: vi.fn(),
     createQualificationCheckAdapterMock: vi.fn(() => ({
       checkInsurance: checkInsuranceMock,
       getCapabilities: getCapabilitiesMock,
@@ -44,6 +46,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: {
       findFirst: patientFindFirstMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
     },
   },
 }));
@@ -83,6 +88,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
       medical_insurance_number: '12345678',
       care_insurance_number: '87654321',
     });
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
     checkInsuranceMock.mockResolvedValue({ status: 'valid' });
     getCapabilitiesMock.mockReturnValue({ provider: 'stub' });
     notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
@@ -135,5 +141,52 @@ describe('/api/patients/[id]/qualification-check POST', () => {
       data: { status: 'valid' },
       capabilities: { provider: 'stub' },
     });
+  });
+
+  it('prefers active structured medical PatientInsurance over legacy patient columns', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      medical_insurance_number: null,
+      care_insurance_number: null,
+    });
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      number: '87654321',
+      insurance_type: 'medical',
+      application_status: 'confirmed',
+      public_program_code: null,
+      previous_care_level: null,
+      provisional_care_level: null,
+      confirmed_care_level: null,
+      is_active: true,
+    });
+
+    const response = await POST(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientInsuranceFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          insurance_type: 'medical',
+          is_active: true,
+        }),
+      }),
+    );
+    expect(checkInsuranceMock).toHaveBeenCalledWith({
+      insuranceNumber: '87654321',
+      asOfDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
+      'org_1',
+      'qualification.checked',
+      expect.objectContaining({
+        insuranceNumberPresent: true,
+      }),
+    );
   });
 });
