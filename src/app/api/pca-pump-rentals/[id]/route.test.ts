@@ -213,7 +213,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('marks the pump available when the returned rental is the only open rental', async () => {
+  it('marks the pump maintenance when the returned rental is the only open rental', async () => {
     const response = await PATCH(
       createRequest({
         status: 'returned',
@@ -221,6 +221,18 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       }),
       { params: Promise.resolve({ id: 'rental_1' }) },
     );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'pump_1' },
+      data: { status: 'maintenance' },
+    });
+  });
+
+  it('marks the pump available when cancelling the only open rental', async () => {
+    const response = await PATCH(createRequest({ status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
 
     expect(response.status).toBe(200);
     expect(pcaPumpUpdateMock).toHaveBeenCalledWith({

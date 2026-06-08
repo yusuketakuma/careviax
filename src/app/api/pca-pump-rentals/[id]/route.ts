@@ -203,7 +203,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           if (!remainingOpenRental) {
             await tx.pcaPump.update({
               where: { id: existing.pump_id },
-              data: { status: 'available' },
+              data: { status: nextStatus === 'returned' ? 'maintenance' : 'available' },
             });
           }
         } else if (
