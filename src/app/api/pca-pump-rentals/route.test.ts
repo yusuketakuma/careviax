@@ -8,6 +8,7 @@ const {
   prescriberInstitutionFindFirstMock,
   pcaPumpRentalFindManyMock,
   pcaPumpRentalCreateMock,
+  pcaPumpRentalAccessoryCreateManyMock,
   pcaPumpUpdateManyMock,
   auditLogCreateMock,
   withOrgContextMock,
@@ -16,6 +17,7 @@ const {
   prescriberInstitutionFindFirstMock: vi.fn(),
   pcaPumpRentalFindManyMock: vi.fn(),
   pcaPumpRentalCreateMock: vi.fn(),
+  pcaPumpRentalAccessoryCreateManyMock: vi.fn(),
   pcaPumpUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -94,12 +96,16 @@ describe('/api/pca-pump-rentals', () => {
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     pcaPumpRentalFindManyMock.mockResolvedValue([rentalRecord]);
     pcaPumpRentalCreateMock.mockResolvedValue(rentalRecord);
+    pcaPumpRentalAccessoryCreateManyMock.mockResolvedValue({ count: 9 });
     pcaPumpUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPumpRental: {
           findMany: pcaPumpRentalFindManyMock,
           create: pcaPumpRentalCreateMock,
+        },
+        pcaPumpRentalAccessory: {
+          createMany: pcaPumpRentalAccessoryCreateManyMock,
         },
         pcaPump: {
           findFirst: pcaPumpFindFirstMock,
@@ -244,6 +250,17 @@ describe('/api/pca-pump-rentals', () => {
         status: 'available',
       },
       data: { status: 'rented' },
+    });
+    expect(pcaPumpRentalAccessoryCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          org_id: 'org_1',
+          rental_id: 'rental_1',
+          accessory_key: 'pump_body',
+          name: 'ポンプ本体',
+          discrepancy_status: 'unchecked',
+        }),
+      ]),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

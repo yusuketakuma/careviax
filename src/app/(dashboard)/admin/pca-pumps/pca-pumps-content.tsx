@@ -30,7 +30,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
 type PcaPumpRentalStatus = 'scheduled' | 'active' | 'overdue' | 'returned' | 'cancelled';
 type PcaPumpReturnInspectionStatus = 'pending' | 'passed' | 'needs_maintenance';
-type PcaPumpAccessoryStatus = 'ok' | 'missing' | 'damaged' | 'not_applicable';
+type PcaPumpAccessoryStatus = 'unchecked' | 'ok' | 'missing' | 'damaged' | 'not_applicable';
 type PcaPumpAccessoryKey =
   | 'pump_body'
   | 'power_adapter'
@@ -163,6 +163,7 @@ const RENTAL_STATUS_LABELS: Record<PcaPumpRentalStatus, string> = {
 };
 
 const ACCESSORY_STATUS_LABELS: Record<PcaPumpAccessoryStatus, string> = {
+  unchecked: '未確認',
   ok: 'OK',
   missing: '不足',
   damaged: '破損',
@@ -222,8 +223,14 @@ function emptyRentalForm(pumpId = ''): RentalFormState {
 
 export function createDefaultPcaReturnInspectionChecklist(): PcaPumpAccessoryChecklistState {
   return Object.fromEntries(
-    PCA_RETURN_INSPECTION_ITEMS.map((item) => [item.key, { status: 'ok', notes: '' }]),
+    PCA_RETURN_INSPECTION_ITEMS.map((item) => [item.key, { status: 'unchecked', notes: '' }]),
   ) as PcaPumpAccessoryChecklistState;
+}
+
+export function getPcaReturnInspectionUncheckedLabels(checklist: PcaPumpAccessoryChecklistState) {
+  return PCA_RETURN_INSPECTION_ITEMS.flatMap((item) =>
+    checklist[item.key].status === 'unchecked' ? [item.label] : [],
+  );
 }
 
 export function getPcaReturnInspectionMissingNoteLabels(checklist: PcaPumpAccessoryChecklistState) {
@@ -240,6 +247,10 @@ export function buildPcaReturnInspectionPayload(form: {
   notes: string;
   checklist: PcaPumpAccessoryChecklistState;
 }) {
+  const uncheckedLabels = getPcaReturnInspectionUncheckedLabels(form.checklist);
+  if (uncheckedLabels.length > 0) {
+    throw new Error(`未確認の検品項目があります: ${uncheckedLabels.join('、')}`);
+  }
   const hasBlockingItem = Object.values(form.checklist).some(
     (item) => item.status === 'missing' || item.status === 'damaged',
   );
@@ -252,7 +263,7 @@ export function buildPcaReturnInspectionPayload(form: {
         return [
           item.key,
           {
-            status: value.status,
+            status: value.status as Exclude<PcaPumpAccessoryStatus, 'unchecked'>,
             notes: toNullableString(value.notes),
           },
         ];
@@ -588,6 +599,10 @@ export function PcaPumpsContent() {
       if (!inspectionForm.rental)
         throw new Error('検品対象のPCAポンプレンタルが選択されていません');
       const missingNoteLabels = getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist);
+      const uncheckedLabels = getPcaReturnInspectionUncheckedLabels(inspectionForm.checklist);
+      if (uncheckedLabels.length > 0) {
+        throw new Error(`未確認の検品項目があります: ${uncheckedLabels.join('、')}`);
+      }
       if (missingNoteLabels.length > 0) {
         throw new Error(`不足・破損の詳細メモを入力してください: ${missingNoteLabels.join('、')}`);
       }
@@ -1290,7 +1305,8 @@ export function PcaPumpsContent() {
                 onClick={() => completeReturnInspectionMutation.mutate()}
                 disabled={
                   completeReturnInspectionMutation.isPending ||
-                  getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist).length > 0
+                  getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist).length > 0 ||
+                  getPcaReturnInspectionUncheckedLabels(inspectionForm.checklist).length > 0
                 }
               >
                 {completeReturnInspectionMutation.isPending ? '保存中...' : '検品完了'}

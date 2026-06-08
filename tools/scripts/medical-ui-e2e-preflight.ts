@@ -38,6 +38,7 @@ const REQUIRED_RLS_TABLES = [
   'PatientInsurance',
   'PcaPump',
   'PcaPumpRental',
+  'PcaPumpRentalAccessory',
   'PcaPumpMaintenanceEvent',
   'PushSubscription',
   'ServiceArea',

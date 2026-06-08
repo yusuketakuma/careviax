@@ -9,6 +9,7 @@ import {
   isCompletePassingPcaPumpAccessoryChecklist,
   updatePcaPumpRentalSchema,
 } from '@/lib/validations/pca-pump-rental';
+import { syncPcaRentalAccessoriesFromReturnInspection } from '@/server/services/pca-rental-accessories';
 
 function serializeRental(item: {
   rented_at: Date;
@@ -259,11 +260,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           where: { id },
           data: rentalUpdateData,
           include: {
+            accessories: {
+              orderBy: [{ created_at: 'asc' }],
+            },
             pump: true,
             institution: true,
           },
         });
         if (nextInspectionStatus === 'passed' || nextInspectionStatus === 'needs_maintenance') {
+          if (parsed.data.accessory_checklist) {
+            await syncPcaRentalAccessoriesFromReturnInspection(tx, {
+              orgId: ctx.orgId,
+              rentalId: existing.id,
+              checklist: parsed.data.accessory_checklist,
+            });
+          }
           await tx.pcaPumpMaintenanceEvent.create({
             data: {
               org_id: ctx.orgId,

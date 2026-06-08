@@ -9,6 +9,7 @@ const {
   pcaPumpRentalUpdateMock,
   pcaPumpUpdateMock,
   pcaPumpMaintenanceEventCreateMock,
+  pcaPumpRentalAccessoryUpsertMock,
   openRentalFindFirstMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   pcaPumpRentalUpdateMock: vi.fn(),
   pcaPumpUpdateMock: vi.fn(),
   pcaPumpMaintenanceEventCreateMock: vi.fn(),
+  pcaPumpRentalAccessoryUpsertMock: vi.fn(),
   openRentalFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
@@ -90,6 +92,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
     openRentalFindFirstMock.mockResolvedValue(null);
     pcaPumpRentalUpdateMock.mockResolvedValue(updatedRental);
+    pcaPumpRentalAccessoryUpsertMock.mockResolvedValue({});
     pcaPumpUpdateMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
     let contextCall = 0;
     withOrgContextMock.mockImplementation(async (_orgId, callback) => {
@@ -107,6 +110,9 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         },
         pcaPumpMaintenanceEvent: {
           create: pcaPumpMaintenanceEventCreateMock,
+        },
+        pcaPumpRentalAccessory: {
+          upsert: pcaPumpRentalAccessoryUpsertMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -336,6 +342,23 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         notes: '動作確認済み',
       }),
     });
+    expect(pcaPumpRentalAccessoryUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id_rental_id_accessory_key: {
+            org_id: 'org_1',
+            rental_id: 'rental_1',
+            accessory_key: 'pump_body',
+          },
+        },
+        update: expect.objectContaining({
+          return_condition: 'ok',
+          discrepancy_status: 'none',
+          returned_quantity: 1,
+          billable: false,
+        }),
+      }),
+    );
   });
 
   it('keeps the pump in maintenance when return inspection needs maintenance', async () => {
@@ -386,6 +409,25 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         performed_by: 'user_1',
       }),
     });
+    expect(pcaPumpRentalAccessoryUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id_rental_id_accessory_key: {
+            org_id: 'org_1',
+            rental_id: 'rental_1',
+            accessory_key: 'pump_body',
+          },
+        },
+        update: expect.objectContaining({
+          return_condition: 'damaged',
+          discrepancy_status: 'damaged',
+          returned_quantity: 0,
+          billable: false,
+          charge_amount_yen: null,
+          notes: 'Front panel crack',
+        }),
+      }),
+    );
   });
 
   it('rejects return inspection updates before the rental is returned', async () => {

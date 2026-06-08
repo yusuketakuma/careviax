@@ -102,6 +102,7 @@ model PcaPumpRental {
   created_at               DateTime                       @default(now())
   updated_at               DateTime                       @default(now()) @updatedAt
   maintenance_events       PcaPumpMaintenanceEvent[]
+  accessories              PcaPumpRentalAccessory[]
 
   @@unique([id, org_id])
   @@index([org_id, status])
@@ -109,4 +110,30 @@ model PcaPumpRental {
   @@index([org_id, institution_id])
   @@index([org_id, due_at])
   @@index([org_id, return_inspection_status])
+}
+
+model PcaPumpRentalAccessory {
+  id                   String        @id @default(cuid())
+  org_id               String
+  org                  Organization  @relation(fields: [org_id], references: [id])
+  rental_id            String
+  rental               PcaPumpRental @relation(fields: [rental_id, org_id], references: [id, org_id], onDelete: Cascade)
+  accessory_key        String
+  name                 String
+  expected_quantity    Int           @default(1)
+  checked_out_quantity Int           @default(1)
+  returned_quantity    Int?
+  checkout_condition   String        @default("ok") // ok/not_applicable
+  return_condition     String? // ok/missing/damaged/not_applicable
+  discrepancy_status   String        @default("unchecked") // unchecked/none/missing/damaged/not_applicable
+  billable             Boolean       @default(false)
+  charge_amount_yen    Int?
+  notes                String?
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @default(now()) @updatedAt
+
+  @@unique([org_id, rental_id, accessory_key])
+  @@index([org_id, rental_id])
+  @@index([org_id, discrepancy_status])
+  @@index([org_id, billable])
 }

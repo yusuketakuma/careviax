@@ -11,11 +11,7 @@ const pcaPumpMaintenanceEventTypeSchema = z.enum([
   'maintenance_completed',
   'repair_required',
 ]);
-const pcaPumpMaintenanceResultSchema = z.enum([
-  'available',
-  'maintenance_continues',
-  'retired',
-]);
+const pcaPumpMaintenanceResultSchema = z.enum(['available', 'maintenance_continues', 'retired']);
 
 export const pcaPumpAccessoryChecklistKeys = [
   'pump_body',
@@ -28,6 +24,21 @@ export const pcaPumpAccessoryChecklistKeys = [
   'cleaning_completed',
   'operation_check',
 ] as const;
+
+export const pcaPumpAccessoryChecklistItems = [
+  { key: 'pump_body', label: 'ポンプ本体' },
+  { key: 'power_adapter', label: 'ACアダプタ' },
+  { key: 'power_cable', label: '電源コード' },
+  { key: 'carrying_case', label: '携行ケース' },
+  { key: 'manual', label: '取扱説明書' },
+  { key: 'lock_key', label: 'ロックキー' },
+  { key: 'clamp', label: 'クランプ/固定具' },
+  { key: 'cleaning_completed', label: '清拭完了' },
+  { key: 'operation_check', label: '動作確認' },
+] as const satisfies ReadonlyArray<{
+  key: (typeof pcaPumpAccessoryChecklistKeys)[number];
+  label: string;
+}>;
 const accessoryChecklistItemSchema = z
   .object({
     status: z.enum(['ok', 'missing', 'damaged', 'not_applicable']),

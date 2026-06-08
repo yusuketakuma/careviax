@@ -67,6 +67,7 @@ model Organization {
   prescriber_institutions     PrescriberInstitution[]
   pca_pumps                   PcaPump[]
   pca_pump_rentals            PcaPumpRental[]
+  pca_pump_rental_accessories PcaPumpRentalAccessory[]
   pca_pump_maintenance_events PcaPumpMaintenanceEvent[]
   service_areas               ServiceArea[]
   webhook_registrations       WebhookRegistration[]

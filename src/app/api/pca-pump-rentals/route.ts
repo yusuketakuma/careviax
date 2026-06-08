@@ -3,6 +3,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
+import { createDefaultPcaRentalAccessories } from '@/server/services/pca-rental-accessories';
 
 const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
 const openRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
@@ -84,6 +85,9 @@ export const GET = withAuth(
               : {}),
           },
           include: {
+            accessories: {
+              orderBy: [{ created_at: 'asc' }],
+            },
             pump: {
               select: {
                 id: true,
@@ -193,6 +197,10 @@ export const POST = withAuth(
               pump: true,
               institution: true,
             },
+          });
+          await createDefaultPcaRentalAccessories(tx, {
+            orgId: req.orgId,
+            rentalId: rental.id,
           });
           await tx.auditLog.create({
             data: {

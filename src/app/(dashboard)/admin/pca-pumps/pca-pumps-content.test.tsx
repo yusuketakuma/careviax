@@ -8,7 +8,9 @@ import {
   buildPcaReturnInspectionPayload,
   createDefaultPcaReturnInspectionChecklist,
   getPcaReturnInspectionMissingNoteLabels,
+  getPcaReturnInspectionUncheckedLabels,
   PcaPumpsContent,
+  PCA_RETURN_INSPECTION_ITEMS,
 } from './pca-pumps-content';
 
 setupDomTestEnv();
@@ -211,8 +213,23 @@ describe('PcaPumpsContent', () => {
     expect(screen.getByRole('button', { name: '検品' })).toBeTruthy();
   });
 
-  it('builds a passed return inspection payload when every checklist item is ok', () => {
+  it('starts return inspection items as unchecked', () => {
     const checklist = createDefaultPcaReturnInspectionChecklist();
+
+    expect(getPcaReturnInspectionUncheckedLabels(checklist)).toContain('ポンプ本体');
+    expect(() =>
+      buildPcaReturnInspectionPayload({
+        notes: '動作確認済み',
+        checklist,
+      }),
+    ).toThrow('未確認の検品項目があります');
+  });
+
+  it('builds a passed return inspection payload when every checklist item is explicitly ok', () => {
+    const checklist = createDefaultPcaReturnInspectionChecklist();
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      checklist[item.key] = { status: 'ok', notes: '' };
+    }
 
     expect(
       buildPcaReturnInspectionPayload({
@@ -231,6 +248,9 @@ describe('PcaPumpsContent', () => {
 
   it('builds a maintenance payload and requires notes for missing or damaged items', () => {
     const checklist = createDefaultPcaReturnInspectionChecklist();
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      checklist[item.key] = { status: 'ok', notes: '' };
+    }
     checklist.power_adapter = { status: 'missing', notes: '' };
     checklist.operation_check = { status: 'damaged', notes: 'アラーム鳴動なし' };
 
