@@ -36,6 +36,7 @@ import {
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { cn } from '@/lib/utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import {
   isJahisQR,
@@ -46,6 +47,7 @@ import {
   type JahisQRData,
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
+import { buildQrScanDraftPayload } from './qr-scan-draft-payload';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -75,6 +77,7 @@ type ScanPhase =
 export default function QRScanPage() {
   const router = useRouter();
   const orgId = useOrgId();
+  const siteId = useAuthStore((state) => state.siteId);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -294,11 +297,12 @@ export default function QRScanPage() {
     setSendError(null);
 
     try {
-      const body: Record<string, unknown> = {
-        qr_texts: scannedTexts,
-        patient_id: patientId,
-      };
-      if (sessionId) body.session_id = sessionId;
+      const body = buildQrScanDraftPayload({
+        qrTexts: scannedTexts,
+        patientId,
+        siteId,
+        sessionId,
+      });
 
       const res = await fetch('/api/qr-scan-drafts', {
         method: 'POST',

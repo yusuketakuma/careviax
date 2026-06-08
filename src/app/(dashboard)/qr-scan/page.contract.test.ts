@@ -23,4 +23,11 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain('parseResult.warnings.length > 0');
     expect(SOURCE).toContain('parseResult.errors.length > 0');
   });
+
+  it('passes the active site context to QR draft creation', () => {
+    expect(SOURCE).toContain("import { useAuthStore } from '@/lib/stores/auth-store';");
+    expect(SOURCE).toContain('const siteId = useAuthStore((state) => state.siteId);');
+    expect(SOURCE).toContain('buildQrScanDraftPayload({');
+    expect(SOURCE).toContain('siteId,');
+  });
 });
