@@ -135,4 +135,31 @@ describe('visit-workflow-projection', () => {
       },
     });
   });
+
+  it('does not prompt candidate generation while billing candidates are still loading', () => {
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient_1',
+      soapComplete: true,
+      collaborationMentioned: false,
+      medicationManagementComplete: true,
+      billingBlockerCount: 0,
+      billingCandidateCount: 0,
+      billingCandidatesLoading: true,
+      billingMonth: '2026-04-01',
+      careTeamContactCount: 0,
+      hasNextVisitSuggestion: false,
+    });
+
+    expect(actions.find((action) => action.key === 'billing_review')).toMatchObject({
+      status: 'waiting',
+      primary_action: {
+        operation: 'open_billing_candidates',
+        label: '請求候補を確認中',
+      },
+      details: expect.arrayContaining([{ label: '候補', value: '確認中', tone: 'info' }]),
+      evidence: ['請求候補を読み込み中'],
+    });
+  });
 });

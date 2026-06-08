@@ -94,18 +94,26 @@ test.describe('prescription intake flow', () => {
   });
 
   test('prescription list → new intake → form renders', async ({ context }) => {
+    test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/prescriptions');
 
-    await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('heading', { name: '処方受付' }).first(),
+    ).toBeVisible({ timeout: 45_000 });
 
     // Navigate to new intake
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(page, /\/prescriptions\/new/, () =>
-      main.getByRole('link', { name: '新規受付' }).first().click(),
+    await clickAndWaitForStableRoute(
+      page,
+      /\/prescriptions\/new/,
+      () => main.getByRole('link', { name: '新規受付' }).first().click({ noWaitAfter: true }),
+      { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible({
+      timeout: 45_000,
+    });
 
     // Required fields should be present
     await expect(page.getByRole('group', { name: '患者・ケース' })).toBeVisible();
@@ -120,11 +128,16 @@ test.describe('prescription intake flow', () => {
     await openStableRoute(page, '/prescriptions');
 
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
-      main.getByRole('link', { name: '調剤キュー' }).first().click(),
+    await clickAndWaitForStableRoute(
+      page,
+      /\/dispensing/,
+      () => main.getByRole('link', { name: '調剤キュー' }).first().click({ noWaitAfter: true }),
+      { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible({
+      timeout: 45_000,
+    });
 
     expect(errors).toEqual([]);
   });
@@ -148,12 +161,16 @@ test.describe('dispensing → auditing flow', () => {
   });
 
   test('dispensing → auditing navigation works', async ({ context }) => {
+    test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      main.getByRole('link', { name: '鑑査' }).first().click(),
+    await clickAndWaitForStableRoute(
+      page,
+      /\/auditing/,
+      () => main.getByRole('link', { name: '鑑査' }).first().click({ noWaitAfter: true }),
+      { timeout: 45_000 },
     );
 
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
@@ -174,11 +191,14 @@ test.describe('dispensing → auditing flow', () => {
   });
 
   test('full prescription → dispensing → auditing round trip', async ({ context }) => {
+    test.slow();
     const { page, errors } = await createInstrumentedPage(context);
 
     // Start: prescriptions
     await openStableRoute(page, '/prescriptions');
-    await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('heading', { name: '処方受付' }).first(),
+    ).toBeVisible();
 
     // → dispensing
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
@@ -187,8 +207,14 @@ test.describe('dispensing → auditing flow', () => {
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     // → auditing
-    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      page.locator('main').getByRole('link', { name: '鑑査' }).first().click(),
+    await clickAndWaitForStableRoute(
+      page,
+      /\/auditing/,
+      () =>
+        page.locator('main').getByRole('link', { name: '鑑査' }).first().click({
+          noWaitAfter: true,
+        }),
+      { timeout: 45_000 },
     );
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 

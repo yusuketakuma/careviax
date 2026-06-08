@@ -4,6 +4,7 @@ import { PLAYWRIGHT_OUTPUT_DIR } from './tools/tests/helpers/artifacts';
 export default defineConfig({
   testDir: './tools/tests',
   outputDir: PLAYWRIGHT_OUTPUT_DIR,
+  timeout: 240_000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

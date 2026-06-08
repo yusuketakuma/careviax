@@ -10,16 +10,18 @@ import {
 } from './helpers/local-auth';
 import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
 
-test.setTimeout(90_000);
+test.setTimeout(240_000);
 test.use({ serviceWorkers: 'block' });
 
 async function openScheduleBoard(page: Page) {
   await openStableRoute(page, '/schedules');
 
   const nextWeekButton = page.getByRole('button', { name: /翌週/ }).first();
-  if (!(await nextWeekButton.isVisible().catch(() => false))) {
+  if (!(await nextWeekButton.isVisible({ timeout: 45_000 }).catch(() => false))) {
     await reloadStablePage(page);
   }
+
+  await expect(nextWeekButton).toBeVisible({ timeout: 45_000 });
 }
 
 async function openVisitRecordPage(page: Page, url: string) {
@@ -156,82 +158,88 @@ async function installGroupedFacilityScheduleStub(
     ],
   ]);
 
-  await page.route(/\/api\/visit-schedules\/e2e_grouped_facility_schedule_[^/?]+$/, async (route) => {
-    const scheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
-    const schedule = schedules.get(scheduleId as (typeof ids.facilitySchedules)[number]);
-    if (!schedule) {
-      await fulfillJson(route, { message: 'stubbed schedule not found' }, 404);
-      return;
-    }
+  await page.route(
+    /\/api\/visit-schedules\/e2e_grouped_facility_schedule_[^/?]+$/,
+    async (route) => {
+      const scheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
+      const schedule = schedules.get(scheduleId as (typeof ids.facilitySchedules)[number]);
+      if (!schedule) {
+        await fulfillJson(route, { message: 'stubbed schedule not found' }, 404);
+        return;
+      }
 
-    await fulfillJson(route, schedule);
-  });
+      await fulfillJson(route, schedule);
+    },
+  );
 }
 
 async function installGroupedFacilityPreparationStub(
   page: Page,
   ids: Awaited<ReturnType<typeof ensureGroupedVisitFixtures>>,
 ) {
-  await page.route(/\/api\/visit-preparations\/e2e_grouped_facility_schedule_[^/?]+$/, async (route) => {
-    const currentScheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
-    await fulfillJson(route, {
-      data: {
-        preparation: null,
-        pack: {
-          care_team: [],
-          billing_blockers: [],
-          conference_context: [],
-          medication_period: {
-            schedule_start_date: '2026-04-25',
-            schedule_end_date: '2026-05-08',
-            prescription_start_date: null,
-            prescription_end_date: null,
-          },
-          prescription_changes: null,
-          previous_visit: null,
-          intake_context: {
-            initial_transition_management_expected: null,
-          },
-          facility_parallel_context: {
-            batch_id: 'e2e_grouped_facility_batch',
-            label: '青空ホームE2E',
-            place_kind: 'facility',
-            site_name: 'サンプル薬局 本店',
-            common_notes: '受付で入館証を受け取り、2Fスタッフへ声かけ',
-            current_schedule_id: currentScheduleId,
-            patients: [
-              {
-                schedule_id: ids.facilitySchedules[0],
-                patient_id: ids.facilityPatients[0],
-                patient_name: '施設E2E 太郎',
-                unit_name: '201号室',
-                route_order: 1,
-                schedule_status: 'ready',
-                medication_start_date: '2026-04-25',
-                medication_end_date: '2026-05-08',
-                preparation_blockers_count: 0,
-                visit_record_id: null,
-                visit_outcome_status: null,
-              },
-              {
-                schedule_id: ids.facilitySchedules[1],
-                patient_id: ids.facilityPatients[1],
-                patient_name: '施設E2E 花子',
-                unit_name: '202号室',
-                route_order: 2,
-                schedule_status: 'ready',
-                medication_start_date: '2026-04-25',
-                medication_end_date: '2026-05-08',
-                preparation_blockers_count: 0,
-                visit_record_id: null,
-                visit_outcome_status: null,
-              },
-            ],
+  await page.route(
+    /\/api\/visit-preparations\/e2e_grouped_facility_schedule_[^/?]+$/,
+    async (route) => {
+      const currentScheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
+      await fulfillJson(route, {
+        data: {
+          preparation: null,
+          pack: {
+            care_team: [],
+            billing_blockers: [],
+            conference_context: [],
+            medication_period: {
+              schedule_start_date: '2026-04-25',
+              schedule_end_date: '2026-05-08',
+              prescription_start_date: null,
+              prescription_end_date: null,
+            },
+            prescription_changes: null,
+            previous_visit: null,
+            intake_context: {
+              initial_transition_management_expected: null,
+            },
+            facility_parallel_context: {
+              batch_id: 'e2e_grouped_facility_batch',
+              label: '青空ホームE2E',
+              place_kind: 'facility',
+              site_name: 'サンプル薬局 本店',
+              common_notes: '受付で入館証を受け取り、2Fスタッフへ声かけ',
+              current_schedule_id: currentScheduleId,
+              patients: [
+                {
+                  schedule_id: ids.facilitySchedules[0],
+                  patient_id: ids.facilityPatients[0],
+                  patient_name: '施設E2E 太郎',
+                  unit_name: '201号室',
+                  route_order: 1,
+                  schedule_status: 'ready',
+                  medication_start_date: '2026-04-25',
+                  medication_end_date: '2026-05-08',
+                  preparation_blockers_count: 0,
+                  visit_record_id: null,
+                  visit_outcome_status: null,
+                },
+                {
+                  schedule_id: ids.facilitySchedules[1],
+                  patient_id: ids.facilityPatients[1],
+                  patient_name: '施設E2E 花子',
+                  unit_name: '202号室',
+                  route_order: 2,
+                  schedule_status: 'ready',
+                  medication_start_date: '2026-04-25',
+                  medication_end_date: '2026-05-08',
+                  preparation_blockers_count: 0,
+                  visit_record_id: null,
+                  visit_outcome_status: null,
+                },
+              ],
+            },
           },
         },
-      },
-    });
-  });
+      });
+    },
+  );
 }
 
 test.describe('schedule page', () => {

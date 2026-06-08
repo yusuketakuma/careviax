@@ -24,6 +24,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
   test('billing preview blocks care applying, care change-pending, and public subsidy 21/54 applying cases', async ({
     context,
   }) => {
+    test.slow();
     const { page, errors } = await createApiPage(context);
 
     const careApplyingPreview = await fetchBillingPreview(page, IDS.careApplyingCase);

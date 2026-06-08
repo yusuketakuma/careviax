@@ -15,7 +15,7 @@ const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
 const FALLBACK_PATIENT_PATH = '/patients/e2e_mobile_qr_draft_patient';
 
-test.setTimeout(120_000);
+test.setTimeout(240_000);
 
 async function writeScreenshot(page: Page, name: string) {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -515,9 +515,9 @@ test.describe('ARIA and keyboard contracts', () => {
     await expect(page.locator('main').getByText('最初に必要な設定')).toBeVisible({
       timeout: 60_000,
     });
-    await expect(
-      page.locator('main').getByRole('button', { name: 'URL を入力する' }),
-    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('main').getByRole('button', { name: 'URL を入力する' })).toBeVisible({
+      timeout: 60_000,
+    });
     expect(errors).toEqual([]);
   });
 

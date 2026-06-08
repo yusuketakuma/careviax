@@ -148,6 +148,7 @@ export function buildPostVisitWorkflowActions(args: {
   billingBlockerCount: number;
   billingBlockers?: VisitWorkflowBillingBlockerSummary[];
   billingCandidateCount?: number;
+  billingCandidatesLoading?: boolean;
   billingMonth?: string | null;
   careTeamContactCount: number;
   hasNextVisitSuggestion: boolean;
@@ -161,6 +162,8 @@ export function buildPostVisitWorkflowActions(args: {
   const preferredReport =
     reports.find((report) => report.report_type === 'physician_report') ?? reports[0] ?? null;
   const firstBillingBlocker = billingBlockers[0];
+  const billingCandidatesLoading = args.billingCandidatesLoading === true;
+  const billingCandidateCount = args.billingCandidateCount ?? 0;
   const conferenceActionCount = conferenceNotes.reduce(
     (count, note) => count + (note.action_items?.length ?? 0),
     0,
@@ -266,11 +269,14 @@ export function buildPostVisitWorkflowActions(args: {
       description:
         args.billingBlockerCount > 0
           ? '算定ブロッカーを先に閉じると候補レビューの差戻しを減らせます。'
-          : (args.billingCandidateCount ?? 0) > 0
-            ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
-            : '算定ブロッカーは目立っていません。候補生成後に月次締めへ進めます。',
+          : billingCandidatesLoading
+            ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
+            : billingCandidateCount > 0
+              ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
+              : '算定ブロッカーは目立っていません。候補生成後に月次締めへ進めます。',
       priority: args.billingBlockerCount > 0 ? 'high' : 'normal',
-      status: args.billingBlockerCount > 0 ? 'blocked' : 'ready',
+      status:
+        args.billingBlockerCount > 0 ? 'blocked' : billingCandidatesLoading ? 'waiting' : 'ready',
       placement: 'primary',
       primary_action:
         args.billingBlockerCount > 0
@@ -281,21 +287,35 @@ export function buildPostVisitWorkflowActions(args: {
                 firstBillingBlocker?.action_href ??
                 (args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined),
             }
-          : (args.billingCandidateCount ?? 0) > 0
+          : billingCandidatesLoading
             ? {
                 operation: 'open_billing_candidates',
-                label: '請求候補を確認',
+                label: '請求候補を確認中',
                 href: visitBillingCandidatesHref,
+                variant: 'outline',
               }
-            : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
+            : billingCandidateCount > 0
+              ? {
+                  operation: 'open_billing_candidates',
+                  label: '請求候補を確認',
+                  href: visitBillingCandidatesHref,
+                }
+              : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
       details: compactVisitWorkflowActionDetails([
         args.billingMonth
           ? { label: '対象月', value: args.billingMonth.slice(0, 7), tone: 'neutral' }
           : null,
-        (args.billingCandidateCount ?? 0) > 0
+        billingCandidatesLoading
           ? {
               label: '候補',
-              value: `${args.billingCandidateCount}件`,
+              value: '確認中',
+              tone: 'info',
+            }
+          : null,
+        billingCandidateCount > 0
+          ? {
+              label: '候補',
+              value: `${billingCandidateCount}件`,
               tone: 'success',
             }
           : null,
@@ -308,13 +328,17 @@ export function buildPostVisitWorkflowActions(args: {
       action_label:
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_label ?? 'ブロッカーを確認')
-          : (args.billingCandidateCount ?? 0) > 0
-            ? '請求候補を確認'
-            : '請求候補を生成',
+          : billingCandidatesLoading
+            ? '請求候補を確認中'
+            : billingCandidateCount > 0
+              ? '請求候補を確認'
+              : '請求候補を生成',
       evidence:
         args.billingBlockerCount > 0
           ? [`ブロッカー ${args.billingBlockerCount}件`]
-          : ['2026要件を候補生成へ連携'],
+          : billingCandidatesLoading
+            ? ['請求候補を読み込み中']
+            : ['2026要件を候補生成へ連携'],
     },
     {
       key: 'next_visit',

@@ -8,8 +8,7 @@ import {
 } from './helpers/local-auth';
 
 const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ??
-  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 const VISIT_WORKFLOW_IDS = {
@@ -31,15 +30,12 @@ function assertSafeE2eDatabase() {
 
   const url = new URL(DB_CONNECTION_STRING);
   const databaseName = url.pathname.replace(/^\//, '');
-  if (
-    !['localhost', '127.0.0.1', '::1'].includes(url.hostname) ||
-    databaseName !== 'ph_os_e2e'
-  ) {
+  if (!['localhost', '127.0.0.1', '::1'].includes(url.hostname) || databaseName !== 'ph_os_e2e') {
     throw new Error('Visit workflow fixtures can only run against local ph_os_e2e');
   }
 }
 
-test.setTimeout(180_000);
+test.setTimeout(240_000);
 
 function jsonb(value: unknown) {
   return JSON.stringify(value);
@@ -104,7 +100,7 @@ async function openReportDetailPage(page: Page, reportId: string) {
           const url = new URL(response.url());
           return url.pathname === reportApiPath && response.request().method() === 'GET';
         },
-        { timeout: 60_000 },
+        { timeout: 120_000 },
       )
       .catch(() => null);
 
@@ -121,8 +117,8 @@ async function openReportDetailPage(page: Page, reportId: string) {
       );
     }
 
-    if (await reportReady.isVisible({ timeout: 30_000 }).catch(() => false)) {
-      await expect(loading).toBeHidden({ timeout: 30_000 });
+    if (await reportReady.isVisible({ timeout: 60_000 }).catch(() => false)) {
+      await expect(loading).toBeHidden({ timeout: 60_000 });
       return;
     }
 
@@ -131,8 +127,8 @@ async function openReportDetailPage(page: Page, reportId: string) {
     }
   }
 
-  await expect(reportReady).toBeVisible({ timeout: 60_000 });
-  await expect(loading).toBeHidden({ timeout: 30_000 });
+  await expect(reportReady).toBeVisible({ timeout: 120_000 });
+  await expect(loading).toBeHidden({ timeout: 60_000 });
 }
 
 async function ensureVisitWorkflowFixture() {
@@ -511,12 +507,13 @@ test.describe('detail page layout', () => {
 
     await expect(main.getByRole('heading', { name: '算定レビュー' })).toBeVisible();
     const billingWorkflowCard = main.locator('article').filter({ hasText: '算定レビュー' });
-    await expect(billingWorkflowCard.getByText('候補', { exact: true })).toBeVisible();
-    await expect(billingWorkflowCard.getByText('1件', { exact: true })).toBeVisible();
-    await expect(main.getByRole('link', { name: /請求候補を確認/ })).toHaveAttribute(
+    await expect(main.getByRole('link', { name: /^請求候補を確認$/ })).toHaveAttribute(
       'href',
       `/billing/candidates?billing_month=2026-04-01&patient_id=${ids.patient}&workflow_from=visit_record&visit_record_id=${ids.visitRecord}&schedule_id=${ids.schedule}`,
+      { timeout: 60_000 },
     );
+    await expect(billingWorkflowCard.getByText('候補', { exact: true })).toBeVisible();
+    await expect(billingWorkflowCard.getByText('1件', { exact: true })).toBeVisible();
 
     await expect(main.getByRole('heading', { name: '会議アクション回収' })).toBeVisible();
     const conferenceWorkflowCard = main

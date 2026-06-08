@@ -567,6 +567,9 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const missingHomeVisit2026Items = requiredHomeVisit2026Items.filter((item) => !item.done);
   const careReports = careReportsResponse?.data ?? [];
   const billingCandidates = billingCandidatesResponse?.data ?? [];
+  const billingCandidatesLoading = Boolean(
+    orgId && record?.patient_id && billingMonth && !billingCandidatesResponse,
+  );
   const soapComplete = Boolean(
     record.soap_subjective?.trim() &&
     record.soap_objective?.trim() &&
@@ -633,6 +636,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     billingBlockerCount: visitPreparationPack?.billing_blockers.length ?? 0,
     billingBlockers: visitPreparationPack?.billing_blockers ?? [],
     billingCandidateCount: billingCandidates.length,
+    billingCandidatesLoading,
     billingMonth,
     careTeamContactCount: patientCareTeamContacts.length,
     hasNextVisitSuggestion: Boolean(record.next_visit_suggestion_date),

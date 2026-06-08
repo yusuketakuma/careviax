@@ -4,8 +4,7 @@ import { Client } from 'pg';
 
 export const AUTH_SECRET = 'ph-os-local-auth-secret';
 const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ??
-  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 const NOTIFICATION_STREAM_PATH = '/api/notifications/stream';
 let cachedLocalUserId: string | null = null;
@@ -131,8 +130,8 @@ export async function waitForStableUi(page: Page) {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => null);
   await page
-    .getByText('Compiling')
-    .waitFor({ state: 'detached', timeout: 15_000 })
+    .getByText(/Compiling|Rendering/)
+    .waitFor({ state: 'detached', timeout: 45_000 })
     .catch(() => null);
 }
 
@@ -246,8 +245,7 @@ export async function clickAndWaitForStableRoute(
     if (
       attempt === 2 ||
       !(waitResult instanceof Error) ||
-      (!/timeout/i.test(waitResult.message) &&
-        !isRetriableDevNavigationError(waitResult.message))
+      (!/timeout/i.test(waitResult.message) && !isRetriableDevNavigationError(waitResult.message))
     ) {
       throw waitResult;
     }

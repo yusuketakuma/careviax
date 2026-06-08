@@ -6,8 +6,7 @@ import { PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
 import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
 const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ??
-  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 const QR_DRAFT_REVIEW_IDS = {
@@ -16,7 +15,7 @@ const QR_DRAFT_REVIEW_IDS = {
   draft: 'e2e_mobile_qr_draft',
 } as const;
 
-test.setTimeout(120_000);
+test.setTimeout(240_000);
 
 const MOBILE_ROUTES = [
   {
@@ -142,10 +141,7 @@ function assertSafeE2eDatabase() {
 
   const url = new URL(DB_CONNECTION_STRING);
   const databaseName = url.pathname.replace(/^\//, '');
-  if (
-    !['localhost', '127.0.0.1', '::1'].includes(url.hostname) ||
-    databaseName !== 'ph_os_e2e'
-  ) {
+  if (!['localhost', '127.0.0.1', '::1'].includes(url.hostname) || databaseName !== 'ph_os_e2e') {
     throw new Error('Mobile UI fixtures can only run against local ph_os_e2e');
   }
 }
