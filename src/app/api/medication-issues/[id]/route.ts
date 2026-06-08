@@ -16,6 +16,7 @@ import {
   listAccessiblePatientIds,
 } from '@/server/services/patient-access';
 import { promoteResolvedQrAllergyIssueToPatient } from '@/server/services/qr-allergy-promotion';
+import { promoteResolvedQrLabIssueToPatientLabs } from '@/server/services/qr-lab-promotion';
 import type { Prisma } from '@prisma/client';
 
 async function buildMedicationIssueAssignmentWhere(args: {
@@ -112,15 +113,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: updateData,
     });
     if (parsed.data.status === 'resolved' && resolvedAt) {
+      const effectiveIssue = {
+        id: existing.id,
+        patient_id: existing.patient_id,
+        title: parsed.data.title ?? existing.title,
+        description: parsed.data.description ?? existing.description,
+        category: parsed.data.category ?? existing.category,
+      };
       await promoteResolvedQrAllergyIssueToPatient(tx, {
         orgId: ctx.orgId,
-        issue: {
-          id: existing.id,
-          patient_id: existing.patient_id,
-          title: parsed.data.title ?? existing.title,
-          description: parsed.data.description ?? existing.description,
-          category: parsed.data.category ?? existing.category,
-        },
+        issue: effectiveIssue,
+        confirmedAt: resolvedAt,
+      });
+      await promoteResolvedQrLabIssueToPatientLabs(tx, {
+        orgId: ctx.orgId,
+        issue: effectiveIssue,
         confirmedAt: resolvedAt,
       });
     }

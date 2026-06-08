@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-180200
+
+- current task: promote QR lab/renal review candidates into PatientLabObservation only when an explicit measured date and supported numeric analyte are present
+- files inspected: `git status --short`, `PatientLabObservation` schema, patient labs API/tests, MedicationIssue PATCH route/tests, JAHIS supplemental candidate creation, CDS renal/monitoring checker/tests, and subagent data-integrity/medical-safety findings
+- files changed: `src/server/services/qr-lab-promotion.ts`, `src/server/services/qr-lab-promotion.test.ts`, `src/app/api/medication-issues/[id]/route.ts`, `src/app/api/medication-issues/[id]/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: QR-derived lab/renal MedicationIssue candidates were review-only and never reached `PatientLabObservation`, so eGFR/K/PT-INR evidence confirmed from QR text could not participate in renal-dose or monitoring CDS. A broad resolved-hook approach would have risked storing date-unknown or unit-ambiguous free text as latest lab data, so promotion was narrowed to explicit dated, labeled numeric values only.
+- security risks found: promotion runs only after existing MedicationIssue org/assignment checks and inside org-scoped context; the service rechecks `patient_id + org_id`, ignores QR boilerplate, requires the lab candidate title/category/marker, skips uncertain lines and unsupported Cr units, validates plausible ranges, and deduplicates by QR marker plus analyte before creating import-source lab rows
+- performance issues found: extraction is in-memory over the resolved issue description; persistence is bounded to at most the supported analytes `egfr`, `scr`, `k`, and `pt_inr` with one duplicate lookup per observation. No external calls, polling, or unbounded scans were added.
+- validation commands: Prettier for touched files; focused Vitest for QR lab promotion, MedicationIssue route, QR allergy promotion, JAHIS supplemental records, and CDS checker; targeted ESLint; `tsc --noEmit`; `git diff --check`; `build:e2e:local`; local server restart on `localhost:3012`; `curl /api/health`; `medical-ui:e2e:preflight`
+- validation results: Prettier completed; focused Vitest passed with 5 files / 43 tests; ESLint passed; TypeScript passed; whitespace diff check passed; E2E production build passed; local server restarted successfully; health returned ok; medical UI preflight passed with app port 3012, DB port 5433, 77 org-scoped RLS tables, and 17 audit triggers verified
+- remaining work: OTC/general drug candidates still need promotion into `MedicationProfile`/CDS; insurance/public subsidy sidecars need a safe review-to-PatientInsurance path; PCA return inspection/accessory/maintenance/billing remains a separate business workflow slice; CDS should eventually expose lab source/measurement date details and staleness handling
+- next action: commit this QR lab promotion slice, then implement OTC/general-drug candidate promotion as the next QR candidate-to-master path.
+
 ### 20260608-175500
 
 - current task: promote pharmacist-resolved QR allergy/adverse-effect review candidates into patient allergy master data without losing existing allergy JSON

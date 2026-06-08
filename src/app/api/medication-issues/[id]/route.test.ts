@@ -9,6 +9,8 @@ const {
   careCaseFindManyMock,
   medicationIssueFindFirstMock,
   medicationIssueUpdateMock,
+  patientLabObservationCreateMock,
+  patientLabObservationFindFirstMock,
   patientUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
@@ -19,6 +21,8 @@ const {
   careCaseFindManyMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
   medicationIssueUpdateMock: vi.fn(),
+  patientLabObservationCreateMock: vi.fn(),
+  patientLabObservationFindFirstMock: vi.fn(),
   patientUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -100,6 +104,10 @@ describe('/api/medication-issues/[id]', () => {
         patient: {
           findFirst: patientFindFirstMock,
           update: patientUpdateMock,
+        },
+        patientLabObservation: {
+          findFirst: patientLabObservationFindFirstMock,
+          create: patientLabObservationCreateMock,
         },
       }),
     );
@@ -391,5 +399,103 @@ describe('/api/medication-issues/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a resolved QR lab candidate to patient lab observations when measured dates are explicit', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来の検査値・腎機能確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:8]\n2026/06/01 eGFR 42\n2026/06/01 K 5.2',
+      category: 'other',
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1' });
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationCreateMock).toHaveBeenCalledTimes(2);
+    expect(patientLabObservationCreateMock).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        analyte_code: 'egfr',
+        measured_at: new Date('2026-06-01T00:00:00.000Z'),
+        value_numeric: 42,
+        unit: 'mL/min/1.73m2',
+        source_type: 'import',
+        note: '[qr_supplemental:intake_1:601:8] medication_issue_id=issue_1 analyte=egfr',
+      }),
+    });
+  });
+
+  it('promotes a QR lab candidate using the updated description from the resolving patch', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来の検査値・腎機能確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:8]\n2026/06/01 eGFR 42',
+      category: 'other',
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1' });
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        description: '[qr_supplemental:intake_1:601:8]\n2026/06/01 eGFR 35',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        analyte_code: 'egfr',
+        value_numeric: 35,
+      }),
+    });
+  });
+
+  it('does not promote QR lab candidates when the measured date is missing', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来の検査値・腎機能確認候補: 患者等記入事項',
+      description: '[qr_supplemental:intake_1:601:8]\neGFR 42',
+      category: 'other',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
   });
 });
