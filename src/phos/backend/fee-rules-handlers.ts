@@ -1,8 +1,9 @@
-import { UserRole, type ErrorResponse } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import type { ErrorResponse } from '@/phos/contracts/phos_contracts';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
+import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
 import type { TenantContext } from './tenant-context';
 
@@ -56,25 +57,66 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function assertFeeRuleReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/fee-rules.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'GET /fee-rules');
+}
+
+function logHandlerError(input: {
+  ctx: TenantContext;
+  route_key: string;
+  error_code: string;
+  details?: Record<string, unknown>;
+}) {
+  logPhosEvent(
+    buildLogEntry({
+      level: 'ERROR',
+      message: 'PH-OS fee-rules handler failed',
+      ctx: input.ctx,
+      route_key: input.route_key,
+      error_code: input.error_code,
+      details: input.details,
+    }),
+  );
+}
+
+function logHandlerSuccess(input: { ctx: TenantContext; route_key: string }) {
+  logPhosEvent(
+    buildLogEntry({
+      level: 'INFO',
+      message: 'PH-OS fee-rules handler succeeded',
+      ctx: input.ctx,
+      route_key: input.route_key,
+    }),
+  );
+}
+
+function withFeeRuleErrors(route_key: string, ctx: TenantContext, error: unknown) {
+  if (error instanceof PhosDomainError) {
+    logHandlerError({ ctx, route_key, error_code: error.error_code, details: error.details });
+    return domainErrorResponse(ctx, error);
+  }
+  if (error instanceof PhosAuthorizationError) {
+    const forbidden = forbiddenError(error);
+    logHandlerError({
+      ctx,
+      route_key,
+      error_code: forbidden.error_code,
+      details: forbidden.details,
+    });
+    return domainErrorResponse(ctx, forbidden);
+  }
+  throw error;
 }
 
 export function createFeeRuleSearchHandler(repository: PhosFeeRulesRepository): PhosHandler {
   return async ({ event, ctx }) => {
+    const route_key = event.routeKey ?? 'GET /fee-rules';
     try {
       assertFeeRuleReadAccess(ctx);
-      return await repository.searchFeeRules(ctx, parseSearchQuery(event));
+      const response = await repository.searchFeeRules(ctx, parseSearchQuery(event));
+      logHandlerSuccess({ ctx, route_key });
+      return response;
     } catch (error) {
-      if (error instanceof PhosDomainError) return domainErrorResponse(ctx, error);
-      if (error instanceof PhosAuthorizationError)
-        return domainErrorResponse(ctx, forbiddenError(error));
-      throw error;
+      return withFeeRuleErrors(route_key, ctx, error);
     }
   };
 }

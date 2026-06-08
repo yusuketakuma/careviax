@@ -1,4 +1,5 @@
 import type { UserRole } from '@/phos/contracts/phos_contracts';
+import { findPhosRoute } from '@/phos/infra/api-gateway-routes';
 import type { TenantContext } from './tenant-context';
 
 export class PhosAuthorizationError extends Error {
@@ -25,4 +26,13 @@ export function assertAllowedRole(ctx: TenantContext, allowedRoles: readonly Use
       allowed_roles: [...allowedRoles],
     });
   }
+}
+
+export function assertRouteAccess(ctx: TenantContext, routeKey: string): void {
+  const route = findPhosRoute(routeKey);
+  if (!route) {
+    throw new PhosAuthorizationError('unknown PH-OS route', { route_key: routeKey });
+  }
+  assertRequiredScopes(ctx, [...route.required_scopes]);
+  assertAllowedRole(ctx, route.allowed_roles);
 }

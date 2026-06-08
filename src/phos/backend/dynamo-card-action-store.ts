@@ -1,6 +1,7 @@
 import { ActionCode, type ActionResponse } from '@/phos/contracts/phos_contracts';
 import type {
   BlockerView,
+  CardSummaryView,
   CurrentStep,
   NextActionView,
   ReportDeliveryView,
@@ -44,6 +45,16 @@ export type DynamoActionCommitTransaction = {
     status_gsi_sk: string;
     delivery: ReportDeliveryView;
   }[];
+  audit_event: {
+    event_id: string;
+    event_type: 'CARD_ACTION_EXECUTED';
+    action_code: ActionCode;
+    actor_user_id: string;
+    request_id: string;
+    correlation_id: string;
+    before_card: CardSummaryView;
+    after_card: CardSummaryView;
+  };
   claim_review_guard?: {
     unresolved_claim_candidate_count: 0;
   };
@@ -175,6 +186,16 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
           }),
           delivery,
         })),
+        audit_event: {
+          event_id: `${input.command.action_code}#${input.command.idempotency_key}`,
+          event_type: 'CARD_ACTION_EXECUTED',
+          action_code: input.command.action_code,
+          actor_user_id: ctx.user_id,
+          request_id: ctx.request_id,
+          correlation_id: ctx.correlation_id,
+          before_card: input.previous_state.card,
+          after_card: projected_response.card,
+        },
         ...(input.command.action_code === ActionCode.REVIEW_CLAIM_CANDIDATES
           ? { claim_review_guard: { unresolved_claim_candidate_count: 0 } }
           : {}),

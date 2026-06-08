@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import type { DynamoActionCommitTransaction } from './dynamo-card-action-store';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { cardEventSk } from './dynamodb-keys';
 
 export function buildDynamoActionCommitTransactWriteItems(
   input: DynamoActionCommitTransaction,
@@ -111,6 +112,33 @@ export function buildDynamoActionCommitTransactWriteItems(
         },
       }),
     ),
+    {
+      Put: {
+        TableName: input.table_name,
+        Item: {
+          ...dynamoKey(
+            input.partition_key,
+            cardEventSk({
+              card_id: input.projected_response.card.card_id,
+              created_at: committed_at,
+              event_id: input.audit_event.event_id,
+            }),
+          ),
+          entity_type: { S: 'CARD_EVENT' },
+          event_type: { S: input.audit_event.event_type },
+          event_id: { S: input.audit_event.event_id },
+          card_id: { S: input.projected_response.card.card_id },
+          action_code: { S: input.audit_event.action_code },
+          actor_user_id: { S: input.audit_event.actor_user_id },
+          request_id: { S: input.audit_event.request_id },
+          correlation_id: { S: input.audit_event.correlation_id },
+          before_json: toDynamoAttributeValue(input.audit_event.before_card),
+          after_json: toDynamoAttributeValue(input.audit_event.after_card),
+          created_at: { S: committed_at },
+        },
+        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      },
+    },
     {
       Put: {
         TableName: input.table_name,

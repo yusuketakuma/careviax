@@ -1,9 +1,4 @@
-import {
-  ActionCode,
-  HandoffStatus,
-  HandoffUrgency,
-  UserRole,
-} from '@/phos/contracts/phos_contracts';
+import { ActionCode, HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type {
   CreateHandoffRequest,
   ErrorResponse,
@@ -13,7 +8,7 @@ import type {
   ReturnHandoffRequest,
   SourceRef,
 } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -226,23 +221,15 @@ function parseReturnRequest(body: unknown): ReturnHandoffRequest {
 }
 
 function assertHandoffReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/handoffs.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'GET /handoffs');
 }
 
 function assertHandoffCreateAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/handoffs.write']);
-  assertAllowedRole(ctx, [UserRole.PHARMACY_CLERK, UserRole.MANAGER, UserRole.ADMIN]);
+  assertRouteAccess(ctx, 'POST /handoffs');
 }
 
-function assertHandoffResolveAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/handoffs.write']);
-  assertAllowedRole(ctx, [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN]);
+function assertHandoffMutationAccess(ctx: TenantContext, route_key: string) {
+  assertRouteAccess(ctx, route_key);
 }
 
 function logHandlerError(input: {
@@ -327,7 +314,7 @@ export function createResolveHandoffHandler(repository: PhosHandoffsRepository):
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
-      assertHandoffResolveAccess(ctx);
+      assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.resolveHandoff(ctx, handoff_id, parseResolveRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id });
       return response;
@@ -343,7 +330,7 @@ export function createOpenHandoffHandler(repository: PhosHandoffsRepository): Ph
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
-      assertHandoffResolveAccess(ctx);
+      assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.openHandoff(ctx, handoff_id, parseOpenRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id });
       return response;
@@ -359,7 +346,7 @@ export function createReturnHandoffHandler(repository: PhosHandoffsRepository): 
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
-      assertHandoffResolveAccess(ctx);
+      assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.returnHandoff(ctx, handoff_id, parseReturnRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id });
       return response;

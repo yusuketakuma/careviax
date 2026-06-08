@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { UserRole } from '@/phos/contracts/phos_contracts';
 import { findPhosRoute, PHOS_API_ROUTES } from './api-gateway-routes';
 
 const SPEC_ROUTE_KEYS = [
@@ -36,10 +37,86 @@ describe('PH-OS API Gateway route manifest', () => {
 
     for (const route of PHOS_API_ROUTES) {
       expect(route.lambda_handler).toMatch(/^@\/phos\/backend\//);
+      expect(route.lambda_handler).toMatch(/-lambda#/);
       expect(route.lambda_handler).not.toContain('src/app/api');
       expect(route.lambda_handler).not.toContain('route.ts');
+      expect(route.lambda_handler).not.toContain('-handlers#create');
       expect(route.required_scopes.length).toBeGreaterThan(0);
+      expect(route.allowed_roles.length).toBeGreaterThan(0);
     }
+  });
+
+  it('points every route to an importable composed Lambda export', async () => {
+    for (const route of PHOS_API_ROUTES) {
+      const [modulePath, exportName] = route.lambda_handler.split('#');
+      expect(modulePath).toBeTruthy();
+      expect(exportName).toBeTruthy();
+      const lambdaModule = await import(modulePath.replace('@/', '@/'));
+      expect(lambdaModule[exportName as keyof typeof lambdaModule]).toEqual(expect.any(Function));
+    }
+  });
+
+  it('points Cards and Evidence routes to composed Lambda exports', async () => {
+    const searchRoute = findPhosRoute('GET /cards');
+    const detailRoute = findPhosRoute('GET /cards/{card_id}');
+    const actionRoute = findPhosRoute('POST /cards/{card_id}/actions');
+    const evidenceRoute = findPhosRoute('POST /evidence/presign-upload');
+    const cardsModule = await import('@/phos/backend/cards-lambda');
+    const evidenceModule = await import('@/phos/backend/evidence-lambda');
+
+    expect(searchRoute?.lambda_handler).toBe('@/phos/backend/cards-lambda#cardSearchHandler');
+    expect(detailRoute?.lambda_handler).toBe('@/phos/backend/cards-lambda#cardDetailHandler');
+    expect(actionRoute?.lambda_handler).toBe(
+      '@/phos/backend/cards-lambda#executeCardActionHandler',
+    );
+    expect(evidenceRoute?.lambda_handler).toBe(
+      '@/phos/backend/evidence-lambda#evidencePresignUploadHandler',
+    );
+    expect(cardsModule.cardSearchHandler).toEqual(expect.any(Function));
+    expect(cardsModule.cardDetailHandler).toEqual(expect.any(Function));
+    expect(cardsModule.executeCardActionHandler).toEqual(expect.any(Function));
+    expect(evidenceModule.evidencePresignUploadHandler).toEqual(expect.any(Function));
+  });
+
+  it('keeps route-level RBAC policy explicit in the API Gateway manifest', () => {
+    expect(findPhosRoute('GET /cards')).toMatchObject({
+      required_scopes: ['phos/cards.read'],
+      allowed_roles: [
+        UserRole.PHARMACIST,
+        UserRole.PHARMACY_CLERK,
+        UserRole.MANAGER,
+        UserRole.ADMIN,
+      ],
+    });
+    expect(findPhosRoute('POST /cards/{card_id}/actions')).toMatchObject({
+      required_scopes: ['phos/cards.write'],
+      allowed_roles: Object.values(UserRole),
+    });
+    expect(findPhosRoute('GET /capacity')).toMatchObject({
+      required_scopes: ['phos/capacity.read'],
+      allowed_roles: [UserRole.MANAGER, UserRole.ADMIN],
+    });
+    expect(findPhosRoute('POST /handoffs')).toMatchObject({
+      required_scopes: ['phos/handoffs.write'],
+      allowed_roles: [UserRole.PHARMACY_CLERK, UserRole.MANAGER, UserRole.ADMIN],
+    });
+    expect(findPhosRoute('POST /handoffs/{handoff_id}/resolve')).toMatchObject({
+      required_scopes: ['phos/handoffs.write'],
+      allowed_roles: [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN],
+    });
+    expect(findPhosRoute('POST /report-deliveries/{delivery_id}/reply')).toMatchObject({
+      required_scopes: ['phos/report-deliveries.write'],
+      allowed_roles: [
+        UserRole.PHARMACIST,
+        UserRole.PHARMACY_CLERK,
+        UserRole.MANAGER,
+        UserRole.ADMIN,
+      ],
+    });
+    expect(findPhosRoute('POST /report-deliveries/{delivery_id}/action-done')).toMatchObject({
+      required_scopes: ['phos/report-deliveries.write'],
+      allowed_roles: [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN],
+    });
   });
 
   it('has no remaining planned PH-OS v1.1 API routes in the manifest', () => {

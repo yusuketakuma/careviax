@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { UserRole } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import {
+  assertAllowedRole,
+  assertRequiredScopes,
+  assertRouteAccess,
+  PhosAuthorizationError,
+} from './authorization';
 import type { TenantContext } from './tenant-context';
 
 const ctx: TenantContext = {
@@ -21,5 +26,16 @@ describe('PH-OS authorization helpers', () => {
   it('rejects missing scopes and disallowed roles', () => {
     expect(() => assertRequiredScopes(ctx, ['phos/cards.write'])).toThrow(PhosAuthorizationError);
     expect(() => assertAllowedRole(ctx, [UserRole.PHARMACY_CLERK])).toThrow(PhosAuthorizationError);
+  });
+
+  it('enforces the API Gateway route manifest scope and role policy', () => {
+    expect(() => assertRouteAccess(ctx, 'GET /cards')).not.toThrow();
+    expect(() => assertRouteAccess({ ...ctx, scopes: ['phos/cards.write'] }, 'GET /cards')).toThrow(
+      PhosAuthorizationError,
+    );
+    expect(() =>
+      assertRouteAccess({ ...ctx, role: UserRole.DISPENSE_ASSISTANT }, 'GET /cards'),
+    ).toThrow(PhosAuthorizationError);
+    expect(() => assertRouteAccess(ctx, 'GET /unknown')).toThrow(PhosAuthorizationError);
   });
 });

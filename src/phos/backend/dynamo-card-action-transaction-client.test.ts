@@ -92,6 +92,20 @@ function transaction(
     blocker_puts: [],
     blocker_resolutions: [],
     report_delivery_puts: [],
+    audit_event: {
+      event_id: 'CONFIRM_PRESCRIPTION_DIFF#idem_1',
+      event_type: 'CARD_ACTION_EXECUTED',
+      action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+      actor_user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      before_card: {
+        ...response().card,
+        current_step: CurrentStep.DIFF_REVIEW,
+        server_version: 3,
+      },
+      after_card: response().card,
+    },
     expected_server_version: 3,
     request_fingerprint: 'fp_1',
     command: {
@@ -112,7 +126,7 @@ describe('Dynamo card action transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({
       Update: {
         TableName: 'phos_core',
@@ -131,6 +145,24 @@ describe('Dynamo card action transaction client', () => {
       },
     });
     expect(items[1]).toMatchObject({
+      Put: {
+        TableName: 'phos_core',
+        Item: {
+          PK: { S: 'TENANT#tenant_abc123' },
+          SK: {
+            S: 'CARD_EVENT#card_1#2026-06-09T00:00:00.000Z#CONFIRM_PRESCRIPTION_DIFF#idem_1',
+          },
+          entity_type: { S: 'CARD_EVENT' },
+          event_type: { S: 'CARD_ACTION_EXECUTED' },
+          action_code: { S: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+          actor_user_id: { S: 'user_1' },
+          request_id: { S: 'req_1' },
+          correlation_id: { S: 'corr_1' },
+        },
+        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      },
+    });
+    expect(items[2]).toMatchObject({
       Put: {
         TableName: 'phos_core',
         Item: {
@@ -176,7 +208,7 @@ describe('Dynamo card action transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     expect(items[1]).toMatchObject({
       Put: {
         TableName: 'phos_core',
@@ -228,7 +260,7 @@ describe('Dynamo card action transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4);
     expect(items[1]).toMatchObject({
       Put: {
         TableName: 'phos_core',
@@ -248,7 +280,7 @@ describe('Dynamo card action transaction client', () => {
         ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
       },
     });
-    expect(items[2]).toMatchObject({
+    expect(items[3]).toMatchObject({
       Put: {
         Item: {
           SK: { S: 'CARD_ACTION_IDEMPOTENCY#card_1#idem_send_report' },
@@ -311,6 +343,6 @@ describe('Dynamo card action transaction client', () => {
     const command = send.mock.calls[0]?.[0];
     if (!command) throw new Error('Expected TransactWriteItemsCommand');
     expect(command).toBeInstanceOf(TransactWriteItemsCommand);
-    expect(command.input.TransactItems).toHaveLength(2);
+    expect(command.input.TransactItems).toHaveLength(3);
   });
 });

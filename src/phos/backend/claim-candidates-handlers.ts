@@ -1,10 +1,9 @@
 import {
   ClaimCandidateStatus,
-  UserRole,
   type ErrorResponse,
   type ExcludeClaimCandidateRequest,
 } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -107,18 +106,11 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function assertClaimCandidateReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/claim-candidates.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'GET /claim-candidates');
 }
 
 function assertClaimCandidateWriteAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/claim-candidates.write']);
-  assertAllowedRole(ctx, [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN]);
+  assertRouteAccess(ctx, 'POST /claim-candidates/{candidate_id}/exclude');
 }
 
 function logHandlerError(input: {

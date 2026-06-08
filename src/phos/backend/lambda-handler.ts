@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { toErrorLambdaResponse, toLambdaJsonResponse } from './error-response';
 import type { PhosLambdaResponse } from './error-response';
+import { buildLogEntry, logPhosEvent } from './structured-logger';
 import {
   assertTenantIdNotInExternalInput,
   buildTenantContext,
@@ -67,10 +68,50 @@ function isLambdaResponse(value: unknown): value is PhosLambdaResponse {
   );
 }
 
+function routeKey(event: PhosHttpEvent): string {
+  return event.routeKey ?? event.rawPath ?? 'UNKNOWN_ROUTE';
+}
+
+function logBoundaryError(input: {
+  event: PhosHttpEvent;
+  ctx?: TenantContext;
+  request_id: string;
+  correlation_id: string;
+  error_code: string;
+  details?: Record<string, unknown>;
+}) {
+  if (input.ctx) {
+    logPhosEvent(
+      buildLogEntry({
+        level: 'ERROR',
+        message: 'PH-OS lambda boundary failed',
+        ctx: input.ctx,
+        route_key: routeKey(input.event),
+        error_code: input.error_code,
+        details: input.details,
+      }),
+    );
+    return;
+  }
+
+  logPhosEvent({
+    level: 'ERROR',
+    message: 'PH-OS lambda boundary failed before tenant context',
+    tenant_id: 'UNKNOWN',
+    user_id: 'UNKNOWN',
+    request_id: input.request_id,
+    correlation_id: input.correlation_id,
+    route_key: routeKey(input.event),
+    error_code: input.error_code,
+    ...(input.details ? { details: input.details } : {}),
+  });
+}
+
 export function withTenantContext(handler: PhosHandler) {
   return async (event: PhosHttpEvent) => {
     const request_id = event.requestContext?.requestId ?? randomUUID();
     const correlation_id = readHeader(event.headers, 'x-correlation-id') ?? request_id;
+    let ctx: TenantContext | undefined;
 
     try {
       const body = parseJsonBody(event.body, request_id);
@@ -81,7 +122,7 @@ export function withTenantContext(handler: PhosHandler) {
         path: event.pathParameters,
       });
 
-      const ctx = buildTenantContext({
+      ctx = buildTenantContext({
         claims: event.requestContext?.authorizer?.jwt?.claims ?? {},
         request_id,
         correlation_id,
@@ -92,9 +133,24 @@ export function withTenantContext(handler: PhosHandler) {
       return toLambdaJsonResponse(200, result);
     } catch (error) {
       if (error instanceof TenantContextError) {
+        logBoundaryError({
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+          error_code: error.response.error_code,
+          details: error.response.details,
+        });
         return toErrorLambdaResponse(error.status, error.response);
       }
 
+      logBoundaryError({
+        event,
+        ctx,
+        request_id,
+        correlation_id,
+        error_code: 'INTERNAL_ERROR',
+      });
       return toErrorLambdaResponse(500, {
         request_id,
         error_code: 'INTERNAL_ERROR',

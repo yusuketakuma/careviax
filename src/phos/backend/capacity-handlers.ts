@@ -1,9 +1,5 @@
-import {
-  CapacityScope,
-  UserRole,
-  type ErrorResponse,
-} from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { CapacityScope, type ErrorResponse } from '@/phos/contracts/phos_contracts';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import type { CapacityQuery, PhosCapacityRepository } from './capacity-repository';
 import { toErrorLambdaResponse } from './error-response';
@@ -21,9 +17,7 @@ function isValidDateKey(value: string): boolean {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
   );
 }
 
@@ -70,8 +64,7 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function assertCapacityReadAccess(ctx: TenantContext, query: CapacityQuery) {
-  assertRequiredScopes(ctx, ['phos/capacity.read']);
-  assertAllowedRole(ctx, [UserRole.MANAGER, UserRole.ADMIN]);
+  assertRouteAccess(ctx, 'GET /capacity');
   if (query.scope === CapacityScope.ME && !ctx.user_id) {
     throw validationError({ field: 'scope', reason: 'missing_user_context' });
   }

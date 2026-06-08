@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { UserRole } from '@/phos/contracts/phos_contracts';
 import type { ErrorResponse } from '@/phos/contracts/phos_contracts';
 import type {
   EvidencePresignUploadResponse,
@@ -13,7 +12,7 @@ import {
   TenantStorageKeyError,
   validateEvidenceUploadRequest,
 } from './s3-evidence-key';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
@@ -58,13 +57,7 @@ function forbiddenError(ctx: TenantContext, error: PhosAuthorizationError) {
 }
 
 function assertEvidenceWriteAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/evidence.write']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'POST /evidence/presign-upload');
 }
 
 function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {

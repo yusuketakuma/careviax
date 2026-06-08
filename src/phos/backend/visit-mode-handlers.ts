@@ -1,12 +1,11 @@
 import {
-  UserRole,
   VisitArrivalOutcome,
   VisitStep,
   type ErrorResponse,
   type VisitStepMutationPayload,
   type VisitStepMutationRequest,
 } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -123,23 +122,11 @@ function parseMutationRequest(step: VisitStep, body: unknown): VisitStepMutation
 }
 
 function assertVisitReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/visit-mode.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.DISPENSE_ASSISTANT,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'GET /visit-packets/{packet_id}/visit-mode');
 }
 
 function assertVisitWriteAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/visit-mode.write']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.DISPENSE_ASSISTANT,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'POST /visit-packets/{packet_id}/visit-steps/{step}');
 }
 
 function logHandlerError(input: {

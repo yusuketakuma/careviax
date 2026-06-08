@@ -74,4 +74,18 @@ describe('PH-OS static contract checks', () => {
       }
     }
   });
+
+  it('keeps PH-OS handler RBAC checks routed through the API Gateway manifest policy', () => {
+    const backendRoot = join(canonicalRoot, 'backend');
+    const handlerFiles = listFiles(backendRoot).filter((file) => file.endsWith('-handlers.ts'));
+    const forbiddenDirectAuthorizationHelpers = [/assertRequiredScopes/, /assertAllowedRole/];
+
+    for (const file of handlerFiles) {
+      const content = readFileSync(file, 'utf8');
+      for (const pattern of forbiddenDirectAuthorizationHelpers) {
+        expect(content, file).not.toMatch(pattern);
+      }
+      expect(content, file).toMatch(/assertRouteAccess/);
+    }
+  });
 });

@@ -231,6 +231,16 @@ describe('createDynamoCardActionExecutionStore', () => {
       blocker_puts: [],
       blocker_resolutions: [],
       report_delivery_puts: [],
+      audit_event: {
+        event_id: 'CONFIRM_PRESCRIPTION_DIFF#idem_1',
+        event_type: 'CARD_ACTION_EXECUTED',
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        actor_user_id: 'user_1',
+        request_id: 'req_1',
+        correlation_id: 'corr_1',
+        before_card: previousState.card,
+        after_card: result.card,
+      },
       expected_server_version: 3,
       request_fingerprint: 'fp_1',
       command: {

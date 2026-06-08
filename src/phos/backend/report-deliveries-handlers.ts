@@ -1,12 +1,11 @@
 import {
   ReportDeliveryStatus,
-  UserRole,
   type ErrorResponse,
   type MarkReportActionDoneRequest,
   type RegisterReportReplyRequest,
   type SourceRef,
 } from '@/phos/contracts/phos_contracts';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -201,28 +200,15 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function assertReportDeliveryReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/report-deliveries.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'GET /report-deliveries');
 }
 
 function assertReportDeliveryReplyAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/report-deliveries.write']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
+  assertRouteAccess(ctx, 'POST /report-deliveries/{delivery_id}/reply');
 }
 
 function assertReportDeliveryActionDoneAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/report-deliveries.write']);
-  assertAllowedRole(ctx, [UserRole.PHARMACIST, UserRole.MANAGER, UserRole.ADMIN]);
+  assertRouteAccess(ctx, 'POST /report-deliveries/{delivery_id}/action-done');
 }
 
 function logHandlerError(input: {

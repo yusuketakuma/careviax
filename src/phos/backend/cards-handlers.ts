@@ -1,7 +1,7 @@
-import { ActionCode, UserRole } from '@/phos/contracts/phos_contracts';
+import { ActionCode } from '@/phos/contracts/phos_contracts';
 import type { ActionRequest, ErrorResponse } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
-import { assertAllowedRole, assertRequiredScopes, PhosAuthorizationError } from './authorization';
+import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import type { CardSearchQuery, PhosCardsRepository } from './cards-repository';
@@ -118,21 +118,6 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
   });
 }
 
-function assertCardsReadAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/cards.read']);
-  assertAllowedRole(ctx, [
-    UserRole.PHARMACIST,
-    UserRole.PHARMACY_CLERK,
-    UserRole.MANAGER,
-    UserRole.ADMIN,
-  ]);
-}
-
-function assertCardsWriteAccess(ctx: TenantContext) {
-  assertRequiredScopes(ctx, ['phos/cards.write']);
-  assertAllowedRole(ctx, Object.values(UserRole));
-}
-
 function logHandlerError(input: {
   ctx: TenantContext;
   route_key: string;
@@ -171,17 +156,18 @@ function logHandlerSuccess(input: {
 
 export function createCardSearchHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx }) => {
+    const route_key = event.routeKey ?? 'GET /cards';
     try {
-      assertCardsReadAccess(ctx);
+      assertRouteAccess(ctx, route_key);
       const query = parseSearchQuery(ctx, event);
       const response = await repository.searchCards(ctx, query);
-      logHandlerSuccess({ ctx, route_key: event.routeKey ?? 'GET /cards' });
+      logHandlerSuccess({ ctx, route_key });
       return response;
     } catch (error) {
       if (error instanceof PhosDomainError) {
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'GET /cards',
+          route_key,
           error_code: error.error_code,
           details: error.details,
         });
@@ -191,7 +177,7 @@ export function createCardSearchHandler(repository: PhosCardsRepository): PhosHa
         const forbidden = forbiddenError(error);
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'GET /cards',
+          route_key,
           error_code: forbidden.error_code,
           details: forbidden.details,
         });
@@ -204,8 +190,9 @@ export function createCardSearchHandler(repository: PhosCardsRepository): PhosHa
 
 export function createCardDetailHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx }) => {
+    const route_key = event.routeKey ?? 'GET /cards/{card_id}';
     try {
-      assertCardsReadAccess(ctx);
+      assertRouteAccess(ctx, route_key);
       const card_id = readCardId(event);
       if (!card_id) {
         throw validationError(ctx, { field: 'card_id' });
@@ -220,13 +207,13 @@ export function createCardDetailHandler(repository: PhosCardsRepository): PhosHa
           details: { card_id },
         });
       }
-      logHandlerSuccess({ ctx, route_key: event.routeKey ?? 'GET /cards/{card_id}', card_id });
+      logHandlerSuccess({ ctx, route_key, card_id });
       return detail;
     } catch (error) {
       if (error instanceof PhosDomainError) {
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'GET /cards/{card_id}',
+          route_key,
           error_code: error.error_code,
           details: error.details,
         });
@@ -236,7 +223,7 @@ export function createCardDetailHandler(repository: PhosCardsRepository): PhosHa
         const forbidden = forbiddenError(error);
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'GET /cards/{card_id}',
+          route_key,
           error_code: forbidden.error_code,
           details: forbidden.details,
         });
@@ -249,18 +236,19 @@ export function createCardDetailHandler(repository: PhosCardsRepository): PhosHa
 
 export function createExecuteCardActionHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
+    const route_key = event.routeKey ?? 'POST /cards/{card_id}/actions';
     const card_id = readCardId(event);
     if (!card_id) {
       return domainErrorResponse(ctx, validationError(ctx, { field: 'card_id' }));
     }
 
     try {
-      assertCardsWriteAccess(ctx);
+      assertRouteAccess(ctx, route_key);
       const request = parseActionRequest(ctx, body);
       const response = await repository.executeCardAction(ctx, card_id, request);
       logHandlerSuccess({
         ctx,
-        route_key: event.routeKey ?? 'POST /cards/{card_id}/actions',
+        route_key,
         card_id,
         action_code: request.action_code,
       });
@@ -269,7 +257,7 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
       if (error instanceof PhosDomainError) {
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'POST /cards/{card_id}/actions',
+          route_key,
           error_code: error.error_code,
           details: error.details,
         });
@@ -279,7 +267,7 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
         const forbidden = forbiddenError(error);
         logHandlerError({
           ctx,
-          route_key: event.routeKey ?? 'POST /cards/{card_id}/actions',
+          route_key,
           error_code: forbidden.error_code,
           details: forbidden.details,
         });
