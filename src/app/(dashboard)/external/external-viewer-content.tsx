@@ -286,7 +286,7 @@ export function ExternalViewerContent({
                   <div className="mt-3">
                     <Link
                       href={`/patients/${grant.patient_id}/share`}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                      className="inline-flex min-h-11 min-w-11 items-center gap-1 text-sm font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
                     >
                       詳細を開く
                       <ExternalLink className="size-3.5" aria-hidden="true" />

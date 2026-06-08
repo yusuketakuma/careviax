@@ -164,13 +164,23 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           )}
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
+            asChild
+          >
             <Link href={`/prescriptions/${data.id}`}>
               <ExternalLink className="mr-0.5 size-3" aria-hidden="true" />
               詳細
             </Link>
           </Button>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
+            asChild
+          >
             <Link href={`/patients/${patient.id}`}>患者</Link>
           </Button>
         </div>

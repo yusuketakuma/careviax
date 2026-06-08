@@ -393,7 +393,7 @@ export function CommunicationRequestsContent({
           row.original.patient_id ? (
             <Link
               href={`/patients/${row.original.patient_id}`}
-              className="text-sm text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
             >
               患者詳細
             </Link>
@@ -473,7 +473,7 @@ export function CommunicationRequestsContent({
           row.original.patient_id ? (
             <Link
               href={`/patients/${row.original.patient_id}`}
-              className="text-sm text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
             >
               患者詳細
             </Link>
@@ -493,7 +493,7 @@ export function CommunicationRequestsContent({
           return entityLink ? (
             <Link
               href={entityLink.href}
-              className="text-sm text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
             >
               {entityLink.label}
             </Link>
@@ -636,7 +636,7 @@ export function CommunicationRequestsContent({
                 value: patientFilter ? (
                   <Link
                     href={`/patients/${patientFilter}`}
-                    className="text-primary underline-offset-4 hover:underline"
+                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
                   >
                     詳細
                   </Link>
@@ -654,14 +654,14 @@ export function CommunicationRequestsContent({
                 {relatedEntityLink ? (
                   <Link
                     href={relatedEntityLink.href}
-                    className="text-sm text-primary underline-offset-4 hover:underline"
+                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
                   >
                     {relatedEntityLink.label}
                   </Link>
                 ) : null}
                 <Link
                   href={buildCommunicationRequestsHref({ status: statusFilter || null })}
-                  className="text-sm text-primary underline-offset-4 hover:underline"
+                  className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   文脈をクリア
                 </Link>
@@ -716,7 +716,7 @@ export function CommunicationRequestsContent({
               {item.patient_id ? (
                 <Link
                   href={`/patients/${item.patient_id}`}
-                  className="mt-2 inline-flex text-xs text-primary underline-offset-4 hover:underline"
+                  className="mt-2 inline-flex min-h-11 min-w-11 items-center text-xs text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   患者詳細へ
                 </Link>

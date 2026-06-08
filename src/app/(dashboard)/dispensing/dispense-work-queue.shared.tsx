@@ -32,16 +32,8 @@ export function QueuePriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-export function QueueFacilityLabel({
-  facilityLabel,
-}: {
-  facilityLabel: string | null;
-}) {
-  return (
-    <span className="text-sm text-muted-foreground">
-      {facilityLabel ?? '自宅訪問'}
-    </span>
-  );
+export function QueueFacilityLabel({ facilityLabel }: { facilityLabel: string | null }) {
+  return <span className="text-sm text-muted-foreground">{facilityLabel ?? '自宅訪問'}</span>;
 }
 
 export function QueuePatientLink({
@@ -56,12 +48,10 @@ export function QueuePatientLink({
   return (
     <Link
       href={href}
-      className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:min-w-0"
     >
       {name}
-      {nameKana ? (
-        <span className="ml-1 text-xs text-muted-foreground">({nameKana})</span>
-      ) : null}
+      {nameKana ? <span className="ml-1 text-xs text-muted-foreground">({nameKana})</span> : null}
     </Link>
   );
 }
@@ -107,9 +97,7 @@ export function QueueDueDate({
   return (
     <span
       className={
-        isOverdue
-          ? 'text-sm font-medium text-destructive'
-          : 'text-sm text-muted-foreground'
+        isOverdue ? 'text-sm font-medium text-destructive' : 'text-sm text-muted-foreground'
       }
     >
       {content}
@@ -132,9 +120,7 @@ export function useSelectableQueueState<T>(items: T[]) {
   }, []);
 
   const handleMoveDown = useCallback(() => {
-    setSelectedIndex((prev) =>
-      Math.min(Math.max(0, items.length - 1), prev + 1)
-    );
+    setSelectedIndex((prev) => Math.min(Math.max(0, items.length - 1), prev + 1));
   }, [items.length]);
 
   const handleRowClick = useCallback((index: number) => {

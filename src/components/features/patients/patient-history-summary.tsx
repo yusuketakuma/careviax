@@ -139,7 +139,7 @@ export function PatientHistorySummary({
               <div className="space-y-0.5 text-[11px]">
                 <Link
                   href={`/prescriptions/${previousPrescription.id}`}
-                  className="font-medium text-primary hover:underline"
+                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   {formatDate(previousPrescription.prescribed_date)}
                 </Link>
@@ -164,7 +164,7 @@ export function PatientHistorySummary({
               <div className="space-y-0.5 text-[11px]">
                 <Link
                   href={`/visits/${previousVisit.id}`}
-                  className="font-medium text-primary hover:underline"
+                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   {formatDate(previousVisit.visit_date)}
                 </Link>
@@ -192,14 +192,14 @@ export function PatientHistorySummary({
       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
         <Link
           href={`/patients/${patientId}/prescriptions`}
-          className="inline-flex items-center gap-1 text-primary hover:underline"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
         >
           <FileText className="size-3" aria-hidden="true" />
           処方履歴をすべて見る
         </Link>
         <Link
           href={`/patients/${patientId}?tab=visits`}
-          className="inline-flex items-center gap-1 text-primary hover:underline"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
         >
           <History className="size-3" aria-hidden="true" />
           訪問履歴をすべて見る

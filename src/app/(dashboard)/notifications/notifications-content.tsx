@@ -116,7 +116,7 @@ function NotificationCard({
             {notification.link && (
               <Link
                 href={notification.link}
-                className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                className="flex min-h-11 min-w-11 items-center gap-1 text-xs text-blue-700 hover:underline sm:min-h-0 sm:min-w-0"
               >
                 詳細を見る
                 <ExternalLink className="size-3" aria-hidden="true" />
@@ -125,7 +125,7 @@ function NotificationCard({
             {!notification.is_read && (
               <button
                 onClick={() => onRead(notification.id)}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
+                className="inline-flex min-h-11 min-w-11 items-center text-xs text-muted-foreground underline hover:text-foreground sm:min-h-0 sm:min-w-0"
               >
                 既読にする
               </button>
