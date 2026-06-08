@@ -29,6 +29,25 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
 type PcaPumpRentalStatus = 'scheduled' | 'active' | 'overdue' | 'returned' | 'cancelled';
+type PcaPumpReturnInspectionStatus = 'pending' | 'passed' | 'needs_maintenance';
+type PcaPumpAccessoryStatus = 'ok' | 'missing' | 'damaged' | 'not_applicable';
+type PcaPumpAccessoryKey =
+  | 'pump_body'
+  | 'power_adapter'
+  | 'power_cable'
+  | 'carrying_case'
+  | 'manual'
+  | 'lock_key'
+  | 'clamp'
+  | 'cleaning_completed'
+  | 'operation_check';
+
+type PcaPumpAccessoryChecklistItem = {
+  status: PcaPumpAccessoryStatus;
+  notes: string;
+};
+
+type PcaPumpAccessoryChecklistState = Record<PcaPumpAccessoryKey, PcaPumpAccessoryChecklistItem>;
 
 type Institution = {
   id: string;
@@ -59,6 +78,11 @@ type PcaPumpRental = {
   rented_at: string;
   due_at: string | null;
   returned_at: string | null;
+  return_inspection_status: PcaPumpReturnInspectionStatus | null;
+  return_inspection_notes: string | null;
+  accessory_checklist: unknown;
+  inspected_at: string | null;
+  inspected_by: string | null;
   rental_fee_yen: number | null;
   contact_name: string | null;
   contact_phone: string | null;
@@ -96,6 +120,12 @@ type RentalFormState = {
   notes: string;
 };
 
+type ReturnInspectionFormState = {
+  rental: PcaPumpRental | null;
+  notes: string;
+  checklist: PcaPumpAccessoryChecklistState;
+};
+
 const PUMP_STATUS_LABELS: Record<PcaPumpStatus, string> = {
   available: '利用可能',
   rented: '貸出中',
@@ -110,6 +140,28 @@ const RENTAL_STATUS_LABELS: Record<PcaPumpRentalStatus, string> = {
   returned: '返却済',
   cancelled: '取消',
 };
+
+const ACCESSORY_STATUS_LABELS: Record<PcaPumpAccessoryStatus, string> = {
+  ok: 'OK',
+  missing: '不足',
+  damaged: '破損',
+  not_applicable: '該当なし',
+};
+
+export const PCA_RETURN_INSPECTION_ITEMS: Array<{
+  key: PcaPumpAccessoryKey;
+  label: string;
+}> = [
+  { key: 'pump_body', label: 'ポンプ本体' },
+  { key: 'power_adapter', label: 'ACアダプタ' },
+  { key: 'power_cable', label: '電源コード' },
+  { key: 'carrying_case', label: '携行ケース' },
+  { key: 'manual', label: '取扱説明書' },
+  { key: 'lock_key', label: 'ロックキー' },
+  { key: 'clamp', label: 'クランプ/固定具' },
+  { key: 'cleaning_completed', label: '清拭完了' },
+  { key: 'operation_check', label: '動作確認' },
+];
 
 const EMPTY_PUMP_FORM: PumpFormState = {
   asset_code: '',
@@ -140,9 +192,59 @@ function emptyRentalForm(pumpId = ''): RentalFormState {
   };
 }
 
+export function createDefaultPcaReturnInspectionChecklist(): PcaPumpAccessoryChecklistState {
+  return Object.fromEntries(
+    PCA_RETURN_INSPECTION_ITEMS.map((item) => [item.key, { status: 'ok', notes: '' }]),
+  ) as PcaPumpAccessoryChecklistState;
+}
+
+export function getPcaReturnInspectionMissingNoteLabels(checklist: PcaPumpAccessoryChecklistState) {
+  return PCA_RETURN_INSPECTION_ITEMS.flatMap((item) => {
+    const value = checklist[item.key];
+    if ((value.status === 'missing' || value.status === 'damaged') && !value.notes.trim()) {
+      return [item.label];
+    }
+    return [];
+  });
+}
+
+export function buildPcaReturnInspectionPayload(form: {
+  notes: string;
+  checklist: PcaPumpAccessoryChecklistState;
+}) {
+  const hasBlockingItem = Object.values(form.checklist).some(
+    (item) => item.status === 'missing' || item.status === 'damaged',
+  );
+  return {
+    return_inspection_status: hasBlockingItem ? 'needs_maintenance' : 'passed',
+    return_inspection_notes: toNullableString(form.notes),
+    accessory_checklist: Object.fromEntries(
+      PCA_RETURN_INSPECTION_ITEMS.map((item) => {
+        const value = form.checklist[item.key];
+        return [
+          item.key,
+          {
+            status: value.status,
+            notes: toNullableString(value.notes),
+          },
+        ];
+      }),
+    ),
+  };
+}
+
+function emptyReturnInspectionForm(rental: PcaPumpRental | null = null): ReturnInspectionFormState {
+  return {
+    rental,
+    notes: '',
+    checklist: createDefaultPcaReturnInspectionChecklist(),
+  };
+}
+
 function formatDate(value: string | null) {
   if (!value) return '—';
-  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString('ja-JP');
+  const dateKey = value.includes('T') ? value.slice(0, 10) : value;
+  return new Date(`${dateKey}T00:00:00+09:00`).toLocaleDateString('ja-JP');
 }
 
 function statusBadgeClass(status: PcaPumpStatus | PcaPumpRentalStatus) {
@@ -173,8 +275,12 @@ export function PcaPumpsContent() {
   const [query, setQuery] = useState('');
   const [pumpSheetOpen, setPumpSheetOpen] = useState(false);
   const [rentalSheetOpen, setRentalSheetOpen] = useState(false);
+  const [inspectionSheetOpen, setInspectionSheetOpen] = useState(false);
   const [pumpForm, setPumpForm] = useState<PumpFormState>(EMPTY_PUMP_FORM);
   const [rentalForm, setRentalForm] = useState<RentalFormState>(emptyRentalForm());
+  const [inspectionForm, setInspectionForm] = useState<ReturnInspectionFormState>(
+    emptyReturnInspectionForm(),
+  );
 
   const pumpsQuery = useQuery({
     queryKey: ['pca-pumps', orgId, query],
@@ -202,6 +308,21 @@ export function PcaPumpsContent() {
     enabled: !!orgId,
   });
 
+  const returnInspectionRentalsQuery = useQuery({
+    queryKey: ['pca-pump-rentals', orgId, 'return-inspection-pending'],
+    queryFn: async () => {
+      const response = await fetch(
+        '/api/pca-pump-rentals?status=returned&inspection_status=pending',
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
+      if (!response.ok) throw new Error('PCAポンプ返却検品待ちの取得に失敗しました');
+      return response.json() as Promise<{ data: PcaPumpRental[] }>;
+    },
+    enabled: !!orgId,
+  });
+
   const institutionsQuery = useQuery({
     queryKey: ['prescriber-institutions', orgId, 'pca-pump-rental'],
     queryFn: async () => {
@@ -221,6 +342,17 @@ export function PcaPumpsContent() {
     [institutionsQuery.data?.data],
   );
   const openRentals = rentals;
+  const returnInspectionRentals = useMemo(
+    () =>
+      (returnInspectionRentalsQuery.data?.data ?? []).filter(
+        (rental) => rental.return_inspection_status === 'pending',
+      ),
+    [returnInspectionRentalsQuery.data?.data],
+  );
+  const pendingInspectionPumpIds = useMemo(
+    () => new Set(returnInspectionRentals.map((rental) => rental.pump.id)),
+    [returnInspectionRentals],
+  );
 
   const availablePumps = useMemo(
     () => pumps.filter((pump) => pump.status === 'available' || pump.id === rentalForm.pump_id),
@@ -359,9 +491,70 @@ export function PcaPumpsContent() {
     },
   });
 
+  const completeReturnInspectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!inspectionForm.rental)
+        throw new Error('検品対象のPCAポンプレンタルが選択されていません');
+      const missingNoteLabels = getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist);
+      if (missingNoteLabels.length > 0) {
+        throw new Error(`不足・破損の詳細メモを入力してください: ${missingNoteLabels.join('、')}`);
+      }
+      const response = await fetch(`/api/pca-pump-rentals/${inspectionForm.rental.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(buildPcaReturnInspectionPayload(inspectionForm)),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          (payload as { message?: string }).message ?? '返却検品の保存に失敗しました',
+        );
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      const payload = buildPcaReturnInspectionPayload(inspectionForm);
+      toast.success(
+        payload.return_inspection_status === 'passed'
+          ? '返却検品を完了し、利用可能にしました'
+          : '返却検品を完了し、メンテ状態を継続しました',
+      );
+      setInspectionSheetOpen(false);
+      setInspectionForm(emptyReturnInspectionForm());
+      await invalidateAll();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '返却検品の保存に失敗しました');
+    },
+  });
+
   function openRental(pump?: PcaPump) {
     setRentalForm(emptyRentalForm(pump?.id ?? ''));
     setRentalSheetOpen(true);
+  }
+
+  function openReturnInspection(rental: PcaPumpRental) {
+    setInspectionForm(emptyReturnInspectionForm(rental));
+    setInspectionSheetOpen(true);
+  }
+
+  function updateInspectionItem(
+    key: PcaPumpAccessoryKey,
+    patch: Partial<PcaPumpAccessoryChecklistItem>,
+  ) {
+    setInspectionForm((current) => ({
+      ...current,
+      checklist: {
+        ...current.checklist,
+        [key]: {
+          ...current.checklist[key],
+          ...patch,
+        },
+      },
+    }));
   }
 
   const pumpColumns: ColumnDef<PcaPump>[] = [
@@ -435,7 +628,16 @@ export function PcaPumpsContent() {
                 status: row.original.status === 'maintenance' ? 'available' : 'maintenance',
               })
             }
-            disabled={row.original.status === 'rented' || updatePumpStatusMutation.isPending}
+            disabled={
+              row.original.status === 'rented' ||
+              updatePumpStatusMutation.isPending ||
+              pendingInspectionPumpIds.has(row.original.id)
+            }
+            title={
+              pendingInspectionPumpIds.has(row.original.id)
+                ? '返却検品が未完了のため利用可能にできません'
+                : undefined
+            }
           >
             {row.original.status === 'maintenance' ? '利用可' : 'メンテ'}
           </Button>
@@ -553,10 +755,46 @@ export function PcaPumpsContent() {
           <CardHeader>
             <CardTitle>貸出中・対応待ち</CardTitle>
             <CardDescription>
-              医療機関へ貸出中、返却予定待ち、延滞扱いのPCAポンプを確認します。
+              医療機関へ貸出中、返却検品待ち、延滞扱いのPCAポンプを確認します。
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
+            <section className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">返却検品待ち</h2>
+                <p className="text-sm text-muted-foreground">
+                  返却済みで、付属品・清拭・動作確認が未完了のPCAポンプです。
+                </p>
+              </div>
+              {returnInspectionRentals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">返却検品待ちはありません。</p>
+              ) : (
+                <div className="divide-y divide-border/70 rounded-md border border-border/70 bg-card">
+                  {returnInspectionRentals.map((rental) => (
+                    <div
+                      key={rental.id}
+                      className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">
+                          {rental.pump.asset_code} / {rental.pump.model_name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {rental.institution.name} ・返却日 {formatDate(rental.returned_at)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => openReturnInspection(rental)}
+                        disabled={completeReturnInspectionMutation.isPending}
+                      >
+                        検品
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
             <DataTable
               columns={rentalColumns}
               data={openRentals}
@@ -784,6 +1022,97 @@ export function PcaPumpsContent() {
                 disabled={createRentalMutation.isPending}
               >
                 {createRentalMutation.isPending ? '登録中...' : '貸出登録'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={inspectionSheetOpen} onOpenChange={setInspectionSheetOpen}>
+        <SheetContent className="overflow-y-auto sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>返却検品</SheetTitle>
+            <SheetDescription>
+              付属品、清拭、動作確認を記録し、次の貸出可否を確定します。
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-5">
+            {inspectionForm.rental ? (
+              <div className="rounded-md border border-border/70 bg-muted/20 p-4">
+                <p className="font-medium text-foreground">
+                  {inspectionForm.rental.pump.asset_code} / {inspectionForm.rental.pump.model_name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {inspectionForm.rental.institution.name} ・返却日{' '}
+                  {formatDate(inspectionForm.rental.returned_at)}
+                </p>
+              </div>
+            ) : null}
+            <div className="space-y-3">
+              {PCA_RETURN_INSPECTION_ITEMS.map((item) => {
+                const value = inspectionForm.checklist[item.key];
+                return (
+                  <div
+                    key={item.key}
+                    className="grid gap-3 rounded-md border border-border/70 p-3 md:grid-cols-[160px_180px_1fr] md:items-center"
+                  >
+                    <Label htmlFor={`inspection-${item.key}`}>{item.label}</Label>
+                    <Select
+                      value={value.status}
+                      onValueChange={(status) =>
+                        updateInspectionItem(item.key, { status: status as PcaPumpAccessoryStatus })
+                      }
+                    >
+                      <SelectTrigger id={`inspection-${item.key}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(ACCESSORY_STATUS_LABELS).map(([status, label]) => (
+                          <SelectItem key={status} value={status}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={value.notes}
+                      onChange={(event) =>
+                        updateInspectionItem(item.key, { notes: event.target.value })
+                      }
+                      placeholder={
+                        value.status === 'missing' || value.status === 'damaged'
+                          ? '不足・破損の詳細'
+                          : 'メモ'
+                      }
+                      aria-label={`${item.label}の検品メモ`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="return-inspection-notes">検品メモ</Label>
+              <Textarea
+                id="return-inspection-notes"
+                rows={3}
+                value={inspectionForm.notes}
+                onChange={(event) =>
+                  setInspectionForm((current) => ({ ...current, notes: event.target.value }))
+                }
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setInspectionSheetOpen(false)}>
+                キャンセル
+              </Button>
+              <Button
+                onClick={() => completeReturnInspectionMutation.mutate()}
+                disabled={
+                  completeReturnInspectionMutation.isPending ||
+                  getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist).length > 0
+                }
+              >
+                {completeReturnInspectionMutation.isPending ? '保存中...' : '検品完了'}
               </Button>
             </div>
           </div>

@@ -159,9 +159,39 @@ describe('/api/pca-pump-rentals', () => {
     );
   });
 
+  it('filters returned PCA pump rentals by return inspection status', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pca-pump-rentals?status=returned&inspection_status=pending',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: 'returned',
+          return_inspection_status: 'pending',
+        },
+      }),
+    );
+  });
+
   it('rejects invalid rental status filters', async () => {
     const response = await GET(
       createRequest('http://localhost/api/pca-pump-rentals?status=broken'),
+    );
+
+    expect(response.status).toBe(400);
+    expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid return inspection status filters', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pca-pump-rentals?status=returned&inspection_status=unknown',
+      ),
     );
 
     expect(response.status).toBe(400);

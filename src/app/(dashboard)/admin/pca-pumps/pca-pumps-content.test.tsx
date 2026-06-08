@@ -3,7 +3,12 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { PcaPumpsContent } from './pca-pumps-content';
+import {
+  buildPcaReturnInspectionPayload,
+  createDefaultPcaReturnInspectionChecklist,
+  getPcaReturnInspectionMissingNoteLabels,
+  PcaPumpsContent,
+} from './pca-pumps-content';
 
 setupDomTestEnv();
 
@@ -68,6 +73,44 @@ vi.mock('@tanstack/react-query', () => ({
       };
     }
     if (key === 'pca-pump-rentals') {
+      if (queryKey[2] === 'return-inspection-pending') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'rental_returned_pending',
+                status: 'returned',
+                rented_at: '2026-06-01',
+                due_at: '2026-06-07',
+                returned_at: '2026-06-08',
+                return_inspection_status: 'pending',
+                return_inspection_notes: null,
+                accessory_checklist: null,
+                inspected_at: null,
+                inspected_by: null,
+                rental_fee_yen: 12000,
+                contact_name: '訪問看護師',
+                contact_phone: '03-1234-0003',
+                pump: {
+                  id: 'pump_returned',
+                  asset_code: 'PCA-RETURNED',
+                  serial_number: 'PCASEED003',
+                  model_name: 'E2E PCAポンプ',
+                  status: 'maintenance',
+                },
+                institution: {
+                  id: 'institution_1',
+                  name: 'サンプル在宅クリニック',
+                  institution_code: '1312345678',
+                  phone: '03-1234-0001',
+                  fax: '03-1234-0002',
+                },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
       return {
         data: {
           data: [
@@ -77,6 +120,11 @@ vi.mock('@tanstack/react-query', () => ({
               rented_at: '2026-06-01',
               due_at: '2026-06-30',
               returned_at: null,
+              return_inspection_status: null,
+              return_inspection_notes: null,
+              accessory_checklist: null,
+              inspected_at: null,
+              inspected_by: null,
               rental_fee_yen: 12000,
               contact_name: '訪問看護師',
               contact_phone: '03-1234-0003',
@@ -143,8 +191,52 @@ describe('PcaPumpsContent', () => {
 
     expect(screen.getByText('PCAポンプ台帳')).toBeTruthy();
     expect(screen.getByText('貸出中・対応待ち')).toBeTruthy();
+    expect(screen.getByText('返却検品待ち')).toBeTruthy();
     expect(screen.getByText('PCA-SEED-001')).toBeTruthy();
     expect(screen.getAllByText('PCA-SEED-002').length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText('PCA-RETURNED')).toBeNull();
+    expect(screen.getByText(/PCA-RETURNED/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '検品' })).toBeTruthy();
+  });
+
+  it('builds a passed return inspection payload when every checklist item is ok', () => {
+    const checklist = createDefaultPcaReturnInspectionChecklist();
+
+    expect(
+      buildPcaReturnInspectionPayload({
+        notes: '動作確認済み',
+        checklist,
+      }),
+    ).toMatchObject({
+      return_inspection_status: 'passed',
+      return_inspection_notes: '動作確認済み',
+      accessory_checklist: {
+        pump_body: { status: 'ok', notes: null },
+        operation_check: { status: 'ok', notes: null },
+      },
+    });
+  });
+
+  it('builds a maintenance payload and requires notes for missing or damaged items', () => {
+    const checklist = createDefaultPcaReturnInspectionChecklist();
+    checklist.power_adapter = { status: 'missing', notes: '' };
+    checklist.operation_check = { status: 'damaged', notes: 'アラーム鳴動なし' };
+
+    expect(getPcaReturnInspectionMissingNoteLabels(checklist)).toEqual(['ACアダプタ']);
+
+    checklist.power_adapter.notes = '医療機関で紛失';
+    expect(getPcaReturnInspectionMissingNoteLabels(checklist)).toEqual([]);
+    expect(
+      buildPcaReturnInspectionPayload({
+        notes: '',
+        checklist,
+      }),
+    ).toMatchObject({
+      return_inspection_status: 'needs_maintenance',
+      return_inspection_notes: null,
+      accessory_checklist: {
+        power_adapter: { status: 'missing', notes: '医療機関で紛失' },
+        operation_check: { status: 'damaged', notes: 'アラーム鳴動なし' },
+      },
+    });
   });
 });

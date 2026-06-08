@@ -6,7 +6,9 @@ import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 
 const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
 const openRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
+const returnInspectionStatuses = ['pending', 'passed', 'needs_maintenance'] as const;
 type RentalStatus = (typeof rentalStatuses)[number];
+type ReturnInspectionStatus = (typeof returnInspectionStatuses)[number];
 
 function parseRentalStatusParam(value: string | undefined) {
   if (!value || value === 'all') return { ok: true as const, status: undefined };
@@ -19,6 +21,14 @@ function parseRentalStatusParam(value: string | undefined) {
 
 function isOpenRentalStatus(value: RentalStatus): value is (typeof openRentalStatuses)[number] {
   return openRentalStatuses.includes(value as (typeof openRentalStatuses)[number]);
+}
+
+function parseReturnInspectionStatusParam(value: string | undefined) {
+  if (!value) return { ok: true as const, status: undefined };
+  if (returnInspectionStatuses.includes(value as ReturnInspectionStatus)) {
+    return { ok: true as const, status: value as ReturnInspectionStatus };
+  }
+  return { ok: false as const };
 }
 
 function isUniqueConstraintFailure(error: unknown) {
@@ -51,6 +61,9 @@ export const GET = withAuth(
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parseRentalStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプレンタル状態の指定が不正です');
+    const inspectionStatusParam = req.nextUrl.searchParams.get('inspection_status')?.trim();
+    const parsedInspectionStatus = parseReturnInspectionStatusParam(inspectionStatusParam);
+    if (!parsedInspectionStatus.ok) return validationError('返却検品状態の指定が不正です');
 
     const institutionId = req.nextUrl.searchParams.get('institution_id')?.trim();
 
@@ -66,6 +79,9 @@ export const GET = withAuth(
                 ? { status: parsedStatus.status }
                 : {}),
             ...(institutionId ? { institution_id: institutionId } : {}),
+            ...(parsedInspectionStatus.status
+              ? { return_inspection_status: parsedInspectionStatus.status }
+              : {}),
           },
           include: {
             pump: {

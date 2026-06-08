@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-190000
+
+- current task: expose PCA return-inspection pending rentals in the admin UI and complete inspections from the screen
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js `use client` docs, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, PCA pump content tests, PCA rental GET/update API routes/tests, local production app runtime, and UI subagent findings
+- files changed: `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, `src/app/api/pca-pump-rentals/route.ts`, `src/app/api/pca-pump-rentals/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: returned PCA rentals with `return_inspection_status=pending` were invisible in the admin screen because the UI only fetched `status=open`. Operators could not complete the return-inspection checklist from the UI, and returned pending rentals could be buried behind the first 100 returned rentals without an API filter. The existing date formatter also showed `Invalid Date` for nested ISO rental dates in the pump table.
+- security risks found: inspection completion remains behind the existing admin PCA rental PATCH route and fixed checklist validation. The UI sends only the structured checklist/status payload, requires notes for missing/damaged items before submit, and disables direct pump availability changes when a pending-inspection rental exists for that pump. No auth, RLS, PHI export, external send, or permission behavior was weakened.
+- performance issues found: the new pending-inspection query is filtered server-side with `status=returned&inspection_status=pending`, avoiding broad returned-history scans in the UI. Client-side work is bounded to the fixed 9-item checklist and current page data. No polling or extra request loop was added.
+- validation commands: PH-OS UI/UX guideline review; Next `use client` doc review; Prettier for touched UI/API files; focused Vitest for PCA admin content, PCA rental GET/update routes, and validation; targeted ESLint; `tsc --noEmit`; `git diff --check`; clean `pnpm build`; local production server restart on `localhost:3012`; `curl /api/health`; `medical-ui:e2e:preflight`; Playwright browser login to `/admin/pca-pumps`, return-inspection Sheet open, one local E2E DB inspection completion, session-authenticated pending-inspection API check, mobile viewport snapshot, console check
+- validation results: focused Vitest passed with 4 files / 36 tests; ESLint passed; TypeScript passed; whitespace diff check passed; clean production build passed; local production server restarted successfully; health returned ok; preflight passed with app port 3012, DB port 5433, 77 org-scoped RLS tables, and 17 audit triggers verified; browser reached PCA admin screen, showed return-inspection pending section and buttons, opened the checklist Sheet, completed one all-OK inspection, pending API count decreased from 4 to 3, mobile viewport showed no obvious overlap, and browser console had 0 errors/warnings
+- remaining work: PCA maintenance event history, accessory line-item modeling, PCA rental billing/invoice/AR, and QR/PatientInsurance confirmed-promotion workflows remain open. Return-inspection pending rentals are now visible and operable from the admin UI.
+- next action: commit this PCA return-inspection UI slice, then continue with maintenance event history or PCA billing as the next highest-value remaining item.
+
 ### 20260608-184600
 
 - current task: add synchronized operational follow-up for PCA pump rentals returned but still waiting for inspection
