@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-181100
+
+- current task: add an explicit QR OTC/general-drug candidate promotion path into MedicationProfile without treating generic issue resolution as current-medication confirmation
+- files inspected: MedicationProfile schema/API, MedicationIssue PATCH route/tests, QR supplemental OTC candidate creation/tests, JAHIS supplemental record labels, prescription intake medication-profile sync, CDS current-medication lookup, and OTC medical-safety subagent findings
+- files changed: `src/server/services/qr-otc-promotion.ts`, `src/server/services/qr-otc-promotion.test.ts`, `src/app/api/medication-issues/[id]/route.ts`, `src/app/api/medication-issues/[id]/route.test.ts`, `src/lib/validations/medication.ts`, `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `.codex/ralph-state.md`
+- bugs found: QR-derived OTC/general-drug review candidates stopped at MedicationIssue review and could not be explicitly promoted into current medication data for downstream CDS. A naive resolved hook would have made generic issue resolution equivalent to current-medication confirmation and could have duplicated record type `31` ingredients or allowed prescription sync to discontinue OTC profiles.
+- security risks found: OTC promotion now requires explicit `promote_to_medication_profile: true`, uses the post-PATCH effective issue snapshot, only accepts QR supplemental record type `3`, ignores record type `31` ingredient-only candidates, requires a confirmed start date, rejects reversed dates/non-drug placeholders, rechecks `patient_id + org_id`, and deduplicates current OTC profiles by patient/drug/source. Internal OTC source is separated as `otc_qr` and prescription profile sync now only discontinues prescription/QR-prescription sources.
+- performance issues found: extraction is in-memory over the issue description, and promotion performs one patient lookup plus one duplicate profile lookup before create. Prescription sync filtering narrows updateMany targets and adds no new query.
+- validation commands: Prettier for touched files; focused Vitest for QR OTC, QR lab, QR allergy, MedicationIssue route, JAHIS supplemental records, prescription intake service, and CDS checker; targeted ESLint; `tsc --noEmit`; `git diff --check`; `build:e2e:local`; local server restart on `localhost:3012`; `curl /api/health`; `medical-ui:e2e:preflight`
+- validation results: Prettier completed; focused Vitest passed with 7 files / 66 tests; ESLint passed; TypeScript passed; whitespace diff check passed; E2E production build passed; local server restarted successfully; health returned ok; medical UI preflight passed with app port 3012, DB port 5433, 77 org-scoped RLS tables, and 17 audit triggers verified
+- remaining work: insurance/public subsidy sidecars still need a safe review-to-PatientInsurance path; PCA return inspection/accessory/maintenance/billing remains a separate business workflow slice; OTC drug-master/ingredient resolution and unresolved OTC CDS data-quality alerts remain future enhancements
+- next action: commit this explicit QR OTC promotion slice, then continue with insurance/public-subsidy review path or PCA return inspection as the next highest-value remaining item.
+
 ### 20260608-180200
 
 - current task: promote QR lab/renal review candidates into PatientLabObservation only when an explicit measured date and supported numeric analyte are present

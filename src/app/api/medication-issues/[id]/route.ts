@@ -17,6 +17,7 @@ import {
 } from '@/server/services/patient-access';
 import { promoteResolvedQrAllergyIssueToPatient } from '@/server/services/qr-allergy-promotion';
 import { promoteResolvedQrLabIssueToPatientLabs } from '@/server/services/qr-lab-promotion';
+import { promoteResolvedQrOtcIssueToMedicationProfile } from '@/server/services/qr-otc-promotion';
 import type { Prisma } from '@prisma/client';
 
 async function buildMedicationIssueAssignmentWhere(args: {
@@ -96,7 +97,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!refResult.ok) return refResult.response;
 
-  const updateData: Record<string, unknown> = { ...parsed.data };
+  const { promote_to_medication_profile: promoteToMedicationProfile, ...issuePatch } = parsed.data;
+  const updateData: Record<string, unknown> = { ...issuePatch };
 
   if (parsed.data.status === 'resolved' || parsed.data.status === 'dismissed') {
     updateData.resolved_by = ctx.userId;
@@ -130,6 +132,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         issue: effectiveIssue,
         confirmedAt: resolvedAt,
       });
+      if (promoteToMedicationProfile) {
+        await promoteResolvedQrOtcIssueToMedicationProfile(tx, {
+          orgId: ctx.orgId,
+          issue: effectiveIssue,
+          confirmedAt: resolvedAt,
+        });
+      }
     }
     return updated;
   });

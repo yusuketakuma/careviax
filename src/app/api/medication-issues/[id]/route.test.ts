@@ -7,6 +7,8 @@ const {
   patientFindManyMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  medicationProfileCreateMock,
+  medicationProfileFindFirstMock,
   medicationIssueFindFirstMock,
   medicationIssueUpdateMock,
   patientLabObservationCreateMock,
@@ -19,6 +21,8 @@ const {
   patientFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  medicationProfileCreateMock: vi.fn(),
+  medicationProfileFindFirstMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
   medicationIssueUpdateMock: vi.fn(),
   patientLabObservationCreateMock: vi.fn(),
@@ -108,6 +112,10 @@ describe('/api/medication-issues/[id]', () => {
         patientLabObservation: {
           findFirst: patientLabObservationFindFirstMock,
           create: patientLabObservationCreateMock,
+        },
+        medicationProfile: {
+          findFirst: medicationProfileFindFirstMock,
+          create: medicationProfileCreateMock,
         },
       }),
     );
@@ -497,5 +505,139 @@ describe('/api/medication-issues/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not promote a QR OTC candidate without an explicit medication profile promotion flag', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品服用',
+      description:
+        '[qr_supplemental:intake_1:3:3]\n薬品名称: バファリンA\n服用開始年月日: 20260601',
+      category: 'other',
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1' });
+    medicationProfileFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a resolved QR OTC candidate to a current medication profile when explicitly requested', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品服用',
+      description:
+        '[qr_supplemental:intake_1:3:3]\n薬品名称: バファリンA\n服用開始年月日: 20260601',
+      category: 'other',
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1' });
+    medicationProfileFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        promote_to_medication_profile: true,
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationProfileCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        drug_name: 'バファリンA',
+        drug_master_id: null,
+        dose: null,
+        frequency: null,
+        start_date: new Date('2026-06-01T00:00:00.000Z'),
+        end_date: null,
+        prescriber: null,
+        is_current: true,
+        source: 'otc_qr',
+      },
+    });
+  });
+
+  it('promotes a QR OTC candidate using the updated description from the resolving patch', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品服用',
+      description: '[qr_supplemental:intake_1:3:3]\n薬品名称: バファリンA',
+      category: 'other',
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1' });
+    medicationProfileFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        promote_to_medication_profile: true,
+        description:
+          '[qr_supplemental:intake_1:3:3]\n薬品名称: ロキソニンS\n服用開始年月日: 20260601',
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationProfileCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        drug_name: 'ロキソニンS',
+        source: 'otc_qr',
+      }),
+    });
+  });
+
+  it('does not promote QR OTC ingredient-only record candidates', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: 'QR由来のOTC・一般用薬確認候補: 要指導医薬品・一般用医薬品成分',
+      description: '[qr_supplemental:intake_1:31:31]\n成分名: アスピリン',
+      category: 'other',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        status: 'resolved',
+        promote_to_medication_profile: true,
+      }),
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
 });

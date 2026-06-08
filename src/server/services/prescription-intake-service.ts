@@ -1125,7 +1125,11 @@ async function syncMedicationProfiles(
 
   // 今回の処方に含まれない既存プロファイルを中止扱い（一括更新）
   const idsToDiscontinue = existingProfiles
-    .filter((profile) => profileKeys(profile).every((key) => !incomingKeys.has(key)))
+    .filter(
+      (profile) =>
+        (profile.source === 'prescription' || profile.source === 'qr_scan') &&
+        profileKeys(profile).every((key) => !incomingKeys.has(key)),
+    )
     .map((profile) => profile.id);
 
   if (idsToDiscontinue.length > 0) {

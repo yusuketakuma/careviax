@@ -708,4 +708,45 @@ describe('createPrescriptionIntake', () => {
     expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalled();
     expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
   });
+
+  it('does not discontinue OTC QR medication profiles during prescription sync', async () => {
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    prismaMock.medicationProfile.findMany.mockResolvedValue([
+      {
+        id: 'profile_otc_1',
+        drug_master_id: null,
+        drug_name: 'バファリンA',
+        dose: null,
+        frequency: null,
+        source: 'otc_qr',
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+    prismaMock.medicationProfile.create.mockResolvedValue({});
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan',
+    });
+
+    expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ['profile_otc_1'] } }),
+      }),
+    );
+    if (!result.profileSyncResult) throw new Error('profile sync result is required');
+    expect(result.profileSyncResult.discontinued).toBe(0);
+  });
 });
