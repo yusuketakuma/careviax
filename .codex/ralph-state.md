@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-083900
+
+- current task: replace obsolete PR-15 pattern-only E2E evidence with executable PH-OS final workflow tests
+- files inspected: `git status --short`, `.codex/ralph-state.md`, read-only subagent audits `019ea989-aa6c-7212-a944-2156bf9b319e` and `019ea99d-94ca-70b3-b102-ffa8e0455903`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, PH-OS final E2E coverage expectations E2E-01 through E2E-10, current PH-OS action, handoff, report delivery, visit mode, offline action, and board UI contracts used by the test harness
+- files changed: `src/phos/infra/phos-final-e2e.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: PR-15 claimed E2E-01 through E2E-10 coverage by matching strings across unrelated tests and components, so the final no-go gate could pass without one executable workflow spec proving the required PH-OS end-to-end scenarios. The gate also kept obsolete static evidence rows that duplicated old implementation details and did not execute the workflows they named.
+- security risks found: the new executable tests preserve tenant-scoped backend repository harnesses and PH-OS role/session behavior while avoiding production data, network calls, sends, S3 uploads, or DB writes. The stale-version, offline-blocked, handoff, report-reply, and visit-completion guard scenarios now have direct runtime assertions instead of static text matches.
+- performance issues found: the added E2E proof is test-only and uses in-memory stores/mocks. It adds no runtime reads, queries, scans, polling, network calls, or render loops to production code.
+- validation commands: `pnpm exec prettier --write src/phos/infra/phos-final-e2e.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts`; focused `pnpm exec vitest run src/phos/infra/phos-final-e2e.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for removed/forbidden PH-OS markers and obsolete helper names; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; UI policy grep for transition/policy imports; direct PH-OS UI feedback color class grep; production enum-literal grep for SourceRef/claim/handoff status values; `pnpm build`
+- validation results: Prettier completed; focused PR-15 final E2E suite passed with 2 files / 23 tests; PH-OS plus auth focused Vitest passed with 83 files / 408 tests; TypeScript passed; PH-OS ESLint passed with zero warnings; whitespace diff check passed; no-go grep returned zero for removed/forbidden PH-OS markers and obsolete helper names; `disabled` grep only finds the static prohibition test and tests proving no disabled attribute is used; UI policy grep returned zero for presentation components; direct PH-OS UI feedback color class grep returned zero; production enum-literal grep remains contract-only for the targeted values; production build passed.
+- remaining work: this closes the subagent-identified critical PR-15 E2E evidence gap and deletes the obsolete static E2E evidence table. A follow-up read-only audit found `src/phos/api/offlineEvidenceQueue.ts` and `src/phos/domain/claim/feeRuleDsl.ts` are production-unreached, but both map to explicit v1.1 scope (`Offline Sync` / `offline evidence pending badge and retry`, and `PR-11 FeeRule DSL / ClaimCandidate`). They should not be deleted as obsolete configuration-change debris; they need either runtime wiring or an explicit product-scope decision to remove those spec requirements.
+- next action: continue the remaining PH-OS final-review sweep by wiring or scoping the two unreached spec-named modules, rather than deleting them as safe cleanup.
+
 ### 20260609-082700
 
 - current task: close PH-OS P0 observability metric gaps from the final review spec

@@ -32,55 +32,13 @@ function expectEvidence(path: string, patterns: readonly RegExp[]) {
 }
 
 describe('PH-OS PR-15 E2E evidence gate', () => {
-  it.each([
-    [
-      'E2E-01',
-      'src/phos/backend/dynamo-card-action-store.test.ts',
-      [/REVIEW_CLAIM_CANDIDATES/, /CLOSE_CARD/, /CurrentStep\.CLOSING/],
-    ],
-    [
-      'E2E-02',
-      'src/phos/backend/cards-handlers.test.ts',
-      [/REJECT_SET_AUDIT/, /reason_required/, /reason_code/],
-    ],
-    [
-      'E2E-03',
-      'src/phos/ui/workspace/WorkspaceOverlay.test.tsx',
-      [/onCreateHandoff/, /reason_code/, /source_refs/],
-    ],
-    [
-      'E2E-04',
-      'src/phos/ui/board/BoardClient.tsx',
-      [/resolveHandoff/, /removeHandoff/, /setPharmacistHandoffs/],
-    ],
-    [
-      'E2E-05',
-      'src/phos/backend/visit-mode-lifecycle-repository.test.ts',
-      [/ARRIVAL_CONFIRM/, /POST_VISIT_PENDING/, /VISIT_ABSENT_FOLLOWUP/],
-    ],
-    [
-      'E2E-06',
-      'src/phos/ui/visit/VisitMode.test.tsx',
-      [/blocking_unsynced_count/, /COMPLETE_CHECK/, /mandatory local evidence/],
-    ],
-    [
-      'E2E-07',
-      'src/phos/ui/board/BoardClient.test.tsx',
-      [/WAITING_REPLY/, /registerReportReply/, /markReportActionDone/],
-    ],
-    [
-      'E2E-08',
-      'src/phos/api/usePhosAction.test.tsx',
-      [/STALE_VERSION/, /CONFLICT/, /response\)\.toBeUndefined/],
-    ],
-    [
-      'E2E-09',
-      'src/phos/domain/actions/resolveButtonState.test.ts',
-      [/OFFLINE_BLOCKED/, /offline_allowed/],
-    ],
-    ['E2E-10', 'src/phos/ui/board/BoardClient.test.tsx', [/CapacityBar/, /manager or admin/]],
-  ] as const)('%s has executable PH-OS coverage evidence', (_id, path, patterns) => {
-    expectEvidence(path, patterns);
+  it('keeps E2E-01 through E2E-10 in one executable final workflow spec', () => {
+    const spec = readRelative('src/phos/infra/phos-final-e2e.test.tsx');
+
+    for (let index = 1; index <= 10; index++) {
+      const id = `E2E-${String(index).padStart(2, '0')}`;
+      expect(spec, id).toContain(`it('${id}`);
+    }
   });
 });
 
