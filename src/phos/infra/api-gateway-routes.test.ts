@@ -6,6 +6,9 @@ const SPEC_ROUTE_KEYS = [
   'GET /cards/{card_id}',
   'POST /cards/{card_id}/actions',
   'GET /capacity',
+  'GET /claim-candidates',
+  'POST /claim-candidates/{candidate_id}/exclude',
+  'GET /fee-rules',
   'GET /visit-packets/{packet_id}/visit-mode',
   'POST /visit-packets/{packet_id}/visit-steps/{step}',
   'POST /evidence/presign-upload',
@@ -44,9 +47,7 @@ describe('PH-OS API Gateway route manifest', () => {
   });
 
   it('points Handoff routes to composed Lambda exports, not unbound handler factories', async () => {
-    const handoffRoutes = PHOS_API_ROUTES.filter((route) =>
-      route.route_key.includes('/handoffs'),
-    );
+    const handoffRoutes = PHOS_API_ROUTES.filter((route) => route.route_key.includes('/handoffs'));
     const lambdaModule = await import('@/phos/backend/handoffs-lambda');
 
     for (const route of handoffRoutes) {
@@ -108,6 +109,35 @@ describe('PH-OS API Gateway route manifest', () => {
     expect(lambdaModule.markReportActionDoneHandler).toEqual(expect.any(Function));
   });
 
+  it('points ClaimCandidate and FeeRule routes to composed Lambda exports', async () => {
+    const searchRoute = findPhosRoute('GET /claim-candidates');
+    const excludeRoute = findPhosRoute('POST /claim-candidates/{candidate_id}/exclude');
+    const feeRoute = findPhosRoute('GET /fee-rules');
+    const claimModule = await import('@/phos/backend/claim-candidates-lambda');
+    const feeModule = await import('@/phos/backend/fee-rules-lambda');
+
+    expect(searchRoute).toMatchObject({
+      lambda_handler: '@/phos/backend/claim-candidates-lambda#claimCandidateSearchHandler',
+      required_scopes: ['phos/claim-candidates.read'],
+      response_contract: 'ClaimCandidateSearchResponse',
+    });
+    expect(excludeRoute).toMatchObject({
+      lambda_handler: '@/phos/backend/claim-candidates-lambda#excludeClaimCandidateHandler',
+      required_scopes: ['phos/claim-candidates.write'],
+      requires_idempotency_key: true,
+      requires_expected_version: true,
+      response_contract: 'ClaimCandidateMutationResponse',
+    });
+    expect(feeRoute).toMatchObject({
+      lambda_handler: '@/phos/backend/fee-rules-lambda#feeRuleSearchHandler',
+      required_scopes: ['phos/fee-rules.read'],
+      response_contract: 'FeeRuleSearchResponse',
+    });
+    expect(claimModule.claimCandidateSearchHandler).toEqual(expect.any(Function));
+    expect(claimModule.excludeClaimCandidateHandler).toEqual(expect.any(Function));
+    expect(feeModule.feeRuleSearchHandler).toEqual(expect.any(Function));
+  });
+
   it('requires idempotency and expected version on mutating state endpoints', () => {
     expect(findPhosRoute('POST /cards/{card_id}/actions')).toMatchObject({
       requires_idempotency_key: true,
@@ -122,6 +152,11 @@ describe('PH-OS API Gateway route manifest', () => {
       requires_idempotency_key: false,
       requires_expected_version: false,
       response_contract: 'CapacityResponse',
+    });
+    expect(findPhosRoute('POST /claim-candidates/{candidate_id}/exclude')).toMatchObject({
+      requires_idempotency_key: true,
+      requires_expected_version: true,
+      response_contract: 'ClaimCandidateMutationResponse',
     });
     expect(findPhosRoute('POST /handoffs')).toMatchObject({
       requires_idempotency_key: true,

@@ -91,6 +91,40 @@ export function reportDeliveryStatusGsiSk(input: {
   return `STALE#${staleRank}#SENT#${input.sent_at}#DELIVERY#${input.delivery_id}`;
 }
 
+export function claimCandidateSk(candidate_id: string): string {
+  return `CLAIM_CANDIDATE#${candidate_id}`;
+}
+
+export function claimCandidateIdempotencySk(input: {
+  mutation_key: string;
+  idempotency_key: string;
+}): string {
+  return `CLAIM_CANDIDATE_IDEMPOTENCY#${input.mutation_key}#${input.idempotency_key}`;
+}
+
+export function claimCandidateStatusGsiPk(
+  ctx: Pick<TenantContext, 'tenant_id'>,
+  status: string,
+): string {
+  return `${tenantPk(ctx)}#CLAIM_CANDIDATE_STATUS#${status}`;
+}
+
+export function claimCandidateStatusGsiSk(input: {
+  billing_month: string;
+  priority_rank: number;
+  candidate_id: string;
+}): string {
+  const priority = String(Math.max(0, input.priority_rank)).padStart(4, '0');
+  return `MONTH#${input.billing_month}#PRIORITY#${priority}#CANDIDATE#${input.candidate_id}`;
+}
+
+export function claimCandidateCardGsiPk(
+  ctx: Pick<TenantContext, 'tenant_id'>,
+  card_id: string,
+): string {
+  return `${tenantPk(ctx)}#CLAIM_CANDIDATE_CARD#${card_id}`;
+}
+
 export function capacitySk(input: { date: string; scope: string }): string {
   return `CAPACITY#${input.date}#${input.scope}`;
 }
@@ -120,10 +154,6 @@ export function handoffAssigneeGsiSk(input: {
   handoff_id: string;
 }): string {
   return `STATUS#${input.status}#URGENCY#${input.urgency_rank}#CREATED#${input.created_at}#HANDOFF#${input.handoff_id}`;
-}
-
-export function offlineOpSk(operation_id: string): string {
-  return `OFFLINE_OP#${operation_id}`;
 }
 
 export function userSk(user_id: string): string {

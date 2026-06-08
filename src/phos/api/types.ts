@@ -5,10 +5,15 @@ import type {
   CapacityScope,
   CardDetailResponse,
   CardSearchResponse,
+  ClaimCandidateMutationResponse,
+  ClaimCandidateSearchResponse,
+  ClaimCandidateStatus,
   CreateHandoffRequest,
   ErrorResponse,
+  ExcludeClaimCandidateRequest,
   EvidencePresignUploadResponse,
   EvidenceUploadRequest,
+  FeeRuleSearchResponse,
   HandoffMutationResponse,
   HandoffSearchQuery,
   HandoffSearchResponse,
@@ -23,6 +28,7 @@ import type {
   VisitModeView,
   VisitStep,
   VisitStepMutationRequest,
+  OfflineOpClass,
 } from '@/phos/contracts/phos_contracts';
 
 export type PhosCardsQuery = {
@@ -38,6 +44,13 @@ export type PhosCapacityQuery = {
   scope: CapacityScope;
 };
 
+export type PhosClaimCandidatesQuery = {
+  card_id?: string;
+  status?: ClaimCandidateStatus;
+  cursor?: string;
+  limit?: number;
+};
+
 export type PhosReportDeliveriesQuery = {
   status?: ReportDeliveryStatus;
   cursor?: string;
@@ -47,6 +60,16 @@ export type PhosReportDeliveriesQuery = {
 export type PhosApiClient = {
   getCards(query?: PhosCardsQuery): Promise<CardSearchResponse>;
   getCapacity(query: PhosCapacityQuery): Promise<CapacityResponse>;
+  getClaimCandidates(query?: PhosClaimCandidatesQuery): Promise<ClaimCandidateSearchResponse>;
+  excludeClaimCandidate(
+    candidate_id: string,
+    request: ExcludeClaimCandidateRequest,
+  ): Promise<ClaimCandidateMutationResponse>;
+  getFeeRules(query?: {
+    fee_code?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<FeeRuleSearchResponse>;
   getCardDetail(card_id: string): Promise<CardDetailResponse>;
   executeCardAction(card_id: string, request: ActionRequest): Promise<ActionResponse>;
   getVisitMode(packet_id: string): Promise<VisitModeView>;
@@ -78,6 +101,20 @@ export type PhosApiClient = {
   ): Promise<HandoffMutationResponse>;
 };
 
+export type PhosOfflineCardActionQueueInput = {
+  card_id: string;
+  request: ActionRequest;
+  offline_op_class: OfflineOpClass;
+};
+
+export type PhosOfflineActionQueueResult = {
+  queue_id: string | number;
+};
+
+export type PhosOfflineActionQueue = {
+  enqueueCardAction(input: PhosOfflineCardActionQueueInput): Promise<PhosOfflineActionQueueResult>;
+};
+
 export type PhosApiErrorStatus = 400 | 403 | 404 | 409 | 422 | 500;
 
 export class PhosApiError extends Error {
@@ -89,5 +126,15 @@ export class PhosApiError extends Error {
     this.name = 'PhosApiError';
     this.status = status;
     this.response = response;
+  }
+}
+
+export class PhosOfflineQueuedError extends Error {
+  queued: PhosOfflineActionQueueResult;
+
+  constructor(queued: PhosOfflineActionQueueResult) {
+    super('PH-OS action queued for offline sync');
+    this.name = 'PhosOfflineQueuedError';
+    this.queued = queued;
   }
 }

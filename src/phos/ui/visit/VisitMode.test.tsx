@@ -184,6 +184,77 @@ describe('VisitMode', () => {
     expect(onCompleteVisit).toHaveBeenCalledWith();
   });
 
+  it('blocks complete execution when mandatory local evidence is pending sync', () => {
+    const onCompleteVisit = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+            [VisitStep.EVIDENCE_UPLOAD]: true,
+            [VisitStep.COMPLETE_CHECK]: true,
+          },
+        })}
+        pendingEvidence={[
+          {
+            evidence_key: 'mandatory_photo',
+            label: '必須写真',
+            offline_op_class: 'BLOCKING',
+            created_at: '2026-06-09T00:00:00.000Z',
+            retry_count: 0,
+          },
+        ]}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onCompleteVisit={onCompleteVisit}
+      />,
+    );
+
+    const complete = screen.getByRole('button', { name: '訪問を完了する（未完了）' });
+    fireEvent.click(complete);
+
+    expect(screen.getByRole('region', { name: '同期待ち証跡' })).toBeTruthy();
+    expect(screen.getByText('必須写真')).toBeTruthy();
+    expect(screen.getByText('必須未同期 1件')).toBeTruthy();
+    expect(onCompleteVisit).not.toHaveBeenCalled();
+  });
+
+  it('allows complete execution when only optional local evidence is pending sync', () => {
+    const onCompleteVisit = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+            [VisitStep.EVIDENCE_UPLOAD]: true,
+            [VisitStep.COMPLETE_CHECK]: true,
+          },
+        })}
+        pendingEvidence={[
+          {
+            evidence_key: 'optional_photo',
+            label: '任意写真',
+            offline_op_class: 'NON_BLOCKING',
+            created_at: '2026-06-09T00:00:00.000Z',
+            retry_count: 0,
+          },
+        ]}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onCompleteVisit={onCompleteVisit}
+      />,
+    );
+
+    const complete = screen.getByRole('button', { name: '訪問を完了する' });
+    fireEvent.click(complete);
+
+    expect(screen.getByText('任意写真')).toBeTruthy();
+    expect(screen.getByText('任意未同期 1件')).toBeTruthy();
+    expect(onCompleteVisit).toHaveBeenCalledWith();
+  });
+
   it('blocks completion when server visit_status is not in progress', () => {
     const onCompleteVisit = vi.fn();
     render(

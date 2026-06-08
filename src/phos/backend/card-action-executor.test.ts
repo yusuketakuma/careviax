@@ -91,6 +91,7 @@ function state(overrides: Partial<CardActionExecutionState> = {}): CardActionExe
     card: card(),
     next_action: nextAction(),
     blockers: [],
+    unresolved_claim_candidate_count: 0,
     allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
     ...overrides,
   };
@@ -335,6 +336,109 @@ describe('createCardActionExecutorRepository', () => {
       details: { blocking_unsynced_count: 1 },
     });
     expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
+  it('rejects REVIEW_CLAIM_CANDIDATES while unresolved claim candidates remain', async () => {
+    const reviewCommand = {
+      action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+      idempotency_key: 'idem_claim_review',
+      client_version: 3,
+    };
+    const fakeStore = store({
+      loadActionState: vi.fn(async () =>
+        state({
+          card: card({ current_step: CurrentStep.CLAIM_REVIEW }),
+          next_action: nextAction({ code: ActionCode.REVIEW_CLAIM_CANDIDATES }),
+          allowed_actions: [ActionCode.REVIEW_CLAIM_CANDIDATES],
+          unresolved_claim_candidate_count: 2,
+        }),
+      ),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(ctx, 'card_1', reviewCommand)).rejects.toMatchObject({
+      status: 422,
+      error_code: 'ACTION_GUARD_FAILED',
+      details: {
+        action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+        unresolved_claim_candidate_count: 2,
+        required_action_code: ActionCode.EXCLUDE_CLAIM_CANDIDATE,
+      },
+    });
+    expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
+  it('rejects REVIEW_CLAIM_CANDIDATES when the claim candidate aggregate is missing or invalid', async () => {
+    const reviewCommand = {
+      action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+      idempotency_key: 'idem_claim_review',
+      client_version: 3,
+    };
+    const invalidStateWithAggregate = state({
+      card: card({ current_step: CurrentStep.CLAIM_REVIEW }),
+      next_action: nextAction({ code: ActionCode.REVIEW_CLAIM_CANDIDATES }),
+      allowed_actions: [ActionCode.REVIEW_CLAIM_CANDIDATES],
+    });
+    const invalidState: Partial<CardActionExecutionState> = { ...invalidStateWithAggregate };
+    delete invalidState.unresolved_claim_candidate_count;
+    const fakeStore = store({
+      loadActionState: vi.fn(async () => invalidState as CardActionExecutionState),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(ctx, 'card_1', reviewCommand)).rejects.toMatchObject({
+      status: 422,
+      error_code: 'ACTION_GUARD_FAILED',
+      details: {
+        action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+        reason: 'invalid_unresolved_claim_candidate_count',
+      },
+    });
+    expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
+  it('allows REVIEW_CLAIM_CANDIDATES when every claim candidate is finalized', async () => {
+    const reviewCommand = {
+      action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+      idempotency_key: 'idem_claim_review',
+      client_version: 3,
+    };
+    const closingCard = card({
+      current_step: CurrentStep.CLOSING,
+      display_status: DisplayStatus.READY,
+      server_version: 4,
+    });
+    const fakeStore = store({
+      loadActionState: vi.fn(async () =>
+        state({
+          card: card({ current_step: CurrentStep.CLAIM_REVIEW }),
+          next_action: nextAction({ code: ActionCode.REVIEW_CLAIM_CANDIDATES }),
+          allowed_actions: [ActionCode.REVIEW_CLAIM_CANDIDATES],
+          unresolved_claim_candidate_count: 0,
+        }),
+      ),
+      commitAction: vi.fn(async () =>
+        actionResponse({
+          card: closingCard,
+          next_action: nextAction({ code: ActionCode.CLOSE_CARD }),
+          display_status: closingCard.display_status,
+          side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+          server_version: closingCard.server_version,
+        }),
+      ),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(ctx, 'card_1', reviewCommand)).resolves.toMatchObject(
+      {
+        card: { current_step: CurrentStep.CLOSING },
+        side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+      },
+    );
+    expect(fakeStore.commitAction).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ command: reviewCommand }),
+    );
   });
 
   it('commits a valid step-changing action and returns canonical ActionResponse', async () => {

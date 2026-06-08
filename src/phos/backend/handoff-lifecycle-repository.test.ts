@@ -93,6 +93,7 @@ function cardAggregateSource(): HandoffCardAggregateSource {
           active: true,
         },
       ],
+      unresolved_claim_candidate_count: 0,
     },
     display_context: {
       canceled_at: null,

@@ -20,7 +20,10 @@ import type {
   CapacityResponse,
   CardSearchResponse,
   CardSummaryView,
+  ClaimCandidateMutationResponse,
+  ClaimCandidateSearchResponse,
   ErrorResponse,
+  FeeRuleSearchResponse,
   HandoffMutationResponse,
   NextActionView,
   ReportDeliveryMutationResponse,
@@ -103,6 +106,67 @@ function capacityResponse(): CapacityResponse {
     ],
     staff_loads: [],
     bottlenecks: [],
+    server_time: '2026-06-09T00:00:00.000Z',
+  };
+}
+
+function claimCandidateSearchResponse(): ClaimCandidateSearchResponse {
+  return {
+    items: [
+      {
+        candidate_id: 'claim_1',
+        card_id: 'card_1',
+        patient_name: '患者 山田太郎',
+        fee_code: 'M001',
+        fee_label: '在宅患者訪問薬剤管理指導料',
+        billing_month: '2026-06-01',
+        status: 'MISSING_EVIDENCE',
+        status_label: '根拠不足',
+        missing_evidence_keys: ['management_plan'],
+        evidence_requirements: [],
+        rule_version_id: 'rv_2026',
+        priority_rank: 10,
+        source_refs: [],
+        created_at: '2026-06-09T00:00:00.000Z',
+        updated_at: '2026-06-09T00:00:00.000Z',
+        server_version: 1,
+      },
+    ],
+    server_time: '2026-06-09T00:00:00.000Z',
+  };
+}
+
+function claimCandidateMutationResponse(): ClaimCandidateMutationResponse {
+  const candidate = {
+    ...claimCandidateSearchResponse().items[0],
+    status: 'EXCLUDED' as const,
+    status_label: '除外済み',
+    excluded_reason_code: 'NOT_ELIGIBLE',
+    server_version: 2,
+  };
+  return {
+    candidate,
+    side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: candidate.card_id }],
+    server_version: 2,
+  };
+}
+
+function feeRuleSearchResponse(): FeeRuleSearchResponse {
+  return {
+    items: [
+      {
+        rule_id: 'rule_1',
+        rule_version_id: 'rv_2026',
+        fee_code: 'M001',
+        fee_label: '在宅患者訪問薬剤管理指導料',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        condition: { op: 'EXISTS', field: 'visit_record_id' },
+        evidence_requirements: [],
+        source_refs: [{ kind: 'RULE_DOCUMENT', ref_id: 'rule_doc_1', label: '2026改定' }],
+      },
+    ],
     server_time: '2026-06-09T00:00:00.000Z',
   };
 }
@@ -263,6 +327,62 @@ describe('createPhosApiClient', () => {
 
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.example.com/prod/capacity?date=2026-06-09&scope=PHARMACY',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('uses API Gateway routes for claim candidate search and exclusion', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(claimCandidateSearchResponse()))
+      .mockResolvedValueOnce(jsonResponse(claimCandidateMutationResponse()));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(
+      client.getClaimCandidates({ status: 'MISSING_EVIDENCE', limit: 25 }),
+    ).resolves.toEqual(claimCandidateSearchResponse());
+    await expect(
+      client.excludeClaimCandidate('claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(claimCandidateMutationResponse());
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/prod/claim-candidates?status=MISSING_EVIDENCE&limit=25',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/prod/claim-candidates/claim_1/exclude',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          reason_code: 'NOT_ELIGIBLE',
+          idempotency_key: 'idem_1',
+          client_version: 1,
+        }),
+      }),
+    );
+  });
+
+  it('loads fee rules from the API Gateway route', async () => {
+    const response = feeRuleSearchResponse();
+    const fetchImpl = vi.fn(async () => jsonResponse(response));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getFeeRules({ fee_code: 'M001' })).resolves.toEqual(response);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/prod/fee-rules?fee_code=M001',
       expect.objectContaining({ method: 'GET' }),
     );
   });

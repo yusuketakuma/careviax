@@ -25,7 +25,13 @@ import type {
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
 import { createPhosApiClient } from '@/phos/api/client';
-import { PhosApiError, type PhosApiClient } from '@/phos/api/types';
+import { enqueuePhosOfflineCardAction } from '@/phos/api/offlineActionQueue';
+import {
+  PhosApiError,
+  PhosOfflineQueuedError,
+  type PhosApiClient,
+  type PhosOfflineActionQueue,
+} from '@/phos/api/types';
 import { usePhosAction } from '@/phos/api/usePhosAction';
 import { countBoardFilters, selectBoardItems } from '@/phos/domain/board/boardFilters';
 import { ClerkSupportWorkbench } from '@/phos/ui/handoff/ClerkSupportWorkbench';
@@ -44,6 +50,7 @@ export type BoardClientProps = {
   client?: PhosApiClient;
   getAccessToken?: () => string | Promise<string>;
   initialItems?: CardBoardItemView[];
+  offlineActionQueue?: PhosOfflineActionQueue;
 };
 
 type BoardPhase = 'LOADING' | 'READY' | 'ERROR';
@@ -168,6 +175,9 @@ function updateDetailVisitMode(
 }
 
 function actionErrorMessage(error: unknown): string {
+  if (error instanceof PhosOfflineQueuedError) {
+    return 'オフラインキューに保存しました。オンライン復帰後に同期します。';
+  }
   if (error instanceof PhosApiError) {
     if (error.status === 422 && error.response.error_code === 'ACTION_GUARD_FAILED') {
       return '必要な情報が不足しています。カード詳細で不足内容を確認してください。';
@@ -197,6 +207,7 @@ export function BoardClient({
   client,
   getAccessToken,
   initialItems = [],
+  offlineActionQueue,
 }: BoardClientProps) {
   const { data: session } = useSession();
   const phosAccessToken = session?.phosAccessToken;
@@ -247,6 +258,9 @@ export function BoardClient({
       executeCardAction: async () => {
         throw new Error('PH-OS API client is not configured');
       },
+    },
+    {
+      offlineQueue: offlineActionQueue ?? { enqueueCardAction: enqueuePhosOfflineCardAction },
     },
   );
 
@@ -376,11 +390,18 @@ export function BoardClient({
 
       setActionError(undefined);
       try {
-        const response = await action.execute(cardId, {
-          action_code: actionCode,
-          idempotency_key: buildIdempotencyKey(cardId, actionCode),
-          client_version: detailVersion ?? item.card.server_version,
-        });
+        const response = await action.execute(
+          cardId,
+          {
+            action_code: actionCode,
+            idempotency_key: buildIdempotencyKey(cardId, actionCode),
+            client_version: detailVersion ?? item.card.server_version,
+          },
+          {
+            offline_allowed: item.next_action.offline_allowed,
+            offline_op_class: 'BLOCKING',
+          },
+        );
         setItems((current) => updateBoardItem(current, response));
         setSelectedDetail((current) =>
           current && current.card.card_id === response.card.card_id

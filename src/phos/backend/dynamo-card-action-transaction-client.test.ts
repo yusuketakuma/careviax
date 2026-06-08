@@ -220,8 +220,7 @@ describe('Dynamo card action transaction client', () => {
           {
             sort_key: 'REPORT_DELIVERY#delivery_1',
             status_gsi_pk: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
-            status_gsi_sk:
-              'STALE#00000090#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
+            status_gsi_sk: 'STALE#00000090#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
             delivery,
           },
         ],
@@ -254,6 +253,43 @@ describe('Dynamo card action transaction client', () => {
         Item: {
           SK: { S: 'CARD_ACTION_IDEMPOTENCY#card_1#idem_send_report' },
           response_json: { S: JSON.stringify(projectedResponse) },
+        },
+      },
+    });
+  });
+
+  it('adds an unresolved claim candidate zero condition for claim review commits', () => {
+    const items = buildDynamoActionCommitTransactWriteItems(
+      transaction({
+        command: {
+          action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+          idempotency_key: 'idem_claim_review',
+          client_version: 3,
+        },
+        transition: ACTION_TRANSITION_MATRIX[ActionCode.REVIEW_CLAIM_CANDIDATES],
+        projected_response: response({
+          card: {
+            ...response().card,
+            current_step: CurrentStep.CLOSING,
+            display_status: DisplayStatus.READY,
+          },
+          display_status: DisplayStatus.READY,
+          side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+        }),
+        claim_review_guard: { unresolved_claim_candidate_count: 0 },
+      }),
+      '2026-06-09T00:00:00.000Z',
+    );
+
+    expect(items[0]).toMatchObject({
+      Update: {
+        ConditionExpression:
+          '#server_version = :expected_server_version AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count',
+        ExpressionAttributeNames: {
+          '#unresolved_claim_candidate_count': 'unresolved_claim_candidate_count',
+        },
+        ExpressionAttributeValues: {
+          ':zero_unresolved_claim_candidate_count': { N: '0' },
         },
       },
     });

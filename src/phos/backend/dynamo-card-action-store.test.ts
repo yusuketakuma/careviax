@@ -121,6 +121,7 @@ const mapper: DynamoCardActionStoreMapper<StateItem, IdempotencyItem> = {
       can_user_handle: true,
     },
     blockers: [],
+    unresolved_claim_candidate_count: 0,
     allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
   }),
   toIdempotencyRecord: (item) => ({
@@ -359,12 +360,84 @@ describe('createDynamoCardActionExecutionStore', () => {
           {
             sort_key: 'REPORT_DELIVERY#delivery_1',
             status_gsi_pk: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
-            status_gsi_sk:
-              'STALE#00000090#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
+            status_gsi_sk: 'STALE#00000090#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
             delivery,
           },
         ],
         projected_response: result,
+      }),
+    );
+  });
+
+  it('adds an atomic zero-unresolved guard for REVIEW_CLAIM_CANDIDATES commits only', async () => {
+    const fakeClient = client();
+    const claimReviewMapper: DynamoCardActionStoreMapper<StateItem, IdempotencyItem> = {
+      ...mapper,
+      toActionState: (item): CardActionExecutionState => ({
+        ...mapper.toActionState(item),
+        card: card({
+          card_id: item.id,
+          current_step: CurrentStep.CLAIM_REVIEW,
+          server_version: item.version,
+        }),
+        next_action: {
+          code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+          kind: ActionKind.STEP_CHANGING,
+          label_key: 'action.review_claim_candidates',
+          enabled: true,
+          offline_allowed: false,
+          priority: 'PRIMARY',
+          required_role: [UserRole.PHARMACIST],
+          target_endpoint: '/cards/card_1/actions',
+          ui_state: ButtonState.ACTIONABLE,
+          can_user_handle: true,
+        },
+        unresolved_claim_candidate_count: 0,
+        allowed_actions: [ActionCode.REVIEW_CLAIM_CANDIDATES],
+      }),
+      toCommitProjection: () => ({
+        server_version: 4,
+        current_step_override: CurrentStep.CLOSING,
+        next_action: {
+          code: ActionCode.CLOSE_CARD,
+          kind: ActionKind.STEP_CHANGING,
+          label_key: 'action.close_card',
+          enabled: true,
+          offline_allowed: false,
+          priority: 'PRIMARY',
+          required_role: [UserRole.PHARMACIST],
+          target_endpoint: '/cards/card_1/actions',
+          ui_state: ButtonState.ACTIONABLE,
+          can_user_handle: true,
+        },
+        side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+        display_context: {
+          canceled_at: null,
+          has_open_rejected_audit: false,
+          has_active_in_progress_task: false,
+          primary_action_authorized: true,
+        },
+      }),
+    };
+    const store = createDynamoCardActionExecutionStore(fakeClient, claimReviewMapper);
+    const previousState = claimReviewMapper.toActionState({ id: 'card_1', version: 3 });
+
+    const result = await store.commitAction(ctx, {
+      card_id: 'card_1',
+      command: {
+        action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+        idempotency_key: 'idem_claim_review',
+        client_version: 3,
+      },
+      request_fingerprint: 'fp_claim_review',
+      previous_state: previousState,
+      transition: ACTION_TRANSITION_MATRIX[ActionCode.REVIEW_CLAIM_CANDIDATES],
+    });
+
+    expect(result.card.current_step).toBe(CurrentStep.CLOSING);
+    expect(fakeClient.transactCommitAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claim_review_guard: { unresolved_claim_candidate_count: 0 },
       }),
     );
   });

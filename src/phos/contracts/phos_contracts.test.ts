@@ -5,6 +5,9 @@ import {
   CapacityScope,
   CapacityStatus,
   CardType,
+  type ClaimCandidateMutationResponse,
+  type ClaimCandidateSearchResponse,
+  type FeeRuleSearchResponse,
   CurrentStep,
   DisplayStatus,
   HandoffStatus,
@@ -34,6 +37,65 @@ describe('PH-OS canonical contracts', () => {
     expect(ReportDeliveryStatus.WAITING_REPLY).toBe('WAITING_REPLY');
     expect(CapacityScope.PHARMACY).toBe('PHARMACY');
     expect(CapacityStatus.OVER_CAPACITY).toBe('OVER_CAPACITY');
+  });
+
+  it('defines canonical claim candidate and fee rule response contracts', () => {
+    const claimSearch = {
+      items: [
+        {
+          candidate_id: 'claim_1',
+          card_id: 'card_1',
+          patient_name: '患者 山田太郎',
+          fee_code: 'M001',
+          fee_label: '在宅患者訪問薬剤管理指導料',
+          billing_month: '2026-06-01',
+          status: 'MISSING_EVIDENCE',
+          status_label: '根拠不足',
+          missing_evidence_keys: ['management_plan'],
+          evidence_requirements: [
+            {
+              evidence_key: 'management_plan',
+              label: '薬学的管理指導計画',
+              required: true,
+              source_kind: 'EVIDENCE_FILE',
+            },
+          ],
+          rule_version_id: 'rv_2026',
+          priority_rank: 10,
+          source_refs: [{ kind: 'RULE_DOCUMENT', ref_id: 'rule_doc_1', label: '2026改定' }],
+          created_at: '2026-06-09T00:00:00.000Z',
+          updated_at: '2026-06-09T00:00:00.000Z',
+          server_version: 1,
+        },
+      ],
+      server_time: '2026-06-09T00:00:00.000Z',
+    } satisfies ClaimCandidateSearchResponse;
+    const mutation = {
+      candidate: { ...claimSearch.items[0], status: 'EXCLUDED', status_label: '除外済み' },
+      side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+      server_version: 2,
+    } satisfies ClaimCandidateMutationResponse;
+    const feeRules = {
+      items: [
+        {
+          rule_id: 'rule_1',
+          rule_version_id: 'rv_2026',
+          fee_code: 'M001',
+          fee_label: '在宅患者訪問薬剤管理指導料',
+          tenant_scope: 'SYSTEM',
+          revision_code: '2026',
+          active_from: '2026-04-01',
+          condition: { op: 'EXISTS', field: 'visit_record_id' },
+          evidence_requirements: [],
+          source_refs: [{ kind: 'RULE_DOCUMENT', ref_id: 'rule_doc_1', label: '2026改定' }],
+        },
+      ],
+      server_time: '2026-06-09T00:00:00.000Z',
+    } satisfies FeeRuleSearchResponse;
+
+    expect(claimSearch.items[0].status).toBe('MISSING_EVIDENCE');
+    expect(mutation.side_effects[0]).toEqual({ type: 'CLAIM_RECALCULATED', card_id: 'card_1' });
+    expect(feeRules.items[0].tenant_scope).toBe('SYSTEM');
   });
 
   it('uses CANCELED and never the prohibited double-L spelling in canonical enum values', () => {

@@ -47,4 +47,31 @@ describe('PH-OS static contract checks', () => {
       }
     }
   });
+
+  it('does not import legacy dashboard offline sync stores from canonical PH-OS files', () => {
+    const forbiddenLegacyOfflineImports = [
+      /@\/lib\/stores\/sync-engine/,
+      /@\/lib\/stores\/offline-store/,
+      /@\/lib\/stores\/offline-db/,
+    ];
+
+    for (const file of listFiles(canonicalRoot)) {
+      const content = readFileSync(file, 'utf8');
+      for (const pattern of forbiddenLegacyOfflineImports) {
+        expect(content, file).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it('does not import dashboard org-scoped RLS helpers from canonical PH-OS backend files', () => {
+    const backendRoot = join(canonicalRoot, 'backend');
+    const forbiddenDashboardRlsImports = [/@\/lib\/db\/rls/, /from ['"].*\/lib\/db\/rls['"]/];
+
+    for (const file of listFiles(backendRoot)) {
+      const content = readFileSync(file, 'utf8');
+      for (const pattern of forbiddenDashboardRlsImports) {
+        expect(content, file).not.toMatch(pattern);
+      }
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import type { ActionResponse } from '@/phos/contracts/phos_contracts';
+import { ActionCode, type ActionResponse } from '@/phos/contracts/phos_contracts';
 import type {
   BlockerView,
   CurrentStep,
@@ -44,6 +44,9 @@ export type DynamoActionCommitTransaction = {
     status_gsi_sk: string;
     delivery: ReportDeliveryView;
   }[];
+  claim_review_guard?: {
+    unresolved_claim_candidate_count: 0;
+  };
   expected_server_version: number;
   request_fingerprint: string;
   command: CardActionCommand;
@@ -172,6 +175,9 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
           }),
           delivery,
         })),
+        ...(input.command.action_code === ActionCode.REVIEW_CLAIM_CANDIDATES
+          ? { claim_review_guard: { unresolved_claim_candidate_count: 0 } }
+          : {}),
         expected_server_version: input.previous_state.card.server_version,
         request_fingerprint: input.request_fingerprint,
         command: input.command,

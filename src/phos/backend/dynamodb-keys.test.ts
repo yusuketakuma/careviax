@@ -16,7 +16,6 @@ import {
   handoffAssigneeGsiSk,
   handoffIdempotencySk,
   handoffSk,
-  offlineOpSk,
   packetCardSk,
   packetGsiPk,
   packetGsiSk,
@@ -77,7 +76,6 @@ describe('PH-OS DynamoDB key contract', () => {
         idempotency_key: 'idem_1',
       }),
     ).toBe('REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_1');
-    expect(offlineOpSk('operation_1')).toBe('OFFLINE_OP#operation_1');
     expect(userSk('user_1')).toBe('USER#user_1');
   });
 

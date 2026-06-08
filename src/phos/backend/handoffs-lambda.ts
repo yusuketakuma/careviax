@@ -98,6 +98,7 @@ function asCardActionState(item: DynamoItem): CardActionExecutionState {
     next_action: objectAttr(item, 'next_action') as CardActionExecutionState['next_action'],
     blockers: (fromDynamoAttributeValue(item.blockers ?? { L: [] }) ??
       []) as CardActionExecutionState['blockers'],
+    unresolved_claim_candidate_count: numberAttr(item, 'unresolved_claim_candidate_count') ?? 0,
   };
 }
 
@@ -187,9 +188,11 @@ async function getItem(
   return result.Item ?? null;
 }
 
-export function createDynamoHandoffMapper(input: {
-  now?: () => Date;
-} = {}): DynamoHandoffStoreMapper<DynamoItem, DynamoItem> {
+export function createDynamoHandoffMapper(
+  input: {
+    now?: () => Date;
+  } = {},
+): DynamoHandoffStoreMapper<DynamoItem, DynamoItem> {
   const now = input.now ?? (() => new Date());
 
   return {

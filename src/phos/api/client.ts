@@ -3,6 +3,7 @@ import type {
   CapacityScope,
   CreateHandoffRequest,
   ErrorResponse,
+  ExcludeClaimCandidateRequest,
   EvidenceUploadRequest,
   OpenHandoffRequest,
   ReportDeliveryStatus,
@@ -18,6 +19,7 @@ import type {
   PhosApiClient,
   PhosCapacityQuery,
   PhosCardsQuery,
+  PhosClaimCandidatesQuery,
   PhosReportDeliveriesQuery,
 } from './types';
 import { PhosApiError } from './types';
@@ -136,6 +138,32 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
         method: 'GET',
         path: routePath('GET /capacity'),
         query: query satisfies { date: string; scope: CapacityScope },
+      });
+    },
+    getClaimCandidates(query: PhosClaimCandidatesQuery = {}) {
+      return request({
+        method: 'GET',
+        path: routePath('GET /claim-candidates'),
+        query: query satisfies {
+          card_id?: string;
+          status?: string;
+          cursor?: string;
+          limit?: number;
+        },
+      });
+    },
+    excludeClaimCandidate(candidate_id: string, excludeRequest: ExcludeClaimCandidateRequest) {
+      return request({
+        method: 'POST',
+        path: routePath('POST /claim-candidates/{candidate_id}/exclude', { candidate_id }),
+        body: excludeRequest,
+      });
+    },
+    getFeeRules(query: { fee_code?: string; cursor?: string; limit?: number } = {}) {
+      return request({
+        method: 'GET',
+        path: routePath('GET /fee-rules'),
+        query,
       });
     },
     getCardDetail(card_id: string) {

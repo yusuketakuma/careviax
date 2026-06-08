@@ -1,0 +1,198 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { QueryResultRow } from 'pg';
+import { UserRole } from '@/phos/contracts/phos_contracts';
+import { AuroraFeeRulesRepository, type AuroraFeeRulesClient } from './aurora-fee-rules-repository';
+import type { TenantContext } from './tenant-context';
+
+const ctx: TenantContext = {
+  tenant_id: 'tenant_abc123',
+  user_id: 'user_1',
+  role: UserRole.PHARMACIST,
+  request_id: 'req_1',
+  correlation_id: 'corr_1',
+  scopes: ['phos/fee-rules.read'],
+};
+
+function client(rows: QueryResultRow[] = []) {
+  const query = vi.fn(async (sql: string, params?: readonly unknown[]) => {
+    void params;
+    if (sql.includes('SELECT') && sql.includes('phos_fee_rule_master')) {
+      return { rows };
+    }
+    return { rows: [] };
+  });
+  const release = vi.fn();
+  const pool: AuroraFeeRulesClient = {
+    connect: vi.fn(async () => ({ query, release })),
+  };
+  return { pool, query, release };
+}
+
+describe('AuroraFeeRulesRepository', () => {
+  it('sets transaction-local tenant context and keeps tenant WHERE predicates', async () => {
+    const { pool, query, release } = client([
+      {
+        rule_id: 'rule_1',
+        rule_version_id: 'rv_1',
+        fee_code: 'M001',
+        fee_label: '在宅患者訪問薬剤管理指導料',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        active_to: null,
+        condition: { op: 'EXISTS', field: 'visit_record_id' },
+        evidence_requirements: [
+          {
+            evidence_key: 'management_plan',
+            label: '管理計画',
+            required: true,
+            source_kind: 'CARE_PLAN',
+          },
+        ],
+        source_refs: [
+          {
+            kind: 'RULE_DOCUMENT',
+            ref_id: 'doc_1',
+            label: '2026改定',
+          },
+        ],
+      },
+    ]);
+    const repository = new AuroraFeeRulesRepository(
+      pool,
+      () => new Date('2026-06-09T00:00:00.000Z'),
+    );
+
+    await expect(
+      repository.searchFeeRules(ctx, { fee_code: 'M001', limit: 1 }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          rule_id: 'rule_1',
+          rule_version_id: 'rv_1',
+          fee_code: 'M001',
+          fee_label: '在宅患者訪問薬剤管理指導料',
+          tenant_scope: 'SYSTEM',
+          revision_code: '2026',
+          active_from: '2026-04-01',
+          condition: { op: 'EXISTS', field: 'visit_record_id' },
+          evidence_requirements: [
+            {
+              evidence_key: 'management_plan',
+              label: '管理計画',
+              required: true,
+              source_kind: 'CARE_PLAN',
+            },
+          ],
+        },
+      ],
+      server_time: '2026-06-09T00:00:00.000Z',
+    });
+
+    expect(pool.connect).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(query).toHaveBeenNthCalledWith(2, "SELECT set_config('app.tenant_id', $1, true)", [
+      'tenant_abc123',
+    ]);
+    const [sql, params] = query.mock.calls[2];
+    expect(sql).toContain('FROM phos_fee_rule_master fr');
+    expect(sql).toContain(
+      "WHERE (fr.tenant_id = $1 OR (fr.tenant_scope = 'SYSTEM' AND fr.tenant_id = 'SYSTEM'))",
+    );
+    expect(sql).toContain('AND fr.fee_code = $2');
+    expect(params).toEqual(['tenant_abc123', 'M001', 2, 0]);
+    expect(query).toHaveBeenLastCalledWith('COMMIT');
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back and releases the connection when a query fails', async () => {
+    const query = vi.fn(async (sql: string, params?: readonly unknown[]) => {
+      void params;
+      if (sql.includes('phos_fee_rule_master')) throw new Error('database unavailable');
+      return { rows: [] };
+    });
+    const release = vi.fn();
+    const pool: AuroraFeeRulesClient = {
+      connect: vi.fn(async () => ({ query, release })),
+    };
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    await expect(repository.searchFeeRules(ctx, { limit: 50 })).rejects.toThrow(
+      'database unavailable',
+    );
+
+    expect(query).toHaveBeenCalledWith('ROLLBACK');
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an opaque cursor when more rows than the requested limit exist', async () => {
+    const { pool } = client([
+      {
+        rule_id: 'rule_1',
+        rule_version_id: 'rv_1',
+        fee_code: 'M001',
+        fee_label: 'fee 1',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        active_to: null,
+        condition: { op: 'AND', conditions: [] },
+        evidence_requirements: [],
+        source_refs: [],
+      },
+      {
+        rule_id: 'rule_2',
+        rule_version_id: 'rv_2',
+        fee_code: 'M002',
+        fee_label: 'fee 2',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        active_to: null,
+        condition: { op: 'AND', conditions: [] },
+        evidence_requirements: [],
+        source_refs: [],
+      },
+    ]);
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    const response = await repository.searchFeeRules(ctx, { limit: 1 });
+
+    expect(response.items).toHaveLength(1);
+    expect(response.next_cursor).toBeTruthy();
+  });
+
+  it('rejects malformed rule DSL rows instead of returning unsafe rules', async () => {
+    const { pool } = client([
+      {
+        rule_id: 'rule_bad',
+        rule_version_id: 'rv_bad',
+        fee_code: 'M999',
+        fee_label: 'bad fee',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        active_to: null,
+        condition: { op: 'EVAL', expression: 'dangerous()' },
+        evidence_requirements: [],
+        source_refs: [],
+      },
+    ]);
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    await expect(repository.searchFeeRules(ctx, { limit: 50 })).rejects.toThrow(
+      'Invalid FeeRule condition operator',
+    );
+  });
+
+  it('rejects unsafe tenant ids before opening an Aurora connection', async () => {
+    const { pool } = client();
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    await expect(
+      repository.searchFeeRules({ ...ctx, tenant_id: 'tenant_abc123;DROP' }, { limit: 50 }),
+    ).rejects.toThrow('tenant_id contains unsafe characters');
+
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+});

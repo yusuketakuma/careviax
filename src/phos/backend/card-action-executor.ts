@@ -24,6 +24,7 @@ export type CardActionExecutionState = {
   next_action: NextActionView;
   blockers: BlockerView[];
   visit_mode?: VisitModeView;
+  unresolved_claim_candidate_count: number;
   allowed_actions?: readonly ActionCode[];
 };
 
@@ -188,6 +189,27 @@ function assertVisitCompleteGuard(state: CardActionExecutionState, command: Card
   }
 }
 
+function assertClaimCandidatesReviewed(
+  state: CardActionExecutionState,
+  command: CardActionCommand,
+) {
+  if (command.action_code !== ActionCode.REVIEW_CLAIM_CANDIDATES) return;
+  const unresolvedCount = state.unresolved_claim_candidate_count;
+  if (!Number.isSafeInteger(unresolvedCount) || unresolvedCount < 0) {
+    throw actionGuardFailed({
+      action_code: command.action_code,
+      reason: 'invalid_unresolved_claim_candidate_count',
+    });
+  }
+  if (unresolvedCount > 0) {
+    throw actionGuardFailed({
+      action_code: command.action_code,
+      unresolved_claim_candidate_count: unresolvedCount,
+      required_action_code: ActionCode.EXCLUDE_CLAIM_CANDIDATE,
+    });
+  }
+}
+
 function assertFreshVersion(state: CardActionExecutionState, command: CardActionCommand) {
   if (state.card.server_version !== command.client_version) {
     throw domainError(409, 'STALE_VERSION', 'api.error.stale_version', {
@@ -272,6 +294,7 @@ export function createCardActionExecutorRepository(
       assertCardCanTransition(state, command);
       assertNoBlockingBlockers(state, command);
       assertVisitCompleteGuard(state, command);
+      assertClaimCandidatesReviewed(state, command);
 
       const transition = ACTION_TRANSITION_MATRIX[command.action_code];
       const response = await store.commitAction(ctx, {

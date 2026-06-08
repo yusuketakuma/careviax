@@ -18,8 +18,8 @@ import type {
   ErrorResponse,
   NextActionView,
 } from '@/phos/contracts/phos_contracts';
-import type { PhosApiClient } from './types';
-import { PhosApiError } from './types';
+import type { PhosApiClient, PhosOfflineActionQueue } from './types';
+import { PhosApiError, PhosOfflineQueuedError } from './types';
 import { usePhosAction } from './usePhosAction';
 
 const readyCard = {
@@ -180,5 +180,79 @@ describe('usePhosAction', () => {
 
     expect(result.current.phase).toBe(ActionPhase.NET_ERROR);
     expect(result.current.response).toBeUndefined();
+  });
+
+  it('queues network failures only when the server action allows offline execution', async () => {
+    const offlineQueue: PhosOfflineActionQueue = {
+      enqueueCardAction: vi.fn(async () => ({ queue_id: 10 })),
+    };
+    const client = actionClient(
+      vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
+    const { result } = renderHook(() => usePhosAction(client, { offlineQueue }));
+
+    await act(async () => {
+      await expect(
+        result.current.execute('card_1', actionRequest(), { offline_allowed: true }),
+      ).rejects.toBeInstanceOf(PhosOfflineQueuedError);
+    });
+
+    expect(offlineQueue.enqueueCardAction).toHaveBeenCalledWith({
+      card_id: 'card_1',
+      request: actionRequest(),
+      offline_op_class: 'BLOCKING',
+    });
+    expect(result.current.phase).toBe(ActionPhase.NET_ERROR);
+    expect(result.current.offline_queued).toBe(true);
+    expect(result.current.response).toBeUndefined();
+  });
+
+  it('does not queue network failures when offline execution is not allowed', async () => {
+    const offlineQueue: PhosOfflineActionQueue = {
+      enqueueCardAction: vi.fn(async () => ({ queue_id: 10 })),
+    };
+    const client = actionClient(
+      vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
+    const { result } = renderHook(() => usePhosAction(client, { offlineQueue }));
+
+    await act(async () => {
+      await expect(
+        result.current.execute('card_1', actionRequest(), { offline_allowed: false }),
+      ).rejects.toThrow('fetch failed');
+    });
+
+    expect(offlineQueue.enqueueCardAction).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe(ActionPhase.NET_ERROR);
+    expect(result.current.offline_queued).toBeUndefined();
+  });
+
+  it('does not queue server conflicts even when offline execution is allowed', async () => {
+    const offlineQueue: PhosOfflineActionQueue = {
+      enqueueCardAction: vi.fn(async () => ({ queue_id: 10 })),
+    };
+    const client = actionClient(
+      vi.fn(async () => {
+        throw canonicalError(409, {
+          request_id: 'req_1',
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    );
+    const { result } = renderHook(() => usePhosAction(client, { offlineQueue }));
+
+    await act(async () => {
+      await expect(
+        result.current.execute('card_1', actionRequest(), { offline_allowed: true }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    expect(offlineQueue.enqueueCardAction).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe(ActionPhase.CONFLICT);
   });
 });

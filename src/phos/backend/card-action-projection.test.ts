@@ -59,6 +59,7 @@ function state(overrides: Partial<CardActionExecutionState> = {}): CardActionExe
     card: card(),
     next_action: nextAction({ code: ActionCode.CONFIRM_PRESCRIPTION_DIFF }),
     blockers: [],
+    unresolved_claim_candidate_count: 0,
     allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
     ...overrides,
   };

@@ -231,12 +231,51 @@ export type CommunicationIntent =
   | 'REPLY_FOLLOWUP'
   | 'FAMILY_CONFIRMATION';
 
-export type ClaimCandidateStatus =
-  | 'CANDIDATE'
-  | 'MISSING_EVIDENCE'
-  | 'READY'
-  | 'EXCLUDED'
-  | 'APPROVED';
+export const ClaimCandidateStatus = {
+  CANDIDATE: 'CANDIDATE',
+  MISSING_EVIDENCE: 'MISSING_EVIDENCE',
+  READY: 'READY',
+  EXCLUDED: 'EXCLUDED',
+  APPROVED: 'APPROVED',
+} as const;
+export type ClaimCandidateStatus = (typeof ClaimCandidateStatus)[keyof typeof ClaimCandidateStatus];
+
+export type FeeRuleConditionDsl =
+  | { op: 'EXISTS'; field: string }
+  | { op: 'EQ'; field: string; value: string | number | boolean }
+  | { op: 'IN'; field: string; values: (string | number | boolean)[] }
+  | { op: 'GTE'; field: string; value: number }
+  | { op: 'LTE'; field: string; value: number }
+  | { op: 'AND'; conditions: FeeRuleConditionDsl[] }
+  | { op: 'OR'; conditions: FeeRuleConditionDsl[] }
+  | { op: 'NOT'; condition: FeeRuleConditionDsl };
+
+export type EvidenceRequirementView = {
+  evidence_key: string;
+  label: string;
+  required: boolean;
+  source_kind: SourceRef['kind'];
+};
+
+export type FeeRuleView = {
+  rule_id: string;
+  rule_version_id: string;
+  fee_code: string;
+  fee_label: string;
+  tenant_scope: 'SYSTEM' | 'TENANT';
+  revision_code: string;
+  active_from: string;
+  active_to?: string;
+  condition: FeeRuleConditionDsl;
+  evidence_requirements: EvidenceRequirementView[];
+  source_refs: SourceRef[];
+};
+
+export type FeeRuleSearchResponse = {
+  items: FeeRuleView[];
+  next_cursor?: string;
+  server_time: string;
+};
 
 export type ClinicalSignal = {
   code:
@@ -327,6 +366,14 @@ export type EvidenceMissingView = {
   label: string;
   required: boolean;
   related_action_code?: ActionCode;
+};
+
+export type EvidencePendingView = {
+  evidence_key: string;
+  label: string;
+  offline_op_class: OfflineOpClass;
+  created_at: string;
+  retry_count: number;
 };
 
 export type WaitingReplyView = {
@@ -665,6 +712,48 @@ export type CapacityResponse = {
   staff_loads: CapacityStaffLoad[];
   bottlenecks: CapacityBottleneck[];
   server_time: string;
+};
+
+export type ClaimCandidateView = {
+  candidate_id: string;
+  card_id: string;
+  patient_name: string;
+  fee_code: string;
+  fee_label: string;
+  billing_month: string;
+  status: ClaimCandidateStatus;
+  status_label: string;
+  missing_evidence_keys: string[];
+  evidence_requirements: EvidenceRequirementView[];
+  rule_version_id: string;
+  priority_rank: number;
+  source_refs: SourceRef[];
+  created_at: string;
+  updated_at: string;
+  server_version: number;
+  excluded_reason_code?: string;
+  excluded_reason_note?: string;
+};
+
+export type ClaimCandidateSearchResponse = {
+  items: ClaimCandidateView[];
+  next_cursor?: string;
+  total_estimate?: number;
+  server_time: string;
+};
+
+export type ExcludeClaimCandidateRequest = {
+  reason_code: string;
+  reason_note?: string;
+  idempotency_key: string;
+  client_version: number;
+};
+
+export type ClaimCandidateMutationResponse = {
+  candidate: ClaimCandidateView;
+  side_effects: SideEffect[];
+  toast?: { tone: ToastTone; message_key: string; params?: Record<string, string> };
+  server_version: number;
 };
 
 export type ErrorResponse = {

@@ -4,12 +4,13 @@ import { CheckCircle2, Circle, CloudOff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { PhosVisitArrivalOutcomeLabel, PhosVisitStepLabel } from '@/phos/contracts/phos_copy.ja';
 import { ActionPhase, VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
-import type { VisitModeView } from '@/phos/contracts/phos_contracts';
+import type { EvidencePendingView, VisitModeView } from '@/phos/contracts/phos_contracts';
 import { canCompleteVisit } from '@/phos/domain/visit/resolveVisitMode';
 
 export type VisitModeProps = {
   visit: VisitModeView;
   actionPhase?: ActionPhase;
+  pendingEvidence?: EvidencePendingView[];
   onArrivalOutcome(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenStep(step: VisitStep): void;
   onCompleteVisit(): void;
@@ -29,6 +30,7 @@ function canOpenStep(visit: VisitModeView, step: VisitStep): boolean {
 export function VisitMode({
   visit,
   actionPhase,
+  pendingEvidence = [],
   onArrivalOutcome,
   onOpenStep,
   onCompleteVisit,
@@ -36,8 +38,16 @@ export function VisitMode({
   const [cancelReason, setCancelReason] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelReasonError, setCancelReasonError] = useState<string | undefined>();
-  const blockingUnsyncedCount = visit.evidence_sync.blocking_unsynced_count;
-  const nonBlockingUnsyncedCount = visit.evidence_sync.non_blocking_unsynced_count;
+  const localBlockingEvidenceCount = pendingEvidence.filter(
+    (item) => item.offline_op_class === 'BLOCKING',
+  ).length;
+  const localNonBlockingEvidenceCount = pendingEvidence.filter(
+    (item) => item.offline_op_class === 'NON_BLOCKING',
+  ).length;
+  const blockingUnsyncedCount =
+    visit.evidence_sync.blocking_unsynced_count + localBlockingEvidenceCount;
+  const nonBlockingUnsyncedCount =
+    visit.evidence_sync.non_blocking_unsynced_count + localNonBlockingEvidenceCount;
   const arrivalApplicable = visit.applicable_steps.includes(VisitStep.ARRIVAL_CONFIRM);
   const canComplete = canCompleteVisit({
     applicable_steps: visit.applicable_steps,
@@ -177,6 +187,28 @@ export function VisitMode({
           <CloudOff className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>オフライン中です。証跡は未同期として保持されます。</span>
         </div>
+      ) : null}
+
+      {pendingEvidence.length > 0 ? (
+        <section
+          aria-label="同期待ち証跡"
+          className="rounded-md border border-border/70 bg-background p-3"
+        >
+          <h3 className="text-sm font-semibold text-foreground">同期待ち証跡</h3>
+          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+            {pendingEvidence.map((item) => (
+              <li
+                key={`${item.evidence_key}-${item.created_at}`}
+                className="flex items-center justify-between gap-3"
+              >
+                <span>{item.label}</span>
+                <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
+                  {item.offline_op_class === 'BLOCKING' ? '必須' : '任意'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       <button

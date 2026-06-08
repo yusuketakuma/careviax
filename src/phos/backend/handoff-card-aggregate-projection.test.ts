@@ -45,6 +45,7 @@ function state(): CardActionExecutionState {
         active: true,
       },
     ],
+    unresolved_claim_candidate_count: 0,
   };
 }
 

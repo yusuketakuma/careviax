@@ -19,14 +19,20 @@ export function buildDynamoActionCommitTransactWriteItems(
     '#card': 'card',
     '#next_action': 'next_action',
     '#blockers': 'blockers',
+    ...(input.claim_review_guard
+      ? { '#unresolved_claim_candidate_count': 'unresolved_claim_candidate_count' }
+      : {}),
   };
+  const conditionExpression = input.claim_review_guard
+    ? '#server_version = :expected_server_version AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count'
+    : '#server_version = :expected_server_version';
 
   return [
     {
       Update: {
         TableName: input.table_name,
         Key: dynamoKey(input.partition_key, input.card_sort_key),
-        ConditionExpression: '#server_version = :expected_server_version',
+        ConditionExpression: conditionExpression,
         UpdateExpression:
           'SET #server_version = :server_version, #current_step = :current_step, #display_status = :display_status, #action_code = :action_code, #updated_at = :updated_at, #card = :card, #next_action = :next_action, #blockers = :blockers',
         ExpressionAttributeNames: expressionAttributeNames,
@@ -40,6 +46,9 @@ export function buildDynamoActionCommitTransactWriteItems(
           ':card': toDynamoAttributeValue(input.projected_response.card),
           ':next_action': toDynamoAttributeValue(input.projected_response.next_action),
           ':blockers': toDynamoAttributeValue(input.projected_response.blockers),
+          ...(input.claim_review_guard
+            ? { ':zero_unresolved_claim_candidate_count': { N: '0' } }
+            : {}),
         },
       },
     },

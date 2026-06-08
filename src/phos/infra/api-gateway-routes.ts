@@ -10,8 +10,11 @@ export type PhosApiRoute = {
     | 'CardSearchResponse'
     | 'CardDetailResponse'
     | 'ActionResponse'
+    | 'ClaimCandidateSearchResponse'
+    | 'ClaimCandidateMutationResponse'
     | 'CapacityResponse'
     | 'EvidencePresignUploadResponse'
+    | 'FeeRuleSearchResponse'
     | 'HandoffSearchResponse'
     | 'HandoffMutationResponse'
     | 'VisitModeView'
@@ -59,6 +62,36 @@ export const PHOS_API_ROUTES = [
     requires_idempotency_key: false,
     requires_expected_version: false,
     response_contract: 'CapacityResponse',
+  },
+  {
+    route_key: 'GET /claim-candidates',
+    method: 'GET',
+    path: '/claim-candidates',
+    lambda_handler: '@/phos/backend/claim-candidates-lambda#claimCandidateSearchHandler',
+    required_scopes: ['phos/claim-candidates.read'],
+    requires_idempotency_key: false,
+    requires_expected_version: false,
+    response_contract: 'ClaimCandidateSearchResponse',
+  },
+  {
+    route_key: 'POST /claim-candidates/{candidate_id}/exclude',
+    method: 'POST',
+    path: '/claim-candidates/{candidate_id}/exclude',
+    lambda_handler: '@/phos/backend/claim-candidates-lambda#excludeClaimCandidateHandler',
+    required_scopes: ['phos/claim-candidates.write'],
+    requires_idempotency_key: true,
+    requires_expected_version: true,
+    response_contract: 'ClaimCandidateMutationResponse',
+  },
+  {
+    route_key: 'GET /fee-rules',
+    method: 'GET',
+    path: '/fee-rules',
+    lambda_handler: '@/phos/backend/fee-rules-lambda#feeRuleSearchHandler',
+    required_scopes: ['phos/fee-rules.read'],
+    requires_idempotency_key: false,
+    requires_expected_version: false,
+    response_contract: 'FeeRuleSearchResponse',
   },
   {
     route_key: 'GET /visit-packets/{packet_id}/visit-mode',

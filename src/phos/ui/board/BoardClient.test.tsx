@@ -36,7 +36,7 @@ import type {
   TagView,
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
-import type { PhosApiClient } from '@/phos/api/types';
+import type { PhosApiClient, PhosOfflineActionQueue } from '@/phos/api/types';
 import { PhosApiError } from '@/phos/api/types';
 import { BoardClient } from './BoardClient';
 
@@ -782,5 +782,76 @@ describe('BoardClient', () => {
     );
     expect(screen.getByText('差分確認')).toBeTruthy();
     expect(screen.queryByText('調剤')).toBeNull();
+  });
+
+  it('queues offline-allowed primary action network failures without advancing the card', async () => {
+    const offlineItem = {
+      ...item,
+      next_action: {
+        ...nextAction,
+        offline_allowed: true,
+      },
+    } satisfies CardBoardItemView;
+    const offlineActionQueue: PhosOfflineActionQueue = {
+      enqueueCardAction: vi.fn(async () => ({ queue_id: 1 })),
+    };
+    const apiClient = client({
+      executeCardAction: vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    });
+
+    render(
+      <BoardClient
+        client={apiClient}
+        initialItems={[offlineItem]}
+        offlineActionQueue={offlineActionQueue}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('オフラインキューに保存しました。オンライン復帰後に同期します。'),
+      ).toBeTruthy(),
+    );
+    expect(offlineActionQueue.enqueueCardAction).toHaveBeenCalledWith({
+      card_id: 'card_1',
+      request: expect.objectContaining({
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        client_version: 1,
+      }),
+      offline_op_class: 'BLOCKING',
+    });
+    expect(screen.getByText('差分確認')).toBeTruthy();
+    expect(screen.queryByText('調剤')).toBeNull();
+  });
+
+  it('does not queue offline-disallowed primary action network failures', async () => {
+    const offlineActionQueue: PhosOfflineActionQueue = {
+      enqueueCardAction: vi.fn(async () => ({ queue_id: 1 })),
+    };
+    const apiClient = client({
+      executeCardAction: vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    });
+
+    render(
+      <BoardClient
+        client={apiClient}
+        initialItems={[item]}
+        offlineActionQueue={offlineActionQueue}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('通信できません。再試行してください。')).toBeTruthy(),
+    );
+    expect(offlineActionQueue.enqueueCardAction).not.toHaveBeenCalled();
+    expect(screen.getByText('差分確認')).toBeTruthy();
   });
 });
