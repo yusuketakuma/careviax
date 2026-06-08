@@ -89,6 +89,28 @@ describe('buildMedicationIssueCandidatesFromJahisSupplementalRecords', () => {
     });
     expect(candidates[1]?.data.description).toContain('[qr_supplemental:intake_1:31:31]');
   });
+
+  it('separates allergy-like and lab-like free text into explicit review candidates', () => {
+    const candidates = buildMedicationIssueCandidatesFromJahisSupplementalRecords({
+      ...baseArgs,
+      records: [
+        record('411', 'ペニシリンで発疹あり。アレルギー疑い。'),
+        record('601', 'eGFR 35、Cr 1.8。腎機能確認が必要。'),
+      ],
+    });
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0]?.data).toMatchObject({
+      category: 'side_effect',
+      priority: 'high',
+      title: expect.stringContaining('アレルギー・副作用歴確認候補'),
+    });
+    expect(candidates[1]?.data).toMatchObject({
+      category: 'other',
+      priority: 'medium',
+      title: expect.stringContaining('検査値・腎機能確認候補'),
+    });
+  });
 });
 
 describe('createMedicationIssueCandidatesFromJahisSupplementalRecords', () => {

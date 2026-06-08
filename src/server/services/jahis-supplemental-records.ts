@@ -12,6 +12,8 @@ const CLINICAL_NOTE_PATTERN =
   /(残薬|飲み忘れ|飲忘れ|服用中断|中断|自己判断|副作用|眠気|眠く|ふらつき|めまい|吐き気|発疹|かゆみ|アレルギ|アナフィラ|喘息|息苦し|eGFR|egfr|Cr|クレアチニン|K値|カリウム|PT-?INR|INR|検査値|腎機能)/i;
 const SIDE_EFFECT_PATTERN =
   /(副作用|眠気|眠く|ふらつき|めまい|吐き気|発疹|かゆみ|アレルギ|アナフィラ|喘息|息苦し)/i;
+const ALLERGY_PATTERN = /(アレルギ|アナフィラ|発疹|喘息|息苦し)/i;
+const LAB_PATTERN = /(eGFR|egfr|Cr|クレアチニン|K値|カリウム|PT-?INR|INR|検査値|腎機能)/i;
 const ADHERENCE_PATTERN = /(残薬|飲み忘れ|飲忘れ|服用中断|中断|自己判断)/;
 
 function buildSupplementalRecordText(record: JahisSupplementalRecord) {
@@ -38,6 +40,14 @@ function classifySupplementalRecordIssue(record: JahisSupplementalRecord) {
   }
   if (record.recordType !== '421' && !CLINICAL_NOTE_PATTERN.test(text)) return null;
 
+  if (ALLERGY_PATTERN.test(text)) {
+    return {
+      category: 'side_effect' as const,
+      priority: 'high' as const,
+      title: `QR由来のアレルギー・副作用歴確認候補: ${record.recordLabel}`,
+    };
+  }
+
   if (SIDE_EFFECT_PATTERN.test(text)) {
     return {
       category: 'side_effect' as const,
@@ -51,6 +61,14 @@ function classifySupplementalRecordIssue(record: JahisSupplementalRecord) {
       category: 'adherence' as const,
       priority: 'medium' as const,
       title: `QR由来の服薬状況確認候補: ${record.recordLabel}`,
+    };
+  }
+
+  if (LAB_PATTERN.test(text)) {
+    return {
+      category: 'other' as const,
+      priority: 'medium' as const,
+      title: `QR由来の検査値・腎機能確認候補: ${record.recordLabel}`,
     };
   }
 

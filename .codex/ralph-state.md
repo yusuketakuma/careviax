@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-170200
+
+- current task: make QR-derived allergy-like and lab-like free text candidates explicit instead of generic review notes
+- files inspected: supplemental-record candidate classifier/tests and current MedicationIssue category constraints
+- files changed: `src/server/services/jahis-supplemental-records.ts`, `src/server/services/jahis-supplemental-records.test.ts`, `.codex/ralph-state.md`
+- bugs found: QR free text containing allergy-like history or lab/renal values was eligible for review candidate creation but could be titled as a generic confirmation item, making triage weaker
+- security risks found: allergy/lab text still remains review-only and is not auto-written into patient allergy or lab observation master data; high-risk allergy-like wording is highlighted with high priority for pharmacist confirmation
+- performance issues found: only in-memory regex classification over already-parsed QR supplemental records changed
+- validation commands: Prettier for touched files; focused Vitest for supplemental service; targeted ESLint; `tsc --noEmit`; `git diff --check`
+- validation results: focused Vitest passed with 1 file / 6 tests; ESLint passed; TypeScript passed; whitespace diff check passed
+- remaining work: confirmed candidate-to-master workflows remain open for Patient allergy/LabObservation and MedicationProfile/CDS; PCA return inspection/maintenance/billing lifecycle and external migration checksum planning remain open
+- next action: commit this classifier hardening slice, then continue with PCA lifecycle/billing or candidate-to-master workflows.
+
 ### 20260608-170000
 
 - current task: preserve and route prescription QR insurance/public-subsidy metadata as intake sidecar records in both QR confirm paths
