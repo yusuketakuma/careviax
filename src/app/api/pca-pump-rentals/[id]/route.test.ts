@@ -163,6 +163,32 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects marking a rental returned without a returned date', async () => {
+    const response = await PATCH(createRequest({ status: 'returned' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '返却済みにする場合は返却日が必須です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a returned date without returned status', async () => {
+    const response = await PATCH(createRequest({ returned_at: '2026-06-18' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '返却日は返却済み状態でのみ指定できます',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('marks the pump available when the returned rental is the only open rental', async () => {
     const response = await PATCH(
       createRequest({

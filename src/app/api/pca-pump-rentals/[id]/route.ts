@@ -82,6 +82,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       returned_at: ['返却日は貸出日以降の日付を指定してください'],
     });
   }
+  const effectiveStatus = parsed.data.status ?? existing.status;
+  if (effectiveStatus === 'returned' && !effectiveReturnedAt) {
+    return validationError('返却済みにする場合は返却日が必須です', {
+      returned_at: ['返却済みにする場合は返却日が必須です'],
+    });
+  }
+  if (effectiveReturnedAt && effectiveStatus !== 'returned') {
+    return validationError('返却日は返却済み状態でのみ指定できます', {
+      returned_at: ['返却日は返却済み状態でのみ指定できます'],
+      status: ['返却日を指定する場合は状態を返却済みにしてください'],
+    });
+  }
 
   if (parsed.data.institution_id) {
     const institution = await prisma.prescriberInstitution.findFirst({
