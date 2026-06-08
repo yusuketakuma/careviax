@@ -185,6 +185,29 @@ describe('AuroraFeeRulesRepository', () => {
     );
   });
 
+  it('rejects FeeRule DSL rows that reference fields outside the PH-OS fact allowlist', async () => {
+    const { pool } = client([
+      {
+        rule_id: 'rule_bad_field',
+        rule_version_id: 'rv_bad_field',
+        fee_code: 'M998',
+        fee_label: 'bad field fee',
+        tenant_scope: 'SYSTEM',
+        revision_code: '2026',
+        active_from: '2026-04-01',
+        active_to: null,
+        condition: { op: 'EQ', field: 'constructor.prototype.polluted', value: true },
+        evidence_requirements: [],
+        source_refs: [],
+      },
+    ]);
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    await expect(repository.searchFeeRules(ctx, { limit: 50 })).rejects.toThrow(
+      'Unknown FeeRule DSL field',
+    );
+  });
+
   it('rejects unsafe tenant ids before opening an Aurora connection', async () => {
     const { pool } = client();
     const repository = new AuroraFeeRulesRepository(pool);

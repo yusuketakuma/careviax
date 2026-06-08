@@ -7,6 +7,7 @@ import {
   type FeeRuleView,
   type SourceRef,
 } from '@/phos/contracts/phos_contracts';
+import { assertFeeRuleConditionAllowedFields } from '@/phos/domain/claim/feeRuleDsl';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
 import type { TenantContext } from './tenant-context';
 
@@ -222,6 +223,8 @@ function asSourceRefs(value: unknown): SourceRef[] {
 }
 
 function mapFeeRule(row: FeeRuleRow): FeeRuleView {
+  const condition = asCondition(row.condition);
+  assertFeeRuleConditionAllowedFields(condition);
   return {
     rule_id: row.rule_id,
     rule_version_id: row.rule_version_id,
@@ -231,7 +234,7 @@ function mapFeeRule(row: FeeRuleRow): FeeRuleView {
     revision_code: row.revision_code,
     active_from: asDateString(row.active_from),
     ...(row.active_to ? { active_to: asDateString(row.active_to) } : {}),
-    condition: asCondition(row.condition),
+    condition,
     evidence_requirements: asEvidenceRequirements(row.evidence_requirements),
     source_refs: asSourceRefs(row.source_refs),
   };

@@ -13,6 +13,20 @@ export type FeeRuleEvaluation = {
   candidate_status: ClaimCandidateStatusType;
 };
 
+export const PHOS_FEE_RULE_ALLOWED_FACT_FIELDS = new Set<string>([
+  'visit_record_id',
+  'visit_type',
+  'same_building_count',
+  'has_management_plan',
+  'has_required_evidence',
+  'facility_resident_count',
+  'is_first_visit',
+  'days_since_last_visit',
+  'has_high_risk_medication',
+  'has_residual_medication',
+  'requires_care_team_report',
+]);
+
 export class FeeRuleDslError extends Error {
   constructor(message: string) {
     super(message);
@@ -81,6 +95,13 @@ export function evaluateFeeRuleCondition(
       throw new FeeRuleDslError(`Unsupported FeeRule DSL operator: ${JSON.stringify(unreachable)}`);
     }
   }
+}
+
+export function assertFeeRuleConditionAllowedFields(
+  condition: FeeRuleConditionDsl,
+  allowedFields: ReadonlySet<string> = PHOS_FEE_RULE_ALLOWED_FACT_FIELDS,
+): void {
+  evaluateFeeRuleCondition(condition, {}, allowedFields);
 }
 
 export function evaluateFeeRuleCandidate(input: {
