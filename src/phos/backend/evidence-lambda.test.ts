@@ -1,3 +1,4 @@
+import { TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EvidenceUploadPresigner } from './evidence-handlers';
 import {
@@ -59,9 +60,15 @@ describe('PH-OS evidence Lambda composition', () => {
 
   it('wires POST /evidence/presign-upload through tenant context into the presigner', async () => {
     const fakePresigner = presigner();
+    const send = vi.fn(async (command: TransactWriteItemsCommand) => {
+      expect(command).toBeInstanceOf(TransactWriteItemsCommand);
+      return {};
+    });
     const handler = createEvidencePresignUploadLambdaHandler({
       presigner: fakePresigner,
+      dynamo_client: { send },
       generateEvidenceId: () => 'evidence_1',
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
     const response = await handler(event());
@@ -73,6 +80,7 @@ describe('PH-OS evidence Lambda composition', () => {
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
     });
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it('fails closed when the production bucket configuration is missing', () => {

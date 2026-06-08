@@ -14,6 +14,7 @@ import {
 } from './s3-evidence-key';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { toErrorLambdaResponse } from './error-response';
+import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
 import type { PhosHandler } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
@@ -139,6 +140,7 @@ export function createEvidencePresignUploadHandler(
   options: {
     generateEvidenceId?: () => string;
     max_size_bytes?: number;
+    upload_intent_store?: EvidenceUploadIntentStore;
   } = {},
 ): PhosHandler {
   return async ({ ctx, body }) => {
@@ -161,6 +163,16 @@ export function createEvidencePresignUploadHandler(
         mime_type: request.mime_type,
         sha256: request.sha256,
         size_bytes: request.size_bytes,
+      });
+      await options.upload_intent_store?.recordUploadIntent(ctx, {
+        evidence_id,
+        card_id: request.card_id,
+        evidence_type: request.evidence_type,
+        s3_key,
+        mime_type: request.mime_type,
+        sha256: request.sha256,
+        size_bytes: request.size_bytes,
+        expires_in_seconds: presigned.expires_in_seconds,
       });
 
       logEvidencePresign({ ctx, card_id: request.card_id, evidence_id });

@@ -6,6 +6,7 @@ import {
 import { withTenantContext } from './lambda-handler';
 import type { PhosHttpEvent } from './lambda-handler';
 import { createInMemoryObservabilitySink } from './observability';
+import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
 
 const baseBody = {
   card_id: 'card_1',
@@ -63,10 +64,14 @@ describe('PH-OS evidence presign upload handler', () => {
 
   it('builds a tenant-prefixed S3 key and presigns PUT without accepting client s3_key', async () => {
     const fakePresigner = presigner();
+    const uploadIntentStore: EvidenceUploadIntentStore = {
+      recordUploadIntent: vi.fn(async () => {}),
+    };
     const handler = withTenantContext(
       createEvidencePresignUploadHandler(fakePresigner, {
         generateEvidenceId: () => 'evidence_1',
         max_size_bytes: 2048,
+        upload_intent_store: uploadIntentStore,
       }),
     );
 
@@ -79,6 +84,22 @@ describe('PH-OS evidence presign upload handler', () => {
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
     });
+    expect(uploadIntentStore.recordUploadIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_001',
+      }),
+      {
+        evidence_id: 'evidence_1',
+        card_id: 'card_1',
+        evidence_type: 'PHOTO',
+        s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        size_bytes: 1024,
+        expires_in_seconds: 300,
+      },
+    );
     expect(JSON.parse(response.body)).toEqual({
       request_id: 'req_1',
       evidence_id: 'evidence_1',
@@ -158,6 +179,30 @@ describe('PH-OS evidence presign upload handler', () => {
         error_code: 'VALIDATION_ERROR',
       }),
     );
+  });
+
+  it('does not return a presign success response when upload intent persistence fails', async () => {
+    const fakePresigner = presigner();
+    const uploadIntentStore: EvidenceUploadIntentStore = {
+      recordUploadIntent: vi.fn(async () => {
+        throw new Error('dynamo unavailable');
+      }),
+    };
+    const handler = withTenantContext(
+      createEvidencePresignUploadHandler(fakePresigner, {
+        generateEvidenceId: () => 'evidence_1',
+        upload_intent_store: uploadIntentStore,
+      }),
+    );
+
+    const response = await handler(event());
+
+    expect(response.statusCode).toBe(500);
+    expect(JSON.parse(response.body)).toEqual({
+      request_id: 'req_1',
+      error_code: 'INTERNAL_ERROR',
+      message_key: 'api.error.internal',
+    });
   });
 
   it('requires evidence write scope', async () => {

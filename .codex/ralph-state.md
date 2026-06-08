@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-065300
+
+- current task: persist evidence presign success as tenant-scoped upload intent and card audit event
+- files inspected: `git status --short`, recent commits, PH-OS spec sections `2B.6 S3 evidence key contract`, `2B.7 CloudWatch Logs / Metrics / X-Ray`, action lifecycle row `UPLOAD_EVIDENCE -> evidence.saved`, `phos_card_event_logs` schema, `src/phos/backend/evidence-handlers.ts`, `src/phos/backend/evidence-lambda.ts`, `src/phos/backend/s3-evidence-key.ts`, existing evidence tests, and read-only subagent review findings for evidence success persistence
+- files changed: `src/phos/backend/evidence-upload-intent-store.ts`, `src/phos/backend/evidence-upload-intent-store.test.ts`, `src/phos/backend/evidence-handlers.ts`, `src/phos/backend/evidence-handlers.test.ts`, `src/phos/backend/evidence-lambda.ts`, `src/phos/backend/evidence-lambda.test.ts`, `.codex/ralph-state.md`
+- bugs found: evidence presign success returned a tenant-prefixed S3 key and URL but did not persist an `EVIDENCE` upload intent or card-scoped audit event, so `UPLOAD_EVIDENCE -> evidence.saved` had no durable backend proof and a returned URL could exist without an audit trail.
+- security risks found: presign success now records an `EVIDENCE` item and `EVIDENCE_PRESIGN_CREATED` `CARD_EVENT` in one tenant-scoped DynamoDB transaction. The persisted summary includes object key reference, mime type, sha256, size, and expiration but intentionally omits original file name, patient name, photo/image metadata, and report body. If persistence fails, the handler returns `500 INTERNAL_ERROR` rather than returning a successful presign response without audit persistence.
+- performance issues found: presign success adds one DynamoDB transaction containing two conditional Put items. No Scan, polling, broad query, or extra read was introduced.
+- validation commands: Prettier for evidence upload intent/handler/lambda files; focused `pnpm exec vitest run src/phos/backend/evidence-upload-intent-store.test.ts src/phos/backend/evidence-handlers.test.ts src/phos/backend/evidence-lambda.test.ts src/phos/backend/s3-evidence-key.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for `CANCELLED`, removed helper/type names, planned route markers, and PH-OS UI/app Next `/api` usage; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; `pnpm build`
+- validation results: focused evidence Vitest passed with 4 files / 15 tests; TypeScript passed; PH-OS plus auth focused Vitest passed with 77 files / 349 tests; ESLint passed; whitespace diff check passed before this Ralph-state append; no-go grep returned zero for `CANCELLED`, removed helper/type names, planned route markers, and PH-OS UI/app Next `/api` usage; `disabled` grep only finds the static prohibition test and a test proving no disabled attribute is used; production build passed.
+- remaining work: concrete API Gateway/Lambda deployment IaC proof, live API Gateway/Lambda runtime proof, offline replay scheduler/status proof, claim candidate replay semantics, PR-15 E2E/no-go evidence, and legacy API route isolation/migration remain incomplete.
+- next action: move to API Gateway/Lambda IaC and runtime proof, because backend route manifest and composed Lambda exports now have stronger audit/observability coverage.
+
 ### 20260609-064600
 
 - current task: wire PH-OS Lambda factories to shared observability dependencies and add action latency/action annotation coverage
