@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-065527
+
+- current task: remove stale PH-OS API deployment concepts and add concrete API Gateway/Lambda IaC proof derived from the route manifest
+- files inspected: `git status --short`, `/Users/yusuke/Desktop/PH-OS_Final_Review_Spec_v1.1.md` API Gateway/Lambda/No-Go sections, `src/phos/infra/api-gateway-routes.ts`, `src/phos/infra/api-gateway-routes.test.ts`, `package.json`, `.codex/ralph-state.md`, `tools/infra/websocket/template.yaml`, and representative `src/phos/backend/*-lambda.ts` composed exports
+- files changed: `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `.codex/ralph-state.md`
+- bugs found: PH-OS route manifest proved composed Lambda exports, but there was no concrete API Gateway HTTP API/Lambda deployment artifact tying every business route to JWT-authorized API Gateway routes, Node.js 24 Lambda functions, proxy integrations, scoped invoke permissions, production env vars, and active tracing. This left the old planned/status-style route inventory and Next.js API fallback risks as policy-only checks.
+- security risks found: deployment bindings are now derived only from `PHOS_API_ROUTES`; invalid or non-`@/phos/backend/*-lambda#export` handler references throw; every emitted route uses `AuthorizationType: JWT`, manifest scopes, Cognito issuer/audience parameters, API Gateway proxy integration, Lambda scoped invoke permission, and no Next.js `src/app/api` handler reference. Lambda env includes the PH-OS DynamoDB table, evidence bucket, security event table, and Dynamo security-event persistence flag.
+- performance issues found: added IaC generation is static in-memory metadata. No runtime query, Scan, network call, polling, rendering, or database work was introduced.
+- validation commands: Prettier for new infra template/test; focused `pnpm exec vitest run src/phos/infra/api-gateway-routes.test.ts src/phos/infra/api-gateway-lambda-template.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; no-go grep for `CANCELLED`, removed helper/type names, planned route markers, and PH-OS UI/app Next `/api` usage; `rg -n "\\bdisabled\\b|disabled=" src/phos src/app/'(phos)'`; `pnpm build`
+- validation results: focused infra Vitest passed with 2 files / 20 tests; TypeScript passed; PH-OS plus auth focused Vitest passed with 78 files / 356 tests; ESLint passed; whitespace diff check passed; no-go grep returned zero for `CANCELLED`, removed helper/type names, planned route markers, and PH-OS UI/app Next `/api` usage after avoiding self-detection in the new prohibition test; `disabled` grep only finds the static prohibition test and a test proving no disabled attribute is used; production build passed.
+- remaining work: live API Gateway/Lambda runtime proof, offline replay scheduler/status proof, claim candidate replay semantics, PR-15 E2E/no-go evidence, and legacy API route isolation/migration remain incomplete.
+- next action: add runtime proof that the generated API Gateway route bindings invoke the composed Lambda handlers with API Gateway HTTP API v2 events and tenant-scoped dependencies, then continue to offline replay and PR-15 no-go evidence.
+
 ### 20260609-065300
 
 - current task: persist evidence presign success as tenant-scoped upload intent and card audit event
