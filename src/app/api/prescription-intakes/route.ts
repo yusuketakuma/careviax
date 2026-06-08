@@ -31,6 +31,7 @@ import {
 import {
   attachJahisPrescriptionInsuranceSidecarToIntake,
   attachJahisSupplementalRecordsToIntake,
+  createMedicationIssueCandidatesFromPrescriptionInsurance,
   createMedicationIssueCandidatesFromJahisSupplementalRecords,
   readJahisPrescriptionInsurance,
   readJahisSupplementalRecords,
@@ -577,6 +578,15 @@ export const POST = withAuth(
             patientId: patient_id,
             qrDraftId: qrDraft.id,
             prescriptionIntakeId: intakeResult.intake.id,
+            prescriptionInsurance,
+          });
+
+          await createMedicationIssueCandidatesFromPrescriptionInsurance(tx, {
+            orgId: req.orgId,
+            patientId: patient_id,
+            caseId: intakeInput.case_id,
+            prescriptionIntakeId: intakeResult.intake.id,
+            identifiedBy: req.userId,
             prescriptionInsurance,
           });
 

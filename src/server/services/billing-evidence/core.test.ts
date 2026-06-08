@@ -149,6 +149,9 @@ function makeTx(overrides: Record<string, unknown> = {}) {
     prescriptionIntake: {
       findFirst: vi.fn().mockResolvedValue(null),
     },
+    medicationIssue: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     businessHoliday: {
       findFirst: vi.fn().mockResolvedValue(null),
     },
@@ -767,6 +770,38 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       }),
     );
     expect(upsertOperationalTaskMock).toHaveBeenCalled();
+  });
+
+  it('sets claimable=false when QR insurance review candidates remain unresolved', async () => {
+    const tx = makeTx({
+      medicationIssue: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'issue_qr_insurance_1',
+          title: 'QR由来の保険情報確認候補',
+        }),
+      },
+      billingEvidence: {
+        upsert: vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: false }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: false,
+          exclusion_reason:
+            '処方QR由来の保険・公費情報確認候補が未解決です。資格確認結果と照合してから請求してください',
+          same_month_exclusion_flags: expect.objectContaining({
+            qr_insurance_review_pending: true,
+          }),
+        }),
+      }),
+    );
   });
 
   // ── 3. Missing management plan → blocker ──

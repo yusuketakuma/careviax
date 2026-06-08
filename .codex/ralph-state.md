@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260608-182000
+
+- current task: route prescription QR insurance/public-subsidy sidecars into masked review candidates and block billing while unresolved
+- files inspected: prescription QR insurance sidecar builder/tests, QR draft confirm route/tests, normal prescription-intake QR import route/tests, billing evidence core/tests, patient detail/dispense/visit brief sidecar exposure paths, and privacy/billing subagent findings
+- files changed: `src/server/services/jahis-supplemental-records.ts`, `src/server/services/jahis-supplemental-records.test.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `src/server/services/billing-evidence.test.ts`, `.codex/ralph-state.md`
+- bugs found: prescription QR insurance/public-subsidy sidecars were preserved but did not create a work queue item, and billing evidence could still look claimable while QR-derived payer information was waiting for review. Sidecar `summary/raw_line` also exposed full payer/member/recipient identifiers to display and AI-summary paths.
+- security risks found: sidecar `summary/raw_line` now uses masked identifiers, while structured payload remains available for restricted internal review. New MedicationIssue candidates explicitly state that PatientInsurance is not auto-updated. Billing evidence now treats unresolved QR insurance/public-subsidy review issues as claim blockers, avoiding silent close/export while payer data is unreviewed.
+- performance issues found: candidate creation is bounded to one insurance candidate plus public-subsidy candidates from the parsed QR payload, deduped by marker. Billing evidence adds one open/in-progress MedicationIssue lookup per evidence upsert; no broad scans or external calls were added.
+- validation commands: Prettier for touched files; focused Vitest for JAHIS supplemental records, billing evidence core/service, QR confirm route, prescription-intakes route, QR allergy/lab/OTC promotion, MedicationIssue route, and CDS checker; targeted ESLint; `tsc --noEmit`; `git diff --check`; `build:e2e:local`; local server restart on `localhost:3012`; `curl /api/health`; `medical-ui:e2e:preflight`
+- validation results: Prettier completed; focused Vitest passed with 10 files / 142 tests; ESLint passed; TypeScript passed; whitespace diff check passed; E2E production build passed; local server restarted successfully; health returned ok; medical UI preflight passed with app port 3012, DB port 5433, 77 org-scoped RLS tables, and 17 audit triggers verified
+- remaining work: PatientInsurance confirmed-record promotion remains intentionally unimplemented pending a dedicated review UI/action; insurance sidecar duplicate suppression across different intake IDs should eventually use structured source keys; PCA return inspection/accessory/maintenance/billing remains the largest remaining business workflow slice
+- next action: commit this QR insurance review/billing blocker slice, then continue with PCA return inspection/maintenance workflow.
+
 ### 20260608-181100
 
 - current task: add an explicit QR OTC/general-drug candidate promotion path into MedicationProfile without treating generic issue resolution as current-medication confirmation

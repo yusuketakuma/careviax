@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildPrescriptionInsuranceSidecarRows,
   buildMedicationIssueCandidatesFromJahisSupplementalRecords,
+  createMedicationIssueCandidatesFromPrescriptionInsurance,
   createMedicationIssueCandidatesFromJahisSupplementalRecords,
   readJahisPrescriptionInsurance,
 } from './jahis-supplemental-records';
@@ -139,6 +140,89 @@ describe('createMedicationIssueCandidatesFromJahisSupplementalRecords', () => {
   });
 });
 
+describe('createMedicationIssueCandidatesFromPrescriptionInsurance', () => {
+  it('creates masked review candidates for prescription QR insurance and public subsidy sidecars', async () => {
+    const createMany = vi.fn().mockResolvedValue({ count: 2 });
+    const tx = {
+      medicationIssue: {
+        findMany: vi.fn().mockResolvedValue([]),
+        createMany,
+      },
+    };
+
+    await createMedicationIssueCandidatesFromPrescriptionInsurance(tx as never, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseId: 'case_1',
+      prescriptionIntakeId: 'intake_1',
+      identifiedBy: 'user_1',
+      prescriptionInsurance: {
+        insuranceType: '01',
+        insurerNumber: '06123456',
+        symbol: 'ABC123',
+        number: '987654321',
+        branchNumber: '01',
+        patientCopayRatio: 30,
+        publicSubsidies: [
+          {
+            rank: 1,
+            payerNumber: '12345678',
+            recipientNumber: '87654321',
+          },
+        ],
+      },
+    });
+
+    expect(createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          title: 'QR由来の保険情報確認候補',
+          category: 'other',
+          description: expect.stringContaining('[qr_prescription_insurance:intake_1:insurance]'),
+        }),
+        expect.objectContaining({
+          title: 'QR由来の公費情報確認候補: 公費1',
+          description: expect.stringContaining('[qr_prescription_public_subsidy:intake_1:1]'),
+        }),
+      ],
+    });
+    const descriptions = createMany.mock.calls[0]?.[0].data.map(
+      (row: { description: string }) => row.description,
+    );
+    expect(descriptions?.join('\n')).toContain('保険者番号 ****3456');
+    expect(descriptions?.join('\n')).toContain('受給者番号 ****4321');
+    expect(descriptions?.join('\n')).not.toContain('06123456');
+    expect(descriptions?.join('\n')).not.toContain('87654321');
+  });
+
+  it('skips duplicate insurance review candidates with the same marker', async () => {
+    const createMany = vi.fn();
+    const tx = {
+      medicationIssue: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            description: '[qr_prescription_insurance:intake_1:insurance]\n既存候補',
+          },
+        ]),
+        createMany,
+      },
+    };
+
+    await createMedicationIssueCandidatesFromPrescriptionInsurance(tx as never, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      prescriptionIntakeId: 'intake_1',
+      identifiedBy: 'user_1',
+      prescriptionInsurance: {
+        insurerNumber: '06123456',
+        publicSubsidies: [],
+      },
+    });
+
+    expect(createMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('prescription insurance sidecar helpers', () => {
   it('parses prescription QR insurance metadata and builds intake sidecar rows', () => {
     const prescriptionInsurance = readJahisPrescriptionInsurance({
@@ -165,13 +249,19 @@ describe('prescription insurance sidecar helpers', () => {
     expect(rows[0]).toMatchObject({
       record_type: 'prescription_insurance',
       record_label: '処方QR保険情報',
-      summary: expect.stringContaining('保険者番号 06012345'),
+      summary: expect.stringContaining('保険者番号 ****2345'),
+      raw_line: expect.stringContaining('番号 ***4567'),
       prescription_intake_id: 'intake_1',
     });
+    expect(rows[0]?.summary).not.toContain('06012345');
+    expect(rows[0]?.summary).not.toContain('1234567');
     expect(rows[1]).toMatchObject({
       record_type: 'prescription_public_subsidy',
       record_label: '処方QR公費情報',
-      summary: expect.stringContaining('受給者番号 7654321'),
+      summary: expect.stringContaining('受給者番号 ***4321'),
+      raw_line: expect.stringContaining('負担者番号 ****3456'),
     });
+    expect(rows[1]?.summary).not.toContain('54123456');
+    expect(rows[1]?.summary).not.toContain('7654321');
   });
 });

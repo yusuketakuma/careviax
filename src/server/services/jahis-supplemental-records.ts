@@ -223,16 +223,96 @@ export function readJahisPrescriptionInsurance(value: unknown): JahisPrescriptio
   return hasInsuranceValue || publicSubsidies.length > 0 ? insurance : null;
 }
 
+function maskIdentifier(value: string | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) return '*'.repeat(trimmed.length);
+  return `${'*'.repeat(Math.max(0, trimmed.length - 4))}${trimmed.slice(-4)}`;
+}
+
 function buildInsuranceSummary(insurance: JahisPrescriptionInsurance) {
   return [
-    insurance.insurerNumber ? `保険者番号 ${insurance.insurerNumber}` : null,
-    insurance.symbol ? `記号 ${insurance.symbol}` : null,
-    insurance.number ? `番号 ${insurance.number}` : null,
-    insurance.branchNumber ? `枝番 ${insurance.branchNumber}` : null,
+    insurance.insurerNumber ? `保険者番号 ${maskIdentifier(insurance.insurerNumber)}` : null,
+    insurance.symbol ? `記号 ${maskIdentifier(insurance.symbol)}` : null,
+    insurance.number ? `番号 ${maskIdentifier(insurance.number)}` : null,
+    insurance.branchNumber ? `枝番 ${maskIdentifier(insurance.branchNumber)}` : null,
     insurance.patientCopayRatio != null ? `負担割合 ${insurance.patientCopayRatio}%` : null,
   ]
     .filter(Boolean)
     .join(' / ');
+}
+
+function buildPrescriptionInsuranceIssueCandidates(args: {
+  orgId: string;
+  patientId: string;
+  caseId?: string | null;
+  prescriptionIntakeId: string;
+  identifiedBy: string;
+  prescriptionInsurance: JahisPrescriptionInsurance | null;
+}) {
+  const insurance = args.prescriptionInsurance;
+  if (!insurance) return [];
+
+  const candidates: Array<{
+    marker: string;
+    data: Prisma.MedicationIssueCreateManyInput;
+  }> = [];
+
+  const insuranceDetails = [
+    insurance.insurerNumber ? `保険者番号 ${maskIdentifier(insurance.insurerNumber)}` : null,
+    insurance.symbol ? `記号 ${maskIdentifier(insurance.symbol)}` : null,
+    insurance.number ? `番号 ${maskIdentifier(insurance.number)}` : null,
+    insurance.branchNumber ? `枝番 ${maskIdentifier(insurance.branchNumber)}` : null,
+    insurance.patientCopayRatio != null ? `負担割合 ${insurance.patientCopayRatio}%` : null,
+  ].filter(Boolean);
+  if (insuranceDetails.length > 0) {
+    const marker = `[qr_prescription_insurance:${args.prescriptionIntakeId}:insurance]`;
+    candidates.push({
+      marker,
+      data: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: args.caseId ?? null,
+        title: 'QR由来の保険情報確認候補',
+        description: [
+          marker,
+          '処方QRから読み取った保険情報です。PatientInsuranceへは自動反映していません。請求前に原本・資格確認結果と照合してください。',
+          ...insuranceDetails,
+        ].join('\n'),
+        status: 'open',
+        priority: 'medium',
+        category: 'other',
+        identified_by: args.identifiedBy,
+      },
+    });
+  }
+
+  for (const subsidy of insurance.publicSubsidies) {
+    const marker = `[qr_prescription_public_subsidy:${args.prescriptionIntakeId}:${subsidy.rank}]`;
+    candidates.push({
+      marker,
+      data: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: args.caseId ?? null,
+        title: `QR由来の公費情報確認候補: 公費${subsidy.rank}`,
+        description: [
+          marker,
+          '処方QRから読み取った公費情報です。PatientInsuranceへは自動反映していません。請求前に受給者証・資格確認結果と照合してください。',
+          `負担者番号 ${maskIdentifier(subsidy.payerNumber)}`,
+          subsidy.recipientNumber ? `受給者番号 ${maskIdentifier(subsidy.recipientNumber)}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        status: 'open',
+        priority: 'medium',
+        category: 'other',
+        identified_by: args.identifiedBy,
+      },
+    });
+  }
+
+  return candidates;
 }
 
 export function buildPrescriptionInsuranceSidecarRows(args: {
@@ -274,8 +354,8 @@ export function buildPrescriptionInsuranceSidecarRows(args: {
   for (const subsidy of insurance.publicSubsidies) {
     const summary = [
       `公費${subsidy.rank}`,
-      `負担者番号 ${subsidy.payerNumber}`,
-      subsidy.recipientNumber ? `受給者番号 ${subsidy.recipientNumber}` : null,
+      `負担者番号 ${maskIdentifier(subsidy.payerNumber)}`,
+      subsidy.recipientNumber ? `受給者番号 ${maskIdentifier(subsidy.recipientNumber)}` : null,
     ]
       .filter(Boolean)
       .join(' / ');
@@ -420,6 +500,44 @@ export async function createMedicationIssueCandidatesFromJahisSupplementalRecord
   },
 ) {
   const candidates = buildMedicationIssueCandidatesFromJahisSupplementalRecords(args);
+  if (candidates.length === 0) return { count: 0 };
+
+  const existingIssues = await tx.medicationIssue.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      status: { in: ['open', 'in_progress'] },
+      OR: candidates.map((candidate) => ({
+        description: { contains: candidate.marker },
+      })),
+    },
+    select: { description: true },
+  });
+  const existingDescriptions = existingIssues.map((issue) => issue.description);
+  const newCandidates = candidates.filter(
+    (candidate) =>
+      !existingDescriptions.some((description) => description.includes(candidate.marker)),
+  );
+
+  if (newCandidates.length === 0) return { count: 0 };
+
+  return tx.medicationIssue.createMany({
+    data: newCandidates.map((candidate) => candidate.data),
+  });
+}
+
+export async function createMedicationIssueCandidatesFromPrescriptionInsurance(
+  tx: Prisma.TransactionClient,
+  args: {
+    orgId: string;
+    patientId: string;
+    caseId?: string | null;
+    prescriptionIntakeId: string;
+    identifiedBy: string;
+    prescriptionInsurance: JahisPrescriptionInsurance | null;
+  },
+) {
+  const candidates = buildPrescriptionInsuranceIssueCandidates(args);
   if (candidates.length === 0) return { count: 0 };
 
   const existingIssues = await tx.medicationIssue.findMany({

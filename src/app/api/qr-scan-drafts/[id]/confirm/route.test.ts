@@ -380,7 +380,8 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           prescription_intake_id: 'intake_1',
           record_type: 'prescription_insurance',
           record_label: '処方QR保険情報',
-          summary: expect.stringContaining('保険者番号 06012345'),
+          summary: expect.stringContaining('保険者番号 ****2345'),
+          raw_line: expect.stringContaining('番号 ***4567'),
         }),
         expect.objectContaining({
           org_id: 'org_1',
@@ -389,7 +390,8 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           prescription_intake_id: 'intake_1',
           record_type: 'prescription_public_subsidy',
           record_label: '処方QR公費情報',
-          summary: expect.stringContaining('受給者番号 7654321'),
+          summary: expect.stringContaining('受給者番号 ***4321'),
+          raw_line: expect.stringContaining('負担者番号 ****3456'),
         }),
       ],
     });

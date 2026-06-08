@@ -134,6 +134,9 @@ type UpsertBillingEvidenceReader = HomeCareBillingRuleEngineTx & {
       emergency_category: string | null;
     } | null>;
   };
+  medicationIssue: {
+    findFirst(args: unknown): Promise<{ id: string; title: string } | null>;
+  };
   residence: {
     count(args: unknown): Promise<number>;
     findFirst(args: unknown): Promise<{
@@ -227,6 +230,7 @@ export type BillingEvidenceBlocker = {
     | 'report_delivery_incomplete'
     | 'care_certification_pending'
     | 'public_subsidy_application_pending'
+    | 'qr_insurance_review_pending'
     | 'outcome_not_claimable';
   reason: string;
   action_href: string;
@@ -878,6 +882,14 @@ function blockerDefinition(
         action_label: '公費資格を確認',
         severity: 'high',
       };
+    case 'qr_insurance_review_pending':
+      return {
+        key,
+        reason: fallbackReason ?? '処方QR由来の保険・公費情報確認候補が未解決です',
+        action_href: '/patients',
+        action_label: 'QR保険確認候補を確認',
+        severity: 'high',
+      };
     case 'outcome_not_claimable':
     default:
       return {
@@ -1031,6 +1043,27 @@ async function findPendingPublicSubsidyInsurance(
   });
 
   return record ?? null;
+}
+
+async function findOpenQrInsuranceReviewIssue(
+  tx: UpsertBillingEvidenceTx,
+  args: {
+    orgId: string;
+    patientId: string;
+  },
+) {
+  return tx.medicationIssue.findFirst({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      status: { in: ['open', 'in_progress'] },
+      OR: [
+        { title: { startsWith: 'QR由来の保険情報確認候補' } },
+        { title: { startsWith: 'QR由来の公費情報確認候補' } },
+      ],
+    },
+    select: { id: true, title: true },
+  });
 }
 
 export async function listBillingEvidenceBlockers(
@@ -1187,6 +1220,7 @@ export async function upsertBillingEvidenceForVisit(
     latestPrescriptionIntake,
     businessHoliday,
     jahisSupplementalRecords,
+    qrInsuranceReviewIssue,
   ] = await Promise.all([
     findActiveVisitConsent(tx, {
       orgId: args.orgId,
@@ -1296,6 +1330,10 @@ export async function upsertBillingEvidenceForVisit(
       select: { id: true },
     }),
     listJahisSupplementalRecordsForBilling(tx, {
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+    }),
+    findOpenQrInsuranceReviewIssue(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
     }),
@@ -1431,6 +1469,7 @@ export async function upsertBillingEvidenceForVisit(
     report_delivery_incomplete: !allReportsDelivered,
     care_certification_pending: careCertificationBlocker != null,
     public_subsidy_application_pending: publicSubsidyApplicationBlocker != null,
+    qr_insurance_review_pending: qrInsuranceReviewIssue != null,
     outcome_not_claimable: !isClaimableOutcome(visitRecord.outcome_status),
     building_patient_count: buildingPatientCount,
     monthly_visit_count: monthlyVisitCount,
@@ -1451,9 +1490,11 @@ export async function upsertBillingEvidenceForVisit(
               ? (careCertificationBlocker?.reason ?? '介護保険認定状況の確認が必要です')
               : exclusionFlags.public_subsidy_application_pending
                 ? (publicSubsidyApplicationBlocker?.reason ?? '公費資格の確認が必要です')
-                : exclusionFlags.outcome_not_claimable
-                  ? '訪問結果が算定対象外です'
-                  : null;
+                : exclusionFlags.qr_insurance_review_pending
+                  ? '処方QR由来の保険・公費情報確認候補が未解決です。資格確認結果と照合してから請求してください'
+                  : exclusionFlags.outcome_not_claimable
+                    ? '訪問結果が算定対象外です'
+                    : null;
 
   const claimable = exclusionReason == null;
 

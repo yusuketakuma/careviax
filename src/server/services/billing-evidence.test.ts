@@ -787,6 +787,9 @@ describe('billing-evidence service', () => {
       prescriptionIntake: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      medicationIssue: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       businessHoliday: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
@@ -919,6 +922,9 @@ describe('billing-evidence service', () => {
       prescriptionIntake: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      medicationIssue: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       businessHoliday: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
@@ -1040,6 +1046,9 @@ describe('billing-evidence service', () => {
           prescription_category: 'emergency',
           emergency_category: 'planned_disease_exacerbation',
         }),
+      },
+      medicationIssue: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       businessHoliday: {
         findFirst: vi.fn().mockResolvedValue(null),
