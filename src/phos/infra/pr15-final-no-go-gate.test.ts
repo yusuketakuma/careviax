@@ -696,4 +696,26 @@ describe('PH-OS Final No-Go gate', () => {
       /does not show photo capture outside the evidence upload step/,
     ]);
   });
+
+  it('keeps the PH-OS Handoff Queue route wired to API Gateway state', () => {
+    expectEvidence('src/app/(phos)/handoffs/page.tsx', [
+      /HandoffsPageClient/,
+      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+      /PH-OS Handoffs/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/HandoffsPageClient.tsx', [
+      /getHandoffs\(\{ status: HandoffStatus\.OPEN, assignee: 'ME' \}\)/,
+      /getHandoffs\(\{ status: HandoffStatus\.IN_REVIEW, assignee: 'ME' \}\)/,
+      /router\.push\(`\/board\?card=\$\{encodeURIComponent\(cardId\)\}`\)/,
+      /openHandoff/,
+      /resolveHandoff/,
+      /returnHandoff/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/HandoffsPageClient.test.tsx', [
+      /loads OPEN and IN_REVIEW pharmacist handoffs/,
+      /opens cards back on the PH-OS Board deep link/,
+      /resolves IN_REVIEW handoffs/,
+      /inline configuration errors/,
+    ]);
+  });
 });

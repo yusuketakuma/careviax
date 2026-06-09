@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-142850
+
+- current task: implement PH-OS `/handoffs` route for the dedicated Handoff Queue
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/app/(phos)/board/page.tsx`, `src/app/(phos)/capacity/page.tsx`, `src/app/(dashboard)/handoff/page.tsx`, `src/app/(dashboard)/reports/page.tsx`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/app/(phos)/handoffs/page.tsx`, `src/phos/ui/handoff/HandoffsPageClient.tsx`, `src/phos/ui/handoff/HandoffsPageClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: PH-OS had route-visible `/board` and `/capacity`, while UIUX v1.1 requires `/handoffs`. HandoffQueue existed only as a Board-embedded surface, so users could not open a dedicated pharmacist Handoff Queue route backed by PH-OS API Gateway state.
+- security risks found: no backend auth, authorization, tenant boundary, persistence, report send, evidence upload, database, S3, or logging behavior changed. The client uses the existing PH-OS API client/token path, loads only `assignee: 'ME'` OPEN/IN_REVIEW handoffs, sends server versions and idempotency keys for mutations, and uses the existing copy-driven HandoffQueue without native `disabled`.
+- performance issues found: the route performs two bounded handoff reads on load and local list updates for open/resolve/return. It adds no polling, route handler, Server Action, direct database access, scan, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched route/client/test/gate files; focused `pnpm exec vitest run src/phos/ui/handoff/HandoffsPageClient.test.tsx src/phos/ui/handoff/HandoffQueue.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 3 files / 43 tests after aligning assertions to duplicate patient rows and accessible resolve labels; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 92 files / 527 tests; full PH-OS ESLint passed with zero warnings; Next production build passed, generated 235 static pages, and listed `/handoffs`.
+- remaining work: UIUX route work still has known constraints: `/reports` already exists in the dashboard route tree, and `/visit/{packet_id}` is not yet PH-OS route-visible.
+- next action: commit the `/handoffs` route slice, then continue with the next route or keyboard/form residual.
+
 ### 20260609-142200
 
 - current task: implement UI-PR6C VisitMode photo evidence capture into the offline evidence queue
