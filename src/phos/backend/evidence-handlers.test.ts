@@ -9,6 +9,7 @@ import { createInMemoryObservabilitySink } from './observability';
 import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
 
 const baseBody = {
+  idempotency_key: 'idem_evidence_1',
   card_id: 'card_1',
   evidence_type: 'PHOTO',
   file_name: 'photo.JPG',
@@ -90,6 +91,7 @@ describe('PH-OS evidence presign upload handler', () => {
         user_id: 'user_001',
       }),
       {
+        idempotency_key: 'idem_evidence_1',
         evidence_id: 'evidence_1',
         card_id: 'card_1',
         evidence_type: 'PHOTO',

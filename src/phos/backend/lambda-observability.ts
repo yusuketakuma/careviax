@@ -21,6 +21,10 @@ function shouldPersistSecurityEvents(): boolean {
   return process.env.PHOS_SECURITY_EVENTS_DYNAMO === '1';
 }
 
+function securityEventTableName(deps: PhosLambdaRuntimeDependencies): string | undefined {
+  return deps.security_event_table_name ?? process.env.PHOS_SECURITY_EVENT_TABLE_NAME?.trim();
+}
+
 export function createLambdaObservabilitySink(
   deps: PhosLambdaRuntimeDependencies = {},
 ): PhosObservabilitySink {
@@ -30,6 +34,7 @@ export function createLambdaObservabilitySink(
   });
   const securityEventClient =
     deps.security_event_client ?? (shouldPersistSecurityEvents() ? new DynamoDBClient({}) : null);
+  const pendingSecurityEvents = new Set<Promise<void>>();
 
   return {
     emitMetric(metric) {
@@ -41,21 +46,29 @@ export function createLambdaObservabilitySink(
     recordSecurityEvent(event: PhosSecurityEvent) {
       consoleSink.recordSecurityEvent(event);
       if (!securityEventClient) return;
-      void recordDynamoSecurityEvent({
+      const persistence = recordDynamoSecurityEvent({
         client: securityEventClient,
-        table_name: deps.security_event_table_name,
+        table_name: securityEventTableName(deps),
         event,
         now: deps.now,
-      }).catch((error: unknown) => {
-        console.error(
-          JSON.stringify({
-            type: 'PHOS_SECURITY_EVENT_PERSIST_FAILED',
-            event_type: event.event_type,
-            route_key: event.route_key,
-            error: error instanceof Error ? error.message : 'unknown',
-          }),
-        );
-      });
+      })
+        .catch((error: unknown) => {
+          console.error(
+            JSON.stringify({
+              type: 'PHOS_SECURITY_EVENT_PERSIST_FAILED',
+              event_type: event.event_type,
+              route_key: event.route_key,
+              error: error instanceof Error ? error.message : 'unknown',
+            }),
+          );
+        })
+        .finally(() => {
+          pendingSecurityEvents.delete(persistence);
+        });
+      pendingSecurityEvents.add(persistence);
+    },
+    async flush() {
+      await Promise.allSettled([...pendingSecurityEvents]);
     },
   };
 }

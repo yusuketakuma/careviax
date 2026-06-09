@@ -1,15 +1,29 @@
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import type { VisitModeView } from '@/phos/contracts/phos_contracts';
-import { assertTenantPk, tenantPk, visitPacketSk, visitStepIdempotencySk } from './dynamodb-keys';
+import {
+  assertTenantPk,
+  evidenceSk,
+  tenantPk,
+  visitPacketSk,
+  visitStepIdempotencySk,
+} from './dynamodb-keys';
 import type { DynamoGetInput } from './dynamo-cards-repository';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import type {
+  EvidenceUploadVerificationInput,
   IdempotentVisitStepLookup,
+  VerifiedEvidenceUpload,
   VisitModeLifecycleStore,
   VisitStepCommitInput,
 } from './visit-mode-lifecycle-repository';
 import type { TenantContext } from './tenant-context';
+import { PhosDomainError } from './cards-repository';
+import { assertTenantS3Key, TenantStorageKeyError } from './s3-evidence-key';
+import {
+  EvidenceObjectVerificationError,
+  type EvidenceObjectVerifier,
+} from './evidence-upload-verification';
 
 type DynamoItem = Record<string, AttributeValue>;
 
@@ -18,15 +32,18 @@ export type DynamoVisitStepCommitTransaction = {
   partition_key: string;
   visit_packet_sort_key: string;
   idempotency_sort_key: string;
+  evidence_sort_key?: string;
   expected_server_version: number;
   request_fingerprint: string;
   response: VisitModeView;
+  verified_evidence?: VerifiedEvidenceUpload;
   committed_at: string;
 };
 
 export type DynamoVisitModeClient = {
   getVisitPacket(input: DynamoGetInput): Promise<DynamoItem | null>;
   getIdempotency(input: DynamoGetInput): Promise<DynamoItem | null>;
+  getEvidenceIntent(input: DynamoGetInput): Promise<DynamoItem | null>;
   transactCommitVisitStep(input: DynamoVisitStepCommitTransaction): Promise<void>;
 };
 
@@ -47,9 +64,156 @@ function stringAttr(item: DynamoItem, key: string): string | undefined {
   return typeof parsed === 'string' ? parsed : undefined;
 }
 
+function numberAttr(item: DynamoItem, key: string): number | undefined {
+  const value = item[key];
+  if (!value) return undefined;
+  const parsed = fromDynamoAttributeValue(value);
+  return typeof parsed === 'number' ? parsed : undefined;
+}
+
 function parseJsonAttr<T>(item: DynamoItem, key: string): T | undefined {
   const value = stringAttr(item, key);
   return value ? (JSON.parse(value) as T) : undefined;
+}
+
+function evidenceGuardFailed(details: Record<string, unknown>): PhosDomainError {
+  return new PhosDomainError({
+    status: 422,
+    error_code: 'ACTION_GUARD_FAILED',
+    message_key: 'api.error.visit_mode_guard_failed',
+    details,
+  });
+}
+
+function assertEvidenceIdShape(evidence_id: string): void {
+  if (
+    evidence_id.trim().length === 0 ||
+    evidence_id.includes('/') ||
+    evidence_id.includes('\\') ||
+    evidence_id.includes('..')
+  ) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      reason: 'invalid_evidence_id',
+    });
+  }
+}
+
+function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
+  if (!item) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      evidence_id,
+      reason: 'evidence_intent_not_found',
+    });
+  }
+  const intent = {
+    evidence_id: stringAttr(item, 'evidence_id'),
+    card_id: stringAttr(item, 'card_id'),
+    s3_key: stringAttr(item, 's3_key'),
+    mime_type: stringAttr(item, 'mime_type'),
+    sha256: stringAttr(item, 'sha256'),
+    size_bytes: numberAttr(item, 'size_bytes'),
+    upload_status: stringAttr(item, 'upload_status'),
+  };
+  const size_bytes = intent.size_bytes;
+  if (
+    intent.evidence_id !== evidence_id ||
+    !intent.card_id ||
+    !intent.s3_key ||
+    !intent.mime_type ||
+    !intent.sha256 ||
+    typeof size_bytes !== 'number' ||
+    !Number.isSafeInteger(size_bytes) ||
+    intent.upload_status !== 'PRESIGNED'
+  ) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      evidence_id,
+      reason: 'invalid_evidence_intent',
+      upload_status: intent.upload_status ?? null,
+    });
+  }
+  return {
+    evidence_id,
+    card_id: intent.card_id,
+    s3_key: intent.s3_key,
+    mime_type: intent.mime_type,
+    sha256: intent.sha256,
+    size_bytes,
+  };
+}
+
+async function verifyEvidenceUploadIntent(input: {
+  ctx: TenantContext;
+  verifier?: EvidenceObjectVerifier;
+  verification: EvidenceUploadVerificationInput;
+  item: DynamoItem | null;
+}): Promise<VerifiedEvidenceUpload> {
+  const evidence_id = input.verification.evidence_key.trim();
+  assertEvidenceIdShape(evidence_id);
+  if (!input.verification.visit.card_id) {
+    throw evidenceGuardFailed({
+      packet_id: input.verification.packet_id,
+      step: input.verification.step,
+      reason: 'missing_visit_card_id',
+    });
+  }
+  const intent = parseEvidenceIntent(input.item, evidence_id);
+  if (intent.card_id !== input.verification.visit.card_id) {
+    throw evidenceGuardFailed({
+      packet_id: input.verification.packet_id,
+      step: input.verification.step,
+      evidence_id,
+      reason: 'evidence_card_mismatch',
+    });
+  }
+  const size_bytes = intent.size_bytes;
+  try {
+    assertTenantS3Key(input.ctx, intent.s3_key);
+  } catch (error) {
+    if (error instanceof TenantStorageKeyError) {
+      throw evidenceGuardFailed({
+        packet_id: input.verification.packet_id,
+        step: input.verification.step,
+        evidence_id,
+        reason: 'evidence_tenant_mismatch',
+      });
+    }
+    throw error;
+  }
+  if (!input.verifier) {
+    throw evidenceGuardFailed({
+      packet_id: input.verification.packet_id,
+      step: input.verification.step,
+      evidence_id,
+      reason: 'evidence_object_verifier_unavailable',
+    });
+  }
+  try {
+    await input.verifier.verifyObject({
+      key: intent.s3_key,
+      mime_type: intent.mime_type,
+      sha256: intent.sha256,
+      size_bytes,
+    });
+  } catch (error) {
+    if (error instanceof EvidenceObjectVerificationError) {
+      throw evidenceGuardFailed({
+        packet_id: input.verification.packet_id,
+        step: input.verification.step,
+        evidence_id,
+        reason: error.reason,
+        ...error.details,
+      });
+    }
+    throw error;
+  }
+  return {
+    evidence_id: intent.evidence_id,
+    card_id: intent.card_id,
+    s3_key: intent.s3_key,
+  };
 }
 
 function toVisitModeView(item: DynamoItem): VisitModeView {
@@ -72,7 +236,7 @@ function toIdempotentLookup(
 
 export function createDynamoVisitModeRepository(
   client: DynamoVisitModeClient,
-  options: { now?: () => Date } = {},
+  options: { now?: () => Date; evidence_object_verifier?: EvidenceObjectVerifier } = {},
 ): VisitModeLifecycleStore {
   return {
     async getIdempotentVisitStep(ctx, mutation_key, idempotency_key, request_fingerprint) {
@@ -83,7 +247,7 @@ export function createDynamoVisitModeRepository(
         throw new Error(`Invalid visit mutation key: ${mutation_key}`);
       }
       const item = await client.getIdempotency({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: visitStepIdempotencySk({ packet_id, step, idempotency_key }),
       });
@@ -94,18 +258,36 @@ export function createDynamoVisitModeRepository(
       const partition_key = tenantPk(ctx);
       assertTenantPk(ctx, partition_key);
       const item = await client.getVisitPacket({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: visitPacketSk(packet_id),
       });
       return item ? toVisitModeView(item) : null;
     },
 
+    async verifyEvidenceUpload(ctx, verification) {
+      const partition_key = tenantPk(ctx);
+      assertTenantPk(ctx, partition_key);
+      const evidence_id = verification.evidence_key.trim();
+      assertEvidenceIdShape(evidence_id);
+      const item = await client.getEvidenceIntent({
+        table_name: phosCoreTableName(),
+        partition_key,
+        sort_key: evidenceSk(evidence_id),
+      });
+      return verifyEvidenceUploadIntent({
+        ctx,
+        verifier: options.evidence_object_verifier,
+        verification,
+        item,
+      });
+    },
+
     async commitVisitStep(ctx: TenantContext, input: VisitStepCommitInput) {
       const partition_key = tenantPk(ctx);
       assertTenantPk(ctx, partition_key);
       await client.transactCommitVisitStep({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         visit_packet_sort_key: visitPacketSk(input.packet_id),
         idempotency_sort_key: visitStepIdempotencySk({
@@ -113,6 +295,12 @@ export function createDynamoVisitModeRepository(
           step: input.step,
           idempotency_key: input.command.idempotency_key,
         }),
+        ...(input.verified_evidence
+          ? {
+              evidence_sort_key: evidenceSk(input.verified_evidence.evidence_id),
+              verified_evidence: input.verified_evidence,
+            }
+          : {}),
         expected_server_version: input.previous_visit.server_version,
         request_fingerprint: input.request_fingerprint,
         response: input.response,

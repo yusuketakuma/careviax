@@ -10,6 +10,7 @@ import {
 import type { PhosHttpEvent } from './lambda-handler';
 
 const body = {
+  idempotency_key: 'idem_evidence_1',
   card_id: 'card_1',
   evidence_type: 'PHOTO',
   file_name: 'photo.jpg',

@@ -8,7 +8,7 @@ import { sanitizeLogDetails } from './structured-logger';
 import type { PhosSecurityEvent } from './observability';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { tenantPk } from './dynamodb-keys';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 
 export const PHOS_UNKNOWN_SECURITY_EVENT_PARTITION = 'SECURITY#UNKNOWN';
 
@@ -34,7 +34,7 @@ export function buildDynamoSecurityEventPutInput(input: {
     : undefined;
 
   return {
-    TableName: input.table_name ?? PHOS_CORE_TABLE,
+    TableName: input.table_name ?? phosCoreTableName(),
     Item: {
       ...dynamoKey(
         securityEventPartitionKey(input.event),

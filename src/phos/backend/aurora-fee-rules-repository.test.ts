@@ -162,6 +162,37 @@ describe('AuroraFeeRulesRepository', () => {
     expect(response.next_cursor).toBeTruthy();
   });
 
+  it('rejects malformed cursors before opening an Aurora connection', async () => {
+    const { pool } = client();
+    const repository = new AuroraFeeRulesRepository(pool);
+
+    await expect(
+      repository.searchFeeRules(ctx, { limit: 50, cursor: 'not-base64-json' }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing offset', {}],
+    ['negative offset', { offset: -1 }],
+    ['fractional offset', { offset: 1.5 }],
+  ])('rejects %s cursor payloads', async (_name, payload) => {
+    const { pool } = client();
+    const repository = new AuroraFeeRulesRepository(pool);
+    const cursor = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+
+    await expect(repository.searchFeeRules(ctx, { limit: 50, cursor })).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed rule DSL rows instead of returning unsafe rules', async () => {
     const { pool } = client([
       {

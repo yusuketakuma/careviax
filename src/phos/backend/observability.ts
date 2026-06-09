@@ -77,6 +77,7 @@ export type PhosObservabilitySink = {
   emitMetric(metric: PhosMetric): void;
   annotateTrace(annotation: PhosTraceAnnotation): void;
   recordSecurityEvent(event: PhosSecurityEvent): void;
+  flush?(): Promise<void>;
 };
 
 export function hashTenantId(tenant_id: string): string {

@@ -45,6 +45,7 @@ describe('PH-OS S3 evidence key contract', () => {
 
   it('rejects unsafe client upload input before presigning', () => {
     const base = {
+      idempotency_key: 'idem_evidence_1',
       card_id: 'card_1',
       evidence_type: 'PHOTO',
       file_name: 'photo.jpg',

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-180520
+
+- current task: close PH-OS backend release blockers from subagent review across evidence verification, Dynamo/Aurora contracts, transaction contention, and pagination.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, subagent findings from backend/API/schema/security review, PH-OS backend repositories/Lambda clients for evidence, VisitMode, cards, claim candidates, handoffs, report deliveries, Lambda observability, Aurora FeeRule RLS SQL/migration, API Gateway route/template contracts, Dynamo table/GSI references, and PH-OS API offline evidence queue.
+- files changed: PH-OS backend evidence/VisitMode/Dynamo/Aurora/Lambda observability files, PH-OS API evidence queue/contract files, PH-OS infra route/RLS/Dynamo contract tests, Prisma FeeRule RLS migration, and `.codex/ralph-state.md`.
+- bugs found: VisitMode `EVIDENCE_UPLOAD` could complete from a fabricated evidence key without checking tenant-scoped evidence intent or S3 object metadata; Aurora FeeRule malformed cursors replayed page 1; deployment table/env contract was ignored by Dynamo repositories; security event persistence could return before Dynamo writes completed; card filtering could return short/empty pages when matches were on later Dynamo pages; Dynamo transaction conditional contention could fall through as 500; evidence presign intent lacked idempotency; FeeRule RLS allowed tenant sessions to write SYSTEM rows; FeeRule SQL lacked indexes for its query shape; repo lacked an in-repo Dynamo table/GSI shape contract.
+- security risks found: tightened evidence completion to require tenant/card-bound intent plus S3 HeadObject metadata verification before step completion, rejected raw S3 paths from VisitMode payloads, made evidence status update part of the same VisitMode transaction, split FeeRule RLS read/write policies so SYSTEM rows are read-only for tenant sessions, added deterministic 409 mapping for Dynamo conditional transaction conflicts, required idempotency for evidence presign, and flushed persisted boundary security events before returning Lambda boundary errors.
+- performance issues found: added bounded follow-up Dynamo page reads for filtered card search to fill visible results, added FeeRule query/lateral-order indexes, and kept new card pagination bounded to five pages only when query/filter semantics need fill behavior.
+- validation commands: Prettier for touched PH-OS files; `git diff --check`; `pnpm exec tsc --noEmit --pretty false`; focused backend/infra/API Vitest suite with 23 files / 157 tests; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`.
+- validation results: Prettier completed; whitespace diff check passed; TypeScript passed; focused suite passed with 23 files / 157 tests; full PH-OS Vitest passed with 98 files / 605 tests; PH-OS ESLint passed with zero warnings; Next production build passed, compiled successfully, and generated 235 static pages.
+- remaining work: live AWS proof remains external/not established here: deployed Cognito/API Gateway/Lambda/X-Ray/CloudWatch/S3/Aurora/Dynamo table settings still need environment access verification. No remaining in-repo backend blocker from the completed subagent review is known after this slice.
+- next action: commit this backend hardening slice, then summarize completion and external-only proof gaps.
+
 ### 20260609-172720
 
 - current task: enforce PH-OS card search filter/sort contract at the API boundary

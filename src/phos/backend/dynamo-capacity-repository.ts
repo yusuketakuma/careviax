@@ -8,7 +8,7 @@ import { resolveCapacity } from '@/phos/domain/capacity/capacityEngine';
 import type { CapacityQuery, PhosCapacityRepository } from './capacity-repository';
 import { capacitySk, tenantPk, assertTenantPk } from './dynamodb-keys';
 import type { DynamoGetInput } from './dynamo-cards-repository';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import type { TenantContext } from './tenant-context';
 
@@ -34,7 +34,7 @@ export function createDynamoCapacityRepository(
       const partition_key = tenantPk(ctx);
       assertTenantPk(ctx, partition_key);
       const item = await client.getCapacitySnapshot({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: capacitySk({ date: query.date, scope: query.scope }),
       });

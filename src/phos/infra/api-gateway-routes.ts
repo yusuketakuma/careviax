@@ -142,7 +142,7 @@ export const PHOS_API_ROUTES = [
     lambda_handler: '@/phos/backend/evidence-lambda#evidencePresignUploadHandler',
     required_scopes: ['phos/evidence.write'],
     allowed_roles: [UserRole.PHARMACIST, UserRole.PHARMACY_CLERK, UserRole.MANAGER, UserRole.ADMIN],
-    requires_idempotency_key: false,
+    requires_idempotency_key: true,
     requires_expected_version: false,
     response_contract: 'EvidencePresignUploadResponse',
   },

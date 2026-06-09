@@ -33,6 +33,7 @@ import {
   type PhosLambdaRuntimeDependencies,
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
+import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 type DynamoItem = Record<string, AttributeValue>;
 
@@ -125,65 +126,73 @@ export function createDynamoClaimCandidatesClient(input: {
         candidate_id: response.candidate.candidate_id,
       });
 
-      await input.client.send(
-        new TransactWriteItemsCommand({
-          TransactItems: [
-            {
-              Put: {
-                TableName: command.table_name,
-                Item: {
-                  PK: { S: command.partition_key },
-                  SK: { S: command.idempotency_sort_key },
-                  request_fingerprint: { S: command.request_fingerprint },
-                  response_json: { S: JSON.stringify(response) },
-                  created_at: { S: command.updated_at },
-                },
-                ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-              },
-            },
-            {
-              Update: {
-                TableName: command.table_name,
-                Key: dynamoKey(command.partition_key, `CARD#${response.candidate.card_id}`),
-                UpdateExpression:
-                  'SET unresolved_claim_candidate_count = unresolved_claim_candidate_count - :one, updated_at = :updated_at',
-                ConditionExpression:
-                  'attribute_exists(unresolved_claim_candidate_count) AND unresolved_claim_candidate_count > :zero',
-                ExpressionAttributeValues: {
-                  ':one': { N: '1' },
-                  ':zero': { N: '0' },
-                  ':updated_at': { S: command.updated_at },
+      try {
+        await input.client.send(
+          new TransactWriteItemsCommand({
+            TransactItems: [
+              {
+                Put: {
+                  TableName: command.table_name,
+                  Item: {
+                    PK: { S: command.partition_key },
+                    SK: { S: command.idempotency_sort_key },
+                    request_fingerprint: { S: command.request_fingerprint },
+                    response_json: { S: JSON.stringify(response) },
+                    created_at: { S: command.updated_at },
+                  },
+                  ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
                 },
               },
-            },
-            {
-              Update: {
-                TableName: command.table_name,
-                Key: dynamoKey(command.partition_key, command.sort_key),
-                UpdateExpression:
-                  'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi1pk = :status_gsi_pk, #gsi1sk = :status_gsi_sk',
-                ConditionExpression:
-                  'server_version = :client_version AND claim_candidate.#status <> :approved AND claim_candidate.#status <> :excluded',
-                ExpressionAttributeNames: {
-                  '#status': 'status',
-                  '#gsi1pk': 'GSI1PK',
-                  '#gsi1sk': 'GSI1SK',
-                },
-                ExpressionAttributeValues: {
-                  ':candidate': toDynamoAttributeValue(response.candidate),
-                  ':version': { N: String(response.server_version) },
-                  ':updated_at': { S: command.updated_at },
-                  ':client_version': { N: String(command.client_version) },
-                  ':approved': { S: ClaimCandidateStatus.APPROVED },
-                  ':excluded': { S: ClaimCandidateStatus.EXCLUDED },
-                  ':status_gsi_pk': { S: statusGsiPk },
-                  ':status_gsi_sk': { S: statusGsiSk },
+              {
+                Update: {
+                  TableName: command.table_name,
+                  Key: dynamoKey(command.partition_key, `CARD#${response.candidate.card_id}`),
+                  UpdateExpression:
+                    'SET unresolved_claim_candidate_count = unresolved_claim_candidate_count - :one, updated_at = :updated_at',
+                  ConditionExpression:
+                    'attribute_exists(unresolved_claim_candidate_count) AND unresolved_claim_candidate_count > :zero',
+                  ExpressionAttributeValues: {
+                    ':one': { N: '1' },
+                    ':zero': { N: '0' },
+                    ':updated_at': { S: command.updated_at },
+                  },
                 },
               },
-            },
-          ],
-        }),
-      );
+              {
+                Update: {
+                  TableName: command.table_name,
+                  Key: dynamoKey(command.partition_key, command.sort_key),
+                  UpdateExpression:
+                    'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi1pk = :status_gsi_pk, #gsi1sk = :status_gsi_sk',
+                  ConditionExpression:
+                    'server_version = :client_version AND claim_candidate.#status <> :approved AND claim_candidate.#status <> :excluded',
+                  ExpressionAttributeNames: {
+                    '#status': 'status',
+                    '#gsi1pk': 'GSI1PK',
+                    '#gsi1sk': 'GSI1SK',
+                  },
+                  ExpressionAttributeValues: {
+                    ':candidate': toDynamoAttributeValue(response.candidate),
+                    ':version': { N: String(response.server_version) },
+                    ':updated_at': { S: command.updated_at },
+                    ':client_version': { N: String(command.client_version) },
+                    ':approved': { S: ClaimCandidateStatus.APPROVED },
+                    ':excluded': { S: ClaimCandidateStatus.EXCLUDED },
+                    ':status_gsi_pk': { S: statusGsiPk },
+                    ':status_gsi_sk': { S: statusGsiSk },
+                  },
+                },
+              },
+            ],
+          }),
+        );
+      } catch (error) {
+        rethrowDynamoTransactionConflict(error, {
+          resource: 'claim_candidate_exclusion',
+          candidate_id: response.candidate.candidate_id,
+          expected_server_version: command.client_version,
+        });
+      }
       return response;
     },
   };

@@ -418,6 +418,11 @@ function createVisitHarness(seed: VisitModeView) {
       async (): Promise<IdempotentVisitStepLookup> => ({ status: 'MISS' }),
     ),
     loadVisitMode: vi.fn(async () => visit),
+    verifyEvidenceUpload: vi.fn(async () => ({
+      evidence_id: 'evidence_1',
+      card_id: visit.card_id ?? 'card_1',
+      s3_key: `tenants/tenant_abc123/evidence/${visit.card_id ?? 'card_1'}/evidence_1.jpg`,
+    })),
     commitVisitStep: vi.fn(async (_ctx, input) => {
       visit = input.response;
       return input.response;

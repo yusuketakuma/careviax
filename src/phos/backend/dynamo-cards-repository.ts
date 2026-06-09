@@ -22,6 +22,11 @@ import type { TenantContext } from './tenant-context';
 export const PHOS_CORE_TABLE = 'phos_core';
 export const PHOS_BOARD_GSI = 'GSI1';
 
+export function phosCoreTableName(): string {
+  const tableName = process.env.PHOS_DYNAMODB_TABLE_NAME?.trim();
+  return tableName || PHOS_CORE_TABLE;
+}
+
 export type DynamoQueryInput = {
   table_name: string;
   index_name?: string;
@@ -53,6 +58,12 @@ export type DynamoCardsMapper<TSummary, TDetail> = {
   toCardDetail(item: TDetail): CardDetailResponse;
 };
 
+const MAX_FILTERED_CARD_SEARCH_PAGES = 5;
+
+function shouldFillFilteredCardSearchPage(query: CardSearchQuery): boolean {
+  return !!query.query || (!!query.filter && query.filter !== BoardQuickFilterValues.ALL);
+}
+
 export function createDynamoCardsRepository<TSummary, TDetail>(
   client: DynamoCardsClient<TSummary, TDetail>,
   mapper: DynamoCardsMapper<TSummary, TDetail>,
@@ -66,25 +77,38 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
         key_type: 'GSI',
       });
 
-      const result = await client.query({
-        table_name: PHOS_CORE_TABLE,
-        index_name: PHOS_BOARD_GSI,
-        partition_key,
-        key_type: 'GSI',
-        limit: query.limit,
-        cursor: query.cursor,
-      });
+      const fetchedItems: TSummary[] = [];
+      let cursor = query.cursor;
+      let next_cursor: string | undefined;
+      let selectedItems: CardBoardItemView[] = [];
+      const fillFilteredPage = shouldFillFilteredCardSearchPage(query);
 
-      return {
-        items: selectBoardItems(
-          result.items.map((item) => mapper.toCardBoardItem(item)),
+      for (let page = 0; page < MAX_FILTERED_CARD_SEARCH_PAGES; page++) {
+        const result = await client.query({
+          table_name: phosCoreTableName(),
+          index_name: PHOS_BOARD_GSI,
+          partition_key,
+          key_type: 'GSI',
+          limit: query.limit,
+          cursor,
+        });
+        fetchedItems.push(...result.items);
+        next_cursor = result.next_cursor;
+        selectedItems = selectBoardItems(
+          fetchedItems.map((item) => mapper.toCardBoardItem(item)),
           {
             quickFilter: query.filter ?? BoardQuickFilterValues.ALL,
             query: query.query,
             sortKey: query.sort ?? BoardSortKeyValues.VISIT_TIME,
           },
-        ),
-        next_cursor: result.next_cursor,
+        );
+        if (selectedItems.length >= query.limit || !next_cursor || !fillFilteredPage) break;
+        cursor = next_cursor;
+      }
+
+      return {
+        items: selectedItems.slice(0, query.limit),
+        next_cursor,
         server_time: new Date().toISOString(),
       };
     },
@@ -94,7 +118,7 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
       assertTenantPk(ctx, partition_key);
 
       const item = await client.get({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: cardSk(card_id),
       });

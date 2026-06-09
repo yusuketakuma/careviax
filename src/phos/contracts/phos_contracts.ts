@@ -914,6 +914,7 @@ export type VisitStepMutationRequest = {
 };
 
 export type EvidenceUploadRequest = {
+  idempotency_key: string;
   card_id: string;
   evidence_type: string;
   file_name: string;

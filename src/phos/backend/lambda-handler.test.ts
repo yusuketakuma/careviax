@@ -184,6 +184,33 @@ describe('withTenantContext', () => {
     );
   });
 
+  it('flushes boundary observability before returning tenant boundary errors', async () => {
+    const calls: string[] = [];
+    const observability = {
+      metrics: [],
+      annotations: [],
+      security_events: [],
+      emitMetric: vi.fn(),
+      annotateTrace: vi.fn(),
+      recordSecurityEvent: vi.fn(() => {
+        calls.push('recordSecurityEvent');
+      }),
+      flush: vi.fn(async () => {
+        calls.push('flush');
+      }),
+    };
+    const handler = withTenantContext(async () => ({}), { observability });
+
+    const response = await handler({
+      ...validEvent,
+      body: JSON.stringify({ tenant_id: 'tenant_other' }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(calls).toEqual(['recordSecurityEvent', 'flush']);
+    expect(observability.flush).toHaveBeenCalledOnce();
+  });
+
   it('returns TENANT_CONTEXT_MISSING when API Gateway claims are absent', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const handler = withTenantContext(async () => ({}));

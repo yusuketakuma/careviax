@@ -9,6 +9,7 @@ import {
 } from '@/phos/contracts/phos_contracts';
 import { assertFeeRuleConditionAllowedFields } from '@/phos/domain/claim/feeRuleDsl';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
+import { validationError } from './input-validation';
 import type { TenantContext } from './tenant-context';
 
 export type AuroraFeeRulesClient = {
@@ -99,14 +100,17 @@ function encodeCursor(offset: number): string {
 function decodeCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
-      offset?: unknown;
-    };
-    return typeof parsed.offset === 'number' && Number.isSafeInteger(parsed.offset)
-      ? parsed.offset
-      : 0;
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('cursor must decode to an object');
+    }
+    const offset = (parsed as { offset?: unknown }).offset;
+    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new Error('cursor offset must be a nonnegative safe integer');
+    }
+    return offset;
   } catch {
-    return 0;
+    throw validationError({ field: 'cursor' });
   }
 }
 
@@ -251,8 +255,8 @@ export class AuroraFeeRulesRepository implements PhosFeeRulesRepository {
     query: FeeRuleSearchQuery,
   ): Promise<FeeRuleSearchResponse> {
     assertSafeTenantId(ctx.tenant_id);
-    const connection = await this.client.connect();
     const offset = decodeCursor(query.cursor);
+    const connection = await this.client.connect();
     const params: unknown[] = [ctx.tenant_id];
     let sql = FEE_RULE_SELECT;
 

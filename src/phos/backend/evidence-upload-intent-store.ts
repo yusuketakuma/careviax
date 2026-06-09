@@ -7,13 +7,14 @@ import { ActionCode, type EvidenceUploadRequest } from '@/phos/contracts/phos_co
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { evidenceSk, tenantPk } from './dynamodb-keys';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import type { TenantContext } from './tenant-context';
 
 export type EvidenceUploadIntent = Pick<
   EvidenceUploadRequest,
   'card_id' | 'evidence_type' | 'mime_type' | 'sha256' | 'size_bytes'
 > & {
+  idempotency_key: string;
   evidence_id: string;
   s3_key: string;
   expires_in_seconds: number;
@@ -36,6 +37,7 @@ export type DynamoEvidenceUploadIntentTransaction = {
 function evidenceAuditSummary(intent: EvidenceUploadIntent) {
   return {
     evidence_id: intent.evidence_id,
+    idempotency_key: intent.idempotency_key,
     card_id: intent.card_id,
     evidence_type: intent.evidence_type,
     s3_key: intent.s3_key,
@@ -59,6 +61,7 @@ export function buildDynamoEvidenceUploadIntentTransactWriteItems(
           ...dynamoKey(input.partition_key, input.evidence_sort_key),
           entity_type: { S: 'EVIDENCE' },
           evidence_id: { S: input.intent.evidence_id },
+          idempotency_key: { S: input.intent.idempotency_key },
           card_id: { S: input.intent.card_id },
           evidence_type: { S: input.intent.evidence_type },
           s3_key: { S: input.intent.s3_key },
@@ -109,7 +112,7 @@ export function createDynamoEvidenceUploadIntentStore(input: {
         new TransactWriteItemsCommand({
           TransactItems: buildDynamoEvidenceUploadIntentTransactWriteItems(
             {
-              table_name: PHOS_CORE_TABLE,
+              table_name: phosCoreTableName(),
               partition_key: tenantPk(ctx),
               evidence_sort_key: evidenceSk(intent.evidence_id),
               intent,

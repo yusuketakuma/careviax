@@ -101,7 +101,7 @@ describe('PH-OS Final No-Go gate', () => {
       }
 
       if (route.route_key === 'POST /evidence/presign-upload') {
-        expect(route.requires_idempotency_key).toBe(false);
+        expect(route.requires_idempotency_key).toBe(true);
         expect(route.requires_expected_version).toBe(false);
         continue;
       }

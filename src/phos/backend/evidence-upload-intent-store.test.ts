@@ -28,6 +28,7 @@ function transaction(
     request_id: 'req_1',
     correlation_id: 'corr_1',
     intent: {
+      idempotency_key: 'idem_evidence_1',
       evidence_id: 'evidence_1',
       card_id: 'card_1',
       evidence_type: 'PHOTO',
@@ -57,6 +58,7 @@ describe('Dynamo evidence upload intent store', () => {
           SK: { S: 'EVIDENCE#evidence_1' },
           entity_type: { S: 'EVIDENCE' },
           evidence_id: { S: 'evidence_1' },
+          idempotency_key: { S: 'idem_evidence_1' },
           card_id: { S: 'card_1' },
           evidence_type: { S: 'PHOTO' },
           s3_key: { S: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg' },

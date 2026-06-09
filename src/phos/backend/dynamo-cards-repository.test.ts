@@ -118,6 +118,31 @@ describe('createDynamoCardsRepository', () => {
     expect(result.server_time).toEqual(expect.any(String));
   });
 
+  it('uses the deployed PH-OS DynamoDB table name from env when provided', async () => {
+    const previousTableName = process.env.PHOS_DYNAMODB_TABLE_NAME;
+    process.env.PHOS_DYNAMODB_TABLE_NAME = 'phos_core_deployed';
+    const fakeClient = client();
+    const repository = createDynamoCardsRepository(fakeClient, mapper);
+
+    try {
+      await repository.searchCards(ctx, { limit: 25 });
+      await repository.getCardDetail(ctx, 'card_1');
+    } finally {
+      if (previousTableName === undefined) {
+        delete process.env.PHOS_DYNAMODB_TABLE_NAME;
+      } else {
+        process.env.PHOS_DYNAMODB_TABLE_NAME = previousTableName;
+      }
+    }
+
+    expect(fakeClient.query).toHaveBeenCalledWith(
+      expect.objectContaining({ table_name: 'phos_core_deployed' }),
+    );
+    expect(fakeClient.get).toHaveBeenCalledWith(
+      expect.objectContaining({ table_name: 'phos_core_deployed' }),
+    );
+  });
+
   it('applies bounded query filters and sort after mapping board items', async () => {
     const fakeClient = client();
     vi.mocked(fakeClient.query).mockResolvedValueOnce({
@@ -148,6 +173,46 @@ describe('createDynamoCardsRepository', () => {
     });
 
     expect(result.items.map((entry) => entry.card.card_id)).toEqual(['early']);
+  });
+
+  it('fills filtered search results from bounded follow-up Dynamo pages', async () => {
+    const fakeClient = client();
+    vi.mocked(fakeClient.query)
+      .mockResolvedValueOnce({
+        items: [{ id: 'page_1_nonmatch', patient: '患者 佐藤' }],
+        next_cursor: 'cursor_2',
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 'page_2_match', patient: '患者 山田' }],
+      });
+    const repository = createDynamoCardsRepository(fakeClient, {
+      ...mapper,
+      toCardBoardItem: (summary) => ({
+        ...mapper.toCardBoardItem(summary),
+        card: {
+          ...mapper.toCardBoardItem(summary).card,
+          quick_filter_keys:
+            summary.id === 'page_2_match' ? [BoardQuickFilter.TODAY] : [BoardQuickFilter.URGENT],
+        },
+      }),
+    });
+
+    const result = await repository.searchCards(ctx, {
+      filter: BoardQuickFilter.TODAY,
+      sort: BoardSortKey.VISIT_TIME,
+      limit: 1,
+    });
+
+    expect(fakeClient.query).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ cursor: undefined }),
+    );
+    expect(fakeClient.query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'cursor_2' }),
+    );
+    expect(result.items.map((entry) => entry.card.card_id)).toEqual(['page_2_match']);
+    expect(result.next_cursor).toBeUndefined();
   });
 
   it('gets card detail through tenant PK and card SK', async () => {

@@ -261,9 +261,9 @@ describe('PH-OS API Gateway route manifest', () => {
     });
   });
 
-  it('does not require expected version for presign-only uploads', () => {
+  it('requires replay-safe idempotency but not expected version for presign-only uploads', () => {
     expect(findPhosRoute('POST /evidence/presign-upload')).toMatchObject({
-      requires_idempotency_key: false,
+      requires_idempotency_key: true,
       requires_expected_version: false,
       response_contract: 'EvidencePresignUploadResponse',
     });

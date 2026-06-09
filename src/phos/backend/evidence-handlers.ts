@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { ErrorResponse } from '@/phos/contracts/phos_contracts';
@@ -15,6 +15,7 @@ import {
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { toErrorLambdaResponse } from './error-response';
 import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
+import { parseIdempotencyKey } from './input-validation';
 import type { PhosHandler } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
@@ -70,6 +71,7 @@ function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {
     throw new TenantStorageKeyError('client supplied s3_key is forbidden');
   }
   return {
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
     card_id: parseRequiredString(input.card_id, 'card_id'),
     evidence_type: parseRequiredString(input.evidence_type, 'evidence_type'),
     file_name: parseRequiredString(input.file_name, 'file_name'),
@@ -77,6 +79,14 @@ function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {
     sha256: parseRequiredString(input.sha256, 'sha256').toLowerCase(),
     size_bytes: Number(input.size_bytes),
   };
+}
+
+function evidenceIdFromIdempotencyKey(ctx: TenantContext, request: EvidenceUploadRequest): string {
+  const digest = createHash('sha256')
+    .update(`${ctx.tenant_id}\0${request.card_id}\0${request.idempotency_key}`)
+    .digest('hex')
+    .slice(0, 24);
+  return `evidence_${digest}`;
 }
 
 function parseRequiredString(value: unknown, field: string): string {
@@ -162,7 +172,8 @@ export function createEvidencePresignUploadHandler(
       const max_size_bytes = options.max_size_bytes ?? EVIDENCE_UPLOAD_MAX_SIZE_BYTES;
       assertUploadPolicy(request, max_size_bytes);
 
-      const evidence_id = options.generateEvidenceId?.() ?? randomUUID();
+      const evidence_id =
+        options.generateEvidenceId?.() ?? evidenceIdFromIdempotencyKey(ctx, request);
       const s3_key = buildEvidenceKey(ctx, {
         card_id: request.card_id,
         evidence_id,
@@ -177,6 +188,7 @@ export function createEvidencePresignUploadHandler(
         size_bytes: request.size_bytes,
       });
       await options.upload_intent_store?.recordUploadIntent(ctx, {
+        idempotency_key: request.idempotency_key,
         evidence_id,
         card_id: request.card_id,
         evidence_type: request.evidence_type,

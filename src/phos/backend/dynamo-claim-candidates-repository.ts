@@ -14,7 +14,7 @@ import {
   claimCandidateStatusGsiPk,
   tenantPk,
 } from './dynamodb-keys';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import type {
   ClaimCandidateSearchQuery,
@@ -130,7 +130,7 @@ export function createDynamoClaimCandidatesRepository(
       assertTenantGsiKey(ctx, partition_key);
 
       const result = await client.queryClaimCandidates({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         index_name: query.card_id ? 'GSI2' : 'GSI1',
         partition_key,
         limit: query.limit,
@@ -156,7 +156,7 @@ export function createDynamoClaimCandidatesRepository(
         idempotency_key: command.idempotency_key,
       });
       const idempotencyItem = await client.getIdempotency({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: idempotency_sort_key,
       });
@@ -171,7 +171,7 @@ export function createDynamoClaimCandidatesRepository(
       }
 
       return client.excludeClaimCandidate({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: claimCandidateSk(candidate_id),
         candidate_id,

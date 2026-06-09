@@ -28,7 +28,7 @@ import type {
   DynamoQueryInput,
   DynamoQueryOutput,
 } from './dynamo-cards-repository';
-import { PHOS_BOARD_GSI, PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { PHOS_BOARD_GSI, phosCoreTableName } from './dynamo-cards-repository';
 import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
@@ -157,7 +157,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       });
 
       const result = await client.queryHandoffs({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         index_name: PHOS_BOARD_GSI,
         partition_key,
         key_type: 'GSI',
@@ -187,7 +187,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getIdempotency({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: handoffIdempotencySk({ mutation_key, idempotency_key }),
       });
@@ -208,7 +208,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getHandoff({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: handoffSk(handoff_id),
       });
@@ -220,7 +220,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getCreateCardContext({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: cardSk(card_id),
       });
@@ -232,7 +232,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getHandoffCardState({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: cardSk(card_id),
       });
@@ -253,7 +253,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       });
 
       await client.transactCreateHandoff({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         card_sort_key: cardSk(command.card_id),
         expected_card_server_version: card_context.server_version,
@@ -304,7 +304,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
         : undefined;
 
       await client.transactCommitHandoffTransition({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         handoff_sort_key: handoffSk(input.handoff_id),
         queue_gsi_pk: handoffAssigneeGsiPk(

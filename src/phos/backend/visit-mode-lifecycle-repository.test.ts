@@ -65,6 +65,11 @@ function store(overrides: Partial<VisitModeLifecycleStore> = {}): VisitModeLifec
       async (): Promise<IdempotentVisitStepLookup> => ({ status: 'MISS' }),
     ),
     loadVisitMode: vi.fn(async () => visit()),
+    verifyEvidenceUpload: vi.fn(async () => ({
+      evidence_id: 'evidence_1',
+      card_id: 'card_1',
+      s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+    })),
     commitVisitStep: vi.fn(async (_ctx, input) => input.response),
     ...overrides,
   };
@@ -102,6 +107,75 @@ describe('createVisitModeLifecycleRepository', () => {
       status: 409,
       error_code: 'STALE_VERSION',
       details: { client_version: 3, server_version: 4 },
+    });
+    expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('verifies evidence upload before completing the evidence step', async () => {
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () =>
+        visit({
+          card_id: 'card_1',
+          evidence_sync: { blocking_unsynced_count: 1, non_blocking_unsynced_count: 0 },
+        }),
+      ),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.EVIDENCE_UPLOAD, {
+        idempotency_key: 'idem_evidence',
+        client_version: 3,
+        payload: { evidence_key: 'evidence_1' },
+      }),
+    ).resolves.toMatchObject({
+      server_version: 4,
+      step_completed: { [VisitStep.EVIDENCE_UPLOAD]: true },
+      evidence_sync: { blocking_unsynced_count: 0 },
+    });
+
+    expect(fakeStore.verifyEvidenceUpload).toHaveBeenCalledWith(ctx, {
+      packet_id: 'packet_1',
+      step: VisitStep.EVIDENCE_UPLOAD,
+      visit: expect.objectContaining({ card_id: 'card_1' }),
+      evidence_key: 'evidence_1',
+    });
+    expect(fakeStore.commitVisitStep).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        verified_evidence: {
+          evidence_id: 'evidence_1',
+          card_id: 'card_1',
+          s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        },
+      }),
+    );
+  });
+
+  it('rejects fabricated evidence before committing the visit step', async () => {
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () => visit({ card_id: 'card_1' })),
+      verifyEvidenceUpload: vi.fn(async () => {
+        throw {
+          status: 422,
+          error_code: 'ACTION_GUARD_FAILED',
+          message_key: 'api.error.visit_mode_guard_failed',
+          details: { reason: 'evidence_intent_not_found' },
+        };
+      }),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.EVIDENCE_UPLOAD, {
+        idempotency_key: 'idem_evidence',
+        client_version: 3,
+        payload: { evidence_key: 'fake_evidence' },
+      }),
+    ).rejects.toMatchObject({
+      status: 422,
+      error_code: 'ACTION_GUARD_FAILED',
+      details: { reason: 'evidence_intent_not_found' },
     });
     expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
   });

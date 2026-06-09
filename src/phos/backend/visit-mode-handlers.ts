@@ -72,6 +72,13 @@ function parsePayload(step: VisitStep, value: unknown): VisitStepMutationPayload
   ) {
     throw validationError({ field: 'payload.evidence_key' });
   }
+  if (
+    step === VisitStep.EVIDENCE_UPLOAD &&
+    evidence_key &&
+    (evidence_key.includes('/') || evidence_key.includes('\\') || evidence_key.includes('..'))
+  ) {
+    throw validationError({ field: 'payload.evidence_key', reason: 'evidence_id_required' });
+  }
 
   return {
     ...(input.arrival_outcome ? { arrival_outcome: input.arrival_outcome } : {}),

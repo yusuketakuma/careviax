@@ -9,6 +9,7 @@ import {
 describe('createLambdaObservabilitySink', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    delete process.env.PHOS_SECURITY_EVENT_TABLE_NAME;
   });
 
   it('returns the injected observability sink when provided', () => {
@@ -41,7 +42,34 @@ describe('createLambdaObservabilitySink', () => {
       error_code: 'FORBIDDEN',
       details: { missing_scopes: ['phos/cards.read'] },
     });
-    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    await sink.flush?.();
+
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('uses PHOS_SECURITY_EVENT_TABLE_NAME when an explicit security table is not injected', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.env.PHOS_SECURITY_EVENT_TABLE_NAME = 'phos_security_events';
+    const send = vi.fn(async (command: PutItemCommand) => command);
+    const sink = createLambdaObservabilitySink({
+      security_event_client: { send },
+      now: () => new Date('2026-06-09T07:01:00.000Z'),
+    });
+
+    sink.recordSecurityEvent({
+      event_type: 'TENANT_BOUNDARY_REJECTED',
+      severity: 'ERROR',
+      request_id: 'req_2',
+      correlation_id: 'corr_2',
+      route_key: 'GET /cards',
+      error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+      details: { source: 'body' },
+    });
+    await sink.flush?.();
+
+    const command = send.mock.calls[0]?.[0] as PutItemCommand | undefined;
+    expect(command?.input.TableName).toBe('phos_security_events');
   });
 
   it('writes trace annotations through the injected Lambda trace sink', () => {

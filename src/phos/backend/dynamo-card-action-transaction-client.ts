@@ -6,6 +6,7 @@ import {
 import type { DynamoActionCommitTransaction } from './dynamo-card-action-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 export function buildDynamoActionCommitTransactWriteItems(
   input: DynamoActionCommitTransaction,
@@ -157,14 +158,22 @@ export function createDynamoCardActionTransactionClient(input: {
 }) {
   return {
     async transactCommitAction(transaction: DynamoActionCommitTransaction): Promise<void> {
-      await input.client.send(
-        new TransactWriteItemsCommand({
-          TransactItems: buildDynamoActionCommitTransactWriteItems(
-            transaction,
-            (input.now?.() ?? new Date()).toISOString(),
-          ),
-        }),
-      );
+      try {
+        await input.client.send(
+          new TransactWriteItemsCommand({
+            TransactItems: buildDynamoActionCommitTransactWriteItems(
+              transaction,
+              (input.now?.() ?? new Date()).toISOString(),
+            ),
+          }),
+        );
+      } catch (error) {
+        rethrowDynamoTransactionConflict(error, {
+          resource: 'card_action',
+          card_id: transaction.projected_response.card.card_id,
+          expected_server_version: transaction.expected_server_version,
+        });
+      }
     },
   };
 }

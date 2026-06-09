@@ -220,6 +220,28 @@ describe('PH-OS visit-mode handlers', () => {
     expect(repo.updateVisitStep).not.toHaveBeenCalled();
   });
 
+  it('rejects raw S3 evidence paths before repository mutation', async () => {
+    const repo = repository();
+    const handler = createUpdateVisitStepHandler(repo);
+
+    const response = (await handler({
+      ctx: ctx(),
+      body: {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+        payload: { evidence_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg' },
+      },
+      event: { pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD } },
+    })) as PhosLambdaResponse;
+
+    expect(response).toMatchObject({ statusCode: 400 });
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'payload.evidence_key', reason: 'evidence_id_required' },
+    });
+    expect(repo.updateVisitStep).not.toHaveBeenCalled();
+  });
+
   it('trims evidence keys before completing evidence upload', async () => {
     const repo = repository();
     const handler = createUpdateVisitStepHandler(repo);

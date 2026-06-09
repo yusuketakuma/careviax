@@ -179,4 +179,18 @@ describe('fee-rules lambda composition', () => {
     });
     expect(pool.connect).not.toHaveBeenCalled();
   });
+
+  it('rejects malformed cursors before Aurora access', async () => {
+    const { pool } = auroraPool();
+    const handler = createFeeRuleSearchLambdaHandler({ auroraPool: pool });
+
+    const response = await handler(eventWithQuery({ fee_code: 'M001', cursor: 'not-base64-json' }));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
 });

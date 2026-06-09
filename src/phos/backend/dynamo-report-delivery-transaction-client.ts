@@ -6,6 +6,7 @@ import {
 import type { DynamoReportDeliveryTransitionTransaction } from './dynamo-report-delivery-lifecycle-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 function idempotencyPut(
   input: DynamoReportDeliveryTransitionTransaction,
@@ -85,14 +86,22 @@ export function createDynamoReportDeliveryTransactionClient(input: {
     async transactCommitReportDeliveryTransition(
       transaction: DynamoReportDeliveryTransitionTransaction,
     ): Promise<void> {
-      await input.client.send(
-        new TransactWriteItemsCommand({
-          TransactItems: buildDynamoReportDeliveryTransitionTransactWriteItems(
-            transaction,
-            (input.now?.() ?? new Date()).toISOString(),
-          ),
-        }),
-      );
+      try {
+        await input.client.send(
+          new TransactWriteItemsCommand({
+            TransactItems: buildDynamoReportDeliveryTransitionTransactWriteItems(
+              transaction,
+              (input.now?.() ?? new Date()).toISOString(),
+            ),
+          }),
+        );
+      } catch (error) {
+        rethrowDynamoTransactionConflict(error, {
+          resource: 'report_delivery_transition',
+          delivery_id: transaction.response.delivery.delivery_id,
+          expected_server_version: transaction.expected_server_version,
+        });
+      }
     },
   };
 }

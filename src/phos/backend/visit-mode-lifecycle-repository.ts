@@ -28,6 +28,20 @@ export type VisitStepCommitInput = {
   request_fingerprint: string;
   previous_visit: VisitModeView;
   response: VisitModeView;
+  verified_evidence?: VerifiedEvidenceUpload;
+};
+
+export type EvidenceUploadVerificationInput = {
+  packet_id: string;
+  step: typeof VisitStep.EVIDENCE_UPLOAD;
+  visit: VisitModeView;
+  evidence_key: string;
+};
+
+export type VerifiedEvidenceUpload = {
+  evidence_id: string;
+  card_id: string;
+  s3_key: string;
 };
 
 export type VisitModeLifecycleStore = {
@@ -38,6 +52,10 @@ export type VisitModeLifecycleStore = {
     request_fingerprint: string,
   ): Promise<IdempotentVisitStepLookup>;
   loadVisitMode(ctx: TenantContext, packet_id: string): Promise<VisitModeView | null>;
+  verifyEvidenceUpload(
+    ctx: TenantContext,
+    input: EvidenceUploadVerificationInput,
+  ): Promise<VerifiedEvidenceUpload>;
   commitVisitStep(ctx: TenantContext, input: VisitStepCommitInput): Promise<VisitModeView>;
 };
 
@@ -167,11 +185,24 @@ function applyArrivalOutcome(
   throw guardFailed({ step: VisitStep.ARRIVAL_CONFIRM, reason: 'missing_arrival_outcome' });
 }
 
+function applyVerifiedEvidenceUpload(
+  visit: VisitModeView,
+): Pick<VisitModeView, 'step_completed' | 'evidence_sync'> {
+  return {
+    step_completed: { ...visit.step_completed, [VisitStep.EVIDENCE_UPLOAD]: true },
+    evidence_sync: {
+      ...visit.evidence_sync,
+      blocking_unsynced_count: Math.max(0, visit.evidence_sync.blocking_unsynced_count - 1),
+    },
+  };
+}
+
 function projectVisitStepResponse(
   ctx: TenantContext,
   visit: VisitModeView,
   step: VisitStep,
   command: VisitStepMutationRequest,
+  verified_evidence?: VerifiedEvidenceUpload,
 ): VisitModeView {
   if (!visit.applicable_steps.includes(step)) {
     throw guardFailed({
@@ -190,12 +221,27 @@ function projectVisitStepResponse(
           last_opened_step: step,
           server_version: nextVersion,
         }
-      : {
-          ...visit,
-          step_completed: { ...visit.step_completed, [step]: true },
-          last_opened_step: step,
-          server_version: nextVersion,
-        };
+      : step === VisitStep.EVIDENCE_UPLOAD
+        ? {
+            ...visit,
+            ...applyVerifiedEvidenceUpload(visit),
+            last_opened_step: step,
+            server_version: nextVersion,
+          }
+        : {
+            ...visit,
+            step_completed: { ...visit.step_completed, [step]: true },
+            last_opened_step: step,
+            server_version: nextVersion,
+          };
+
+  if (step === VisitStep.EVIDENCE_UPLOAD && !verified_evidence) {
+    throw guardFailed({
+      packet_id: visit.packet_id,
+      step,
+      reason: 'unverified_evidence',
+    });
+  }
 
   if (step !== VisitStep.COMPLETE_CHECK) return base;
 
@@ -262,7 +308,16 @@ export function createVisitModeLifecycleRepository(
       }
       assertFreshVersion(visit, command);
 
-      const response = projectVisitStepResponse(ctx, visit, step, command);
+      const verified_evidence =
+        step === VisitStep.EVIDENCE_UPLOAD
+          ? await store.verifyEvidenceUpload(ctx, {
+              packet_id,
+              step,
+              visit,
+              evidence_key: command.payload?.evidence_key ?? '',
+            })
+          : undefined;
+      const response = projectVisitStepResponse(ctx, visit, step, command, verified_evidence);
       return store.commitVisitStep(ctx, {
         packet_id,
         step,
@@ -271,6 +326,7 @@ export function createVisitModeLifecycleRepository(
         request_fingerprint,
         previous_visit: visit,
         response,
+        verified_evidence,
       });
     },
   };

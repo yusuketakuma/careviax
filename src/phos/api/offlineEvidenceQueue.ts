@@ -107,6 +107,7 @@ export async function retryPhosOfflineEvidenceUploads(input: {
   for (const record of pending) {
     try {
       const presigned = await input.client.presignEvidenceUpload({
+        idempotency_key: `evidence_${record.packet_id}_${record.evidence_key}`,
         card_id: record.card_id,
         evidence_type: record.evidence_type,
         file_name: record.file_name,

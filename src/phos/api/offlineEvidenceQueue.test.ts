@@ -107,6 +107,7 @@ describe('PH-OS offline evidence queue', () => {
     ).resolves.toEqual({ synced: 1, failed: 0 });
 
     expect(presignEvidenceUpload).toHaveBeenCalledWith({
+      idempotency_key: 'evidence_packet_1_optional_photo',
       card_id: 'card_1',
       evidence_type: 'PHOTO',
       file_name: 'optional.jpg',

@@ -18,7 +18,7 @@ import {
   tenantPk,
 } from './dynamodb-keys';
 import type { DynamoGetInput } from './dynamo-cards-repository';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
@@ -92,7 +92,7 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getIdempotency({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: reportDeliveryIdempotencySk({ mutation_key, idempotency_key }),
       });
@@ -113,7 +113,7 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getReportDelivery({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: reportDeliverySk(delivery_id),
       });
@@ -129,7 +129,7 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
       const delivery = input.response.delivery;
 
       await client.transactCommitReportDeliveryTransition({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         delivery_sort_key: reportDeliverySk(input.delivery_id),
         status_gsi_pk: reportDeliveryStatusGsiPk(ctx, delivery.status),

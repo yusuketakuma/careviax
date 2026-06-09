@@ -29,7 +29,7 @@ import {
   tenantPk,
 } from './dynamodb-keys';
 import type { DynamoGetInput } from './dynamo-cards-repository';
-import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { phosCoreTableName } from './dynamo-cards-repository';
 import type { TenantContext } from './tenant-context';
 
 export type DynamoActionCommitTransaction = {
@@ -109,7 +109,7 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getIdempotency({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: cardActionIdempotencySk({ card_id, idempotency_key }),
       });
@@ -140,7 +140,7 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
       assertTenantPk(ctx, partition_key);
 
       const item = await client.getActionState({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         sort_key: cardSk(card_id),
       });
@@ -159,7 +159,7 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
       });
 
       await client.transactCommitAction({
-        table_name: PHOS_CORE_TABLE,
+        table_name: phosCoreTableName(),
         partition_key,
         card_sort_key: cardSk(input.card_id),
         idempotency_sort_key: cardActionIdempotencySk({

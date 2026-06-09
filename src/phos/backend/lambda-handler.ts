@@ -158,6 +158,19 @@ function emitBoundaryObservability(input: {
   });
 }
 
+async function flushObservability(observability: PhosObservabilitySink): Promise<void> {
+  try {
+    await observability.flush?.();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        type: 'PHOS_OBSERVABILITY_FLUSH_FAILED',
+        error: error instanceof Error ? error.message : 'unknown',
+      }),
+    );
+  }
+}
+
 function emitSuccessObservability(input: {
   observability: PhosObservabilitySink;
   event: PhosHttpEvent;
@@ -268,6 +281,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
           error_code: error.response.error_code,
           details: error.response.details,
         });
+        await flushObservability(observability);
         return toErrorLambdaResponse(error.status, error.response);
       }
 
@@ -286,6 +300,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         correlation_id,
         error_code: 'INTERNAL_ERROR',
       });
+      await flushObservability(observability);
       return toErrorLambdaResponse(500, {
         request_id,
         error_code: 'INTERNAL_ERROR',

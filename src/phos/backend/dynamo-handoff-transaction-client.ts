@@ -11,6 +11,7 @@ import {
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { cardBlockerSk, handoffAssigneeGsiSk } from './dynamodb-keys';
+import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 function queueSortKey(input: DynamoHandoffCreateTransaction | DynamoHandoffTransitionTransaction) {
   const handoff = input.response.handoff;
@@ -207,26 +208,42 @@ export function createDynamoHandoffTransactionClient(input: {
 }) {
   return {
     async transactCreateHandoff(transaction: DynamoHandoffCreateTransaction): Promise<void> {
-      await input.client.send(
-        new TransactWriteItemsCommand({
-          TransactItems: buildDynamoHandoffCreateTransactWriteItems(
-            transaction,
-            (input.now?.() ?? new Date()).toISOString(),
-          ),
-        }),
-      );
+      try {
+        await input.client.send(
+          new TransactWriteItemsCommand({
+            TransactItems: buildDynamoHandoffCreateTransactWriteItems(
+              transaction,
+              (input.now?.() ?? new Date()).toISOString(),
+            ),
+          }),
+        );
+      } catch (error) {
+        rethrowDynamoTransactionConflict(error, {
+          resource: 'handoff_create',
+          handoff_id: transaction.response.handoff.handoff_id,
+          expected_card_server_version: transaction.expected_card_server_version,
+        });
+      }
     },
     async transactCommitHandoffTransition(
       transaction: DynamoHandoffTransitionTransaction,
     ): Promise<void> {
-      await input.client.send(
-        new TransactWriteItemsCommand({
-          TransactItems: buildDynamoHandoffTransitionTransactWriteItems(
-            transaction,
-            (input.now?.() ?? new Date()).toISOString(),
-          ),
-        }),
-      );
+      try {
+        await input.client.send(
+          new TransactWriteItemsCommand({
+            TransactItems: buildDynamoHandoffTransitionTransactWriteItems(
+              transaction,
+              (input.now?.() ?? new Date()).toISOString(),
+            ),
+          }),
+        );
+      } catch (error) {
+        rethrowDynamoTransactionConflict(error, {
+          resource: 'handoff_transition',
+          handoff_id: transaction.response.handoff.handoff_id,
+          expected_server_version: transaction.expected_server_version,
+        });
+      }
     },
   };
 }
