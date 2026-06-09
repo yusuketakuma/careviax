@@ -40,6 +40,18 @@ describe('PH-OS static contract checks', () => {
     }
   });
 
+  it('keeps the UIUX v1.1 contract entrypoint files present', () => {
+    const requiredUiuxEntrypoints = [
+      'contracts/phos_uiux_contracts.ts',
+      'contracts/phos_uiux_copy_ja.ts',
+      'contracts/phos_uiux_design_tokens.ts',
+    ];
+
+    for (const path of requiredUiuxEntrypoints) {
+      expect(existsSync(join(canonicalRoot, path)), path).toBe(true);
+    }
+  });
+
   it('does not call Next.js API routes from PH-OS UI or app files', () => {
     const roots = [join(canonicalRoot, 'ui'), phosAppRoot].filter((root) => existsSync(root));
     const forbiddenApiPatterns = [
