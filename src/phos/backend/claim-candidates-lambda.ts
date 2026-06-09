@@ -22,7 +22,11 @@ import {
   type DynamoClaimCandidateQueryOutput,
   type DynamoClaimCandidatesClient,
 } from './dynamo-claim-candidates-repository';
-import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
+import {
+  decodeDynamoCursor,
+  encodeDynamoCursor,
+  tenantIdFromDynamoPartitionKey,
+} from './dynamodb-cursor';
 import {
   dynamoKey,
   fromDynamoAttributeValue,
@@ -91,7 +95,9 @@ export function createDynamoClaimCandidatesClient(input: {
           ExpressionAttributeNames: { '#pk': `${query.index_name}PK` },
           ExpressionAttributeValues: { ':pk': { S: query.partition_key } },
           Limit: query.limit,
-          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
+            tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+          }),
           ScanIndexForward: true,
         }),
       );

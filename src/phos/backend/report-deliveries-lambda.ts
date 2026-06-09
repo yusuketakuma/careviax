@@ -17,7 +17,11 @@ import {
   type DynamoReportDeliveryLifecycleMapper,
 } from './dynamo-report-delivery-lifecycle-store';
 import { createDynamoReportDeliveryTransactionClient } from './dynamo-report-delivery-transaction-client';
-import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
+import {
+  decodeDynamoCursor,
+  encodeDynamoCursor,
+  tenantIdFromDynamoPartitionKey,
+} from './dynamodb-cursor';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createReportDeliveryLifecycleRepository } from './report-delivery-lifecycle-repository';
 import {
@@ -58,7 +62,9 @@ export function createDynamoReportDeliveriesClient(input: {
             ':pk': { S: query.partition_key },
           },
           Limit: query.limit,
-          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
+            tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+          }),
           ScanIndexForward: false,
         }),
       );

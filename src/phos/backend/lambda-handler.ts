@@ -78,6 +78,16 @@ function isLambdaResponse(value: unknown): value is PhosLambdaResponse {
   );
 }
 
+function withRequestIdHeader(response: PhosLambdaResponse, request_id: string): PhosLambdaResponse {
+  return {
+    ...response,
+    headers: {
+      ...response.headers,
+      'X-Request-Id': response.headers['X-Request-Id'] || request_id,
+    },
+  };
+}
+
 function routeKey(event: PhosHttpEvent): string {
   return event.routeKey ?? event.rawPath ?? 'UNKNOWN_ROUTE';
 }
@@ -260,7 +270,10 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         ctx,
         latency_ms: (options.now?.() ?? new Date()).getTime() - start.getTime(),
       });
-      const response = isLambdaResponse(result) ? result : toLambdaJsonResponse(200, result);
+      const response = withRequestIdHeader(
+        isLambdaResponse(result) ? result : toLambdaJsonResponse(200, result),
+        ctx.request_id,
+      );
       await flushObservability(observability);
       return response;
     } catch (error) {

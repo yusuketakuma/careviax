@@ -73,6 +73,7 @@ describe('withTenantContext', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers['X-Request-Id']).toBe('req_1');
     const metric = logSpy.mock.calls
       .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
       .find((entry) => entry.RequestLatencyMs === 17);
@@ -255,6 +256,7 @@ describe('withTenantContext', () => {
     const response = await handler(validEvent);
 
     expect(response.statusCode).toBe(403);
+    expect(response.headers['X-Request-Id']).toBe('req_1');
     expect(calls).toEqual(['recordSecurityEvent', 'flush']);
     expect(observability.flush).toHaveBeenCalledOnce();
   });

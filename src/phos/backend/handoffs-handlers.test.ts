@@ -325,6 +325,71 @@ describe('PH-OS handoffs Lambda handlers', () => {
     });
   });
 
+  it.each([
+    {
+      name: 'resolve',
+      createHandler: createResolveHandoffHandler,
+      method: 'resolveHandoff' as const,
+      body: {
+        resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_resolve',
+        client_version: 1,
+      },
+    },
+    {
+      name: 'open',
+      createHandler: createOpenHandoffHandler,
+      method: 'openHandoff' as const,
+      body: {
+        idempotency_key: 'idem_open',
+        client_version: 1,
+      },
+    },
+    {
+      name: 'return',
+      createHandler: createReturnHandoffHandler,
+      method: 'returnHandoff' as const,
+      body: {
+        return_reason_code: 'NEED_MORE_INFO',
+        return_note: '施設連絡先を確認してください。',
+        idempotency_key: 'idem_return',
+        client_version: 1,
+      },
+    },
+  ])('rejects $name handoff invokes whose routeKey does not match the export', async (testCase) => {
+    const repo = repository();
+    const handler = withTenantContext(testCase.createHandler(repo));
+
+    const response = await handler(
+      event({
+        routeKey: 'GET /handoffs',
+        pathParameters: { handoff_id: 'handoff_1' },
+        requestContext: {
+          requestId: 'req_1',
+          authorizer: {
+            jwt: {
+              claims: {
+                token_use: 'access',
+                tenant_id: 'tenant_abc123',
+                sub: 'user_001',
+                role: 'PHARMACIST',
+                scope: 'phos/handoffs.read',
+              },
+            },
+          },
+        },
+        body: JSON.stringify(testCase.body),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'routeKey' },
+    });
+    expect(repo[testCase.method]).not.toHaveBeenCalled();
+  });
+
   it('lets pharmacists open handoffs for review', async () => {
     const repo = repository();
     const handler = withTenantContext(createOpenHandoffHandler(repo));

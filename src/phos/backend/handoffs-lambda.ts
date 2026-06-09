@@ -20,7 +20,11 @@ import type {
   DynamoHandoffStoreMapper,
 } from './dynamo-handoff-lifecycle-store';
 import { createDynamoHandoffTransactionClient } from './dynamo-handoff-transaction-client';
-import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
+import {
+  decodeDynamoCursor,
+  encodeDynamoCursor,
+  tenantIdFromDynamoPartitionKey,
+} from './dynamodb-cursor';
 import { dynamoKey, fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createHandoffLifecycleRepository } from './handoff-lifecycle-repository';
 import type { HandoffCreateCardContext } from './handoff-lifecycle-repository';
@@ -136,7 +140,9 @@ export function createDynamoHandoffStoreClient(input: {
             : {}),
         },
         Limit: query.limit,
-        ExclusiveStartKey: decodeDynamoCursor(query.cursor),
+        ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
+          tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+        }),
       });
       const result = await input.client.send(command);
       return {

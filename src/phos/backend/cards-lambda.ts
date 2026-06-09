@@ -35,7 +35,11 @@ import {
   type DynamoGetInput,
   type DynamoQueryOutput,
 } from './dynamo-cards-repository';
-import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
+import {
+  decodeDynamoCursor,
+  encodeDynamoCursor,
+  tenantIdFromDynamoPartitionKey,
+} from './dynamodb-cursor';
 import { dynamoKey, fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import {
   createLambdaObservabilitySink,
@@ -106,7 +110,9 @@ export function createDynamoCardsClient(input: {
             ':pk': { S: query.partition_key },
           },
           Limit: query.limit,
-          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
+            tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+          }),
         }),
       );
       return {

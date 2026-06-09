@@ -26,10 +26,20 @@ import type { TenantContext } from './tenant-context';
 
 export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
 export const HANDOFF_SEARCH_MAX_LIMIT = 50;
+const HANDOFF_SEARCH_ROUTE_KEY = 'GET /handoffs';
+const HANDOFF_CREATE_ROUTE_KEY = 'POST /handoffs';
+const HANDOFF_RESOLVE_ROUTE_KEY = 'POST /handoffs/{handoff_id}/resolve';
+const HANDOFF_OPEN_ROUTE_KEY = 'POST /handoffs/{handoff_id}/open';
+const HANDOFF_RETURN_ROUTE_KEY = 'POST /handoffs/{handoff_id}/return';
 
 function readHandoffId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.handoff_id ?? event.pathParameters?.handoffId;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function assertExpectedRouteKey(event: PhosHttpEvent, expectedRouteKey: string): void {
+  if (!event.routeKey || event.routeKey === expectedRouteKey) return;
+  throw validationError({ field: 'routeKey', expected: expectedRouteKey });
 }
 
 function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
@@ -166,11 +176,11 @@ function parseReturnRequest(body: unknown): ReturnHandoffRequest {
 }
 
 function assertHandoffReadAccess(ctx: TenantContext) {
-  assertRouteAccess(ctx, 'GET /handoffs');
+  assertRouteAccess(ctx, HANDOFF_SEARCH_ROUTE_KEY);
 }
 
 function assertHandoffCreateAccess(ctx: TenantContext) {
-  assertRouteAccess(ctx, 'POST /handoffs');
+  assertRouteAccess(ctx, HANDOFF_CREATE_ROUTE_KEY);
 }
 
 function assertHandoffMutationAccess(ctx: TenantContext, route_key: string) {
@@ -244,8 +254,9 @@ function withHandoffErrors(route_key: string, ctx: TenantContext, error: unknown
 
 export function createHandoffSearchHandler(repository: PhosHandoffsRepository): PhosHandler {
   return async ({ event, ctx }) => {
-    const route_key = event.routeKey ?? 'GET /handoffs';
+    const route_key = HANDOFF_SEARCH_ROUTE_KEY;
     try {
+      assertExpectedRouteKey(event, route_key);
       assertHandoffReadAccess(ctx);
       const response = await repository.searchHandoffs(ctx, parseSearchQuery(event));
       logHandlerSuccess({ ctx, route_key });
@@ -258,8 +269,9 @@ export function createHandoffSearchHandler(repository: PhosHandoffsRepository): 
 
 export function createCreateHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
-    const route_key = event.routeKey ?? 'POST /handoffs';
+    const route_key = HANDOFF_CREATE_ROUTE_KEY;
     try {
+      assertExpectedRouteKey(event, route_key);
       assertHandoffCreateAccess(ctx);
       const response = await repository.createHandoff(ctx, parseCreateRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id: response.handoff.handoff_id });
@@ -272,10 +284,11 @@ export function createCreateHandoffHandler(repository: PhosHandoffsRepository): 
 
 export function createResolveHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
-    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/resolve';
+    const route_key = HANDOFF_RESOLVE_ROUTE_KEY;
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
+      assertExpectedRouteKey(event, route_key);
       assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.resolveHandoff(ctx, handoff_id, parseResolveRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id });
@@ -288,10 +301,11 @@ export function createResolveHandoffHandler(repository: PhosHandoffsRepository):
 
 export function createOpenHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
-    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/open';
+    const route_key = HANDOFF_OPEN_ROUTE_KEY;
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
+      assertExpectedRouteKey(event, route_key);
       assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.openHandoff(ctx, handoff_id, parseOpenRequest(body));
       logHandlerSuccess({ ctx, route_key, handoff_id });
@@ -304,10 +318,11 @@ export function createOpenHandoffHandler(repository: PhosHandoffsRepository): Ph
 
 export function createReturnHandoffHandler(repository: PhosHandoffsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
-    const route_key = event.routeKey ?? 'POST /handoffs/{handoff_id}/return';
+    const route_key = HANDOFF_RETURN_ROUTE_KEY;
     const handoff_id = readHandoffId(event);
     if (!handoff_id) return domainErrorResponse(ctx, validationError({ field: 'handoff_id' }));
     try {
+      assertExpectedRouteKey(event, route_key);
       assertHandoffMutationAccess(ctx, route_key);
       const response = await repository.returnHandoff(ctx, handoff_id, parseReturnRequest(body));
       emitHandoffReturnedMetric({ ctx, route_key });

@@ -19,6 +19,7 @@ import {
 
 export const CARD_SEARCH_DEFAULT_LIMIT = 50;
 export const CARD_SEARCH_MAX_LIMIT = 50;
+const CARD_ACTION_ROUTE_KEY = 'POST /cards/{card_id}/actions';
 
 type ParsedCardAction = ActionRequest & {
   action_code: ActionCode;
@@ -27,6 +28,11 @@ type ParsedCardAction = ActionRequest & {
 function readCardId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.card_id ?? event.pathParameters?.cardId;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function assertExpectedRouteKey(event: PhosHttpEvent, expectedRouteKey: string): void {
+  if (!event.routeKey || event.routeKey === expectedRouteKey) return;
+  throw validationError({ field: 'routeKey', expected: expectedRouteKey });
 }
 
 function parseSearchQuery(event: PhosHttpEvent): CardSearchQuery {
@@ -301,7 +307,7 @@ export function createCardDetailHandler(repository: PhosCardsRepository): PhosHa
 
 export function createExecuteCardActionHandler(repository: PhosCardsRepository): PhosHandler {
   return async ({ event, ctx, body }) => {
-    const route_key = event.routeKey ?? 'POST /cards/{card_id}/actions';
+    const route_key = CARD_ACTION_ROUTE_KEY;
     const card_id = readCardId(event);
     if (!card_id) {
       return domainErrorResponse(ctx, validationError({ field: 'card_id' }));
@@ -310,6 +316,7 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
     let action_code: ActionCode | undefined;
     let started_at_ms = 0;
     try {
+      assertExpectedRouteKey(event, route_key);
       assertRouteAccess(ctx, route_key);
       const request = parseActionRequest(body);
       action_code = request.action_code;

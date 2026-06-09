@@ -326,6 +326,47 @@ describe('PH-OS cards Lambda handlers', () => {
     });
   });
 
+  it('rejects card action invokes whose routeKey does not match the action export', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createExecuteCardActionHandler(repo));
+
+    const response = await handler(
+      event({
+        routeKey: 'GET /cards',
+        pathParameters: { card_id: 'card_1' },
+        requestContext: {
+          requestId: 'req_1',
+          authorizer: {
+            jwt: {
+              claims: {
+                token_use: 'access',
+                tenant_id: 'tenant_abc123',
+                sub: 'user_001',
+                role: 'PHARMACIST',
+                scope: 'phos/cards.read',
+              },
+            },
+          },
+        },
+        body: JSON.stringify({
+          action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_1',
+          client_version: 1,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: {
+        field: 'routeKey',
+        expected: 'POST /cards/{card_id}/actions',
+      },
+    });
+    expect(repo.executeCardAction).not.toHaveBeenCalled();
+  });
+
   it('does not block matrix-permitted clerk actions at the coarse endpoint role gate', async () => {
     const repo = repository();
     const handler = withTenantContext(createExecuteCardActionHandler(repo));
