@@ -30,9 +30,22 @@ const REQUIRED_COGNITO_ENV = [
   'PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN',
 ] as const;
 
+function isTruthyEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true';
+}
+
 function readEnv(env: Env, name: string): string | null {
   const value = env[name]?.trim();
   return value ? value : null;
+}
+
+function buildApiSmokeUrl(apiBaseUrl: string): URL {
+  const url = new URL(apiBaseUrl);
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/cards`;
+  url.search = '';
+  url.hash = '';
+  return url;
 }
 
 function getMissingEnv(env: Env, names: readonly string[]) {
@@ -242,6 +255,29 @@ export function evaluateLocalTemplateReadiness(): ReadinessCheck {
       };
 }
 
+export function evaluateLegacyNextApiBoundaryReadiness(env: Env): ReadinessCheck {
+  const isProduction =
+    readEnv(env, 'APP_ENV') === 'production' ||
+    readEnv(env, 'NEXT_PUBLIC_APP_ENV') === 'production' ||
+    readEnv(env, 'NODE_ENV') === 'production';
+
+  if (isProduction && isTruthyEnv(env.PHOS_ENABLE_LEGACY_FILE_API)) {
+    return {
+      name: 'legacy_next_file_api_boundary',
+      status: 'failed',
+      detail:
+        'PHOS_ENABLE_LEGACY_FILE_API must not be true for PH-OS production; legacy /api/files/* must stay disabled beside API Gateway /evidence/presign-upload.',
+    };
+  }
+
+  return {
+    name: 'legacy_next_file_api_boundary',
+    status: 'passed',
+    detail:
+      'Legacy Next.js /api/files/* cannot be explicitly enabled for PH-OS production readiness.',
+  };
+}
+
 export async function buildPhosBackendLiveReadinessReport(
   input: {
     env?: Env;
@@ -251,7 +287,10 @@ export async function buildPhosBackendLiveReadinessReport(
   } = {},
 ): Promise<PhosBackendLiveReadinessReport> {
   const env = input.env ?? process.env;
-  const checks: ReadinessCheck[] = [evaluateLocalTemplateReadiness()];
+  const checks: ReadinessCheck[] = [
+    evaluateLocalTemplateReadiness(),
+    evaluateLegacyNextApiBoundaryReadiness(env),
+  ];
   const missingInputs = new Set<string>();
   const missingCognitoEnv = getMissingEnv(env, REQUIRED_COGNITO_ENV);
 
@@ -323,7 +362,7 @@ export async function buildPhosBackendLiveReadinessReport(
         'Set PHOS_API_BASE_URL and PHOS_COGNITO_ACCESS_TOKEN to run a read-only GET /cards smoke request.',
     });
   } else {
-    const response = await (input.fetch ?? fetch)(new URL('/cards', apiBaseUrl), {
+    const response = await (input.fetch ?? fetch)(buildApiSmokeUrl(apiBaseUrl), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     checks.push({

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPhosBackendLiveReadinessReport,
   evaluateAccessTokenReadiness,
+  evaluateLegacyNextApiBoundaryReadiness,
   evaluateLocalTemplateReadiness,
 } from './verify-phos-backend-live-readiness';
 
@@ -33,6 +34,30 @@ describe('verify-phos-backend-live-readiness', () => {
       name: 'local_template_contract',
       status: 'passed',
       detail: expect.stringContaining('PHI-minimized access logs, Lambda active tracing'),
+    });
+  });
+
+  it('rejects explicit legacy Next file API compatibility in PH-OS production readiness', () => {
+    expect(
+      evaluateLegacyNextApiBoundaryReadiness({
+        APP_ENV: 'production',
+        PHOS_ENABLE_LEGACY_FILE_API: '1',
+      }),
+    ).toMatchObject({
+      name: 'legacy_next_file_api_boundary',
+      status: 'failed',
+      detail: expect.stringContaining('PHOS_ENABLE_LEGACY_FILE_API must not be true'),
+    });
+  });
+
+  it('allows missing legacy compatibility override because production fails closed by default', () => {
+    expect(
+      evaluateLegacyNextApiBoundaryReadiness({
+        APP_ENV: 'production',
+      }),
+    ).toMatchObject({
+      name: 'legacy_next_file_api_boundary',
+      status: 'passed',
     });
   });
 
@@ -156,6 +181,10 @@ describe('verify-phos-backend-live-readiness', () => {
       ],
       checks: expect.arrayContaining([
         expect.objectContaining({
+          name: 'legacy_next_file_api_boundary',
+          status: 'passed',
+        }),
+        expect.objectContaining({
           name: 'cognito_trigger_live_attachment',
           status: 'missing',
         }),
@@ -176,6 +205,25 @@ describe('verify-phos-backend-live-readiness', () => {
     ).resolves.toMatchObject({
       ok: false,
       strict: true,
+    });
+  });
+
+  it('fails readiness when PH-OS production explicitly enables legacy Next file APIs', async () => {
+    await expect(
+      buildPhosBackendLiveReadinessReport({
+        env: {
+          APP_ENV: 'production',
+          PHOS_ENABLE_LEGACY_FILE_API: 'true',
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'legacy_next_file_api_boundary',
+          status: 'failed',
+        }),
+      ]),
     });
   });
 
@@ -201,6 +249,37 @@ describe('verify-phos-backend-live-readiness', () => {
           name: 'api_gateway_lambda_smoke',
           status: 'failed',
           detail: 'GET /cards returned HTTP 500.',
+        }),
+      ]),
+    );
+  });
+
+  it('preserves API Gateway stage paths when building the API smoke URL', async () => {
+    let requestedUrl: string | undefined;
+    const report = await buildPhosBackendLiveReadinessReport({
+      env: {
+        PHOS_COGNITO_ACCESS_TOKEN: jwt({
+          ...validTemporalClaims,
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user_001',
+          scope: 'phos/cards:read',
+        }),
+        PHOS_API_BASE_URL: 'https://api.example.test/prod',
+      },
+      now,
+      fetch: async (input) => {
+        requestedUrl = input.toString();
+        return new Response('{}', { status: 200 });
+      },
+    });
+
+    expect(requestedUrl).toBe('https://api.example.test/prod/cards');
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api_gateway_lambda_smoke',
+          status: 'passed',
         }),
       ]),
     );

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-075238
+
+- current task: add PH-OS live-readiness coverage for the legacy Next file API production boundary and fix the live API smoke URL stage-path regression found by read-only audit.
+- files inspected: `git status --short`, `git diff`, `.codex/ralph-state.md`, `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, `src/phos/api/client.ts`, and read-only `Gatekeeper the 7th` findings against the PH-OS final spec/backend proof surface.
+- files changed: `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the non-strict live-readiness report did not surface a machine-readable check proving PH-OS production is not explicitly enabling the legacy Next `/api/files/*` compatibility path. The API smoke check also used `new URL('/cards', PHOS_API_BASE_URL)`, which drops an API Gateway stage or custom-domain base path such as `/prod` and can smoke the wrong deployment URL.
+- security risks found: readiness now fails when a PH-OS production environment sets `PHOS_ENABLE_LEGACY_FILE_API=1|true`, while accepting the production default because the runtime boundary fails closed without that compatibility override. This keeps the legacy Next file API disabled beside the canonical API Gateway `/evidence/presign-upload` path. The smoke URL now preserves stage/base paths so live proof targets the configured PH-OS backend deployment rather than the origin root.
+- performance issues found: no application hot path changed. The new checks are operator-run readiness logic only, and the URL construction is constant-time.
+- validation commands: `pnpm exec prettier --write tools/scripts/verify-phos-backend-live-readiness.ts tools/scripts/verify-phos-backend-live-readiness.test.ts`; focused `pnpm exec vitest run tools/scripts/verify-phos-backend-live-readiness.test.ts tools/scripts/verify-phos-cognito-token-trigger.test.ts tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; focused ESLint for the touched readiness script/test; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:backend-live:readiness:report`; `git diff --check`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier was unchanged. Focused script suite passed with 3 files / 30 tests. Focused ESLint passed. Standalone TypeScript passed. Non-strict backend live-readiness report passed and now includes `legacy_next_file_api_boundary=passed`; live AWS/JWT/API checks remain `missing` because the required environment inputs are absent. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4970 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, and `PHOS_JWT_ISSUER`. Read-only audit also identified follow-up medium/low gaps for canonical API Gateway access-log field names, absolute `/api/phos` custom-domain base URL handling, `PhosHttpApiBaseUrl` CloudFormation output, and dynamic import/require coverage in the frontend no-go gate.
+- next action: commit this readiness slice, then address the remaining medium PH-OS spec/backend findings in priority order.
+
 ### 20260610-073517
 
 - current task: close the local PH-OS Final No-Go static-gate gap for frontend/app/API-client business data access and the security-auditor legacy file API production-default finding.
