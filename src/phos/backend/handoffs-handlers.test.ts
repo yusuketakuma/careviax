@@ -206,6 +206,47 @@ describe('PH-OS handoffs Lambda handlers', () => {
     );
   });
 
+  it('rejects blank create assignee before repository access', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createCreateHandoffHandler(repo));
+    const response = await handler(
+      event({
+        routeKey: 'POST /handoffs',
+        requestContext: {
+          requestId: 'req_1',
+          authorizer: {
+            jwt: {
+              claims: {
+                token_use: 'access',
+                tenant_id: 'tenant_abc123',
+                sub: 'user_clerk',
+                role: 'PHARMACY_CLERK',
+                scope: 'phos/handoffs.write',
+              },
+            },
+          },
+        },
+        body: JSON.stringify({
+          card_id: 'card_1',
+          reason_code: 'DIFF_REVIEW',
+          summary: '薬剤師確認が必要です。',
+          source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+          urgency: HandoffUrgency.HIGH,
+          assignee_user_id: '   ',
+          idempotency_key: 'idem_1',
+          client_version: 1,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'assignee_user_id' },
+    });
+    expect(repo.createHandoff).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid handoff source ref captured_at before repository access', async () => {
     const repo = repository();
     const handler = withTenantContext(createCreateHandoffHandler(repo));

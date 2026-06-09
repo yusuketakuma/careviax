@@ -123,14 +123,33 @@ describe('PH-OS Final No-Go gate', () => {
       expect(template.Resources[binding.function_logical_id]).toMatchObject({
         Type: 'AWS::Lambda::Function',
         Properties: {
-          Role: { 'Fn::GetAtt': ['PhosLambdaExecutionRole', 'Arn'] },
+          Role: { 'Fn::GetAtt': [binding.role_logical_id, 'Arn'] },
           Environment: {
             Variables: {
-              PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
-              PHOS_EVIDENCE_BUCKET: { Ref: 'PhosEvidenceBucketName' },
+              PHOS_SECURITY_EVENT_TABLE_NAME: { Ref: 'PhosSecurityEventTableName' },
               PHOS_SECURITY_EVENTS_DYNAMO: '1',
+              NODE_ENV: 'production',
             },
           },
+        },
+      });
+      expect(template.Resources[binding.role_logical_id]).toMatchObject({
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          Policies: [
+            {
+              PolicyDocument: {
+                Statement: expect.arrayContaining([
+                  expect.objectContaining({
+                    Action: expect.arrayContaining(['logs:PutLogEvents']),
+                  }),
+                  expect.objectContaining({
+                    Action: expect.arrayContaining(['xray:PutTraceSegments']),
+                  }),
+                ]),
+              },
+            },
+          ],
         },
       });
     }
@@ -138,29 +157,13 @@ describe('PH-OS Final No-Go gate', () => {
       Type: 'String',
       NoEcho: true,
     });
-    expect(template.Resources.PhosLambdaExecutionRole).toMatchObject({
-      Type: 'AWS::IAM::Role',
-      Properties: {
-        Policies: [
-          {
-            PolicyDocument: {
-              Statement: expect.arrayContaining([
-                expect.objectContaining({ Action: expect.arrayContaining(['logs:PutLogEvents']) }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['xray:PutTraceSegments']),
-                }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['dynamodb:TransactWriteItems']),
-                }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['s3:PutObject', 's3:GetObject']),
-                }),
-              ]),
-            },
-          },
-        ],
-      },
-    });
+    expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
+    expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
+      'dynamodb:TransactWriteItems',
+    );
+    expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
+      's3:PutObject',
+    );
   });
 
   it('keeps every P0 CloudWatch metric from the final spec in the observability contract', () => {

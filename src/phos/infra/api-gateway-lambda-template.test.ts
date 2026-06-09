@@ -109,17 +109,13 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         Properties: {
           Runtime: 'nodejs24.x',
           Handler: binding.cloudformation_handler,
-          Role: { 'Fn::GetAtt': ['PhosLambdaExecutionRole', 'Arn'] },
+          Role: { 'Fn::GetAtt': [binding.role_logical_id, 'Arn'] },
           Architectures: ['arm64'],
           TracingConfig: {
             Mode: 'Active',
           },
           Environment: {
             Variables: {
-              PHOS_DYNAMODB_TABLE_NAME: { Ref: 'PhosDynamoDbTableName' },
-              PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
-              PHOS_EVIDENCE_BUCKET: { Ref: 'PhosEvidenceBucketName' },
-              PHOS_EVIDENCE_BUCKET_NAME: { Ref: 'PhosEvidenceBucketName' },
               PHOS_SECURITY_EVENT_TABLE_NAME: { Ref: 'PhosSecurityEventTableName' },
               PHOS_SECURITY_EVENTS_DYNAMO: '1',
               NODE_ENV: 'production',
@@ -141,56 +137,107 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template)).not.toContain('postgresql://');
   });
 
-  it('creates a Lambda execution role with PH-OS runtime permissions', () => {
+  it('creates per-route Lambda execution roles with capability-scoped permissions and env', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
+    const roleResources = resourcesByType('AWS::IAM::Role');
 
-    expect(template.Resources.PhosLambdaExecutionRole).toMatchObject({
-      Type: 'AWS::IAM::Role',
-      Properties: {
-        AssumeRolePolicyDocument: {
-          Statement: [
+    expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
+    expect(roleResources).toHaveLength(PHOS_API_ROUTES.length);
+    for (const route of PHOS_API_ROUTES) {
+      const binding = bindPhosApiRouteForDeployment(route);
+      expect(template.Resources[binding.role_logical_id]).toMatchObject({
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          AssumeRolePolicyDocument: {
+            Statement: [
+              {
+                Effect: 'Allow',
+                Principal: { Service: 'lambda.amazonaws.com' },
+                Action: 'sts:AssumeRole',
+              },
+            ],
+          },
+          Policies: [
             {
-              Effect: 'Allow',
-              Principal: { Service: 'lambda.amazonaws.com' },
-              Action: 'sts:AssumeRole',
+              PolicyDocument: {
+                Statement: expect.arrayContaining([
+                  expect.objectContaining({
+                    Action: expect.arrayContaining(['logs:PutLogEvents']),
+                  }),
+                  expect.objectContaining({
+                    Action: expect.arrayContaining(['xray:PutTraceSegments']),
+                  }),
+                  expect.objectContaining({
+                    Action: expect.arrayContaining(['dynamodb:PutItem']),
+                    Resource: {
+                      'Fn::Sub':
+                        'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosSecurityEventTableName}',
+                    },
+                  }),
+                ]),
+              },
             },
           ],
         },
-        Policies: [
-          {
-            PolicyDocument: {
-              Statement: expect.arrayContaining([
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['logs:PutLogEvents']),
-                }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['xray:PutTraceSegments']),
-                }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['dynamodb:TransactWriteItems']),
-                  Resource: expect.arrayContaining([
-                    {
-                      'Fn::Sub':
-                        'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}',
-                    },
-                    {
-                      'Fn::Sub':
-                        'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}/index/*',
-                    },
-                  ]),
-                }),
-                expect.objectContaining({
-                  Action: expect.arrayContaining(['s3:PutObject', 's3:GetObject']),
-                  Resource: {
-                    'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*',
-                  },
-                }),
-              ]),
-            },
-          },
-        ],
+      });
+    }
+  });
+
+  it('does not give read-only or Aurora-only routes evidence or write-capability runtime config', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+    const capacity = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find((route) => route.route_key === 'GET /capacity')!,
+    );
+    const feeRules = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find((route) => route.route_key === 'GET /fee-rules')!,
+    );
+    const evidence = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find((route) => route.route_key === 'POST /evidence/presign-upload')!,
+    );
+    const visitStep = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find(
+        (route) => route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+      )!,
+    );
+
+    expect(template.Resources[capacity.function_logical_id].Properties.Environment).toMatchObject({
+      Variables: {
+        PHOS_DYNAMODB_TABLE_NAME: { Ref: 'PhosDynamoDbTableName' },
       },
     });
+    expect(JSON.stringify(template.Resources[capacity.function_logical_id])).not.toContain(
+      'PHOS_EVIDENCE_BUCKET',
+    );
+    expect(JSON.stringify(template.Resources[capacity.function_logical_id])).not.toContain(
+      'PHOS_AURORA_DATABASE_URL',
+    );
+    expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
+      'dynamodb:TransactWriteItems',
+    );
+    expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
+      's3:PutObject',
+    );
+
+    expect(template.Resources[feeRules.function_logical_id].Properties.Environment).toMatchObject({
+      Variables: {
+        PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
+      },
+    });
+    expect(JSON.stringify(template.Resources[feeRules.function_logical_id])).not.toContain(
+      'PHOS_DYNAMODB_TABLE_NAME',
+    );
+    expect(JSON.stringify(template.Resources[feeRules.function_logical_id])).not.toContain(
+      'PHOS_EVIDENCE_BUCKET',
+    );
+
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain('s3:PutObject');
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
+      's3:GetObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain('s3:GetObject');
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).not.toContain(
+      's3:PutObject',
+    );
   });
 
   it('uses API Gateway proxy integrations and scoped Lambda invoke permissions for every route', () => {

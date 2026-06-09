@@ -269,6 +269,53 @@ describe('createHandoffLifecycleRepository', () => {
     expect(backingStore.commitCreateHandoff).not.toHaveBeenCalled();
   });
 
+  it('rejects non-manager create assignee overrides before idempotency replay', async () => {
+    const matched = mutationResponse(handoff({ handoff_id: 'handoff_replayed' }));
+    const backingStore = store({
+      getIdempotentMutation: vi.fn(async () => ({ status: 'MATCH' as const, response: matched })),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.createHandoff(ctxWithRole(UserRole.PHARMACY_CLERK, 'user_clerk'), {
+        card_id: 'card_1',
+        reason_code: 'DIFF_REVIEW',
+        summary: '薬剤師確認が必要です。',
+        source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+        urgency: HandoffUrgency.HIGH,
+        assignee_user_id: 'user_other',
+        idempotency_key: 'idem_create',
+        client_version: 1,
+      }),
+    ).rejects.toMatchObject({
+      error_code: 'FORBIDDEN',
+      details: { reason: 'handoff_assignee_override_forbidden' },
+    } satisfies Partial<PhosDomainError>);
+
+    expect(backingStore.getIdempotentMutation).not.toHaveBeenCalled();
+    expect(backingStore.commitCreateHandoff).not.toHaveBeenCalled();
+  });
+
+  it('allows manager create assignee overrides', async () => {
+    const backingStore = store();
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.createHandoff(ctxWithRole(UserRole.MANAGER, 'manager_1'), {
+        card_id: 'card_1',
+        reason_code: 'DIFF_REVIEW',
+        summary: '薬剤師確認が必要です。',
+        source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+        urgency: HandoffUrgency.HIGH,
+        assignee_user_id: 'user_other',
+        idempotency_key: 'idem_create',
+        client_version: 1,
+      }),
+    ).resolves.toMatchObject({ handoff: { handoff_id: 'handoff_created' } });
+
+    expect(backingStore.commitCreateHandoff).toHaveBeenCalledOnce();
+  });
+
   it('returns matched idempotent responses and rejects conflicting idempotency keys', async () => {
     const matched = mutationResponse(
       handoff({ status: HandoffStatus.RESOLVED, server_version: 2 }),

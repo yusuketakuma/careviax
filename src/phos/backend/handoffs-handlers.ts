@@ -95,6 +95,11 @@ function parseCreateRequest(body: unknown): CreateHandoffRequest {
   ) {
     throw validationError({ field: 'requested_action' });
   }
+  const assignee_user_id =
+    typeof input.assignee_user_id === 'string' ? input.assignee_user_id.trim() : undefined;
+  if (input.assignee_user_id !== undefined && !assignee_user_id) {
+    throw validationError({ field: 'assignee_user_id' });
+  }
 
   return {
     card_id: input.card_id.trim(),
@@ -103,9 +108,7 @@ function parseCreateRequest(body: unknown): CreateHandoffRequest {
     source_refs: parseSourceRefs(input.source_refs, { requireNonEmpty: true }) ?? [],
     urgency: input.urgency as HandoffUrgency,
     ...(input.requested_action ? { requested_action: input.requested_action } : {}),
-    ...(typeof input.assignee_user_id === 'string'
-      ? { assignee_user_id: input.assignee_user_id.trim() }
-      : {}),
+    ...(assignee_user_id ? { assignee_user_id } : {}),
     ...(typeof input.related_blocker_code === 'string'
       ? { related_blocker_code: input.related_blocker_code.trim() }
       : {}),

@@ -53,6 +53,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
 type RouteDeploymentBinding = {
   route: PhosApiRoute;
   function_logical_id: string;
+  role_logical_id: string;
   integration_logical_id: string;
   route_logical_id: string;
   permission_logical_id: string;
@@ -102,6 +103,7 @@ export function bindPhosApiRouteForDeployment(route: PhosApiRoute): RouteDeploym
   return {
     route,
     function_logical_id: `Phos${routeId}Function`,
+    role_logical_id: `Phos${routeId}FunctionRole`,
     integration_logical_id: `Phos${routeId}Integration`,
     route_logical_id: `Phos${routeId}Route`,
     permission_logical_id: `Phos${routeId}InvokePermission`,
@@ -139,6 +141,145 @@ function parameter(type: string, properties: Omit<CloudFormationParameter, 'Type
   return { Type: type, ...properties };
 }
 
+function routeUsesDynamoCore(route: PhosApiRoute): boolean {
+  return route.response_contract !== 'FeeRuleSearchResponse';
+}
+
+function routeUsesAurora(route: PhosApiRoute): boolean {
+  return route.response_contract === 'FeeRuleSearchResponse';
+}
+
+function routeS3Actions(route: PhosApiRoute): string[] {
+  if (route.route_key === 'POST /evidence/presign-upload') return ['s3:PutObject'];
+  if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
+    return ['s3:GetObject'];
+  }
+  return [];
+}
+
+function buildLambdaEnvironment(input: {
+  route: PhosApiRoute;
+  dynamodbTableNameParameter: string;
+  securityEventTableNameParameter: string;
+  auroraDatabaseUrlParameter: string;
+  evidenceBucketNameParameter: string;
+}): Record<string, CloudFormationValue> {
+  return {
+    ...(routeUsesDynamoCore(input.route)
+      ? { PHOS_DYNAMODB_TABLE_NAME: ref(input.dynamodbTableNameParameter) }
+      : {}),
+    ...(routeUsesAurora(input.route)
+      ? { PHOS_AURORA_DATABASE_URL: ref(input.auroraDatabaseUrlParameter) }
+      : {}),
+    ...(routeS3Actions(input.route).length > 0
+      ? {
+          PHOS_EVIDENCE_BUCKET: ref(input.evidenceBucketNameParameter),
+          PHOS_EVIDENCE_BUCKET_NAME: ref(input.evidenceBucketNameParameter),
+        }
+      : {}),
+    PHOS_SECURITY_EVENT_TABLE_NAME: ref(input.securityEventTableNameParameter),
+    PHOS_SECURITY_EVENTS_DYNAMO: '1',
+    NODE_ENV: 'production',
+  };
+}
+
+function buildLambdaPolicyStatements(input: {
+  route: PhosApiRoute;
+  dynamodbTableNameParameter: string;
+  securityEventTableNameParameter: string;
+  evidenceBucketNameParameter: string;
+}): CloudFormationValue[] {
+  const statements: CloudFormationValue[] = [
+    {
+      Effect: 'Allow',
+      Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+      Resource: sub('arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'),
+    },
+    {
+      Effect: 'Allow',
+      Action: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
+      Resource: '*',
+    },
+    {
+      Effect: 'Allow',
+      Action: ['dynamodb:PutItem'],
+      Resource: sub(
+        `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.securityEventTableNameParameter}}`,
+      ),
+    },
+  ];
+
+  if (routeUsesDynamoCore(input.route)) {
+    const actions =
+      input.route.method === 'GET'
+        ? ['dynamodb:GetItem', 'dynamodb:Query']
+        : [
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:Query',
+            'dynamodb:TransactWriteItems',
+          ];
+    statements.push({
+      Effect: 'Allow',
+      Action: actions,
+      Resource: [
+        sub(
+          `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}`,
+        ),
+        sub(
+          `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}/index/*`,
+        ),
+      ],
+    });
+  }
+
+  const s3Actions = routeS3Actions(input.route);
+  if (s3Actions.length > 0) {
+    statements.push({
+      Effect: 'Allow',
+      Action: s3Actions,
+      Resource: sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/tenants/*`),
+    });
+  }
+
+  return statements;
+}
+
+function buildLambdaExecutionRole(input: {
+  route: PhosApiRoute;
+  dynamodbTableNameParameter: string;
+  securityEventTableNameParameter: string;
+  evidenceBucketNameParameter: string;
+}): CloudFormationResource {
+  return {
+    Type: 'AWS::IAM::Role',
+    Properties: {
+      AssumeRolePolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: {
+              Service: 'lambda.amazonaws.com',
+            },
+            Action: 'sts:AssumeRole',
+          },
+        ],
+      },
+      Policies: [
+        {
+          PolicyName: 'ph-os-business-api-runtime',
+          PolicyDocument: {
+            Version: '2012-10-17',
+            Statement: buildLambdaPolicyStatements(input),
+          },
+        },
+      ],
+    },
+  };
+}
+
 export function buildPhosApiGatewayLambdaTemplate(
   options: PhosApiGatewayLambdaTemplateOptions = {},
 ): PhosApiGatewayLambdaTemplate {
@@ -160,71 +301,6 @@ export function buildPhosApiGatewayLambdaTemplate(
   const bindings = buildPhosApiRouteDeploymentBindings();
 
   const resources: Record<string, CloudFormationResource> = {
-    PhosLambdaExecutionRole: {
-      Type: 'AWS::IAM::Role',
-      Properties: {
-        AssumeRolePolicyDocument: {
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: {
-                Service: 'lambda.amazonaws.com',
-              },
-              Action: 'sts:AssumeRole',
-            },
-          ],
-        },
-        Policies: [
-          {
-            PolicyName: 'ph-os-business-api-runtime',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [
-                {
-                  Effect: 'Allow',
-                  Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
-                  Resource: sub(
-                    'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*',
-                  ),
-                },
-                {
-                  Effect: 'Allow',
-                  Action: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'dynamodb:GetItem',
-                    'dynamodb:PutItem',
-                    'dynamodb:UpdateItem',
-                    'dynamodb:Query',
-                    'dynamodb:TransactWriteItems',
-                  ],
-                  Resource: [
-                    sub(
-                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${dynamodbTableNameParameter}}`,
-                    ),
-                    sub(
-                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${dynamodbTableNameParameter}}/index/*`,
-                    ),
-                    sub(
-                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${securityEventTableNameParameter}}`,
-                    ),
-                  ],
-                },
-                {
-                  Effect: 'Allow',
-                  Action: ['s3:PutObject', 's3:GetObject'],
-                  Resource: sub(`arn:aws:s3:::\${${evidenceBucketNameParameter}}/tenants/*`),
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
     PhosHttpApi: {
       Type: 'AWS::ApiGatewayV2::Api',
       Properties: {
@@ -271,12 +347,18 @@ export function buildPhosApiGatewayLambdaTemplate(
   };
 
   for (const binding of bindings) {
+    resources[binding.role_logical_id] = buildLambdaExecutionRole({
+      route: binding.route,
+      dynamodbTableNameParameter,
+      securityEventTableNameParameter,
+      evidenceBucketNameParameter,
+    });
     resources[binding.function_logical_id] = {
       Type: 'AWS::Lambda::Function',
       Properties: {
         Runtime: runtime,
         Handler: binding.cloudformation_handler,
-        Role: getAtt('PhosLambdaExecutionRole', 'Arn'),
+        Role: getAtt(binding.role_logical_id, 'Arn'),
         Code: {
           S3Bucket: ref(lambdaArtifactBucketParameter),
           S3Key: ref(lambdaArtifactKeyParameter),
@@ -289,15 +371,13 @@ export function buildPhosApiGatewayLambdaTemplate(
           Mode: 'Active',
         },
         Environment: {
-          Variables: {
-            PHOS_DYNAMODB_TABLE_NAME: ref(dynamodbTableNameParameter),
-            PHOS_AURORA_DATABASE_URL: ref(auroraDatabaseUrlParameter),
-            PHOS_EVIDENCE_BUCKET: ref(evidenceBucketNameParameter),
-            PHOS_EVIDENCE_BUCKET_NAME: ref(evidenceBucketNameParameter),
-            PHOS_SECURITY_EVENT_TABLE_NAME: ref(securityEventTableNameParameter),
-            PHOS_SECURITY_EVENTS_DYNAMO: '1',
-            NODE_ENV: 'production',
-          },
+          Variables: buildLambdaEnvironment({
+            route: binding.route,
+            dynamodbTableNameParameter,
+            securityEventTableNameParameter,
+            auroraDatabaseUrlParameter,
+            evidenceBucketNameParameter,
+          }),
         },
       },
     };

@@ -101,6 +101,30 @@ function canOverrideHandoffAssignee(ctx: TenantContext): boolean {
   return ctx.role === UserRole.MANAGER || ctx.role === UserRole.ADMIN;
 }
 
+function assertCanAssignCreatedHandoff(
+  ctx: TenantContext,
+  command: CreateHandoffRequest,
+  cardContext: HandoffCreateCardContext,
+) {
+  if (command.assignee_user_id === undefined) return;
+  if (command.assignee_user_id.trim().length === 0) {
+    throw domainError(400, 'VALIDATION_ERROR', 'api.error.validation', {
+      field: 'assignee_user_id',
+    });
+  }
+  if (canOverrideHandoffAssignee(ctx)) return;
+  if (
+    cardContext.pharmacist_assignee_user_id &&
+    command.assignee_user_id === cardContext.pharmacist_assignee_user_id
+  ) {
+    return;
+  }
+  throw domainError(403, 'FORBIDDEN', 'api.error.forbidden', {
+    reason: 'handoff_assignee_override_forbidden',
+    assignee_user_id: command.assignee_user_id,
+  });
+}
+
 function assertCanSearchAssignee(ctx: TenantContext, assignee: string | undefined) {
   if (
     !assignee ||
@@ -273,6 +297,13 @@ export function createHandoffLifecycleRepository(
     },
     async createHandoff(ctx, command) {
       const request_fingerprint = stableStringify(command);
+      const cardContext = await store.loadCreateCardContext(ctx, command.card_id);
+      if (!cardContext) {
+        throw domainError(404, 'NOT_FOUND', 'api.error.card_not_found', {
+          card_id: command.card_id,
+        });
+      }
+      assertCanAssignCreatedHandoff(ctx, command, cardContext);
       const matched = await assertIdempotent({
         store,
         ctx,
@@ -281,13 +312,6 @@ export function createHandoffLifecycleRepository(
         request_fingerprint,
       });
       if (matched) return matched;
-
-      const cardContext = await store.loadCreateCardContext(ctx, command.card_id);
-      if (!cardContext) {
-        throw domainError(404, 'NOT_FOUND', 'api.error.card_not_found', {
-          card_id: command.card_id,
-        });
-      }
       assertFreshServerVersion({
         entity_id: command.card_id,
         entity_field: 'card_id',

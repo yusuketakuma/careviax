@@ -38,6 +38,10 @@ function normalizeBaseUrl(baseUrl: string): string {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('PH-OS API baseUrl must use http(s)');
   }
+  const localHttpHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  if (parsed.protocol === 'http:' && !localHttpHosts.has(parsed.hostname)) {
+    throw new Error('PH-OS API baseUrl must use https outside local development');
+  }
   if (parsed.pathname === '/api' || parsed.pathname.startsWith('/api/')) {
     throw new Error('PH-OS business API must not use Next.js /api routes');
   }
@@ -56,10 +60,21 @@ function buildUrl(
   return url.toString();
 }
 
-async function readJsonResponse(response: Response): Promise<unknown> {
+type ParsedJsonResponse = {
+  payload: unknown;
+  invalid_json: boolean;
+  content_type: string | null;
+};
+
+async function readJsonResponse(response: Response): Promise<ParsedJsonResponse> {
   const text = await response.text();
-  if (!text) return undefined;
-  return JSON.parse(text);
+  const contentType = response.headers.get('content-type');
+  if (!text) return { payload: undefined, invalid_json: false, content_type: contentType };
+  try {
+    return { payload: JSON.parse(text), invalid_json: false, content_type: contentType };
+  } catch {
+    return { payload: undefined, invalid_json: true, content_type: contentType };
+  }
 }
 
 function isErrorResponse(value: unknown): value is ErrorResponse {
@@ -92,6 +107,19 @@ function routePath(routeKey: string, params: Record<string, string> = {}): strin
   return path;
 }
 
+function invalidResponseError(status: number, parsed: ParsedJsonResponse): ErrorResponse {
+  return {
+    request_id: '',
+    error_code: 'INTERNAL_ERROR',
+    message_key: 'api.error.invalid_response',
+    details: {
+      status,
+      content_type: parsed.content_type,
+      ...(parsed.invalid_json ? { invalid_json: true } : {}),
+    },
+  };
+}
+
 export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosApiClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -116,17 +144,15 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       headers,
       ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
     });
-    const payload = await readJsonResponse(response);
+    const parsed = await readJsonResponse(response);
     if (!response.ok) {
-      if (isErrorResponse(payload)) throw new PhosApiError(response.status, payload);
-      throw new PhosApiError(response.status, {
-        request_id: '',
-        error_code: 'INTERNAL_ERROR',
-        message_key: 'api.error.invalid_response',
-        details: { status: response.status },
-      });
+      if (isErrorResponse(parsed.payload)) throw new PhosApiError(response.status, parsed.payload);
+      throw new PhosApiError(response.status, invalidResponseError(response.status, parsed));
     }
-    return payload as T;
+    if (parsed.invalid_json) {
+      throw new PhosApiError(response.status, invalidResponseError(response.status, parsed));
+    }
+    return parsed.payload as T;
   }
 
   return {

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
   ActionKind,
+  BoardQuickFilter,
+  BoardSortKey,
   ButtonState,
   CapacityScope,
   CapacityStatus,
@@ -30,7 +32,9 @@ import type {
   ReportDeliverySearchResponse,
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
+import { PHOS_API_ROUTES } from '@/phos/infra/api-gateway-routes';
 import { createPhosApiClient } from './client';
+import type { PhosApiClient } from './types';
 import { PhosApiError } from './types';
 
 const readyCard = {
@@ -259,6 +263,183 @@ function reportDeliveryMutationResponse(): ReportDeliveryMutationResponse {
 }
 
 describe('createPhosApiClient', () => {
+  it('keeps the frontend API client operation surface aligned with the route manifest', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+    const operations = [
+      {
+        route_key: 'GET /cards',
+        path: '/prod/cards',
+        invoke: (api: PhosApiClient) =>
+          api.getCards({ filter: BoardQuickFilter.TODAY, sort: BoardSortKey.UPDATED }),
+      },
+      {
+        route_key: 'GET /cards/{card_id}',
+        path: '/prod/cards/card_1',
+        invoke: (api: PhosApiClient) => api.getCardDetail('card_1'),
+      },
+      {
+        route_key: 'POST /cards/{card_id}/actions',
+        path: '/prod/cards/card_1/actions',
+        invoke: (api: PhosApiClient) => api.executeCardAction('card_1', actionRequest()),
+      },
+      {
+        route_key: 'GET /capacity',
+        path: '/prod/capacity',
+        invoke: (api: PhosApiClient) =>
+          api.getCapacity({ date: '2026-06-09', scope: CapacityScope.PHARMACY }),
+      },
+      {
+        route_key: 'GET /claim-candidates',
+        path: '/prod/claim-candidates',
+        invoke: (api: PhosApiClient) => api.getClaimCandidates({ limit: 25 }),
+      },
+      {
+        route_key: 'POST /claim-candidates/{candidate_id}/exclude',
+        path: '/prod/claim-candidates/claim_1/exclude',
+        invoke: (api: PhosApiClient) =>
+          api.excludeClaimCandidate('claim_1', {
+            reason_code: 'NOT_ELIGIBLE',
+            idempotency_key: 'idem_claim',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'GET /fee-rules',
+        path: '/prod/fee-rules',
+        invoke: (api: PhosApiClient) => api.getFeeRules({ fee_code: 'M001' }),
+      },
+      {
+        route_key: 'GET /visit-packets/{packet_id}/visit-mode',
+        path: '/prod/visit-packets/packet_1/visit-mode',
+        invoke: (api: PhosApiClient) => api.getVisitMode('packet_1'),
+      },
+      {
+        route_key: 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+        path: '/prod/visit-packets/packet_1/visit-steps/COMPLETE_CHECK',
+        invoke: (api: PhosApiClient) =>
+          api.updateVisitStep('packet_1', VisitStep.COMPLETE_CHECK, {
+            idempotency_key: 'idem_visit',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /evidence/presign-upload',
+        path: '/prod/evidence/presign-upload',
+        invoke: (api: PhosApiClient) =>
+          api.presignEvidenceUpload({
+            idempotency_key: 'idem_evidence',
+            card_id: 'card_1',
+            evidence_type: 'VISIT_PHOTO',
+            file_name: 'visit.jpg',
+            mime_type: 'image/jpeg',
+            sha256: 'a'.repeat(64),
+            size_bytes: 1024,
+          }),
+      },
+      {
+        route_key: 'GET /handoffs',
+        path: '/prod/handoffs',
+        invoke: (api: PhosApiClient) => api.getHandoffs({ status: HandoffStatus.OPEN }),
+      },
+      {
+        route_key: 'POST /handoffs',
+        path: '/prod/handoffs',
+        invoke: (api: PhosApiClient) =>
+          api.createHandoff({
+            card_id: 'card_1',
+            reason_code: 'DIFF_REVIEW',
+            summary: '薬剤師確認が必要です。',
+            source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+            urgency: HandoffUrgency.HIGH,
+            requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            idempotency_key: 'idem_create_handoff',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/resolve',
+        path: '/prod/handoffs/handoff_1/resolve',
+        invoke: (api: PhosApiClient) =>
+          api.resolveHandoff('handoff_1', {
+            resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            idempotency_key: 'idem_resolve',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/open',
+        path: '/prod/handoffs/handoff_1/open',
+        invoke: (api: PhosApiClient) =>
+          api.openHandoff('handoff_1', { idempotency_key: 'idem_open', client_version: 1 }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/return',
+        path: '/prod/handoffs/handoff_1/return',
+        invoke: (api: PhosApiClient) =>
+          api.returnHandoff('handoff_1', {
+            return_reason_code: 'NEED_MORE_INFO',
+            return_note: '確認してください。',
+            idempotency_key: 'idem_return',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'GET /report-deliveries',
+        path: '/prod/report-deliveries',
+        invoke: (api: PhosApiClient) =>
+          api.getReportDeliveries({ status: ReportDeliveryStatus.WAITING_REPLY }),
+      },
+      {
+        route_key: 'POST /report-deliveries/{delivery_id}/reply',
+        path: '/prod/report-deliveries/delivery_1/reply',
+        invoke: (api: PhosApiClient) =>
+          api.registerReportReply('delivery_1', {
+            result_status: ReportDeliveryStatus.ACTION_DONE,
+            reply_summary: '問題ありません。',
+            idempotency_key: 'idem_reply',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /report-deliveries/{delivery_id}/action-done',
+        path: '/prod/report-deliveries/delivery_1/action-done',
+        invoke: (api: PhosApiClient) =>
+          api.markReportActionDone('delivery_1', {
+            action_note: '対応済み。',
+            idempotency_key: 'idem_done',
+            client_version: 1,
+          }),
+      },
+    ] as const;
+
+    expect(operations.map((operation) => operation.route_key).sort()).toEqual(
+      PHOS_API_ROUTES.map((route) => route.route_key).sort(),
+    );
+
+    for (const operation of operations) {
+      await operation.invoke(client);
+    }
+
+    expect(
+      fetchImpl.mock.calls.map(([url, init]) => {
+        const parsed = new URL(String(url));
+        return {
+          method: init?.method,
+          path: parsed.pathname,
+        };
+      }),
+    ).toEqual(
+      operations.map((operation) => ({
+        method: operation.route_key.startsWith('POST ') ? 'POST' : 'GET',
+        path: operation.path,
+      })),
+    );
+  });
+
   it('builds API Gateway URLs from the PH-OS route manifest and sends auth headers', async () => {
     const searchResponse = {
       items: [{ card: readyCard, next_action: nextAction }],
@@ -292,6 +473,18 @@ describe('createPhosApiClient', () => {
     expect(() => createPhosApiClient({ baseUrl: 'https://app.example.com/api' })).toThrow(
       'PH-OS business API must not use Next.js /api routes',
     );
+  });
+
+  it('rejects plaintext API base URLs outside local development', () => {
+    expect(() => createPhosApiClient({ baseUrl: 'http://api.example.com/prod' })).toThrow(
+      'PH-OS API baseUrl must use https outside local development',
+    );
+    expect(() =>
+      createPhosApiClient({
+        baseUrl: 'http://localhost:8787/prod',
+        fetchImpl: vi.fn<typeof fetch>(),
+      }),
+    ).not.toThrow();
   });
 
   it('posts actions to API Gateway and returns the canonical ActionResponse', async () => {
@@ -559,6 +752,89 @@ describe('createPhosApiClient', () => {
     await expect(client.executeCardAction('card_1', actionRequest())).rejects.toMatchObject({
       status: 409,
       response: error,
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it.each([
+    {
+      name: 'plain text',
+      response: new Response('Forbidden', {
+        status: 403,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+      expected_status: 403,
+      expected_content_type: 'text/plain',
+    },
+    {
+      name: 'HTML',
+      response: new Response('<html>Bad gateway</html>', {
+        status: 502,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+      expected_status: 502,
+      expected_content_type: 'text/html',
+    },
+  ])('normalizes non-JSON $name error responses as PhosApiError', async (testCase) => {
+    const fetchImpl = vi.fn(async () => testCase.response);
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: testCase.expected_status,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          status: testCase.expected_status,
+          content_type: testCase.expected_content_type,
+          invalid_json: true,
+        },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it('normalizes non-canonical JSON error responses as PhosApiError', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: 'upstream' }, { status: 500 }));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 500,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          status: 500,
+          content_type: 'application/json',
+        },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it('normalizes empty error responses as PhosApiError', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 500 }));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 500,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          status: 500,
+          content_type: null,
+        },
+      },
     } satisfies Partial<PhosApiError>);
   });
 

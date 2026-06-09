@@ -72,6 +72,20 @@ function guardFailed(details: Record<string, unknown>): PhosDomainError {
   return domainError(422, 'ACTION_GUARD_FAILED', 'api.error.visit_mode_guard_failed', details);
 }
 
+function canBypassVisitAssignment(ctx: TenantContext): boolean {
+  return ctx.role === UserRole.MANAGER || ctx.role === UserRole.ADMIN;
+}
+
+function assertCanAccessVisitMode(ctx: TenantContext, visit: VisitModeView): void {
+  if (canBypassVisitAssignment(ctx)) return;
+  if (visit.assignee_user_id === ctx.user_id) return;
+  if (visit.support_user_ids?.includes(ctx.user_id)) return;
+  throw domainError(403, 'FORBIDDEN', 'api.error.forbidden', {
+    reason: 'visit_packet_assignee_forbidden',
+    packet_id: visit.packet_id,
+  });
+}
+
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
@@ -302,13 +316,21 @@ export function createVisitModeLifecycleRepository(
   store: VisitModeLifecycleStore,
 ): PhosVisitModeRepository {
   return {
-    getVisitMode(ctx, packet_id) {
-      return store.loadVisitMode(ctx, packet_id);
+    async getVisitMode(ctx, packet_id) {
+      const visit = await store.loadVisitMode(ctx, packet_id);
+      if (!visit) return null;
+      assertCanAccessVisitMode(ctx, visit);
+      return visit;
     },
 
     async updateVisitStep(ctx, packet_id, step, command) {
       const mutation_key = mutationKey(packet_id, step);
       const request_fingerprint = stableStringify({ packet_id, step, command });
+      const visit = await store.loadVisitMode(ctx, packet_id);
+      if (!visit) {
+        throw domainError(404, 'NOT_FOUND', 'api.error.visit_packet_not_found', { packet_id });
+      }
+      assertCanAccessVisitMode(ctx, visit);
       const matched = await assertIdempotent({
         store,
         ctx,
@@ -318,10 +340,6 @@ export function createVisitModeLifecycleRepository(
       });
       if (matched) return matched;
 
-      const visit = await store.loadVisitMode(ctx, packet_id);
-      if (!visit) {
-        throw domainError(404, 'NOT_FOUND', 'api.error.visit_packet_not_found', { packet_id });
-      }
       assertFreshVersion(visit, command);
 
       const verified_evidence =

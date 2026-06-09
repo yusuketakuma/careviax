@@ -39,6 +39,10 @@ export type EvidenceUploadPresigner = {
   }>;
 };
 
+export type EvidenceUploadAuthorizer = {
+  authorizeEvidenceUpload(ctx: TenantContext, card_id: string): Promise<void>;
+};
+
 function validationError(ctx: TenantContext, details: Record<string, unknown>) {
   const response: ErrorResponse = {
     request_id: ctx.request_id,
@@ -178,6 +182,7 @@ export function createEvidencePresignUploadHandler(
     generateEvidenceId?: () => string;
     max_size_bytes?: number;
     upload_intent_store?: EvidenceUploadIntentStore;
+    upload_authorizer?: EvidenceUploadAuthorizer;
   } = {},
 ): PhosHandler {
   return async ({ ctx, body }) => {
@@ -186,6 +191,7 @@ export function createEvidencePresignUploadHandler(
       const request = parseEvidenceUploadRequest(body);
       const max_size_bytes = options.max_size_bytes ?? EVIDENCE_UPLOAD_MAX_SIZE_BYTES;
       assertUploadPolicy(request, max_size_bytes);
+      await options.upload_authorizer?.authorizeEvidenceUpload(ctx, request.card_id);
 
       const evidence_id =
         options.generateEvidenceId?.() ?? evidenceIdFromIdempotencyKey(ctx, request);

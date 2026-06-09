@@ -31,6 +31,7 @@ const allComplete = Object.fromEntries(
 function visit(overrides: Partial<VisitModeView> = {}): VisitModeView {
   return {
     packet_id: 'packet_1',
+    assignee_user_id: 'user_1',
     server_version: 3,
     patient_name: '患者 山田太郎',
     facility: '青空ホーム',
@@ -77,7 +78,38 @@ function store(overrides: Partial<VisitModeLifecycleStore> = {}): VisitModeLifec
 }
 
 describe('createVisitModeLifecycleRepository', () => {
-  it('replays matching idempotent visit step responses without loading the packet', async () => {
+  it('loads assigned VisitMode packets for the current user', async () => {
+    const fakeStore = store();
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(repository.getVisitMode(ctx, 'packet_1')).resolves.toEqual(visit());
+
+    expect(fakeStore.loadVisitMode).toHaveBeenCalledWith(ctx, 'packet_1');
+  });
+
+  it('rejects VisitMode reads for non-assigned packet users', async () => {
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () => visit({ assignee_user_id: 'user_other' })),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(repository.getVisitMode(ctx, 'packet_1')).rejects.toMatchObject({
+      status: 403,
+      error_code: 'FORBIDDEN',
+      details: { reason: 'visit_packet_assignee_forbidden', packet_id: 'packet_1' },
+    });
+  });
+
+  it('allows manager VisitMode reads even when packet assignment is absent', async () => {
+    const managerCtx = { ...ctx, role: UserRole.MANAGER };
+    const response = visit({ assignee_user_id: undefined });
+    const fakeStore = store({ loadVisitMode: vi.fn(async () => response) });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(repository.getVisitMode(managerCtx, 'packet_1')).resolves.toEqual(response);
+  });
+
+  it('replays matching idempotent visit step responses after loading and authorizing the packet', async () => {
     const response = visit({ server_version: 4 });
     const fakeStore = store({
       getIdempotentVisitStep: vi.fn(async () => ({ status: 'MATCH' as const, response })),
@@ -91,7 +123,30 @@ describe('createVisitModeLifecycleRepository', () => {
       }),
     ).resolves.toEqual(response);
 
-    expect(fakeStore.loadVisitMode).not.toHaveBeenCalled();
+    expect(fakeStore.loadVisitMode).toHaveBeenCalledWith(ctx, 'packet_1');
+    expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-assigned visit step mutations before idempotency replay', async () => {
+    const response = visit({ server_version: 4 });
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () => visit({ assignee_user_id: 'user_other' })),
+      getIdempotentVisitStep: vi.fn(async () => ({ status: 'MATCH' as const, response })),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.EVIDENCE_UPLOAD, {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      error_code: 'FORBIDDEN',
+      details: { reason: 'visit_packet_assignee_forbidden', packet_id: 'packet_1' },
+    });
+
+    expect(fakeStore.getIdempotentVisitStep).not.toHaveBeenCalled();
     expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
   });
 

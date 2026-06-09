@@ -1,6 +1,8 @@
 import type {
   ActionRequest,
   ActionResponse,
+  BoardQuickFilter,
+  BoardSortKey,
   CapacityResponse,
   CapacityScope,
   CardDetailResponse,
@@ -35,8 +37,8 @@ import type { PhosOfflineEvidenceInput } from './offlineEvidenceQueue';
 
 export type PhosCardsQuery = {
   query?: string;
-  filter?: string;
-  sort?: string;
+  filter?: BoardQuickFilter;
+  sort?: BoardSortKey;
   cursor?: string;
   limit?: number;
 };

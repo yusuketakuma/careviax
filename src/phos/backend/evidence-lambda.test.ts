@@ -64,7 +64,13 @@ describe('PH-OS evidence Lambda composition', () => {
   it('wires POST /evidence/presign-upload through tenant context into the presigner', async () => {
     const fakePresigner = presigner();
     const send = vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
-      if (command instanceof GetItemCommand) return {};
+      if (command instanceof GetItemCommand) {
+        const sortKey = command.input.Key?.SK;
+        if (sortKey && 'S' in sortKey && sortKey.S === 'CARD#card_1') {
+          return { Item: { pharmacist_assignee_user_id: { S: 'user_001' } } };
+        }
+        return {};
+      }
       expect(command).toBeInstanceOf(TransactWriteItemsCommand);
       return {};
     });
@@ -84,7 +90,31 @@ describe('PH-OS evidence Lambda composition', () => {
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
     });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('denies presign URLs before S3 signing when the actor is not assigned to the card', async () => {
+    const fakePresigner = presigner();
+    const send = vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
+      expect(command).toBeInstanceOf(GetItemCommand);
+      return { Item: { pharmacist_assignee_user_id: { S: 'user_other' } } };
+    });
+    const handler = createEvidencePresignUploadLambdaHandler({
+      presigner: fakePresigner,
+      dynamo_client: { send },
+      generateEvidenceId: () => 'evidence_1',
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
+    });
+
+    const response = await handler(event());
+
+    expect(response.statusCode).toBe(403);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'FORBIDDEN',
+      details: { reason: 'evidence_card_assignee_forbidden', card_id: 'card_1' },
+    });
+    expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it('fails closed when the production bucket configuration is missing', () => {

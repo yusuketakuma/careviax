@@ -223,4 +223,33 @@ describe('claim-candidates Lambda Dynamo client', () => {
       },
     });
   });
+
+  it('returns canonical not found when excluding a missing claim candidate', async () => {
+    const send = vi.fn(async (command: GetItemCommand) => {
+      expect(command).toBeInstanceOf(GetItemCommand);
+      return {};
+    });
+    const client = createDynamoClaimCandidatesClient({ client: { send } });
+
+    await expect(
+      client.excludeClaimCandidate({
+        table_name: 'phos_core',
+        partition_key: 'TENANT#tenant_abc123',
+        sort_key: 'CLAIM_CANDIDATE#missing_claim',
+        candidate_id: 'missing_claim',
+        idempotency_sort_key: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#missing_claim#idem_1',
+        request_fingerprint: 'fp_1',
+        client_version: 1,
+        reason_code: 'NOT_ELIGIBLE',
+        updated_at: '2026-06-09T01:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      status: 404,
+      error_code: 'NOT_FOUND',
+      message_key: 'api.error.claim_candidate_not_found',
+      details: { candidate_id: 'missing_claim' },
+    });
+
+    expect(send).toHaveBeenCalledOnce();
+  });
 });

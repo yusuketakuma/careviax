@@ -145,6 +145,7 @@ function blocker(overrides: Partial<BlockerView> = {}): BlockerView {
 function visitMode(overrides: Partial<VisitModeView> = {}): VisitModeView {
   return {
     packet_id: 'packet_1',
+    assignee_user_id: 'user_pharmacist',
     server_version: 1,
     patient_name: '患者 山田太郎',
     visit_status: VisitStatus.IN_PROGRESS,

@@ -34,6 +34,7 @@ import {
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
+import { PhosDomainError } from './cards-repository';
 
 type DynamoItem = Record<string, AttributeValue>;
 
@@ -107,7 +108,12 @@ export function createDynamoClaimCandidatesClient(input: {
         }),
       );
       if (!current.Item) {
-        throw new Error(`Claim candidate not found: ${command.candidate_id}`);
+        throw new PhosDomainError({
+          status: 404,
+          error_code: 'NOT_FOUND',
+          message_key: 'api.error.claim_candidate_not_found',
+          details: { candidate_id: command.candidate_id },
+        });
       }
       const response = buildExcludedClaimCandidateResponse({
         candidate: toCandidate(current.Item as DynamoItem),
