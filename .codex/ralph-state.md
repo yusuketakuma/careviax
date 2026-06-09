@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-080046
+
+- current task: remove PH-OS Lambda runtime fallback to legacy Cognito `custom:*` tenant/role claims and align runtime behavior with the canonical access-token readiness proof.
+- files inspected: `git status --short`, `git diff`, `.codex/ralph-state.md`, `src/phos/backend/tenant-context.ts`, `src/phos/backend/tenant-context.test.ts`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, `tools/scripts/verify-phos-backend-live-readiness.ts`, and read-only `security-auditor the 7th` findings.
+- files changed: `src/phos/backend/tenant-context.ts`, `src/phos/backend/tenant-context.test.ts`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: runtime tenant extraction accepted `custom:tenant_id` and `custom:role` as a migration fallback, while the Cognito trigger and live-readiness proof require canonical access-token `tenant_id` and `role`. That mismatch could let a deployed Lambda continue under legacy custom claims even when the readiness gate would reject the token contract.
+- security risks found: `buildTenantContext` now requires canonical `tenant_id`, `role`, `sub`, and `token_use=access` claims. Legacy custom-only Cognito claims now fail closed with `TENANT_CONTEXT_MISSING`, and the manifest runtime test proves every PH-OS route returns 401 for custom-only tenant/role claims.
+- performance issues found: no I/O, database, network, or hot-path complexity was added. Runtime claim extraction is slightly simpler because it no longer checks fallback keys.
+- validation commands: `pnpm exec prettier --write src/phos/backend/tenant-context.ts src/phos/backend/tenant-context.test.ts src/phos/infra/api-gateway-lambda-runtime.test.ts`; focused `pnpm exec vitest run src/phos/backend/tenant-context.test.ts src/phos/infra/api-gateway-lambda-runtime.test.ts tools/scripts/verify-phos-backend-live-readiness.test.ts --reporter=dot`; focused ESLint for touched tenant/runtime files; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`; `git diff --check`; `pnpm phos:backend-live:readiness:report`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier was unchanged. Focused tenant/runtime/readiness suite passed with 3 files / 31 tests. Focused ESLint passed. Standalone TypeScript passed. Full PH-OS Vitest passed with 102 files passed / 1 skipped and 745 tests passed / 1 skipped. Whitespace diff check passed. Non-strict backend live-readiness report passed with local template and legacy API boundary checks passed and live AWS/JWT/API checks missing. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4972 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs the target environment inputs. The remaining read-only medium finding is to add a stronger tenant-aware IAM/S3/Dynamo second boundary instead of relying only on application-generated tenant keys and evidence paths. Lower-priority follow-ups remain for custom-domain `/api/phos` base URL handling, `PhosHttpApiBaseUrl` output, and dynamic import/require static gate coverage.
+- next action: commit this canonical-claims slice, then scope the IAM/S3/Dynamo tenant-boundary hardening.
+
 ### 20260610-075649
 
 - current task: align PH-OS HTTP API access-log JSON field names with the canonical structured-log contract from read-only backend/spec audit.

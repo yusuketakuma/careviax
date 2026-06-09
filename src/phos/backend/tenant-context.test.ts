@@ -60,21 +60,19 @@ describe('buildTenantContext', () => {
     ).toEqual(['phos/cards.read', 'phos/cards.write', 'phos/evidence.write']);
   });
 
-  it('normalizes custom Cognito attributes as migration-compatible input', () => {
-    const ctx = buildTenantContext({
-      claims: {
-        token_use: 'access',
-        'custom:tenant_id': 'tenant_legacy',
-        'custom:role': 'PHARMACY_CLERK',
-        sub: 'user-uuid',
-      },
-      request_id: 'req_2',
-      correlation_id: 'corr_2',
-    });
-
-    expect(ctx.tenant_id).toBe('tenant_legacy');
-    expect(ctx.role).toBe(UserRole.PHARMACY_CLERK);
-    expect(ctx.correlation_id).toBe('corr_2');
+  it('rejects legacy custom Cognito attributes without canonical access-token claims', () => {
+    expect(() =>
+      buildTenantContext({
+        claims: {
+          token_use: 'access',
+          'custom:tenant_id': 'tenant_legacy',
+          'custom:role': 'PHARMACY_CLERK',
+          sub: 'user-uuid',
+        },
+        request_id: 'req_2',
+        correlation_id: 'corr_2',
+      }),
+    ).toThrow(TenantContextError);
   });
 
   it('rejects missing tenant, user, or role claims', () => {

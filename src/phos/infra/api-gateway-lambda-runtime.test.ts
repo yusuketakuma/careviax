@@ -761,6 +761,27 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
     }
   });
 
+  it('fails closed for every manifest route when only legacy custom Cognito tenant claims are present', async () => {
+    for (const route of PHOS_API_ROUTES) {
+      const handler = await importRouteHandler(route);
+      const response = await handler(
+        withJwtClaims(apiGatewayEventFor(route), {
+          tenant_id: undefined,
+          role: undefined,
+          'custom:tenant_id': 'tenant_legacy',
+          'custom:role': route.allowed_roles[0] ?? UserRole.ADMIN,
+        }),
+      );
+
+      expect(response.statusCode).toBe(401);
+      expect(parseBody(response)).toMatchObject({
+        request_id: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+        error_code: 'TENANT_CONTEXT_MISSING',
+        message_key: 'api.error.tenant_context_missing',
+      });
+    }
+  });
+
   it('rejects malformed JSON before any route repository can run', async () => {
     const postRoutes = PHOS_API_ROUTES.filter((route) => route.method === 'POST');
 

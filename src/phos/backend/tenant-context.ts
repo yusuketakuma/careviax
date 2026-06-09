@@ -66,12 +66,9 @@ export function buildTenantContext(input: {
   correlation_id?: string;
   observability?: PhosObservabilitySink;
 }): TenantContext {
-  const tenant_id =
-    readStringClaim(input.claims, 'tenant_id') ?? readStringClaim(input.claims, 'custom:tenant_id');
+  const tenant_id = readStringClaim(input.claims, 'tenant_id');
   const user_id = readStringClaim(input.claims, 'sub');
-  const role = normalizeRole(
-    readStringClaim(input.claims, 'role') ?? readStringClaim(input.claims, 'custom:role'),
-  );
+  const role = normalizeRole(readStringClaim(input.claims, 'role'));
   const token_use = readStringClaim(input.claims, 'token_use');
 
   if (token_use !== 'access') {
