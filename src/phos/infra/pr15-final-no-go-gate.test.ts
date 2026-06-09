@@ -419,47 +419,47 @@ describe('PH-OS Final No-Go gate', () => {
                   'aws:SecureTransport': 'false',
                 },
               },
-              }),
-              expect.objectContaining({
-                Sid: 'DenyEvidenceUploadsWithoutSseKms',
-                Action: 's3:PutObject',
-                Condition: {
-                  StringNotEquals: {
-                    's3:x-amz-server-side-encryption': 'aws:kms',
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutSseKms',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:x-amz-server-side-encryption': 'aws:kms',
+                },
+              },
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithWrongKmsKey',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:x-amz-server-side-encryption-aws-kms-key-id': {
+                    Ref: 'PhosEvidenceKmsKeyArn',
                   },
                 },
-              }),
-              expect.objectContaining({
-                Sid: 'DenyEvidenceUploadsWithWrongKmsKey',
-                Action: 's3:PutObject',
-                Condition: {
-                  StringNotEquals: {
-                    's3:x-amz-server-side-encryption-aws-kms-key-id': {
-                      Ref: 'PhosEvidenceKmsKeyArn',
-                    },
-                  },
+              },
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutEvidenceObjectClassTag',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:RequestObjectTag/phos-object-class': 'evidence',
                 },
-              }),
-              expect.objectContaining({
-                Sid: 'DenyEvidenceUploadsWithoutEvidenceObjectClassTag',
-                Action: 's3:PutObject',
-                Condition: {
-                  StringNotEquals: {
-                    's3:RequestObjectTag/phos-object-class': 'evidence',
-                  },
+              },
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutPresignedStatusTag',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
                 },
-              }),
-              expect.objectContaining({
-                Sid: 'DenyEvidenceUploadsWithoutPresignedStatusTag',
-                Action: 's3:PutObject',
-                Condition: {
-                  StringNotEquals: {
-                    's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
-                  },
-                },
-              }),
-            ]),
-          },
+              },
+            }),
+          ]),
+        },
       },
     });
     expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({
@@ -643,6 +643,36 @@ describe('PH-OS Final No-Go gate', () => {
         const relativePath = relative(repoRoot, file);
         const content = readFileSync(file, 'utf8');
         for (const pattern of forbiddenApiPatterns) {
+          expect(content, relativePath).not.toMatch(pattern);
+        }
+      }
+    }
+  });
+
+  it('keeps PH-OS app, UI, and API client code away from server-side business data access', () => {
+    const clientBoundaryRoots = [
+      join(canonicalRoot, 'api'),
+      join(canonicalRoot, 'ui'),
+      phosAppRoot,
+    ];
+    const forbiddenServerSideAccessPatterns = [
+      /from ['"]@\/phos\/backend(?:\/|['"])/,
+      /from ['"]@\/lib\/db(?:\/|['"])/,
+      /from ['"]@aws-sdk\//,
+      /from ['"]@prisma\/client['"]/,
+      /\bprisma\./,
+      /\bnew\s+PrismaClient\b/,
+      /\b(?:S3Client|DynamoDBClient|DynamoDBDocumentClient)\b/,
+      /\bprocess\.env\.PHOS_[A-Z0-9_]+\b/,
+      /\bprocess\.env\.DATABASE_URL\b/,
+      /['"]use server['"]/,
+    ];
+
+    for (const root of clientBoundaryRoots) {
+      for (const file of listFiles(root).filter((path) => /\.(?:ts|tsx)$/.test(path))) {
+        const relativePath = relative(repoRoot, file);
+        const content = readFileSync(file, 'utf8');
+        for (const pattern of forbiddenServerSideAccessPatterns) {
           expect(content, relativePath).not.toMatch(pattern);
         }
       }

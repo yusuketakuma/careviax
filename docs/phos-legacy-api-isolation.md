@@ -84,14 +84,22 @@ legacy dashboard S3 object-key layout and are compatibility endpoints only. The
 canonical PH-OS evidence upload path is API Gateway + Lambda
 `POST /evidence/presign-upload`.
 
-PH-OS production must set `PHOS_DISABLE_LEGACY_FILE_API=1`. With that setting,
-the legacy routes return `PHOS_LEGACY_FILE_API_DISABLED` before auth, database
-lookups, or S3 presign work:
+PH-OS production must set `PHOS_DISABLE_LEGACY_FILE_API=1`. The shared boundary
+also fails closed whenever `NODE_ENV=production` and no explicit
+`PHOS_ENABLE_LEGACY_FILE_API=1` compatibility override is present, so a missing
+disable variable does not reopen these routes in a PH-OS production deployment.
+With the disable setting or the production default, the legacy routes return
+`PHOS_LEGACY_FILE_API_DISABLED` before auth, database lookups, or S3 presign
+work:
 
 - `/api/files/presigned-upload`
 - `/api/files/complete`
 - `/api/files/{id}/download`
 - `/api/files/{id}/presigned-download`
+
+`PHOS_ENABLE_LEGACY_FILE_API=1` is reserved for non-PH-OS compatibility
+deployments while the old dashboard file workflow is still being retired. It
+must not be set for PH-OS production.
 
 No `src/phos` UI, app code, Lambda handler, or contract test may call these
 legacy endpoints. If a remaining dashboard workflow needs PH-OS evidence
