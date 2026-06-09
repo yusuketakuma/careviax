@@ -5,6 +5,7 @@ import { getReportsOverviewShortcutLinks } from '@/components/features/workflow/
 import { ReportDeliveryDashboard } from './report-delivery-dashboard';
 import { ReportsTable } from './reports-table';
 import { TracingReportsTable } from './tracing-reports-table';
+import { ReportsPageClient as PhosReportsPageClient } from '@/phos/ui/report/ReportsPageClient';
 import { Loading } from '@/components/ui/loading';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -51,6 +52,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+      <PhosReportsPageClient apiBaseUrl={process.env.NEXT_PUBLIC_PHOS_API_BASE_URL} />
       <Suspense fallback={<Loading />}>
         <ReportsTable
           initialDeliveryStatus={initialState.initialDeliveryStatus}

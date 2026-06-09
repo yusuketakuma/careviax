@@ -295,6 +295,14 @@ export const PhosReportComposerCopy = {
   EMPTY_SOURCES: '根拠はありません',
 } as const;
 
+export const PhosReportsPageCopy = {
+  LOADING: 'PH-OS 返信待ちを読み込み中',
+  API_BASE_URL_MISSING: 'PH-OS API Gateway base URL is not configured.',
+  ACCESS_TOKEN_MISSING: 'PH-OS access token provider is not configured.',
+  LOAD_FAILED: 'PH-OS report delivery load failed.',
+  ACTION_FAILED: 'PH-OS report delivery action failed.',
+} as const;
+
 export const PhosReportComposerTemplateLabel = {
   DOCTOR: {
     ASSESSMENT: '薬学的評価',

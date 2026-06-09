@@ -15,6 +15,7 @@ import {
   PhosPharmacistBriefCopy,
   PhosReportComposerCopy,
   PhosReportComposerTemplateLabel,
+  PhosReportsPageCopy,
   PhosRejectReasonLabel,
   PhosShortcutHelpCopy,
   PhosShortcutHelpRows,
@@ -114,6 +115,7 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosReportComposerCopy.TITLE).toBe('報告書作成');
     expect(PhosReportComposerCopy.TARGET_TABS_LABEL).toBe('宛先タブ');
     expect(PhosReportComposerCopy.APPROVAL_REQUIRED).toBe('送付前に薬剤師承認が必要です');
+    expect(PhosReportsPageCopy.LOADING).toBe('PH-OS 返信待ちを読み込み中');
     expect(PhosReportComposerTemplateLabel.DOCTOR.ASSESSMENT).toBe('薬学的評価');
     expect(PhosReportComposerTemplateLabel.FAMILY.NEXT_CHECK).toBe('次回までの確認事項');
   });
@@ -137,6 +139,7 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosHandoffReturnReasonLabel),
       ...Object.values(PhosPharmacistBriefCopy),
       ...Object.values(PhosReportComposerCopy),
+      ...Object.values(PhosReportsPageCopy),
       ...Object.values(PhosReportComposerTemplateLabel).flatMap((labels) => Object.values(labels)),
       ...Object.values(PhosRejectReasonLabel),
       ...Object.values(PhosShortcutHelpCopy),

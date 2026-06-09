@@ -39,6 +39,12 @@ function expectEvidence(path: string, patterns: readonly RegExp[]) {
   }
 }
 
+function expectMissingFiles(paths: readonly string[]) {
+  for (const path of paths) {
+    expect(existsSync(join(repoRoot, path)), path).toBe(false);
+  }
+}
+
 describe('PH-OS PR-15 E2E evidence gate', () => {
   it('keeps E2E-01 through E2E-10 in one executable final workflow spec', () => {
     const spec = readRelative('src/phos/infra/phos-final-e2e.test.tsx');
@@ -600,6 +606,27 @@ describe('PH-OS Final No-Go gate', () => {
       /queryByText\('PREVIOUS_VISIT'\)/,
       /getAttribute\('disabled'\)/,
     ]);
+  });
+
+  it('keeps the existing /reports route wired to PH-OS report delivery state without a competing route group page', () => {
+    expectEvidence('src/app/(dashboard)/reports/page.tsx', [
+      /PhosReportsPageClient/,
+      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportsPageClient.tsx', [
+      /getReportDeliveries\(\{ status: ReportDeliveryStatus\.WAITING_REPLY \}\)/,
+      /getReportDeliveries\(\{ status: ReportDeliveryStatus\.ACTION_REQUIRED \}\)/,
+      /router\.push\(`\/board\?card=\$\{encodeURIComponent\(cardId\)\}`\)/,
+      /registerReportReply/,
+      /markReportActionDone/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportsPageClient.test.tsx', [
+      /loads waiting and action-required PH-OS report deliveries/,
+      /existing \/reports route back to the Board deep link/,
+      /server version and idempotency/,
+      /without adding a competing \/reports route/,
+    ]);
+    expectMissingFiles(['src/app/(phos)/reports/page.tsx']);
   });
 
   it('keeps Board keyboard navigation and Space primary-action behavior covered', () => {
