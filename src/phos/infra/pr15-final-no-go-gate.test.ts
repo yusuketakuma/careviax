@@ -7,6 +7,7 @@ import {
   buildCloudWatchEmbeddedMetric,
   P0_REQUIRED_METRIC_NAMES,
 } from '@/phos/backend/observability';
+import { CARD_ACTION_ROUTE_ACTION_CODES } from '@/phos/backend/card-action-executor';
 import { PHOS_API_ROUTES } from './api-gateway-routes';
 import {
   bindPhosApiRouteForDeployment,
@@ -52,6 +53,35 @@ describe('PH-OS PR-15 E2E evidence gate', () => {
 describe('PH-OS Final No-Go gate', () => {
   it('has one transition matrix entry for every ActionCode value', () => {
     expect(Object.keys(ACTION_TRANSITION_MATRIX).sort()).toEqual(Object.values(ActionCode).sort());
+  });
+
+  it('maps every ActionCode to either the card action route or a canonical detached route handler', () => {
+    const cardRouteOwned = new Set<ActionCode>(CARD_ACTION_ROUTE_ACTION_CODES);
+    const detachedRouteOwners = new Map<ActionCode, readonly string[]>([
+      [ActionCode.EXCLUDE_CLAIM_CANDIDATE, ['POST /claim-candidates/{candidate_id}/exclude']],
+      [ActionCode.UPLOAD_EVIDENCE, ['POST /evidence/presign-upload']],
+      [ActionCode.CREATE_HANDOFF_TO_PHARMACIST, ['POST /handoffs']],
+      [
+        ActionCode.MARK_REPORT_WAITING_REPLY,
+        ['POST /cards/{card_id}/actions', 'GET /report-deliveries'],
+      ],
+      [ActionCode.REGISTER_REPORT_REPLY, ['POST /report-deliveries/{delivery_id}/reply']],
+      [ActionCode.MARK_REPORT_ACTION_DONE, ['POST /report-deliveries/{delivery_id}/action-done']],
+    ]);
+    const routeKeys = new Set<string>(PHOS_API_ROUTES.map((route) => route.route_key));
+
+    for (const actionCode of Object.values(ActionCode)) {
+      const routeOwners = detachedRouteOwners.get(actionCode);
+      if (cardRouteOwned.has(actionCode)) {
+        expect(routeKeys.has('POST /cards/{card_id}/actions'), actionCode).toBe(true);
+        expect(routeOwners, actionCode).toBeUndefined();
+        continue;
+      }
+      expect(routeOwners, actionCode).toBeDefined();
+      for (const routeOwner of routeOwners ?? []) {
+        expect(routeKeys.has(routeOwner), `${actionCode} -> ${routeOwner}`).toBe(true);
+      }
+    }
   });
 
   it('keeps every mutating PH-OS business route on Lambda with replay or explicit presign semantics', () => {

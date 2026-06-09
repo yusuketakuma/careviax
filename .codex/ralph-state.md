@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-091720
+
+- current task: close the remaining Final No-Go weak proof around ActionCode handler ownership
+- files inspected: `/Users/yusuke/Desktop/PH-OS_Final_Review_Spec_v1.1.md` §4.2/§16.3/§17, `src/phos/domain/actions/actionTransitionMatrix.ts`, `src/phos/infra/api-gateway-routes.ts`, `src/phos/backend/card-action-executor.ts`, `src/phos/backend/card-action-executor.test.ts`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`
+- files changed: `src/phos/backend/card-action-executor.ts`, `src/phos/backend/card-action-executor.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: the PR-15 Final No-Go gate proved every `ActionCode` had a transition matrix entry, but it did not prove each code had a canonical handler owner. Detached/specialized actions such as `EXCLUDE_CLAIM_CANDIDATE`, `UPLOAD_EVIDENCE`, `CREATE_HANDOFF_TO_PHARMACIST`, and report-delivery reply/action-done codes could still be treated as ordinary card actions if they appeared in `allowed_actions`, bypassing their canonical route-specific mutation paths.
+- security risks found: `POST /cards/{card_id}/actions` now has an explicit `CARD_ACTION_ROUTE_ACTION_CODES` allowlist. Action codes owned by canonical detached routes fail before card action commit with `ACTION_GUARD_FAILED`, preventing claim-candidate aggregate updates, evidence intent persistence, handoff lifecycle, and report-delivery mutations from being bypassed through the generic card action executor.
+- performance issues found: the allowlist is an in-memory `Set` lookup before existing card action guard checks. It adds no database read/write, scan, network call, polling, or render work.
+- validation commands: Prettier for touched ActionCode ownership files; focused `pnpm exec vitest run src/phos/backend/card-action-executor.test.ts src/phos/backend/cards-handlers.test.ts src/phos/backend/cards-lambda.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos src/lib/auth/config.test.ts --reporter=dot`; `pnpm build`
+- validation results: focused ownership suite passed with 4 files / 47 tests; TypeScript passed; PH-OS ESLint passed with zero warnings; whitespace diff check passed; PH-OS plus auth focused Vitest passed with 83 files / 424 tests; Next production build passed.
+- remaining work: no concrete remaining v1.1 P0 / Final No-Go blocker was found in the local follow-up audit after this ownership fix. A new subagent could not be spawned because the agent thread limit was reached.
+- next action: commit this ActionCode ownership hardening slice, then leave the broader goal active only if a fresh external review finds another concrete gap.
+
 ### 20260609-091250
 
 - current task: close final-review audit gaps for deployable API Gateway/Lambda IaC, CloudWatch/X-Ray observability, and ClaimCandidate aggregate fail-closed behavior

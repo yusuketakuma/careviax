@@ -52,6 +52,36 @@ export type CardActionExecutionStore = {
   commitAction(ctx: TenantContext, input: CardActionCommitInput): Promise<ActionResponse>;
 };
 
+export const CARD_ACTION_ROUTE_ACTION_CODES = [
+  ActionCode.REGISTER_PRESCRIPTION,
+  ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+  ActionCode.START_DISPENSING,
+  ActionCode.COMPLETE_DISPENSING,
+  ActionCode.START_DISPENSING_AUDIT,
+  ActionCode.APPROVE_DISPENSING_AUDIT,
+  ActionCode.REJECT_DISPENSING_AUDIT,
+  ActionCode.CREATE_SET_INSTRUCTION,
+  ActionCode.COMPLETE_SET,
+  ActionCode.START_SET_AUDIT,
+  ActionCode.APPROVE_SET_AUDIT,
+  ActionCode.REJECT_SET_AUDIT,
+  ActionCode.ASSIGN_TO_VISIT_PACKET,
+  ActionCode.SCHEDULE_VISIT_PACKET,
+  ActionCode.CONFIRM_VISIT_READY,
+  ActionCode.START_VISIT,
+  ActionCode.COMPLETE_VISIT,
+  ActionCode.CREATE_REPORT_DRAFT,
+  ActionCode.APPROVE_REPORT,
+  ActionCode.SEND_REPORT,
+  ActionCode.REVIEW_CLAIM_CANDIDATES,
+  ActionCode.CLOSE_CARD,
+  ActionCode.REOPEN_CARD,
+  ActionCode.CANCEL_CARD,
+  ActionCode.RESOLVE_CLERK_BLOCKER,
+] as const satisfies readonly ActionCode[];
+
+const cardActionRouteActionCodeSet = new Set<ActionCode>(CARD_ACTION_ROUTE_ACTION_CODES);
+
 function domainError(
   status: number,
   error_code: PhosDomainError['error_code'],
@@ -59,6 +89,14 @@ function domainError(
   details?: Record<string, unknown>,
 ): PhosDomainError {
   return new PhosDomainError({ status, error_code, message_key, details });
+}
+
+function assertCardActionRouteOwnsAction(command: CardActionCommand) {
+  if (cardActionRouteActionCodeSet.has(command.action_code)) return;
+  throw actionGuardFailed({
+    action_code: command.action_code,
+    reason: 'action_code_owned_by_canonical_detached_route',
+  });
 }
 
 function actionGuardFailed(details: Record<string, unknown>): PhosDomainError {
@@ -293,6 +331,7 @@ export function createCardActionExecutorRepository(
         throw domainError(404, 'NOT_FOUND', 'api.error.card_not_found', { card_id });
       }
 
+      assertCardActionRouteOwnsAction(command);
       assertFreshVersion(state, command);
       assertActionAllowed(ctx, state, command);
       assertCardCanTransition(state, command);

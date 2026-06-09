@@ -205,6 +205,37 @@ describe('createCardActionExecutorRepository', () => {
     expect(fakeStore.commitAction).not.toHaveBeenCalled();
   });
 
+  it('rejects action codes owned by canonical detached routes before card action commit', async () => {
+    const detachedCommand = {
+      action_code: ActionCode.EXCLUDE_CLAIM_CANDIDATE,
+      idempotency_key: 'idem_claim_exclude',
+      client_version: 3,
+      reason_code: 'NOT_ELIGIBLE',
+    };
+    const fakeStore = store({
+      loadActionState: vi.fn(async () =>
+        state({
+          card: card({ current_step: CurrentStep.CLAIM_REVIEW }),
+          next_action: nextAction({ code: ActionCode.EXCLUDE_CLAIM_CANDIDATE }),
+          allowed_actions: [ActionCode.EXCLUDE_CLAIM_CANDIDATE],
+        }),
+      ),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(
+      repository.executeCardAction(ctx, 'card_1', detachedCommand),
+    ).rejects.toMatchObject({
+      status: 422,
+      error_code: 'ACTION_GUARD_FAILED',
+      details: {
+        action_code: ActionCode.EXCLUDE_CLAIM_CANDIDATE,
+        reason: 'action_code_owned_by_canonical_detached_route',
+      },
+    });
+    expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
   it('rejects actions outside the card current step with 422 guard failure', async () => {
     const fakeStore = store({
       loadActionState: vi.fn(async () =>
