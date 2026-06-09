@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-140515
+
+- current task: implement UI-PR9A Board keyboard navigation and Space primary-action behavior
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, `.codex/ralph-state.md`, `src/phos/ui/board/CardTile.tsx`, `src/phos/ui/board/CardBoard.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/CardTile.test.tsx`, `src/phos/ui/board/CardBoard.test.tsx`, `src/phos/ui/board/SearchBox.test.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/ui/board/CardTile.tsx`, `src/phos/ui/board/CardBoard.tsx`, `src/phos/ui/board/CardTile.test.tsx`, `src/phos/ui/board/CardBoard.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: UI-PR9 keyboard coverage had `/` search focus and Workspace Escape/focus-return proof, but Board card navigation did not implement `j`/`k` card focus movement and the CardTile body button's native Space behavior opened the Workspace instead of invoking the primary action expected by the UIUX shortcut contract.
+- security risks found: no auth, authorization, tenant boundary, API route, mutation semantics, report send, evidence upload, persistence, database, S3, or logging behavior changed. Space primary action still respects server-provided `next_action.enabled`, uses the existing `onPrimaryAction` path, and does not introduce native `disabled`. Board `j`/`k` shortcuts are ignored in text-entry controls and with modifier keys.
+- performance issues found: keyboard handling is a small in-memory focus operation over the already-rendered board items. It adds no fetch, polling, route handler, Server Action, database call, scan, external send, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched board/gate files; focused `pnpm exec vitest run src/phos/ui/board/CardTile.test.tsx src/phos/ui/board/CardBoard.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 3 files / 51 tests; TypeScript passed after removing duplicate test props; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 90 files / 505 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UI-PR9 still has broader shortcut coverage not fully implemented, especially Workspace `g then 1..6`, opened-card `[`/`]`, shortcut help `?`, and stronger end-to-end accessibility tests across the full Board -> Workspace -> action lifecycle.
+- next action: commit this Board keyboard slice, then continue with the next UI-PR9 shortcut/focus gap or a fresh UIUX v1.1 coverage audit.
+
 ### 20260609-140140
 
 - current task: implement UI-PR7B Report Composer recipient/editor surface for PH-OS UIUX v1.1

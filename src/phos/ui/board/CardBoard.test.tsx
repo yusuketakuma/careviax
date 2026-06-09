@@ -49,6 +49,18 @@ const item = {
   next_action: nextAction,
 } satisfies CardBoardItemView;
 
+const secondItem = {
+  card: {
+    ...card,
+    card_id: 'card_2',
+    patient_name: '患者 佐藤花子',
+  },
+  next_action: {
+    ...nextAction,
+    target_endpoint: '/cards/card_2/actions',
+  },
+} satisfies CardBoardItemView;
+
 describe('CardBoard', () => {
   const baseProps = {
     totalItemCount: 1,
@@ -171,5 +183,40 @@ describe('CardBoard', () => {
 
     expect(screen.getByRole('button', { name: '標準' }).getAttribute('aria-pressed')).toBe('true');
     expect(onDensityChange).toHaveBeenCalledWith(BoardDensity.COMPACT);
+  });
+
+  it('moves card focus with j and k while focus is on a card tile', () => {
+    render(
+      <CardBoard items={[item, secondItem]} onOpen={vi.fn()} {...baseProps} totalItemCount={2} />,
+    );
+
+    const firstCard = screen.getByRole('button', { name: /患者 山田太郎/ });
+    const secondCard = screen.getByRole('button', { name: /患者 佐藤花子/ });
+    firstCard.focus();
+
+    fireEvent.keyDown(firstCard, { key: 'j' });
+    expect(document.activeElement).toBe(secondCard);
+
+    fireEvent.keyDown(secondCard, { key: 'k' });
+    expect(document.activeElement).toBe(firstCard);
+  });
+
+  it('does not hijack j or k while focus is inside search input', () => {
+    const onSearchQueryChange = vi.fn();
+    render(
+      <CardBoard
+        items={[item, secondItem]}
+        onOpen={vi.fn()}
+        {...baseProps}
+        totalItemCount={2}
+        onSearchQueryChange={onSearchQueryChange}
+      />,
+    );
+
+    const search = screen.getByPlaceholderText('患者名・施設名・薬剤名・担当者で検索');
+    search.focus();
+    fireEvent.keyDown(search, { key: 'j' });
+
+    expect(document.activeElement).toBe(search);
   });
 });

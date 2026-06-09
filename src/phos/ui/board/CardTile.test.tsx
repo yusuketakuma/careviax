@@ -97,6 +97,15 @@ describe('CardTile', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it('runs the primary action from Space on the card body without opening the workspace', () => {
+    const { onOpen, onPrimaryAction } = renderTile();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: /患者 山田太郎/ }), { key: ' ' });
+
+    expect(onPrimaryAction).toHaveBeenCalledWith('card_1', ActionCode.CONFIRM_PRESCRIPTION_DIFF);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it('uses a primary action target of at least 44px', () => {
     renderTile();
 
@@ -140,6 +149,19 @@ describe('CardTile', () => {
     const primaryButton = screen.getByRole('button', { name: '処方差分を確認する（実行不可）' });
     expect(primaryButton.hasAttribute('disabled')).toBe(false);
     expect(primaryButton.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('does not run the Space shortcut when the server marks the action not enabled', () => {
+    const { onOpen, onPrimaryAction } = renderTile({
+      enabled: false,
+      ui_state: ButtonState.NO_PERMISSION,
+      can_user_handle: false,
+    });
+
+    fireEvent.keyDown(screen.getByRole('button', { name: /患者 山田太郎/ }), { key: ' ' });
+
+    expect(onPrimaryAction).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it('shows a fallback resolver for no-permission actions without a top blocker', () => {

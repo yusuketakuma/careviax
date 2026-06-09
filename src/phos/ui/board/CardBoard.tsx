@@ -1,5 +1,6 @@
 'use client';
 
+import type { KeyboardEvent } from 'react';
 import type {
   ActionCode,
   ActionReasonInput,
@@ -48,6 +49,41 @@ export type CardBoardProps = {
   onPrimaryAction(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
 };
 
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName);
+}
+
+function focusCardBody(root: HTMLElement, cardId: string): void {
+  const card = Array.from(root.querySelectorAll<HTMLElement>('[data-card-id]')).find(
+    (candidate) => candidate.getAttribute('data-card-id') === cardId,
+  );
+  card?.querySelector<HTMLButtonElement>('[data-phos-card-body="true"]')?.focus();
+}
+
+function handleBoardKeyDown(event: KeyboardEvent<HTMLElement>, items: CardBoardItemView[]): void {
+  if (isTextEntryTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key !== 'j' && event.key !== 'k') return;
+  if (items.length === 0) return;
+
+  const root = event.currentTarget;
+  const activeCardId = document.activeElement
+    ?.closest<HTMLElement>('[data-card-id]')
+    ?.getAttribute('data-card-id');
+  const activeIndex = items.findIndex((item) => item.card.card_id === activeCardId);
+  const fallbackIndex = event.key === 'j' ? 0 : items.length - 1;
+  const nextIndex =
+    activeIndex < 0
+      ? fallbackIndex
+      : event.key === 'j'
+        ? Math.min(activeIndex + 1, items.length - 1)
+        : Math.max(activeIndex - 1, 0);
+
+  event.preventDefault();
+  focusCardBody(root, items[nextIndex]?.card.card_id ?? items[0].card.card_id);
+}
+
 export function CardBoard({
   items,
   totalItemCount,
@@ -82,6 +118,7 @@ export function CardBoard({
       className="overflow-hidden rounded-lg border border-border/70 bg-card"
       data-phos-board-root="true"
       tabIndex={-1}
+      onKeyDown={(event) => handleBoardKeyDown(event, items)}
     >
       <div className="border-b border-border/70 px-4 py-3 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertTriangle, CircleAlert, Info, ShieldAlert } from 'lucide-react';
-import type { ComponentType, CSSProperties, MouseEvent } from 'react';
+import type { ComponentType, CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { SeverityToken, CardTileDims, TagToken } from '@/phos/contracts/phos_design_tokens';
 import {
@@ -58,6 +58,21 @@ function tokenStyle(severity: BlockerSeverity): CSSProperties {
 
 function stopPrimaryPropagation(event: MouseEvent<HTMLButtonElement>) {
   event.stopPropagation();
+}
+
+function handleCardBodyKeyDown(
+  event: KeyboardEvent<HTMLButtonElement>,
+  input: {
+    cardId: string;
+    nextAction: NextActionView;
+    onPrimaryAction(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
+  },
+) {
+  if (event.key !== ' ' && event.key !== 'Spacebar') return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!input.nextAction.enabled) return;
+  input.onPrimaryAction(input.cardId, input.nextAction.code);
 }
 
 function TagBadge({ tag }: { tag: TagView }) {
@@ -145,6 +160,13 @@ export function CardTile({
           isCompact ? 'gap-2 p-3' : 'gap-3 p-4',
         )}
         onClick={() => onOpen(card.card_id)}
+        onKeyDown={(event) =>
+          handleCardBodyKeyDown(event, {
+            cardId: card.card_id,
+            nextAction: next_action,
+            onPrimaryAction,
+          })
+        }
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">

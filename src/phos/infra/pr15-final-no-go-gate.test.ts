@@ -601,4 +601,28 @@ describe('PH-OS Final No-Go gate', () => {
       /getAttribute\('disabled'\)/,
     ]);
   });
+
+  it('keeps Board keyboard navigation and Space primary-action behavior covered', () => {
+    expectEvidence('src/phos/ui/board/CardTile.tsx', [
+      /handleCardBodyKeyDown/,
+      /event\.key !== ' '/,
+      /onPrimaryAction\(input\.cardId, input\.nextAction\.code\)/,
+      /data-phos-card-body="true"/,
+    ]);
+    expectEvidence('src/phos/ui/board/CardBoard.tsx', [
+      /handleBoardKeyDown/,
+      /event\.key !== 'j' && event\.key !== 'k'/,
+      /isTextEntryTarget/,
+      /focusCardBody/,
+    ]);
+    expectEvidence('src/phos/ui/board/CardTile.test.tsx', [
+      /Space on the card body/,
+      /expect\(onOpen\)\.not\.toHaveBeenCalled/,
+      /does not run the Space shortcut/,
+    ]);
+    expectEvidence('src/phos/ui/board/CardBoard.test.tsx', [
+      /moves card focus with j and k/,
+      /does not hijack j or k/,
+    ]);
+  });
 });
