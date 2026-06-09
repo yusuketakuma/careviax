@@ -120,6 +120,66 @@ function evaluateCommandCheck(input: {
   };
 }
 
+function evaluateCfnLintCheck(input: {
+  template_path: string;
+  runner: CommandRunner;
+}): ValidationCheck {
+  const direct = input.runner('cfn-lint', [input.template_path]);
+  if (direct.error_code !== 'ENOENT') {
+    return commandResultToCheck({
+      name: 'cfn_lint',
+      tool: 'cfn-lint',
+      result: direct,
+    });
+  }
+
+  const uvx = input.runner('uvx', ['cfn-lint', input.template_path]);
+  if (uvx.error_code === 'ENOENT') {
+    return {
+      name: 'cfn_lint',
+      status: 'missing',
+      detail: 'cfn-lint is not installed and uvx is not available; cannot run cfn_lint.',
+    };
+  }
+  return commandResultToCheck({
+    name: 'cfn_lint',
+    tool: 'uvx cfn-lint',
+    result: uvx,
+  });
+}
+
+function commandResultToCheck(input: {
+  name: string;
+  tool: string;
+  result: CommandExecution;
+}): ValidationCheck {
+  if (input.result.error_code === 'ENOENT') {
+    return {
+      name: input.name,
+      status: 'missing',
+      detail: `${input.tool} is not installed; cannot run ${input.name}.`,
+    };
+  }
+  if (input.result.exit_code === 0) {
+    return {
+      name: input.name,
+      status: 'passed',
+      detail: truncate(input.result.stdout || `${input.tool} completed successfully.`),
+    };
+  }
+  return {
+    name: input.name,
+    status: 'failed',
+    detail: truncate(
+      [
+        `${input.tool} exited with code ${input.result.exit_code ?? 'unknown'}.`,
+        input.result.stderr,
+        input.result.stdout,
+      ].join('\n'),
+    ),
+  };
+}
+
 export function renderPhosApiGatewayLambdaTemplateJson() {
   return `${JSON.stringify(buildPhosApiGatewayLambdaTemplate(), null, 2)}\n`;
 }
@@ -284,14 +344,7 @@ export function buildPhosDeployTemplateValidationReport(
         runner,
       }),
     );
-    checks.push(
-      evaluateCommandCheck({
-        name: 'cfn_lint',
-        tool: 'cfn-lint',
-        args: [templatePath],
-        runner,
-      }),
-    );
+    checks.push(evaluateCfnLintCheck({ template_path: templatePath, runner }));
   }
   checks.push(
     evaluateLambdaArtifactContract({

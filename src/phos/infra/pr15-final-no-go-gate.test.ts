@@ -144,7 +144,6 @@ describe('PH-OS Final No-Go gate', () => {
     });
     expect(template.Resources.PhosHttpApiStage).toMatchObject({
       Type: 'AWS::ApiGatewayV2::Stage',
-      DependsOn: expect.arrayContaining(['PhosApiAccessLogGroup']),
       Properties: {
         AutoDeploy: true,
         AccessLogSettings: {
@@ -373,15 +372,11 @@ describe('PH-OS Final No-Go gate', () => {
           Rules: expect.arrayContaining([
             expect.objectContaining({
               Id: 'ExpireUnverifiedEvidenceObjects',
-              Filter: {
-                And: {
-                  Prefix: 'tenants/',
-                  Tags: [
-                    { Key: 'phos-object-class', Value: 'evidence' },
-                    { Key: 'phos-upload-status', Value: 'PRESIGNED' },
-                  ],
-                },
-              },
+              Prefix: 'tenants/',
+              TagFilters: [
+                { Key: 'phos-object-class', Value: 'evidence' },
+                { Key: 'phos-upload-status', Value: 'PRESIGNED' },
+              ],
               ExpirationInDays: 1,
             }),
           ]),

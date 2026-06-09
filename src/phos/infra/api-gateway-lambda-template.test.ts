@@ -12,6 +12,12 @@ import {
   type PhosDynamoDbGlobalSecondaryIndexName,
 } from './dynamodb-table-contract';
 
+const DYNAMO_TRANSACTION_WRITE_ACTIONS = [
+  'dynamodb:ConditionCheckItem',
+  'dynamodb:PutItem',
+  'dynamodb:UpdateItem',
+] as const;
+
 function resourcesByType(type: string) {
   const template = buildPhosApiGatewayLambdaTemplate();
   return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
@@ -98,6 +104,12 @@ function allActionsForRoute(routeKey: string): string[] {
 
 function statementWithAction(routeKey: string, action: string) {
   return policyStatementsForRoute(routeKey).find((statement) => statement.Action.includes(action));
+}
+
+function coreStatementWithAction(routeKey: string, action: string) {
+  return coreDynamoStatementsForRoute(routeKey).find((statement) =>
+    statement.Action.includes(action),
+  );
 }
 
 describe('PH-OS API Gateway/Lambda deployment template', () => {
@@ -647,15 +659,11 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
             expect.objectContaining({
               Id: 'ExpireUnverifiedEvidenceObjects',
               Status: 'Enabled',
-              Filter: {
-                And: {
-                  Prefix: 'tenants/',
-                  Tags: [
-                    { Key: 'phos-object-class', Value: 'evidence' },
-                    { Key: 'phos-upload-status', Value: 'PRESIGNED' },
-                  ],
-                },
-              },
+              Prefix: 'tenants/',
+              TagFilters: [
+                { Key: 'phos-object-class', Value: 'evidence' },
+                { Key: 'phos-upload-status', Value: 'PRESIGNED' },
+              ],
               ExpirationInDays: 1,
             }),
             expect.objectContaining({
@@ -988,32 +996,41 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     const expected = new Map<string, readonly string[]>([
       ['GET /cards', ['dynamodb:Query']],
       ['GET /cards/{card_id}', ['dynamodb:GetItem']],
-      ['POST /cards/{card_id}/actions', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /cards/{card_id}/actions', ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS]],
       ['GET /capacity', ['dynamodb:GetItem']],
       ['GET /claim-candidates', ['dynamodb:Query']],
       [
         'POST /claim-candidates/{candidate_id}/exclude',
-        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
       ],
       ['GET /visit-packets/{packet_id}/visit-mode', ['dynamodb:GetItem']],
       [
         'POST /visit-packets/{packet_id}/visit-steps/{step}',
-        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
       ],
-      ['POST /evidence/presign-upload', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /evidence/presign-upload', ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS]],
       ['GET /handoffs', ['dynamodb:Query']],
-      ['POST /handoffs', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
-      ['POST /handoffs/{handoff_id}/resolve', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
-      ['POST /handoffs/{handoff_id}/open', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
-      ['POST /handoffs/{handoff_id}/return', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /handoffs', ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS]],
+      [
+        'POST /handoffs/{handoff_id}/resolve',
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
+      ],
+      [
+        'POST /handoffs/{handoff_id}/open',
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
+      ],
+      [
+        'POST /handoffs/{handoff_id}/return',
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
+      ],
       ['GET /report-deliveries', ['dynamodb:Query']],
       [
         'POST /report-deliveries/{delivery_id}/reply',
-        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
       ],
       [
         'POST /report-deliveries/{delivery_id}/action-done',
-        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
       ],
     ]);
 
@@ -1023,10 +1040,9 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       const expectedCoreActions = expected.get(route.route_key) ?? [];
 
       expect(coreActions.sort(), route.route_key).toEqual([...expectedCoreActions].sort());
-      expect(coreActions, route.route_key).not.toContain('dynamodb:PutItem');
-      expect(coreActions, route.route_key).not.toContain('dynamodb:UpdateItem');
       expect(coreActions, route.route_key).not.toContain('dynamodb:DeleteItem');
       expect(coreActions, route.route_key).not.toContain('dynamodb:BatchWriteItem');
+      expect(coreActions, route.route_key).not.toContain('dynamodb:TransactWriteItems');
       expect(coreActions, route.route_key).not.toContain('dynamodb:Scan');
       expect(routeActions, route.route_key).toContain('dynamodb:PutItem');
       expect(
@@ -1083,12 +1099,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       'POST /handoffs',
       'POST /report-deliveries/{delivery_id}/reply',
     ]) {
-      expect(statementWithAction(routeKey, 'dynamodb:TransactWriteItems')).toMatchObject({
-        Resource: {
-          'Fn::Sub':
-            'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}',
-        },
-      });
+      for (const action of DYNAMO_TRANSACTION_WRITE_ACTIONS) {
+        expect(coreStatementWithAction(routeKey, action), `${routeKey} ${action}`).toMatchObject({
+          Resource: {
+            'Fn::Sub':
+              'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}',
+          },
+        });
+      }
+      expect(statementWithAction(routeKey, 'dynamodb:TransactWriteItems')).toBeUndefined();
       expect(coreActionsForRoute(routeKey)).not.toContain('dynamodb:Query');
     }
 

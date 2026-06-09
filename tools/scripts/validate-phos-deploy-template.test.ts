@@ -106,6 +106,47 @@ describe('validate-phos-deploy-template', () => {
     ]);
   });
 
+  it('falls back to uvx cfn-lint when cfn-lint is not installed', () => {
+    const artifactRoot = createLambdaArtifactRoot();
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const report = buildPhosDeployTemplateValidationReport({
+      output_path: artifactPath('template-uvx-cfn-lint', 'template.json'),
+      env: { PHOS_LAMBDA_ARTIFACT_ROOT: artifactRoot },
+      runner: (command, args) => {
+        calls.push({ command, args });
+        if (command === 'cfn-lint') {
+          return { exit_code: null, stdout: '', stderr: '', error_code: 'ENOENT' };
+        }
+        return { exit_code: 0, stdout: `${command} ok`, stderr: '' };
+      },
+    });
+
+    expect(report).toMatchObject({
+      ok: true,
+      missing_tools: [],
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'cfn_lint',
+          status: 'passed',
+          detail: expect.stringContaining('uvx ok'),
+        }),
+      ]),
+    });
+    expect(calls).toEqual([
+      {
+        command: 'aws',
+        args: [
+          'cloudformation',
+          'validate-template',
+          '--template-body',
+          `file://${report.template_path}`,
+        ],
+      },
+      { command: 'cfn-lint', args: [report.template_path] },
+      { command: 'uvx', args: ['cfn-lint', report.template_path] },
+    ]);
+  });
+
   it('reports missing external validation tools and fails only in strict mode', () => {
     const report = buildPhosDeployTemplateValidationReport({
       output_path: artifactPath('template-missing', 'template.json'),

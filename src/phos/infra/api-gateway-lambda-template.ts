@@ -89,6 +89,11 @@ type DynamoRouteAccess = {
 };
 
 const PHOS_LOG_RETENTION_DAYS = 365;
+const DYNAMO_TRANSACTION_WRITE_ACTIONS = [
+  'dynamodb:ConditionCheckItem',
+  'dynamodb:PutItem',
+  'dynamodb:UpdateItem',
+] as const;
 
 function toLogicalId(input: string): string {
   const words = input
@@ -182,7 +187,7 @@ const PHOS_ROUTE_DYNAMODB_ACCESS = {
     index_names: [],
   },
   'POST /cards/{card_id}/actions': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
@@ -197,7 +202,7 @@ const PHOS_ROUTE_DYNAMODB_ACCESS = {
     index_names: ['GSI7', 'GSI8'],
   },
   'POST /claim-candidates/{candidate_id}/exclude': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
@@ -207,12 +212,12 @@ const PHOS_ROUTE_DYNAMODB_ACCESS = {
     index_names: [],
   },
   'POST /visit-packets/{packet_id}/visit-steps/{step}': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
   'POST /evidence/presign-upload': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
@@ -222,22 +227,22 @@ const PHOS_ROUTE_DYNAMODB_ACCESS = {
     index_names: ['GSI5'],
   },
   'POST /handoffs': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
   'POST /handoffs/{handoff_id}/resolve': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
   'POST /handoffs/{handoff_id}/open': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
   'POST /handoffs/{handoff_id}/return': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
@@ -247,12 +252,12 @@ const PHOS_ROUTE_DYNAMODB_ACCESS = {
     index_names: ['GSI6'],
   },
   'POST /report-deliveries/{delivery_id}/reply': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
   'POST /report-deliveries/{delivery_id}/action-done': {
-    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    table_actions: ['dynamodb:GetItem', ...DYNAMO_TRANSACTION_WRITE_ACTIONS],
     index_actions: [],
     index_names: [],
   },
@@ -684,21 +689,17 @@ function buildPhosEvidenceBucket(input: {
           {
             Id: 'ExpireUnverifiedEvidenceObjects',
             Status: 'Enabled',
-            Filter: {
-              And: {
-                Prefix: 'tenants/',
-                Tags: [
-                  {
-                    Key: 'phos-object-class',
-                    Value: 'evidence',
-                  },
-                  {
-                    Key: 'phos-upload-status',
-                    Value: 'PRESIGNED',
-                  },
-                ],
+            Prefix: 'tenants/',
+            TagFilters: [
+              {
+                Key: 'phos-object-class',
+                Value: 'evidence',
               },
-            },
+              {
+                Key: 'phos-upload-status',
+                Value: 'PRESIGNED',
+              },
+            ],
             ExpirationInDays: 1,
           },
           {
@@ -958,7 +959,6 @@ export function buildPhosApiGatewayLambdaTemplate(
     },
     PhosHttpApiStage: {
       Type: 'AWS::ApiGatewayV2::Stage',
-      DependsOn: ['PhosApiAccessLogGroup'],
       Properties: {
         ApiId: ref('PhosHttpApi'),
         StageName: ref(stageNameParameter),
