@@ -696,9 +696,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
       's3:DeleteObject',
     );
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
+      's3:DeleteObjectVersion',
+    );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain('s3:GetObject');
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
       's3:DeleteObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      's3:DeleteObjectVersion',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
       's3:PutObjectTagging',

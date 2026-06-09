@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-023705
+
+- current task: harden PH-OS mismatched S3 evidence cleanup for versioned evidence buckets.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/evidence-upload-verification.ts`, `src/phos/backend/evidence-upload-verification.test.ts`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and prior read-only security finding from subagent `019ead62-224f-7910-a1a4-f19128e094fa`.
+- files changed: `src/phos/backend/evidence-upload-verification.ts`, `src/phos/backend/evidence-upload-verification.test.ts`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`.
+- bugs found: mismatched evidence cleanup used `DeleteObject` without the `HeadObject` version id. Because the PH-OS evidence bucket template enables versioning, the invalid upload could remain as a noncurrent object version even after the current key was removed from business visibility.
+- security risks found: mismatched uploaded evidence now carries `HeadObject.VersionId` into cleanup and sends `DeleteObject` with `VersionId` when S3 returns one, reducing retained invalid PHI versions in versioned buckets. The visit-step Lambda role now receives only route-scoped `s3:DeleteObjectVersion` for `tenants/*/evidence/*`; presign and capacity/read-only roles remain denied delete-version/write leakage.
+- performance issues found: no success-path call was added. The version-specific delete uses data returned by the existing `HeadObject` call and still runs only on mismatch cleanup.
+- validation commands: Prettier for touched PH-OS evidence/infra files; focused `pnpm exec vitest run src/phos/backend/evidence-upload-verification.test.ts src/phos/infra/api-gateway-lambda-template.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused suite passed with 3 files / 65 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 710 tests. Next production build passed and generated 235 static pages.
+- remaining work: live AWS/S3 version deletion, API Gateway/Lambda/Cognito/Dynamo/Aurora/CloudWatch/X-Ray proof remains external and unverified locally. Remaining local follow-ups include server-side evidence `VERIFIED` tag durability before committing VisitMode evidence, REST API deployment freshness, API Gateway logging-role least privilege, REST API proxy success matrix, Lambda artifact/handler resolution gate, Aurora FeeRule RLS real DB harness, and `NextActionView.target_endpoint` parity gate.
+- next action: commit this versioned evidence cleanup slice, then continue from REST API deployment freshness or the evidence verified-tag durability path.
+
 ### 20260610-014130
 
 - current task: harden PH-OS backend API boundary against routeKey/RBAC confusion, malformed DynamoDB pagination cursors, and missing success request-id headers.

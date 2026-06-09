@@ -370,6 +370,9 @@ describe('PH-OS Final No-Go gate', () => {
     expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
       's3:DeleteObject',
     );
+    expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
+      's3:DeleteObjectVersion',
+    );
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
       's3:PutObject',
     );
@@ -379,11 +382,17 @@ describe('PH-OS Final No-Go gate', () => {
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).not.toContain(
       's3:DeleteObject',
     );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).not.toContain(
+      's3:DeleteObjectVersion',
+    );
     expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
       's3:GetObject',
     );
     expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
       's3:DeleteObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      's3:DeleteObjectVersion',
     );
     expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
       's3:PutObjectTagging',

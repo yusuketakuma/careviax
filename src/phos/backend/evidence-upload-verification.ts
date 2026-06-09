@@ -45,6 +45,7 @@ type EvidenceHeadObjectResult = {
   ContentLength?: number;
   ContentType?: string;
   Metadata?: Record<string, string>;
+  VersionId?: string;
 };
 
 type EvidenceCleanupFailure = {
@@ -163,6 +164,7 @@ async function cleanupMismatchedEvidenceObject(input: {
   client: Pick<S3Client, 'send'>;
   bucket: string;
   key: string;
+  version_id?: string;
   mismatch: EvidenceObjectVerificationError;
   context: Pick<
     EvidenceObjectVerificationInput,
@@ -175,6 +177,7 @@ async function cleanupMismatchedEvidenceObject(input: {
       new DeleteObjectCommand({
         Bucket: input.bucket,
         Key: input.key,
+        ...(input.version_id ? { VersionId: input.version_id } : {}),
       }),
     );
   } catch (error) {
@@ -254,6 +257,7 @@ export function createS3EvidenceObjectVerifier(input: {
             client: input.client,
             bucket: input.bucket,
             key: expected.key,
+            version_id: result.VersionId,
             mismatch,
             context: {
               tenant_id: expected.tenant_id,

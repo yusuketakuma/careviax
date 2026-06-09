@@ -282,7 +282,7 @@ function routeS3Actions(route: PhosApiRoute): string[] {
     return ['s3:PutObject', 's3:PutObjectTagging'];
   }
   if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
-    return ['s3:GetObject', 's3:DeleteObject', 's3:PutObjectTagging'];
+    return ['s3:GetObject', 's3:DeleteObject', 's3:DeleteObjectVersion', 's3:PutObjectTagging'];
   }
   return [];
 }

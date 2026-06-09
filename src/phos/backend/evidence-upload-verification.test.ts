@@ -76,6 +76,7 @@ describe('S3 evidence object verifier', () => {
             sha256: 'b'.repeat(64),
             size_bytes: '2048',
           },
+          VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
         };
       }
       expect(command).toBeInstanceOf(DeleteObjectCommand);
@@ -94,6 +95,7 @@ describe('S3 evidence object verifier', () => {
     expect((send.mock.calls[1]?.[0] as DeleteObjectCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
       Key: expected.key,
+      VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
   });
 
