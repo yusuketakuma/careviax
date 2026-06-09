@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-084521
+
+- current task: decide whether to change PH-OS CloudWatch/API/Lambda structured logs to mask raw `tenant_id` / `user_id` / `request_id` after the remaining low-priority privacy finding.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `/Users/yusuke/Desktop/PH-OS_Final_Review_Spec_v1.1.md`, `tools/scripts/verify-phos-backend-live-readiness.ts`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/backend/structured-logger.ts`, `src/phos/backend/observability.ts`, `src/phos/backend/lambda-observability.ts`, `src/phos/backend/lambda-handler.ts`, `src/phos/backend/security-events.ts`, and read-only findings from `Privacy the 8th` / `Audit the 8th`.
+- files changed: `.codex/ralph-state.md`.
+- bugs found: no code bug to patch in the current PH-OS v1.1 contract. The spec explicitly requires CloudWatch structured logs to include raw `tenant_id` / `user_id` / `request_id`, while also banning PHI fields and recommending `tenant_id_hash` for X-Ray annotations.
+- security risks found: raw tenant/user/request correlation identifiers remain a privacy/access-control exposure in CloudWatch Logs, but this is accepted by the current spec and No-Go tests. The implementation already keeps those identifiers out of metric dimensions/X-Ray annotations and redacts PHI-like detail keys. Replacing them with hashes now would violate the PH-OS v1.1 contract and readiness gates.
+- performance issues found: no performance issue. No runtime code changed.
+- validation commands: read-only subagent reviews by `Privacy the 8th` and `Audit the 8th`; targeted `rg`, `nl -ba`, and `sed` inspection of the spec, logging implementation, API Gateway access-log template, and readiness gate; `git status --short`.
+- validation results: both read-only reviewers concluded that no immediate code masking/removal should be made under the current spec. Worktree was clean before this note update.
+- remaining work: if product/privacy wants hash-only or pseudonymous CloudWatch correlation, update the PH-OS spec first and then change `structured-logger`, `observability`, `api-gateway-lambda-template`, readiness checks, and tests together. External live AWS/JWT/API proof still needs target inputs.
+- next action: commit this no-code decision record, then stop on the proven external live-environment blocker unless new target credentials/URLs or a spec-change instruction is provided.
+
 ### 20260610-084140
 
 - current task: harden PH-OS Lambda artifact contract validation so deploy-template proof does not execute generated artifact JavaScript while checking CloudFormation handler exports.
