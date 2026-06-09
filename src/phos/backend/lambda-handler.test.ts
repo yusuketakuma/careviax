@@ -62,6 +62,50 @@ describe('withTenantContext', () => {
     );
   });
 
+  it('accepts API Gateway REST proxy authorizer claims and resource route metadata', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const handler = withTenantContext(async ({ ctx }) => ({
+      request_id: ctx.request_id,
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+    }));
+
+    const response = await handler({
+      resource: '/cards/{card_id}',
+      httpMethod: 'GET',
+      requestContext: {
+        requestId: 'req_rest_1',
+        authorizer: {
+          claims: {
+            token_use: 'access',
+            tenant_id: 'tenant_abc123',
+            sub: 'user_001',
+            role: 'PHARMACIST',
+            scope: 'phos/cards.read',
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      request_id: 'req_rest_1',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+    });
+    expect(
+      logSpy.mock.calls
+        .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+        .find((entry) => entry.message === 'PH-OS lambda request completed'),
+    ).toMatchObject({
+      route_key: 'GET /cards/{card_id}',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_rest_1',
+    });
+  });
+
   it('emits success EMF logs with tenant, user, request, and correlation fields', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

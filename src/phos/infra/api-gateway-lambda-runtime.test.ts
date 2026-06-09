@@ -22,8 +22,8 @@ function apiGatewayEventFor(
   overrides: Partial<PhosHttpEvent> = {},
 ): PhosHttpEvent {
   return {
-    version: '2.0',
-    routeKey: route.route_key,
+    resource: route.path,
+    httpMethod: route.method,
     rawPath: pathFor(route),
     headers: {
       authorization: 'Bearer test.jwt',
@@ -35,14 +35,12 @@ function apiGatewayEventFor(
     requestContext: {
       requestId: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
       authorizer: {
-        jwt: {
-          claims: {
-            token_use: 'access',
-            tenant_id: 'tenant_abc123',
-            sub: 'user_1',
-            role: route.allowed_roles[0] ?? UserRole.ADMIN,
-            scope: route.required_scopes.join(' '),
-          },
+        claims: {
+          token_use: 'access',
+          tenant_id: 'tenant_abc123',
+          sub: 'user_1',
+          role: route.allowed_roles[0] ?? UserRole.ADMIN,
+          scope: route.required_scopes.join(' '),
         },
       },
     },
@@ -51,17 +49,28 @@ function apiGatewayEventFor(
 }
 
 function withJwtClaims(event: PhosHttpEvent, claims: Record<string, string>): PhosHttpEvent {
+  const existingJwtClaims = event.requestContext?.authorizer?.jwt?.claims;
+  const existingRestClaims = event.requestContext?.authorizer?.claims;
   return {
     ...event,
     requestContext: {
       ...event.requestContext,
       authorizer: {
-        jwt: {
-          claims: {
-            ...(event.requestContext?.authorizer?.jwt?.claims ?? {}),
-            ...claims,
-          },
-        },
+        ...(existingJwtClaims
+          ? {
+              jwt: {
+                claims: {
+                  ...existingJwtClaims,
+                  ...claims,
+                },
+              },
+            }
+          : {
+              claims: {
+                ...(existingRestClaims ?? {}),
+                ...claims,
+              },
+            }),
       },
     },
   };

@@ -124,8 +124,38 @@ describe('PH-OS Final No-Go gate', () => {
       expect(parameter).not.toHaveProperty('Properties');
       expect(parameter.Type).toBe('String');
     }
+    expect(template.Resources.PhosRestApi).toMatchObject({
+      Type: 'AWS::ApiGateway::RestApi',
+    });
+    expect(template.Resources.PhosRestApiStage).toMatchObject({
+      Type: 'AWS::ApiGateway::Stage',
+      Properties: {
+        TracingEnabled: true,
+        AccessLogSetting: {
+          DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
+        },
+        MethodSettings: [
+          expect.objectContaining({
+            MetricsEnabled: true,
+            LoggingLevel: 'ERROR',
+            DataTraceEnabled: false,
+          }),
+        ],
+      },
+    });
+    expect(template.Resources).not.toHaveProperty('PhosHttpApi');
+    expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
+    expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
+      expect(template.Resources[binding.route_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGateway::Method',
+        Properties: {
+          AuthorizationType: 'COGNITO_USER_POOLS',
+          AuthorizerId: { Ref: 'PhosCognitoAuthorizer' },
+          AuthorizationScopes: route.required_scopes,
+        },
+      });
       const functionName = readSub(
         template.Resources[binding.function_logical_id].Properties.FunctionName,
       );

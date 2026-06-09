@@ -17,6 +17,8 @@ import type { TenantContext, JwtClaims } from './tenant-context';
 export type PhosHttpEvent = {
   version?: string;
   routeKey?: string;
+  resource?: string;
+  httpMethod?: string;
   rawPath?: string;
   headers?: Record<string, string | undefined>;
   pathParameters?: Record<string, string | undefined> | null;
@@ -28,6 +30,7 @@ export type PhosHttpEvent = {
       jwt?: {
         claims?: JwtClaims;
       };
+      claims?: JwtClaims;
     };
   };
 };
@@ -89,7 +92,15 @@ function withRequestIdHeader(response: PhosLambdaResponse, request_id: string): 
 }
 
 function routeKey(event: PhosHttpEvent): string {
-  return event.routeKey ?? event.rawPath ?? 'UNKNOWN_ROUTE';
+  if (event.routeKey) return event.routeKey;
+  if (event.httpMethod && event.resource) return `${event.httpMethod} ${event.resource}`;
+  return event.rawPath ?? 'UNKNOWN_ROUTE';
+}
+
+function authorizerClaims(event: PhosHttpEvent): JwtClaims {
+  return (
+    event.requestContext?.authorizer?.jwt?.claims ?? event.requestContext?.authorizer?.claims ?? {}
+  );
 }
 
 function emitBoundaryObservability(input: {
@@ -304,7 +315,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
 
     try {
       ctx = buildTenantContext({
-        claims: event.requestContext?.authorizer?.jwt?.claims ?? {},
+        claims: authorizerClaims(event),
         request_id,
         correlation_id,
         observability,
