@@ -25,6 +25,7 @@ import {
   PhosSupportBriefCopy,
   PhosSupportTaskCodeLabel,
   PhosVisitFooterCopy,
+  PhosVisitModePageCopy,
   PhosVisitStepStateLabel,
   PhosToast,
   PhosToastMessageByKey,
@@ -152,6 +153,7 @@ describe('PH-OS Japanese copy contract', () => {
 
     expect(PhosRejectReasonLabel.OTHER).toBe('その他');
     expect(PhosVisitFooterCopy.SAVE_DRAFT).toBe('一時保存');
+    expect(PhosVisitModePageCopy.LOADING).toBe('訪問モードを読み込み中');
     expect(PhosVisitStepStateLabel.IN_PROGRESS).toBe('入力中');
     expect(allCopy).not.toContain(prohibitedCanceledSpelling);
   });

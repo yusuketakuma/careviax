@@ -564,6 +564,7 @@ export type RejectReason = (typeof RejectReason)[keyof typeof RejectReason];
 
 export type VisitModeView = {
   packet_id: string;
+  card_id?: string;
   server_version: number;
   patient_name: string;
   facility?: string;

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-143400
+
+- current task: implement PH-OS `/visit/{packet_id}` direct VisitMode route
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/contracts/phos_contracts.ts`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/api/offlineEvidenceQueue.ts`, and VisitMode backend/API contract search results.
+- files changed: `src/app/(phos)/visit/[packetId]/page.tsx`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/visit/VisitModePageClient.tsx`, `src/phos/ui/visit/VisitModePageClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: UIUX v1.1 requires `/visit/{packet_id}`, but PH-OS only exposed VisitMode inside Workspace. There was no direct packet route that loaded `getVisitMode(packet_id)` and drove arrival/step/complete mutations through the PH-OS API Gateway client.
+- security risks found: no backend auth, authorization, tenant boundary, persistence schema, database, S3 policy, report send, or logging behavior changed. Direct route uses the existing PH-OS token/API client path, sends server versions and idempotency keys, and only enables photo evidence capture when the server response includes a `card_id` to bind the queued evidence safely.
+- performance issues found: the route performs one VisitMode read, bounded pending-evidence retry/list calls, and one mutation per user step action. It adds no polling, route handler, Server Action, direct database access, scan, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched route/contract/copy/client/test/gate files; focused `pnpm exec vitest run src/phos/ui/visit/VisitModePageClient.test.tsx src/phos/ui/visit/VisitMode.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; `pnpm exec eslint src/phos src/app/'(phos)' --max-warnings=0`; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: focused suite passed with 4 files / 63 tests; TypeScript passed; PH-OS/app route ESLint passed with zero warnings after removing synchronous state updates from the load effect; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 93 files / 532 tests; Next production build passed, generated 235 static pages, and listed `/visit/[packetId]`.
+- remaining work: `/reports` remains a route conflict with the existing dashboard Reports page and needs a separate integration decision. Direct VisitMode can still grow richer draft text autosave semantics, but the route-visible API-backed packet flow is now validated.
+- next action: commit the direct VisitMode route slice, then continue the UIUX v1.1 coverage audit.
+
 ### 20260609-142850
 
 - current task: implement PH-OS `/handoffs` route for the dedicated Handoff Queue

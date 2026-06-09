@@ -718,4 +718,24 @@ describe('PH-OS Final No-Go gate', () => {
       /inline configuration errors/,
     ]);
   });
+
+  it('keeps the PH-OS direct VisitMode route wired to packet API state', () => {
+    expectEvidence('src/app/(phos)/visit/[packetId]/page.tsx', [
+      /params: Promise<\{ packetId: string \}>/,
+      /VisitModePageClient/,
+      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitModePageClient.tsx', [
+      /getVisitMode\(packetId\)/,
+      /updateVisitStep\(visit\.packet_id, step/,
+      /retryUploads\(\{ client: apiClient \}\)/,
+      /onCaptureEvidence=\{visit\.card_id \? handleCaptureEvidence : undefined\}/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitModePageClient.test.tsx', [
+      /loads VisitMode by packet id/,
+      /updates arrival outcomes/,
+      /queues photo evidence only when/,
+      /hides photo capture/,
+    ]);
+  });
 });

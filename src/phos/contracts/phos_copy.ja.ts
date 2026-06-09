@@ -440,6 +440,17 @@ export const PhosVisitFooterCopy = {
   SAVED_SERVER: '一時保存しました。同期済みです',
 } as const;
 
+export const PhosVisitModePageCopy = {
+  EYEBROW: 'PH-OS VisitMode',
+  TITLE: 'VisitMode',
+  DESCRIPTION: '訪問中の確認、記録、証跡同期、完了前チェックを訪問パケット単位で処理します。',
+  LOADING: '訪問モードを読み込み中',
+  API_BASE_URL_MISSING: 'PH-OS API Gateway base URL is not configured.',
+  ACCESS_TOKEN_MISSING: 'PH-OS access token provider is not configured.',
+  ACTION_FAILED: 'PH-OS visit-mode action failed.',
+  CARD_ID_MISSING: 'この訪問パケットには証跡を紐づけるカードIDがありません。',
+} as const;
+
 export const PhosHandoffStatusLabel = {
   [HandoffStatus.OPEN]: '未着手',
   [HandoffStatus.IN_REVIEW]: '確認中',
