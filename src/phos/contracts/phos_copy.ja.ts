@@ -364,6 +364,14 @@ export const PhosVisitStepStateLabel = {
   OPTIONAL: '任意',
 } as const;
 
+export const PhosVisitFooterCopy = {
+  PREVIOUS: '前へ',
+  SAVE_DRAFT: '一時保存',
+  NEXT: '次へ',
+  SAVED_LOCAL: '一時保存しました',
+  SAVED_SERVER: '一時保存しました。同期済みです',
+} as const;
+
 export const PhosHandoffStatusLabel = {
   [HandoffStatus.OPEN]: '未着手',
   [HandoffStatus.IN_REVIEW]: '確認中',

@@ -766,6 +766,15 @@ export function BoardClient({
     [action.phase, apiClient, enqueueToast, selectedDetail],
   );
 
+  const handleSaveVisitDraft = useCallback(
+    async (step: VisitStep) => {
+      const visit = selectedDetail?.visit_mode;
+      if (!visit?.step_completed[step] || step === VisitStep.ARRIVAL_CONFIRM) return;
+      await handleOpenVisitStep(step);
+    },
+    [handleOpenVisitStep, selectedDetail],
+  );
+
   const handleCompleteVisit = useCallback(async () => {
     await handleOpenVisitStep(VisitStep.COMPLETE_CHECK);
   }, [handleOpenVisitStep]);
@@ -998,6 +1007,7 @@ export function BoardClient({
         onReturnHandoff={handleReturnHandoff}
         onVisitArrivalOutcome={handleVisitArrivalOutcome}
         onOpenVisitStep={handleOpenVisitStep}
+        onSaveVisitDraft={handleSaveVisitDraft}
         onCompleteVisit={handleCompleteVisit}
       />
     </div>

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-133638
+
+- current task: implement UI-PR6B VisitMode sticky footer navigation and safe draft-save behavior for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/backend/visit-mode-handlers.ts`, `src/phos/backend/visit-mode-lifecycle-repository.ts`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and memory registry hits for the active careviax goal.
+- files changed: `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: VisitMode had only the completion action at the bottom and did not implement the UIUX-required sticky footer controls (`前へ` / `一時保存` / `次へ`). Review also found that the existing Visit step API marks non-arrival steps completed and requires an arrival payload for `ARRIVAL_CONFIRM`, so wiring draft-save blindly to that API would either complete an incomplete required step or fail validation for arrival.
+- security risks found: no auth, authorization, tenant boundary, evidence upload, report send, backend policy, persistence schema, or logging behavior changed. Draft-save now avoids native `disabled`, does not call the Visit step mutation for incomplete steps, and does not submit payload-less `ARRIVAL_CONFIRM` mutations. Server mutation remains limited to already-completed non-arrival steps through the existing API Gateway client.
+- performance issues found: footer navigation is local render state plus existing Visit step mutation callbacks. It adds no new fetch path, Server Action, Route Handler, database call, polling, scan, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched VisitMode/workspace/board/copy/gate files; focused `pnpm exec vitest run src/phos/ui/visit/VisitMode.test.tsx src/phos/ui/board/BoardClient.test.tsx src/phos/ui/workspace/WorkspaceTabs.test.tsx src/phos/ui/workspace/WorkspaceOverlay.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: Prettier completed; focused suite passed with 6 files / 97 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 87 files / 485 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: VisitMode still needs richer autosave/input capture and evidence capture UI beyond the safe footer shell. UIUX v1.1 also still has Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E hardening.
+- next action: commit this VisitMode footer slice, then continue to the next highest-value UIUX gap, likely Report Composer or Capacity Dashboard.
+
 ### 20260609-133015
 
 - current task: implement UI-PR6A explicit VisitMode stepper state labels for PH-OS UIUX v1.1

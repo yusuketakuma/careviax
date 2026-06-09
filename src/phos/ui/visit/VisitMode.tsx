@@ -3,6 +3,7 @@
 import { CheckCircle2, Circle, CloudOff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import {
+  PhosVisitFooterCopy,
   PhosVisitArrivalOutcomeLabel,
   PhosVisitStepLabel,
   PhosVisitStepStateLabel,
@@ -18,6 +19,7 @@ export type VisitModeProps = {
   pendingEvidence?: EvidencePendingView[];
   onArrivalOutcome(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenStep(step: VisitStep): void;
+  onSaveDraft?(step: VisitStep): void;
   onCompleteVisit(): void;
 };
 
@@ -43,17 +45,24 @@ function stepStateLabel(input: {
   return PhosVisitStepStateLabel.NOT_STARTED;
 }
 
+function currentStepIndex(visit: VisitModeView): number {
+  const index = visit.applicable_steps.indexOf(visit.last_opened_step);
+  return index >= 0 ? index : 0;
+}
+
 export function VisitMode({
   visit,
   actionPhase,
   pendingEvidence = [],
   onArrivalOutcome,
   onOpenStep,
+  onSaveDraft,
   onCompleteVisit,
 }: VisitModeProps) {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelReasonError, setCancelReasonError] = useState<string | undefined>();
+  const [saveMessage, setSaveMessage] = useState<string | undefined>();
   const localBlockingEvidenceCount = pendingEvidence.filter(
     (item) => item.offline_op_class === 'BLOCKING',
   ).length;
@@ -74,6 +83,18 @@ export function VisitMode({
   });
   const isSubmitting = actionPhase === ActionPhase.SUBMITTING;
   const canExecuteComplete = canComplete && !isSubmitting;
+  const activeStepIndex = currentStepIndex(visit);
+  const activeStep = visit.applicable_steps[activeStepIndex];
+  const previousStep =
+    activeStepIndex > 0 ? visit.applicable_steps[activeStepIndex - 1] : undefined;
+  const nextStep =
+    activeStepIndex < visit.applicable_steps.length - 1
+      ? visit.applicable_steps[activeStepIndex + 1]
+      : undefined;
+  const activeStepCompleted = activeStep ? visit.step_completed[activeStep] === true : false;
+  const canMovePrevious = !!previousStep && !isSubmitting;
+  const canMoveNext = !!nextStep && !isSubmitting;
+  const canSyncDraft = activeStepCompleted && activeStep !== VisitStep.ARRIVAL_CONFIRM;
 
   return (
     <section
@@ -248,6 +269,58 @@ export function VisitMode({
           訪問を完了する
         </span>
       </button>
+
+      <footer className="sticky bottom-0 -mx-4 -mb-4 border-t border-border/70 bg-card/95 p-4 shadow-sm">
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
+            data-enabled={canMovePrevious ? 'true' : 'false'}
+            onClick={() => {
+              if (!previousStep || isSubmitting) return;
+              setSaveMessage(undefined);
+              onOpenStep(previousStep);
+            }}
+          >
+            {PhosVisitFooterCopy.PREVIOUS}
+          </button>
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
+            data-enabled={!isSubmitting ? 'true' : 'false'}
+            onClick={() => {
+              if (isSubmitting || !activeStep) return;
+              if (canSyncDraft) {
+                onSaveDraft?.(activeStep);
+                setSaveMessage(
+                  visit.online ? PhosVisitFooterCopy.SAVED_SERVER : PhosVisitFooterCopy.SAVED_LOCAL,
+                );
+                return;
+              }
+              setSaveMessage(PhosVisitFooterCopy.SAVED_LOCAL);
+            }}
+          >
+            {PhosVisitFooterCopy.SAVE_DRAFT}
+          </button>
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
+            data-enabled={canMoveNext ? 'true' : 'false'}
+            onClick={() => {
+              if (!nextStep || isSubmitting) return;
+              setSaveMessage(undefined);
+              onOpenStep(nextStep);
+            }}
+          >
+            {PhosVisitFooterCopy.NEXT}
+          </button>
+        </div>
+        {saveMessage ? (
+          <p className="mt-2 text-center text-xs text-muted-foreground" role="status">
+            {saveMessage}
+          </p>
+        ) : null}
+      </footer>
     </section>
   );
 }

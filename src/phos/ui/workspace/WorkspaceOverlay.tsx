@@ -37,6 +37,7 @@ export type WorkspaceOverlayProps = {
   onReturnHandoff?(handoffId: string, reasonCode: string, note: string): void;
   onVisitArrivalOutcome?(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenVisitStep?(step: VisitStep): void;
+  onSaveVisitDraft?(step: VisitStep): void;
   onCompleteVisit?(): void;
 };
 
@@ -58,6 +59,7 @@ export function WorkspaceOverlay({
   onReturnHandoff,
   onVisitArrivalOutcome,
   onOpenVisitStep,
+  onSaveVisitDraft,
   onCompleteVisit,
 }: WorkspaceOverlayProps) {
   return (
@@ -102,6 +104,7 @@ export function WorkspaceOverlay({
                   pendingEvidence={pendingEvidence}
                   onVisitArrivalOutcome={onVisitArrivalOutcome}
                   onOpenVisitStep={onOpenVisitStep}
+                  onSaveVisitDraft={onSaveVisitDraft}
                   onCompleteVisit={onCompleteVisit}
                 />
               </main>

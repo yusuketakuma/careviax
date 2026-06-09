@@ -517,4 +517,24 @@ describe('PH-OS Final No-Go gate', () => {
       /任意/,
     ]);
   });
+
+  it('keeps VisitMode footer navigation and draft-save from completing incomplete steps', () => {
+    expectEvidence('src/phos/ui/visit/VisitMode.tsx', [
+      /PhosVisitFooterCopy/,
+      /PREVIOUS/,
+      /SAVE_DRAFT/,
+      /NEXT/,
+      /canSyncDraft/,
+      /activeStepCompleted/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.tsx', [
+      /handleSaveVisitDraft/,
+      /step === VisitStep\.ARRIVAL_CONFIRM/,
+      /onSaveVisitDraft/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /does not submit VisitMode draft save for an incomplete current step/,
+      /submits VisitMode draft save only for completed non-arrival steps/,
+    ]);
+  });
 });

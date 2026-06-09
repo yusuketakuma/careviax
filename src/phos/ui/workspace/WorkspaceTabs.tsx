@@ -25,6 +25,7 @@ export type WorkspaceTabsProps = {
   pendingEvidence?: EvidencePendingView[];
   onVisitArrivalOutcome?(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenVisitStep?(step: VisitStep): void;
+  onSaveVisitDraft?(step: VisitStep): void;
   onCompleteVisit?(): void;
 };
 
@@ -70,6 +71,7 @@ export function WorkspaceTabs({
   pendingEvidence = [],
   onVisitArrivalOutcome,
   onOpenVisitStep,
+  onSaveVisitDraft,
   onCompleteVisit,
 }: WorkspaceTabsProps) {
   const visibleTabs = detail.visible_tabs;
@@ -124,6 +126,7 @@ export function WorkspaceTabs({
               throw new Error('Visit step handler is not configured');
             })
           }
+          onSaveDraft={onSaveVisitDraft}
           onCompleteVisit={
             onCompleteVisit ??
             (() => {

@@ -986,6 +986,86 @@ describe('BoardClient', () => {
     expect(screen.getByText('完了確認')).toBeTruthy();
   });
 
+  it('does not submit VisitMode draft save for an incomplete current step', async () => {
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          visible_tabs: ['OVERVIEW', 'VISIT_REPORT'],
+          visit_mode: visitMode({
+            applicable_steps: [VisitStep.ARRIVAL_CONFIRM, VisitStep.COMPLETE_CHECK],
+            required_steps: [VisitStep.ARRIVAL_CONFIRM, VisitStep.COMPLETE_CHECK],
+            step_completed: {
+              ...(Object.fromEntries(
+                Object.values(VisitStep).map((step) => [step, false]),
+              ) as Record<VisitStep, boolean>),
+              [VisitStep.ARRIVAL_CONFIRM]: true,
+            },
+            last_opened_step: VisitStep.COMPLETE_CHECK,
+          }),
+        }),
+      ),
+      updateVisitStep: vi.fn(async () => visitMode({ server_version: 4 })),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
+
+    expect(screen.getByRole('status').textContent).toBe('一時保存しました');
+    expect(apiClient.updateVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('submits VisitMode draft save only for completed non-arrival steps', async () => {
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          visible_tabs: ['OVERVIEW', 'VISIT_REPORT'],
+          visit_mode: visitMode({
+            applicable_steps: [
+              VisitStep.ARRIVAL_CONFIRM,
+              VisitStep.EVIDENCE_UPLOAD,
+              VisitStep.COMPLETE_CHECK,
+            ],
+            required_steps: [
+              VisitStep.ARRIVAL_CONFIRM,
+              VisitStep.EVIDENCE_UPLOAD,
+              VisitStep.COMPLETE_CHECK,
+            ],
+            step_completed: {
+              ...(Object.fromEntries(
+                Object.values(VisitStep).map((step) => [step, false]),
+              ) as Record<VisitStep, boolean>),
+              [VisitStep.ARRIVAL_CONFIRM]: true,
+              [VisitStep.EVIDENCE_UPLOAD]: true,
+            },
+            last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+          }),
+        }),
+      ),
+      updateVisitStep: vi.fn(async () => visitMode({ server_version: 4 })),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
+
+    await waitFor(() =>
+      expect(apiClient.updateVisitStep).toHaveBeenCalledWith(
+        'packet_1',
+        VisitStep.EVIDENCE_UPLOAD,
+        expect.objectContaining({
+          client_version: 3,
+        }),
+      ),
+    );
+  });
+
   it('loads offline evidence queue records into VisitMode completion guards', async () => {
     const apiClient = client({
       getCardDetail: vi.fn(async () =>

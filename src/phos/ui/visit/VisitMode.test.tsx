@@ -336,4 +336,69 @@ describe('VisitMode', () => {
 
     expect(onCompleteVisit).not.toHaveBeenCalled();
   });
+
+  it('renders sticky footer navigation and saves incomplete current step locally', () => {
+    const onOpenStep = vi.fn();
+    const onSaveDraft = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          applicable_steps: [
+            VisitStep.ARRIVAL_CONFIRM,
+            VisitStep.RESIDUAL_CHECK,
+            VisitStep.EVIDENCE_UPLOAD,
+          ],
+          required_steps: [
+            VisitStep.ARRIVAL_CONFIRM,
+            VisitStep.RESIDUAL_CHECK,
+            VisitStep.EVIDENCE_UPLOAD,
+          ],
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+          },
+          last_opened_step: VisitStep.RESIDUAL_CHECK,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={onOpenStep}
+        onSaveDraft={onSaveDraft}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '前へ' }));
+    expect(onOpenStep).toHaveBeenCalledWith(VisitStep.ARRIVAL_CONFIRM);
+
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(onOpenStep).toHaveBeenCalledWith(VisitStep.EVIDENCE_UPLOAD);
+
+    fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toBe('一時保存しました');
+  });
+
+  it('syncs draft save only when the current step is already completed', () => {
+    const onSaveDraft = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+            [VisitStep.EVIDENCE_UPLOAD]: true,
+          },
+          last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
+
+    expect(onSaveDraft).toHaveBeenCalledWith(VisitStep.EVIDENCE_UPLOAD);
+    expect(screen.getByRole('status').textContent).toBe('一時保存しました。同期済みです');
+  });
 });
