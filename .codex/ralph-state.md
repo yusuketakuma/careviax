@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-162008
+
+- current task: harden PH-OS backend mutation input validation for SourceRef evidence timestamps and remove duplicated handler parsing
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-routes.ts`, `src/phos/infra/api-gateway-routes.test.ts`, `src/phos/backend/report-deliveries-handlers.ts`, `src/phos/backend/report-deliveries-handlers.test.ts`, `src/phos/backend/handoffs-handlers.ts`, `src/phos/backend/handoffs-handlers.test.ts`, `src/phos/backend/claim-candidates-handlers.ts`, `src/phos/backend/visit-mode-handlers.ts`, `src/phos/backend/aurora-fee-rules-repository.ts`, and `src/phos/contracts/phos_contracts.ts`
+- files changed: `src/phos/backend/input-validation.ts`, `src/phos/backend/report-deliveries-handlers.ts`, `src/phos/backend/report-deliveries-handlers.test.ts`, `src/phos/backend/handoffs-handlers.ts`, `src/phos/backend/handoffs-handlers.test.ts`, `.codex/ralph-state.md`
+- bugs found: Handoff creation and ReportDelivery reply handlers duplicated `SourceRef` parsing and accepted any string as `source_refs.*.captured_at`, allowing invalid evidence timestamps to reach repositories and later UI/source displays. The same handlers also duplicated positive-version and idempotency-key parsing.
+- security risks found: no auth, authorization, tenant boundary, API route manifest, Lambda composition, state-transition policy, database, S3 presign, or frontend code changed. New shared backend validation rejects malformed `captured_at` values before repository access, trims source ref fields, keeps required Handoff source refs non-empty, and preserves existing idempotency/version requirements.
+- performance issues found: no runtime performance path was broadened. The helper removes duplicate per-handler parsing logic and adds constant-time timestamp validation for supplied source refs only; no fetch, polling, direct database access, scan, Server Action, or route handler was introduced.
+- validation commands: Prettier for touched backend files; focused `pnpm exec vitest run src/phos/backend/report-deliveries-handlers.test.ts src/phos/backend/handoffs-handlers.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; targeted ESLint for touched backend files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed unchanged; focused backend handler suite passed with 2 files / 16 tests; TypeScript passed; targeted ESLint passed with zero warnings; whitespace diff check passed; full PH-OS Vitest passed with 94 files / 553 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. This slice closes one concrete backend input-validation/refactoring gap; further backend audit should continue across VisitMode mutation payload validation, card action payload boundaries, Dynamo/Aurora adapters, and legacy API isolation/runtime proof.
+- next action: commit this backend validation slice, then continue the backend-only audit from the next highest-risk PH-OS API boundary.
+
 ### 20260609-150152
 
 - current task: final requirement-by-requirement PH-OS UIUX v1.1 completion audit after the browser-flow E2E proof

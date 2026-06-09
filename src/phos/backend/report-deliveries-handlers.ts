@@ -1,14 +1,19 @@
 import {
   ReportDeliveryStatus,
-  SOURCE_REF_KINDS,
   type ErrorResponse,
   type MarkReportActionDoneRequest,
   type RegisterReportReplyRequest,
-  type SourceRef,
 } from '@/phos/contracts/phos_contracts';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
+import {
+  parseIdempotencyKey,
+  parseOptionalIsoDate,
+  parsePositiveVersion,
+  parseSourceRefs,
+  validationError,
+} from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import type {
   PhosReportDeliveriesRepository,
@@ -28,66 +33,6 @@ function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
 function readDeliveryId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.delivery_id ?? event.pathParameters?.deliveryId;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
-function validationError(details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
-}
-
-function parsePositiveVersion(value: unknown): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw validationError({ field: 'client_version' });
-  }
-  return Number(value);
-}
-
-function parseIdempotencyKey(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw validationError({ field: 'idempotency_key' });
-  }
-  return value.trim();
-}
-
-function parseOptionalIsoDate(value: unknown, field: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
-    throw validationError({ field });
-  }
-  return value;
-}
-
-function parseSourceRefs(value: unknown): SourceRef[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw validationError({ field: 'source_refs' });
-  return value.map((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw validationError({ field: `source_refs.${index}` });
-    }
-    const source = item as Partial<SourceRef>;
-    if (
-      typeof source.kind !== 'string' ||
-      !SOURCE_REF_KINDS.includes(source.kind as SourceRef['kind']) ||
-      typeof source.ref_id !== 'string' ||
-      source.ref_id.trim().length === 0
-    ) {
-      throw validationError({ field: `source_refs.${index}` });
-    }
-    if (typeof source.label !== 'string' || source.label.trim().length === 0) {
-      throw validationError({ field: `source_refs.${index}.label` });
-    }
-    return {
-      kind: source.kind as SourceRef['kind'],
-      ref_id: source.ref_id.trim(),
-      label: source.label.trim(),
-      ...(typeof source.uri === 'string' ? { uri: source.uri } : {}),
-      ...(typeof source.captured_at === 'string' ? { captured_at: source.captured_at } : {}),
-    };
-  });
 }
 
 function parseRegisterReplyRequest(body: unknown): RegisterReportReplyRequest {

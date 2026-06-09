@@ -197,6 +197,80 @@ describe('PH-OS report-deliveries handler', () => {
     expect(repo.registerReportReply).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid reply source ref captured_at before repository access', async () => {
+    const repo = repository();
+    const handler = createRegisterReportReplyHandler(repo);
+
+    const result = (await handler({
+      ctx: ctx({ scopes: ['phos/report-deliveries.write'] }),
+      event: { pathParameters: { delivery_id: 'delivery_1' } },
+      body: {
+        result_status: ReportDeliveryStatus.ACTION_DONE,
+        reply_summary: '問題ありません。',
+        source_refs: [
+          {
+            kind: 'EVIDENCE_FILE',
+            ref_id: 'photo_1',
+            label: '残薬写真',
+            captured_at: 'not-a-date',
+          },
+        ],
+        idempotency_key: 'idem_reply',
+        client_version: 1,
+      },
+    })) as PhosLambdaResponse;
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'source_refs.0.captured_at' },
+    });
+    expect(repo.registerReportReply).not.toHaveBeenCalled();
+  });
+
+  it('trims reply source refs and keeps valid captured_at values', async () => {
+    const repo = repository();
+    const handler = createRegisterReportReplyHandler(repo);
+
+    await expect(
+      handler({
+        ctx: ctx({ scopes: ['phos/report-deliveries.write'] }),
+        event: { pathParameters: { delivery_id: 'delivery_1' } },
+        body: {
+          result_status: ReportDeliveryStatus.ACTION_DONE,
+          reply_summary: '問題ありません。',
+          source_refs: [
+            {
+              kind: 'EVIDENCE_FILE',
+              ref_id: ' photo_1 ',
+              label: ' 残薬写真 ',
+              uri: ' https://example.test/photo_1 ',
+              captured_at: ' 2026-06-09T00:00:00.000Z ',
+            },
+          ],
+          idempotency_key: 'idem_reply',
+          client_version: 1,
+        },
+      }),
+    ).resolves.toEqual(mutationResponse());
+
+    expect(repo.registerReportReply).toHaveBeenCalledWith(expect.anything(), 'delivery_1', {
+      result_status: ReportDeliveryStatus.ACTION_DONE,
+      reply_summary: '問題ありません。',
+      source_refs: [
+        {
+          kind: 'EVIDENCE_FILE',
+          ref_id: 'photo_1',
+          label: '残薬写真',
+          uri: 'https://example.test/photo_1',
+          captured_at: '2026-06-09T00:00:00.000Z',
+        },
+      ],
+      idempotency_key: 'idem_reply',
+      client_version: 1,
+    });
+  });
+
   it('marks report reply action done only for pharmacist-grade roles', async () => {
     const repo = repository();
     const handler = createMarkReportActionDoneHandler(repo);

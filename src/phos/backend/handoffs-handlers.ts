@@ -1,9 +1,4 @@
-import {
-  ActionCode,
-  HandoffStatus,
-  HandoffUrgency,
-  SOURCE_REF_KINDS,
-} from '@/phos/contracts/phos_contracts';
+import { ActionCode, HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type {
   CreateHandoffRequest,
   ErrorResponse,
@@ -11,11 +6,16 @@ import type {
   OpenHandoffRequest,
   ResolveHandoffRequest,
   ReturnHandoffRequest,
-  SourceRef,
 } from '@/phos/contracts/phos_contracts';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
+import {
+  parseIdempotencyKey,
+  parsePositiveVersion,
+  parseSourceRefs,
+  validationError,
+} from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import type { PhosHandoffsRepository } from './handoffs-repository';
 import { hashTenantId } from './observability';
@@ -35,15 +35,6 @@ function readHandoffId(event: PhosHttpEvent): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function validationError(details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
-}
-
 function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
   const response: ErrorResponse = {
     request_id: ctx.request_id,
@@ -60,50 +51,6 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
     error_code: 'FORBIDDEN',
     message_key: 'api.error.forbidden',
     details: error.details,
-  });
-}
-
-function parsePositiveVersion(value: unknown): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw validationError({ field: 'client_version' });
-  }
-  return Number(value);
-}
-
-function parseIdempotencyKey(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw validationError({ field: 'idempotency_key' });
-  }
-  return value.trim();
-}
-
-function parseSourceRefs(value: unknown): SourceRef[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw validationError({ field: 'source_refs' });
-  }
-  return value.map((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw validationError({ field: `source_refs.${index}` });
-    }
-    const source = item as Partial<SourceRef>;
-    if (
-      typeof source.kind !== 'string' ||
-      !SOURCE_REF_KINDS.includes(source.kind as SourceRef['kind']) ||
-      typeof source.ref_id !== 'string' ||
-      source.ref_id.trim().length === 0
-    ) {
-      throw validationError({ field: `source_refs.${index}` });
-    }
-    if (typeof source.label !== 'string' || source.label.trim().length === 0) {
-      throw validationError({ field: `source_refs.${index}.label` });
-    }
-    return {
-      kind: source.kind as SourceRef['kind'],
-      ref_id: source.ref_id.trim(),
-      label: source.label.trim(),
-      ...(typeof source.uri === 'string' ? { uri: source.uri } : {}),
-      ...(typeof source.captured_at === 'string' ? { captured_at: source.captured_at } : {}),
-    };
   });
 }
 
@@ -155,7 +102,7 @@ function parseCreateRequest(body: unknown): CreateHandoffRequest {
     card_id: input.card_id.trim(),
     reason_code: input.reason_code.trim(),
     summary: input.summary.trim(),
-    source_refs: parseSourceRefs(input.source_refs),
+    source_refs: parseSourceRefs(input.source_refs, { requireNonEmpty: true }) ?? [],
     urgency: input.urgency as HandoffUrgency,
     ...(input.requested_action ? { requested_action: input.requested_action } : {}),
     ...(typeof input.assignee_user_id === 'string'

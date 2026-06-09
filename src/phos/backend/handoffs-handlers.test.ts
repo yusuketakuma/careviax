@@ -192,6 +192,54 @@ describe('PH-OS handoffs Lambda handlers', () => {
     );
   });
 
+  it('rejects invalid handoff source ref captured_at before repository access', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createCreateHandoffHandler(repo));
+    const response = await handler(
+      event({
+        routeKey: 'POST /handoffs',
+        requestContext: {
+          requestId: 'req_1',
+          authorizer: {
+            jwt: {
+              claims: {
+                token_use: 'access',
+                tenant_id: 'tenant_abc123',
+                sub: 'user_clerk',
+                role: 'PHARMACY_CLERK',
+                scope: 'phos/handoffs.write',
+              },
+            },
+          },
+        },
+        body: JSON.stringify({
+          card_id: 'card_1',
+          reason_code: 'DIFF_REVIEW',
+          summary: '薬剤師確認が必要です。',
+          source_refs: [
+            {
+              kind: 'PRESCRIPTION',
+              ref_id: 'rx_1',
+              label: '処方箋 1',
+              captured_at: 'bad-date',
+            },
+          ],
+          urgency: HandoffUrgency.HIGH,
+          requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_1',
+          client_version: 1,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'source_refs.0.captured_at' },
+    });
+    expect(repo.createHandoff).not.toHaveBeenCalled();
+  });
+
   it('lets pharmacists resolve handoffs and returns side effects', async () => {
     const repo = repository();
     const handler = withTenantContext(createResolveHandoffHandler(repo));
