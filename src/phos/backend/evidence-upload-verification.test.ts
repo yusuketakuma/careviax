@@ -1,4 +1,8 @@
-import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  PutObjectTaggingCommand,
+} from '@aws-sdk/client-s3';
 import { describe, expect, it, vi } from 'vitest';
 import { createS3EvidenceObjectVerifier } from './evidence-upload-verification';
 
@@ -99,6 +103,57 @@ describe('S3 evidence object verifier', () => {
     await expect(
       verifier.verifyObject({
         ...expected,
+        key: 'tenants/tenant_abc123/reports/report_1.pdf',
+        allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      }),
+    ).rejects.toMatchObject({
+      reason: 'evidence_key_prefix_mismatch',
+      details: {
+        expected_prefix: 'tenants/tenant_abc123/evidence/',
+      },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('marks verified evidence objects with a retained S3 tag', async () => {
+    const send = vi.fn(async (command: PutObjectTaggingCommand) => {
+      expect(command).toBeInstanceOf(PutObjectTaggingCommand);
+      return {};
+    });
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(
+      verifier.markObjectVerified?.({
+        key: expected.key,
+        allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(send).toHaveBeenCalledOnce();
+    expect((send.mock.calls[0]?.[0] as PutObjectTaggingCommand).input).toMatchObject({
+      Bucket: 'phos-evidence-prod',
+      Key: expected.key,
+      Tagging: {
+        TagSet: [
+          { Key: 'phos-object-class', Value: 'evidence' },
+          { Key: 'phos-upload-status', Value: 'VERIFIED' },
+        ],
+      },
+    });
+  });
+
+  it('rejects verified tag updates outside the allowed tenant evidence prefix before S3 calls', async () => {
+    const send = vi.fn(async () => ({}));
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(
+      verifier.markObjectVerified?.({
         key: 'tenants/tenant_abc123/reports/report_1.pdf',
         allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       }),

@@ -14,6 +14,7 @@ import {
 } from './s3-evidence-key';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
+import { evidenceObjectTaggingHeader } from './evidence-object-tags';
 import { toErrorLambdaResponse } from './error-response';
 import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
 import { parseIdempotencyKey } from './input-validation';
@@ -279,6 +280,7 @@ export function createS3EvidenceUploadPresigner(input: {
         Key: request.key,
         ContentType: request.mime_type,
         ChecksumSHA256: sha256HexToBase64(request.sha256),
+        Tagging: evidenceObjectTaggingHeader('PRESIGNED'),
         Metadata: {
           sha256: request.sha256,
           size_bytes: String(request.size_bytes),
@@ -294,6 +296,7 @@ export function createS3EvidenceUploadPresigner(input: {
           'x-amz-checksum-sha256': sha256HexToBase64(request.sha256),
           'x-amz-meta-sha256': request.sha256,
           'x-amz-meta-size_bytes': String(request.size_bytes),
+          'x-amz-tagging': evidenceObjectTaggingHeader('PRESIGNED'),
         },
         expires_in_seconds,
       };

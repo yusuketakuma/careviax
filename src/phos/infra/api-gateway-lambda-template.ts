@@ -19,6 +19,8 @@ type CloudFormationValue =
 type CloudFormationResource = {
   Type: string;
   Properties: Record<string, CloudFormationValue>;
+  DeletionPolicy?: 'Retain';
+  UpdateReplacePolicy?: 'Retain';
 };
 
 type CloudFormationParameter = {
@@ -46,6 +48,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
   cognito_audience_parameter?: string;
   dynamodb_table_name_parameter?: string;
   evidence_bucket_name_parameter?: string;
+  evidence_upload_allowed_origin_parameter?: string;
   security_event_table_name_parameter?: string;
   aurora_database_url_parameter?: string;
   lambda_runtime?: 'nodejs24.x';
@@ -256,9 +259,11 @@ function routeUsesAurora(route: PhosApiRoute): boolean {
 }
 
 function routeS3Actions(route: PhosApiRoute): string[] {
-  if (route.route_key === 'POST /evidence/presign-upload') return ['s3:PutObject'];
+  if (route.route_key === 'POST /evidence/presign-upload') {
+    return ['s3:PutObject', 's3:PutObjectTagging'];
+  }
   if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
-    return ['s3:GetObject', 's3:DeleteObject'];
+    return ['s3:GetObject', 's3:DeleteObject', 's3:PutObjectTagging'];
   }
   return [];
 }
@@ -460,6 +465,137 @@ function buildPhosCoreDynamoDbTable(input: {
   };
 }
 
+function buildPhosEvidenceBucket(input: {
+  evidenceBucketNameParameter: string;
+  evidenceUploadAllowedOriginParameter: string;
+}): CloudFormationResource {
+  return {
+    Type: 'AWS::S3::Bucket',
+    DeletionPolicy: 'Retain',
+    UpdateReplacePolicy: 'Retain',
+    Properties: {
+      BucketName: ref(input.evidenceBucketNameParameter),
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        IgnorePublicAcls: true,
+        BlockPublicPolicy: true,
+        RestrictPublicBuckets: true,
+      },
+      OwnershipControls: {
+        Rules: [{ ObjectOwnership: 'BucketOwnerEnforced' }],
+      },
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          {
+            ServerSideEncryptionByDefault: {
+              SSEAlgorithm: 'AES256',
+            },
+          },
+        ],
+      },
+      VersioningConfiguration: {
+        Status: 'Enabled',
+      },
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            Id: 'ExpireUnverifiedEvidenceObjects',
+            Status: 'Enabled',
+            Filter: {
+              And: {
+                Prefix: 'tenants/',
+                Tags: [
+                  {
+                    Key: 'phos-object-class',
+                    Value: 'evidence',
+                  },
+                  {
+                    Key: 'phos-upload-status',
+                    Value: 'PRESIGNED',
+                  },
+                ],
+              },
+            },
+            ExpirationInDays: 1,
+          },
+          {
+            Id: 'AbortIncompleteEvidenceMultipartUploads',
+            Status: 'Enabled',
+            AbortIncompleteMultipartUpload: {
+              DaysAfterInitiation: 1,
+            },
+          },
+          {
+            Id: 'ExpireNoncurrentEvidenceVersions',
+            Status: 'Enabled',
+            NoncurrentVersionExpiration: {
+              NoncurrentDays: 30,
+            },
+          },
+          {
+            Id: 'RemoveExpiredEvidenceDeleteMarkers',
+            Status: 'Enabled',
+            ExpiredObjectDeleteMarker: true,
+          },
+        ],
+      },
+      CorsConfiguration: {
+        CorsRules: [
+          {
+            AllowedMethods: ['PUT'],
+            AllowedOrigins: [ref(input.evidenceUploadAllowedOriginParameter)],
+            AllowedHeaders: [
+              'Content-Type',
+              'x-amz-checksum-sha256',
+              'x-amz-meta-sha256',
+              'x-amz-meta-size_bytes',
+              'x-amz-tagging',
+            ],
+            ExposedHeaders: ['x-amz-checksum-sha256'],
+            MaxAge: 300,
+          },
+        ],
+      },
+      Tags: [
+        {
+          Key: 'System',
+          Value: 'PH-OS',
+        },
+      ],
+    },
+  };
+}
+
+function buildPhosEvidenceBucketPolicy(input: {
+  evidenceBucketNameParameter: string;
+}): CloudFormationResource {
+  const bucketArn = sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}`);
+  const objectArn = sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/*`);
+  return {
+    Type: 'AWS::S3::BucketPolicy',
+    Properties: {
+      Bucket: ref(input.evidenceBucketNameParameter),
+      PolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Sid: 'DenyInsecureTransport',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:*',
+            Resource: [bucketArn, objectArn],
+            Condition: {
+              Bool: {
+                'aws:SecureTransport': 'false',
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 export function buildPhosApiGatewayLambdaTemplate(
   options: PhosApiGatewayLambdaTemplateOptions = {},
 ): PhosApiGatewayLambdaTemplate {
@@ -473,6 +609,8 @@ export function buildPhosApiGatewayLambdaTemplate(
     options.dynamodb_table_name_parameter ?? 'PhosDynamoDbTableName';
   const evidenceBucketNameParameter =
     options.evidence_bucket_name_parameter ?? 'PhosEvidenceBucketName';
+  const evidenceUploadAllowedOriginParameter =
+    options.evidence_upload_allowed_origin_parameter ?? 'PhosEvidenceUploadAllowedOrigin';
   const securityEventTableNameParameter =
     options.security_event_table_name_parameter ?? 'PhosSecurityEventTableName';
   const auroraDatabaseUrlParameter =
@@ -525,6 +663,11 @@ export function buildPhosApiGatewayLambdaTemplate(
       },
     },
     PhosCoreDynamoDbTable: buildPhosCoreDynamoDbTable({ dynamodbTableNameParameter }),
+    PhosEvidenceBucket: buildPhosEvidenceBucket({
+      evidenceBucketNameParameter,
+      evidenceUploadAllowedOriginParameter,
+    }),
+    PhosEvidenceBucketPolicy: buildPhosEvidenceBucketPolicy({ evidenceBucketNameParameter }),
   };
 
   for (const binding of bindings) {
@@ -613,6 +756,10 @@ export function buildPhosApiGatewayLambdaTemplate(
         Description: 'Fixed PH-OS P0 DynamoDB single-table name.',
       }),
       [evidenceBucketNameParameter]: parameter('String'),
+      [evidenceUploadAllowedOriginParameter]: parameter('String', {
+        AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
+        Description: 'HTTPS origin allowed to PUT PH-OS evidence objects through presigned URLs.',
+      }),
       [securityEventTableNameParameter]: parameter('String'),
       [auroraDatabaseUrlParameter]: parameter('String', {
         NoEcho: true,

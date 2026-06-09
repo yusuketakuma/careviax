@@ -1,4 +1,10 @@
-import { DeleteObjectCommand, HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  PutObjectTaggingCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
+import { evidenceObjectTagSet } from './evidence-object-tags';
 
 export class EvidenceObjectVerificationError extends Error {
   readonly reason: string;
@@ -20,8 +26,14 @@ export type EvidenceObjectVerificationInput = {
   allowed_key_prefix?: string;
 };
 
+export type EvidenceObjectTaggingInput = {
+  key: string;
+  allowed_key_prefix?: string;
+};
+
 export type EvidenceObjectVerifier = {
   verifyObject(input: EvidenceObjectVerificationInput): Promise<void>;
+  markObjectVerified?(input: EvidenceObjectTaggingInput): Promise<void>;
 };
 
 type EvidenceHeadObjectResult = {
@@ -70,7 +82,7 @@ function cleanupErrorName(error: unknown): string {
   return typeof error;
 }
 
-function assertAllowedEvidenceKeyPrefix(expected: EvidenceObjectVerificationInput): void {
+function assertAllowedEvidenceKeyPrefix(expected: EvidenceObjectTaggingInput): void {
   if (!expected.allowed_key_prefix) return;
   if (expected.key.startsWith(expected.allowed_key_prefix)) return;
   throw new EvidenceObjectVerificationError('evidence_key_prefix_mismatch', {
@@ -214,6 +226,19 @@ export function createS3EvidenceObjectVerifier(input: {
         }
         throw mismatch;
       }
+    },
+
+    async markObjectVerified(expected) {
+      assertAllowedEvidenceKeyPrefix(expected);
+      await input.client.send(
+        new PutObjectTaggingCommand({
+          Bucket: input.bucket,
+          Key: expected.key,
+          Tagging: {
+            TagSet: evidenceObjectTagSet('VERIFIED'),
+          },
+        }),
+      );
     },
   };
 }

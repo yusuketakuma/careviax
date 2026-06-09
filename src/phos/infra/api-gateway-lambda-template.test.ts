@@ -237,6 +237,136 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     });
   });
 
+  it('creates the PH-OS evidence bucket with private encrypted upload controls', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    expect(template.Parameters.PhosEvidenceUploadAllowedOrigin).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
+    });
+    expect(template.Resources.PhosEvidenceBucket).toMatchObject({
+      Type: 'AWS::S3::Bucket',
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+      Properties: {
+        BucketName: { Ref: 'PhosEvidenceBucketName' },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          IgnorePublicAcls: true,
+          BlockPublicPolicy: true,
+          RestrictPublicBuckets: true,
+        },
+        OwnershipControls: {
+          Rules: [{ ObjectOwnership: 'BucketOwnerEnforced' }],
+        },
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'AES256',
+              },
+            },
+          ],
+        },
+        VersioningConfiguration: {
+          Status: 'Enabled',
+        },
+        LifecycleConfiguration: {
+          Rules: expect.arrayContaining([
+            expect.objectContaining({
+              Id: 'ExpireUnverifiedEvidenceObjects',
+              Status: 'Enabled',
+              Filter: {
+                And: {
+                  Prefix: 'tenants/',
+                  Tags: [
+                    { Key: 'phos-object-class', Value: 'evidence' },
+                    { Key: 'phos-upload-status', Value: 'PRESIGNED' },
+                  ],
+                },
+              },
+              ExpirationInDays: 1,
+            }),
+            expect.objectContaining({
+              Id: 'AbortIncompleteEvidenceMultipartUploads',
+              AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 },
+            }),
+            expect.objectContaining({
+              Id: 'ExpireNoncurrentEvidenceVersions',
+              NoncurrentVersionExpiration: { NoncurrentDays: 30 },
+            }),
+            expect.objectContaining({
+              Id: 'RemoveExpiredEvidenceDeleteMarkers',
+              ExpiredObjectDeleteMarker: true,
+            }),
+          ]),
+        },
+        CorsConfiguration: {
+          CorsRules: [
+            {
+              AllowedMethods: ['PUT'],
+              AllowedOrigins: [{ Ref: 'PhosEvidenceUploadAllowedOrigin' }],
+              AllowedHeaders: [
+                'Content-Type',
+                'x-amz-checksum-sha256',
+                'x-amz-meta-sha256',
+                'x-amz-meta-size_bytes',
+                'x-amz-tagging',
+              ],
+              ExposedHeaders: ['x-amz-checksum-sha256'],
+              MaxAge: 300,
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
+      '"AllowedOrigins":["*"]',
+    );
+    expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
+      '"ExpirationInDays":365',
+    );
+    expect(template.Resources.PhosEvidenceBucketPolicy).toMatchObject({
+      Type: 'AWS::S3::BucketPolicy',
+      Properties: {
+        Bucket: { Ref: 'PhosEvidenceBucketName' },
+        PolicyDocument: {
+          Statement: [
+            {
+              Sid: 'DenyInsecureTransport',
+              Effect: 'Deny',
+              Principal: '*',
+              Action: 's3:*',
+              Resource: [
+                { 'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}' },
+                { 'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/*' },
+              ],
+              Condition: {
+                Bool: {
+                  'aws:SecureTransport': 'false',
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('keeps evidence upload CORS origin scoped to one exact HTTPS origin', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+    const allowedPattern = template.Parameters.PhosEvidenceUploadAllowedOrigin.AllowedPattern;
+    expect(allowedPattern).toBeDefined();
+    const originPattern = new RegExp(allowedPattern!);
+
+    expect(originPattern.test('https://app.example.com')).toBe(true);
+    expect(originPattern.test('https://app.example.com:443')).toBe(true);
+    expect(originPattern.test('http://app.example.com')).toBe(false);
+    expect(originPattern.test('https://*.example.com')).toBe(false);
+    expect(originPattern.test('https://app.example.com,https://evil.example.com')).toBe(false);
+    expect(originPattern.test('https://app.example.com/upload')).toBe(false);
+  });
+
   it('creates per-route Lambda execution roles with capability-scoped permissions and env', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const roleResources = resourcesByType('AWS::IAM::Role');
@@ -335,6 +465,9 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain('s3:PutObject');
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
+      's3:PutObjectTagging',
+    );
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
       'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
     );
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
@@ -348,10 +481,13 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       's3:DeleteObject',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      's3:PutObjectTagging',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
       'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).not.toContain(
-      's3:PutObject',
+      '"s3:PutObject"',
     );
   });
 

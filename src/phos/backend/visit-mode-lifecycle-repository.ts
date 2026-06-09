@@ -57,6 +57,7 @@ export type VisitModeLifecycleStore = {
     input: EvidenceUploadVerificationInput,
   ): Promise<VerifiedEvidenceUpload>;
   commitVisitStep(ctx: TenantContext, input: VisitStepCommitInput): Promise<VisitModeView>;
+  markVerifiedEvidenceUpload?(ctx: TenantContext, evidence_key: string): Promise<void>;
 };
 
 function domainError(
@@ -141,12 +142,17 @@ async function replayIdempotentAfterCommitConflict(input: {
   mutation_key: string;
   idempotency_key: string;
   request_fingerprint: string;
+  step: VisitStep;
+  command: VisitStepMutationRequest;
 }): Promise<VisitModeView> {
   if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
     throw input.error;
   }
   const matched = await assertIdempotent(input);
-  if (matched) return matched;
+  if (matched) {
+    await markVerifiedEvidenceUploadIfNeeded(input);
+    return matched;
+  }
   throw input.error;
 }
 
@@ -225,6 +231,18 @@ function applyVerifiedEvidenceUpload(
       blocking_unsynced_count: Math.max(0, visit.evidence_sync.blocking_unsynced_count - 1),
     },
   };
+}
+
+async function markVerifiedEvidenceUploadIfNeeded(input: {
+  store: VisitModeLifecycleStore;
+  ctx: TenantContext;
+  step: VisitStep;
+  command: VisitStepMutationRequest;
+}): Promise<void> {
+  if (input.step !== VisitStep.EVIDENCE_UPLOAD) return;
+  const evidenceKey = input.command.payload?.evidence_key;
+  if (typeof evidenceKey !== 'string' || evidenceKey.trim().length === 0) return;
+  await input.store.markVerifiedEvidenceUpload?.(input.ctx, evidenceKey);
 }
 
 function projectVisitStepResponse(
@@ -338,7 +356,10 @@ export function createVisitModeLifecycleRepository(
         idempotency_key: command.idempotency_key,
         request_fingerprint,
       });
-      if (matched) return matched;
+      if (matched) {
+        await markVerifiedEvidenceUploadIfNeeded({ store, ctx, step, command });
+        return matched;
+      }
 
       assertFreshVersion(visit, command);
 
@@ -371,6 +392,8 @@ export function createVisitModeLifecycleRepository(
           mutation_key,
           idempotency_key: command.idempotency_key,
           request_fingerprint,
+          step,
+          command,
         });
       }
     },

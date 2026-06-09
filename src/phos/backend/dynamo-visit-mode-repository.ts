@@ -147,6 +147,40 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
   };
 }
 
+function parseEvidenceObjectTagTarget(item: DynamoItem | null, evidence_id: string) {
+  if (!item) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      evidence_id,
+      reason: 'evidence_intent_not_found',
+    });
+  }
+  const evidence = {
+    evidence_id: stringAttr(item, 'evidence_id'),
+    card_id: stringAttr(item, 'card_id'),
+    s3_key: stringAttr(item, 's3_key'),
+    upload_status: stringAttr(item, 'upload_status'),
+  };
+  if (
+    evidence.evidence_id !== evidence_id ||
+    !evidence.card_id ||
+    !evidence.s3_key ||
+    (evidence.upload_status !== 'PRESIGNED' && evidence.upload_status !== 'VERIFIED')
+  ) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      evidence_id,
+      reason: 'invalid_evidence_intent',
+      upload_status: evidence.upload_status ?? null,
+    });
+  }
+  return {
+    evidence_id,
+    card_id: evidence.card_id,
+    s3_key: evidence.s3_key,
+  };
+}
+
 async function verifyEvidenceUploadIntent(input: {
   ctx: TenantContext;
   verifier?: EvidenceObjectVerifier;
@@ -228,6 +262,36 @@ async function verifyEvidenceUploadIntent(input: {
     card_id: intent.card_id,
     s3_key: intent.s3_key,
   };
+}
+
+async function markVerifiedEvidenceObject(input: {
+  ctx: TenantContext;
+  verifier?: EvidenceObjectVerifier;
+  evidence: VerifiedEvidenceUpload;
+}): Promise<void> {
+  if (!input.verifier?.markObjectVerified) {
+    throw evidenceGuardFailed({
+      step: 'EVIDENCE_UPLOAD',
+      evidence_id: input.evidence.evidence_id,
+      reason: 'evidence_object_tagger_unavailable',
+    });
+  }
+  try {
+    assertTenantS3Key(input.ctx, input.evidence.s3_key);
+  } catch (error) {
+    if (error instanceof TenantStorageKeyError) {
+      throw evidenceGuardFailed({
+        step: 'EVIDENCE_UPLOAD',
+        evidence_id: input.evidence.evidence_id,
+        reason: 'evidence_tenant_mismatch',
+      });
+    }
+    throw error;
+  }
+  await input.verifier.markObjectVerified({
+    key: input.evidence.s3_key,
+    allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
+  });
 }
 
 function toVisitModeView(item: DynamoItem): VisitModeView {
@@ -321,7 +385,32 @@ export function createDynamoVisitModeRepository(
         response: input.response,
         committed_at: (options.now?.() ?? new Date()).toISOString(),
       });
+      if (input.verified_evidence) {
+        await markVerifiedEvidenceObject({
+          ctx,
+          verifier: options.evidence_object_verifier,
+          evidence: input.verified_evidence,
+        });
+      }
       return input.response;
+    },
+
+    async markVerifiedEvidenceUpload(ctx: TenantContext, evidence_key: string) {
+      const partition_key = tenantPk(ctx);
+      assertTenantPk(ctx, partition_key);
+      const evidence_id = evidence_key.trim();
+      assertEvidenceIdShape(evidence_id);
+      const item = await client.getEvidenceIntent({
+        table_name: phosCoreTableName(),
+        partition_key,
+        sort_key: evidenceSk(evidence_id),
+      });
+      const intent = parseEvidenceObjectTagTarget(item, evidence_id);
+      await markVerifiedEvidenceObject({
+        ctx,
+        verifier: options.evidence_object_verifier,
+        evidence: intent,
+      });
     },
   };
 }

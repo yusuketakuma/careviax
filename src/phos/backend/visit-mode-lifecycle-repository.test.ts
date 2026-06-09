@@ -113,6 +113,7 @@ describe('createVisitModeLifecycleRepository', () => {
     const response = visit({ server_version: 4 });
     const fakeStore = store({
       getIdempotentVisitStep: vi.fn(async () => ({ status: 'MATCH' as const, response })),
+      markVerifiedEvidenceUpload: vi.fn(async () => undefined),
     });
     const repository = createVisitModeLifecycleRepository(fakeStore);
 
@@ -120,11 +121,13 @@ describe('createVisitModeLifecycleRepository', () => {
       repository.updateVisitStep(ctx, 'packet_1', VisitStep.EVIDENCE_UPLOAD, {
         idempotency_key: 'idem_1',
         client_version: 3,
+        payload: { evidence_key: 'evidence_1' },
       }),
     ).resolves.toEqual(response);
 
     expect(fakeStore.loadVisitMode).toHaveBeenCalledWith(ctx, 'packet_1');
     expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
+    expect(fakeStore.markVerifiedEvidenceUpload).toHaveBeenCalledWith(ctx, 'evidence_1');
   });
 
   it('rejects non-assigned visit step mutations before idempotency replay', async () => {
@@ -191,6 +194,41 @@ describe('createVisitModeLifecycleRepository', () => {
       }),
     ).resolves.toEqual(response);
     expect(fakeStore.getIdempotentVisitStep).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks verified evidence tags when replaying evidence upload after a commit race', async () => {
+    const response = visit({ server_version: 4 });
+    const fakeStore = store({
+      loadVisitMode: vi.fn(async () =>
+        visit({
+          card_id: 'card_1',
+          evidence_sync: { blocking_unsynced_count: 1, non_blocking_unsynced_count: 0 },
+        }),
+      ),
+      getIdempotentVisitStep: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response }),
+      commitVisitStep: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+      markVerifiedEvidenceUpload: vi.fn(async () => undefined),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.EVIDENCE_UPLOAD, {
+        idempotency_key: 'idem_evidence',
+        client_version: 3,
+        payload: { evidence_key: 'evidence_1' },
+      }),
+    ).resolves.toEqual(response);
+
+    expect(fakeStore.markVerifiedEvidenceUpload).toHaveBeenCalledWith(ctx, 'evidence_1');
   });
 
   it('verifies evidence upload before completing the evidence step', async () => {

@@ -246,8 +246,13 @@ describe('createDynamoVisitModeRepository', () => {
 
   it('includes verified evidence status update in the visit commit transaction', async () => {
     const fakeClient = client();
+    const verifier = {
+      verifyObject: vi.fn(async () => undefined),
+      markObjectVerified: vi.fn(async () => undefined),
+    };
     const store = createDynamoVisitModeRepository(fakeClient, {
       now: () => new Date('2026-06-09T00:00:00.000Z'),
+      evidence_object_verifier: verifier,
     });
     const response = visit({ server_version: 4 });
 
@@ -280,5 +285,34 @@ describe('createDynamoVisitModeRepository', () => {
         },
       }),
     );
+    expect(verifier.markObjectVerified).toHaveBeenCalledWith({
+      key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+    });
+  });
+
+  it('marks already committed evidence objects verified during idempotency replay', async () => {
+    const fakeClient = client({
+      getEvidenceIntent: vi.fn(async () => evidenceIntent({ upload_status: 'VERIFIED' })),
+    });
+    const verifier = {
+      verifyObject: vi.fn(async () => undefined),
+      markObjectVerified: vi.fn(async () => undefined),
+    };
+    const store = createDynamoVisitModeRepository(fakeClient, {
+      evidence_object_verifier: verifier,
+    });
+
+    await expect(store.markVerifiedEvidenceUpload?.(ctx, ' evidence_1 ')).resolves.toBeUndefined();
+
+    expect(fakeClient.getEvidenceIntent).toHaveBeenCalledWith({
+      table_name: 'phos_core',
+      partition_key: 'TENANT#tenant_abc123',
+      sort_key: 'EVIDENCE#evidence_1',
+    });
+    expect(verifier.markObjectVerified).toHaveBeenCalledWith({
+      key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+    });
   });
 });

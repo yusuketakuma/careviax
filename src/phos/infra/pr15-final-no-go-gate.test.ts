@@ -184,9 +184,87 @@ describe('PH-OS Final No-Go gate', () => {
         ]),
       },
     });
+    expect(template.Resources.PhosEvidenceBucket).toMatchObject({
+      Type: 'AWS::S3::Bucket',
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+      Properties: {
+        BucketName: { Ref: 'PhosEvidenceBucketName' },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          IgnorePublicAcls: true,
+          BlockPublicPolicy: true,
+          RestrictPublicBuckets: true,
+        },
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: expect.arrayContaining([
+            expect.objectContaining({
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'AES256',
+              },
+            }),
+          ]),
+        },
+        VersioningConfiguration: {
+          Status: 'Enabled',
+        },
+        LifecycleConfiguration: {
+          Rules: expect.arrayContaining([
+            expect.objectContaining({
+              Id: 'ExpireUnverifiedEvidenceObjects',
+              Filter: {
+                And: {
+                  Prefix: 'tenants/',
+                  Tags: [
+                    { Key: 'phos-object-class', Value: 'evidence' },
+                    { Key: 'phos-upload-status', Value: 'PRESIGNED' },
+                  ],
+                },
+              },
+              ExpirationInDays: 1,
+            }),
+          ]),
+        },
+        CorsConfiguration: {
+          CorsRules: [
+            expect.objectContaining({
+              AllowedMethods: ['PUT'],
+              AllowedOrigins: [{ Ref: 'PhosEvidenceUploadAllowedOrigin' }],
+              AllowedHeaders: expect.arrayContaining(['x-amz-tagging']),
+            }),
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
+      '"AllowedOrigins":["*"]',
+    );
+    expect(template.Resources.PhosEvidenceBucketPolicy).toMatchObject({
+      Type: 'AWS::S3::BucketPolicy',
+      Properties: {
+        PolicyDocument: {
+          Statement: expect.arrayContaining([
+            expect.objectContaining({
+              Sid: 'DenyInsecureTransport',
+              Effect: 'Deny',
+              Action: 's3:*',
+              Condition: {
+                Bool: {
+                  'aws:SecureTransport': 'false',
+                },
+              },
+            }),
+          ]),
+        },
+      },
+    });
     expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({
       Default: 'phos_core',
       AllowedPattern: '^phos_core$',
+    });
+    expect(template.Parameters.PhosEvidenceUploadAllowedOrigin).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
     });
     expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
     const evidenceBinding = bindPhosApiRouteForDeployment(
@@ -209,6 +287,9 @@ describe('PH-OS Final No-Go gate', () => {
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
       's3:PutObject',
     );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
+      's3:PutObjectTagging',
+    );
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).not.toContain(
       's3:DeleteObject',
     );
@@ -217,6 +298,9 @@ describe('PH-OS Final No-Go gate', () => {
     );
     expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
       's3:DeleteObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      's3:PutObjectTagging',
     );
   });
 

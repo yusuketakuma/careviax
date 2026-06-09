@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { S3Client } from '@aws-sdk/client-s3';
 import {
   createEvidencePresignUploadHandler,
+  createS3EvidenceUploadPresigner,
   type EvidenceUploadPresigner,
 } from './evidence-handlers';
 import { withTenantContext } from './lambda-handler';
@@ -61,6 +63,39 @@ describe('PH-OS evidence presign upload handler', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('returns the S3 object tagging header required by the presigned PUT', async () => {
+    const presigner = createS3EvidenceUploadPresigner({
+      client: new S3Client({
+        region: 'ap-northeast-1',
+        credentials: {
+          accessKeyId: 'test-access-key',
+          secretAccessKey: 'test-secret-key',
+        },
+      }),
+      bucket: 'phos-evidence-prod',
+      expires_in_seconds: 120,
+    });
+
+    const response = await presigner.presignPut({
+      key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'a'.repeat(64),
+      size_bytes: 1024,
+    });
+
+    expect(response).toMatchObject({
+      upload_url: expect.stringContaining('https://'),
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'x-amz-checksum-sha256': Buffer.from('a'.repeat(64), 'hex').toString('base64'),
+        'x-amz-meta-sha256': 'a'.repeat(64),
+        'x-amz-meta-size_bytes': '1024',
+        'x-amz-tagging': 'phos-object-class=evidence&phos-upload-status=PRESIGNED',
+      },
+      expires_in_seconds: 120,
+    });
   });
 
   it('builds a tenant-prefixed S3 key and presigns PUT without accepting client s3_key', async () => {
