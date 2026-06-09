@@ -92,10 +92,16 @@ export function VisitModePageClient({
 
   const refreshPendingEvidence = useCallback(
     async (nextVisit: VisitModeView) => {
+      let effectiveVisit = nextVisit;
       if (nextVisit.online && apiClient) {
-        await offlineEvidenceQueue.retryUploads({ client: apiClient });
+        const retryResult = await offlineEvidenceQueue.retryUploads({ client: apiClient });
+        effectiveVisit =
+          retryResult.verified_visits.find(
+            (candidate) => candidate.packet_id === nextVisit.packet_id,
+          ) ?? nextVisit;
+        if (effectiveVisit !== nextVisit) setVisit(effectiveVisit);
       }
-      setPendingEvidence(await offlineEvidenceQueue.listPendingEvidence(nextVisit.packet_id));
+      setPendingEvidence(await offlineEvidenceQueue.listPendingEvidence(effectiveVisit.packet_id));
     },
     [apiClient, offlineEvidenceQueue],
   );

@@ -56,6 +56,17 @@ function visit(overrides: Partial<VisitModeView> = {}): VisitModeView {
   };
 }
 
+function completedVisit(overrides: Partial<VisitModeView> = {}): VisitModeView {
+  return visit({
+    step_completed: Object.fromEntries(
+      Object.values(VisitStep).map((step) => [step, true]),
+    ) as Record<VisitStep, boolean>,
+    last_opened_step: VisitStep.COMPLETE_CHECK,
+    evidence_sync: { blocking_unsynced_count: 0, non_blocking_unsynced_count: 0 },
+    ...overrides,
+  });
+}
+
 function client(overrides: Partial<PhosApiClient> = {}): PhosApiClient {
   return {
     getCards: vi.fn(),
@@ -93,7 +104,7 @@ function offlineEvidenceQueue(): PhosOfflineEvidenceQueue {
   return {
     enqueueEvidence: vi.fn(async () => ({ queue_id: 1 })),
     listPendingEvidence: vi.fn(async () => []),
-    retryUploads: vi.fn(async () => ({ synced: 0, failed: 0 })),
+    retryUploads: vi.fn(async () => ({ synced: 0, failed: 0, verified_visits: [] })),
   };
 }
 
@@ -118,6 +129,47 @@ describe('VisitModePageClient', () => {
     expect(apiClient.getVisitMode).toHaveBeenCalledWith('packet_1');
     expect(queue.retryUploads).toHaveBeenCalledWith({ client: apiClient });
     expect(queue.listPendingEvidence).toHaveBeenCalledWith('packet_1');
+  });
+
+  it('applies server-verified VisitMode returned by pending evidence retry', async () => {
+    const staleVisit = completedVisit({
+      step_completed: {
+        ...completedVisit().step_completed,
+        [VisitStep.EVIDENCE_UPLOAD]: false,
+        [VisitStep.COMPLETE_CHECK]: true,
+      },
+      evidence_sync: { blocking_unsynced_count: 1, non_blocking_unsynced_count: 0 },
+    });
+    const verifiedVisit = completedVisit({
+      server_version: 8,
+      step_completed: {
+        ...completedVisit().step_completed,
+        [VisitStep.EVIDENCE_UPLOAD]: true,
+        [VisitStep.COMPLETE_CHECK]: true,
+      },
+    });
+    const apiClient = client({
+      getVisitMode: vi.fn(async () => staleVisit),
+    });
+    const queue: PhosOfflineEvidenceQueue = {
+      enqueueEvidence: vi.fn(async () => ({ queue_id: 1 })),
+      listPendingEvidence: vi.fn(async () => []),
+      retryUploads: vi.fn(async () => ({
+        synced: 1,
+        failed: 0,
+        verified_visits: [verifiedVisit],
+      })),
+    };
+
+    render(
+      <VisitModePageClient packetId="packet_1" client={apiClient} offlineEvidenceQueue={queue} />,
+    );
+
+    await waitFor(() => expect(queue.retryUploads).toHaveBeenCalledWith({ client: apiClient }));
+    await waitFor(() => expect(screen.queryByText('必須未同期 1件')).toBeNull());
+    expect(
+      screen.getByRole('button', { name: '訪問を完了する' }).getAttribute('data-enabled'),
+    ).toBe('true');
   });
 
   it('updates arrival outcomes through the VisitMode API with version and idempotency', async () => {

@@ -1090,7 +1090,7 @@ describe('BoardClient', () => {
           retry_count: 0,
         },
       ]),
-      retryUploads: vi.fn(async () => ({ synced: 0, failed: 0 })),
+      retryUploads: vi.fn(async () => ({ synced: 0, failed: 0, verified_visits: [] })),
     };
 
     render(
@@ -1161,7 +1161,7 @@ describe('BoardClient', () => {
           retry_count: 0,
         },
       ]),
-      retryUploads: vi.fn(async () => ({ synced: 0, failed: 1 })),
+      retryUploads: vi.fn(async () => ({ synced: 0, failed: 1, verified_visits: [] })),
     };
 
     render(

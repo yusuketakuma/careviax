@@ -530,7 +530,15 @@ export function BoardClient({
     async function loadPendingEvidence() {
       try {
         if (visitOnline && apiClient) {
-          await offlineEvidenceQueue.retryUploads({ client: apiClient });
+          const retryResult = await offlineEvidenceQueue.retryUploads({ client: apiClient });
+          const verifiedVisit = retryResult.verified_visits.find(
+            (candidate) => candidate.packet_id === packetId,
+          );
+          if (verifiedVisit) {
+            setSelectedDetail((current) =>
+              current ? updateDetailVisitMode(current, verifiedVisit) : current,
+            );
+          }
         }
         const pendingEvidence = await offlineEvidenceQueue.listPendingEvidence(packetId);
         if (!active) return;
@@ -837,7 +845,15 @@ export function BoardClient({
           file: input.file,
         });
         if (visit.online && apiClient) {
-          await offlineEvidenceQueue.retryUploads({ client: apiClient });
+          const retryResult = await offlineEvidenceQueue.retryUploads({ client: apiClient });
+          const verifiedVisit = retryResult.verified_visits.find(
+            (candidate) => candidate.packet_id === visit.packet_id,
+          );
+          if (verifiedVisit) {
+            setSelectedDetail((current) =>
+              current ? updateDetailVisitMode(current, verifiedVisit) : current,
+            );
+          }
         }
         const pendingEvidence = await offlineEvidenceQueue.listPendingEvidence(visit.packet_id);
         setPendingEvidenceByPacket((current) => ({

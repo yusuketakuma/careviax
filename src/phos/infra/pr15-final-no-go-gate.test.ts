@@ -71,7 +71,10 @@ describe('PH-OS Final No-Go gate', () => {
     const cardRouteOwned = new Set<ActionCode>(CARD_ACTION_ROUTE_ACTION_CODES);
     const detachedRouteOwners = new Map<ActionCode, readonly string[]>([
       [ActionCode.EXCLUDE_CLAIM_CANDIDATE, ['POST /claim-candidates/{candidate_id}/exclude']],
-      [ActionCode.UPLOAD_EVIDENCE, ['POST /evidence/presign-upload']],
+      [
+        ActionCode.UPLOAD_EVIDENCE,
+        ['POST /evidence/presign-upload', 'POST /visit-packets/{packet_id}/visit-steps/{step}'],
+      ],
       [ActionCode.CREATE_HANDOFF_TO_PHARMACIST, ['POST /handoffs']],
       [
         ActionCode.MARK_REPORT_WAITING_REPLY,

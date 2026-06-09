@@ -1,7 +1,12 @@
 'use client';
 
 import Dexie, { type Table } from 'dexie';
-import type { EvidencePendingView, OfflineOpClass } from '@/phos/contracts/phos_contracts';
+import {
+  VisitStep,
+  type EvidencePendingView,
+  type OfflineOpClass,
+  type VisitModeView,
+} from '@/phos/contracts/phos_contracts';
 import type { PhosApiClient } from './types';
 
 const MAX_RETRIES = 3;
@@ -93,9 +98,9 @@ export async function listPhosPendingEvidence(packet_id: string): Promise<Eviden
 }
 
 export async function retryPhosOfflineEvidenceUploads(input: {
-  client: Pick<PhosApiClient, 'presignEvidenceUpload'>;
+  client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
   fetchImpl?: typeof fetch;
-}): Promise<{ synced: number; failed: number }> {
+}): Promise<{ synced: number; failed: number; verified_visits: VisitModeView[] }> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const pending = await phosOfflineEvidenceDb.pendingEvidence
     .where('retry_count')
@@ -103,6 +108,7 @@ export async function retryPhosOfflineEvidenceUploads(input: {
     .toArray();
   let synced = 0;
   let failed = 0;
+  const verifiedVisits = new Map<string, VisitModeView>();
 
   for (const record of pending) {
     try {
@@ -121,6 +127,17 @@ export async function retryPhosOfflineEvidenceUploads(input: {
         body: new Blob([record.file_bytes], { type: record.mime_type }),
       });
       if (!response.ok) throw new Error(`Evidence upload failed with HTTP ${response.status}`);
+      const visit = await input.client.getVisitMode(record.packet_id);
+      const verifiedVisit = await input.client.updateVisitStep(
+        record.packet_id,
+        VisitStep.EVIDENCE_UPLOAD,
+        {
+          idempotency_key: `evidence_verify_${record.packet_id}_${record.evidence_key}_${presigned.evidence_id}`,
+          client_version: visit.server_version,
+          payload: { evidence_key: presigned.evidence_id },
+        },
+      );
+      verifiedVisits.set(record.packet_id, verifiedVisit);
       if (record.id !== undefined) await phosOfflineEvidenceDb.pendingEvidence.delete(record.id);
       synced++;
     } catch (error) {
@@ -134,5 +151,5 @@ export async function retryPhosOfflineEvidenceUploads(input: {
     }
   }
 
-  return { synced, failed };
+  return { synced, failed, verified_visits: [...verifiedVisits.values()] };
 }

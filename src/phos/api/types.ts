@@ -122,13 +122,14 @@ export type PhosOfflineActionQueue = {
 export type PhosOfflineEvidenceRetryResult = {
   synced: number;
   failed: number;
+  verified_visits: VisitModeView[];
 };
 
 export type PhosOfflineEvidenceQueue = {
   enqueueEvidence(input: PhosOfflineEvidenceInput): Promise<{ queue_id: string | number }>;
   listPendingEvidence(packet_id: string): Promise<EvidencePendingView[]>;
   retryUploads(input: {
-    client: Pick<PhosApiClient, 'presignEvidenceUpload'>;
+    client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
     fetchImpl?: typeof fetch;
   }): Promise<PhosOfflineEvidenceRetryResult>;
 };
