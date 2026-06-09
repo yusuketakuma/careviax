@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PHOS_API_ROUTES } from '../../src/phos/infra/api-gateway-routes';
@@ -276,6 +275,35 @@ describe('validate-phos-deploy-template', () => {
     }
   });
 
+  it('refuses to validate Lambda artifacts outside artifacts/', () => {
+    for (const unsafePath of ['.', '..', '../out', '/tmp/phos-lambda-unpacked', 'src/out']) {
+      expect(evaluateLambdaArtifactContract({ artifact_root: unsafePath })).toMatchObject({
+        name: 'lambda_artifact_contract',
+        status: 'failed',
+        detail: expect.stringContaining('PHOS_LAMBDA_ARTIFACT_ROOT is invalid'),
+      });
+    }
+  });
+
+  it('fails the deploy validation report when the Lambda artifact root is unsafe', () => {
+    const report = buildPhosDeployTemplateValidationReport({
+      external_validation: false,
+      output_path: artifactPath('template-unsafe-artifact-root', 'template.json'),
+      env: { PHOS_LAMBDA_ARTIFACT_ROOT: '/tmp/phos-lambda-unpacked' },
+    });
+
+    expect(report).toMatchObject({
+      ok: false,
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'lambda_artifact_contract',
+          status: 'failed',
+          detail: expect.stringContaining('PHOS_LAMBDA_ARTIFACT_ROOT is invalid'),
+        }),
+      ]),
+    });
+  });
+
   it('fails the artifact contract when a generated handler export is missing', () => {
     const artifactRoot = createLambdaArtifactRoot();
     const handler = collectPhosCloudFormationLambdaHandlers().find(
@@ -293,7 +321,7 @@ describe('validate-phos-deploy-template', () => {
 });
 
 function createLambdaArtifactRoot() {
-  const artifactRoot = mkdtempSync(join(tmpdir(), 'phos-lambda-artifact-'));
+  const artifactRoot = artifactPath('lambda-artifact-root', 'out');
   for (const handler of collectPhosCloudFormationLambdaHandlers()) {
     const filePath = join(artifactRoot, handler.artifact_file);
     mkdirSync(dirname(filePath), { recursive: true });

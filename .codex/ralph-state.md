@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-085925
+
+- current task: restrict `PHOS_LAMBDA_ARTIFACT_ROOT` validation reads to the ignored `artifacts/` workspace instead of allowing arbitrary filesystem paths.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/scripts/validate-phos-deploy-template.ts`, `tools/scripts/validate-phos-deploy-template.test.ts`, and `tools/scripts/build-phos-lambda-artifact.ts`.
+- files changed: `tools/scripts/validate-phos-deploy-template.ts`, `tools/scripts/validate-phos-deploy-template.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: `evaluateLambdaArtifactContract` accepted any `PHOS_LAMBDA_ARTIFACT_ROOT` and read generated handler files from that path, while the template writer and Lambda artifact builder already constrained PH-OS deploy artifacts to non-hidden paths under `artifacts/`.
+- security risks found: deploy validation now rejects unsafe absolute, parent-relative, hidden, or non-`artifacts/` Lambda artifact roots before reading handler files. This keeps operator/CI artifact proof on the repo-local ignored artifact workspace and avoids using deploy validation as a general filesystem reader.
+- performance issues found: no runtime application path changed. Validation adds only one existing artifact-path normalization check before the bounded handler-file scan.
+- validation commands: `pnpm exec prettier --write tools/scripts/validate-phos-deploy-template.ts tools/scripts/validate-phos-deploy-template.test.ts`; focused `pnpm exec vitest run tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; focused ESLint for the touched deploy-template validator files; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:deploy-template:validate:artifact`; `pnpm phos:deploy-template:validate`.
+- validation results: Prettier was unchanged. Focused deploy-template suite passed with 1 file / 16 tests. Focused ESLint passed. Standalone TypeScript passed. Strict artifact-only deploy validation rebuilt `artifacts/phos-lambda-unpacked` and passed. Strict deploy-template validation still failed only because `aws` is not installed; `cfn_lint` passed through `uvx cfn-lint` and the Lambda artifact contract passed from `artifacts/phos-lambda-unpacked`.
+- remaining work: external AWS service-side `cloudformation validate-template` still needs an installed AWS CLI and target credentials. Additional locally actionable lower-priority findings remain for warm Lambda handler caching in `evidence-lambda.ts` and making live DDB rate-limit verification explicitly opt-in.
+- next action: commit this artifact-root hardening slice, then continue with the next locally actionable backend stability/security gap.
+
 ### 20260610-085801
 
 - current task: keep PH-OS backend live-readiness reports machine-readable when the read-only API smoke request fails before receiving an HTTP response.

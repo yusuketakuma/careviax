@@ -264,12 +264,24 @@ function declaresHandlerExport(artifactSource: string, exportName: string) {
 export function evaluateLambdaArtifactContract(input: {
   artifact_root?: string | null;
 }): ValidationCheck {
-  const artifactRoot = input.artifact_root?.trim();
-  if (!artifactRoot) {
+  const artifactRootInput = input.artifact_root?.trim();
+  if (!artifactRootInput) {
     return {
       name: 'lambda_artifact_contract',
       status: 'missing',
       detail: `Build ${DEFAULT_LAMBDA_ARTIFACT_ROOT} or set ${ARTIFACT_ROOT_ENV} to an unpacked Lambda artifact directory and rerun validation.`,
+    };
+  }
+  let artifactRoot: string;
+  try {
+    artifactRoot = resolveSafeArtifactPath(artifactRootInput);
+  } catch (error) {
+    return {
+      name: 'lambda_artifact_contract',
+      status: 'failed',
+      detail: `${ARTIFACT_ROOT_ENV} is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     };
   }
 
