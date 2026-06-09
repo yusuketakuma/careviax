@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   PhosCurrentStepLabel,
   PhosDisplayStatusLabel,
@@ -30,6 +31,12 @@ export type WorkspaceTabsProps = {
   onSaveVisitDraft?(step: VisitStep): void;
   onCompleteVisit?(): void;
 };
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName);
+}
 
 const TAB_LABELS = {
   OVERVIEW: '概要',
@@ -90,6 +97,7 @@ export function WorkspaceTabs({
 }: WorkspaceTabsProps) {
   const visibleTabs = detail.visible_tabs;
   const [activeTab, setActiveTab] = useState<TabKey | undefined>(visibleTabs[0]);
+  const [tabChordOpen, setTabChordOpen] = useState(false);
   const effectiveActiveTab =
     activeTab && visibleTabs.includes(activeTab) ? activeTab : visibleTabs[0];
 
@@ -106,8 +114,24 @@ export function WorkspaceTabs({
     );
   }
 
+  function handleTabsKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (isTextEntryTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === 'g') {
+      event.preventDefault();
+      setTabChordOpen(true);
+      return;
+    }
+    if (!tabChordOpen) return;
+    setTabChordOpen(false);
+    if (!/^[1-9]$/.test(event.key)) return;
+    const nextTab = visibleTabs[Number.parseInt(event.key, 10) - 1];
+    if (!nextTab) return;
+    event.preventDefault();
+    setActiveTab(nextTab);
+  }
+
   return (
-    <section className="space-y-4">
+    <section className="space-y-4" onKeyDown={handleTabsKeyDown}>
       <div role="tablist" aria-label="WorkspaceTabs" className="flex flex-wrap gap-2">
         {visibleTabs.map((tab) => (
           <button

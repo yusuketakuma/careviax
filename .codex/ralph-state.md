@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-140930
+
+- current task: implement UI-PR9B Workspace keyboard shortcuts for tab switching and opened-card navigation
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.test.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceTabs.test.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceTabs.test.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: UI-PR9 required `g then 1..6` Workspace tab switching and `[`/`]` opened-card movement, but Workspace only had pointer tab switching and OpenedCardTabs click handling. Keyboard shortcut coverage also did not prove shortcuts are ignored while typing in Workspace text fields.
+- security risks found: no auth, authorization, tenant boundary, API route, mutation semantics, report send, evidence upload, persistence, database, S3, or logging behavior changed. Shortcuts only select already visible server-provided tabs or already opened card ids, and ignore input/select/textarea/contenteditable targets and modifier-key combinations.
+- performance issues found: shortcut handling is local state/focus/navigation over already-rendered Workspace data. It adds no fetch, polling, route handler, Server Action, database call, scan, external send, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched workspace/gate files; focused `pnpm exec vitest run src/phos/ui/workspace/WorkspaceTabs.test.tsx src/phos/ui/workspace/WorkspaceOverlay.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 3 files / 51 tests after correcting the static-gate regex; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 90 files / 511 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UI-PR9 still has remaining shortcut/help and end-to-end coverage gaps, especially `?` shortcut help, full `Cmd/Ctrl+Enter` form confirm semantics across all forms, and stronger browser-level accessibility flow checks.
+- next action: commit this Workspace shortcut slice, then continue with shortcut help / remaining accessibility E2E audit.
+
 ### 20260609-140515
 
 - current task: implement UI-PR9A Board keyboard navigation and Space primary-action behavior

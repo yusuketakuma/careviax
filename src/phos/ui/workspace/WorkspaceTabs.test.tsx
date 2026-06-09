@@ -116,6 +116,48 @@ describe('WorkspaceTabs', () => {
     expect(screen.queryByText('RULE_DOCUMENT / rule_1')).toBeNull();
   });
 
+  it('switches visible tabs with the g then number keyboard chord', () => {
+    render(
+      <WorkspaceTabs
+        detail={detail({ visible_tabs: ['OVERVIEW', 'PRESCRIPTION', 'CLAIM_HISTORY'] })}
+      />,
+    );
+
+    const overviewTab = screen.getByRole('tab', { name: '概要' });
+    overviewTab.focus();
+    fireEvent.keyDown(overviewTab, { key: 'g' });
+    fireEvent.keyDown(overviewTab, { key: '3' });
+
+    expect(screen.getByRole('heading', { name: '算定' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '算定' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('does not hijack the g then number keyboard chord while typing in the report body', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW', 'VISIT_REPORT'] })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    const body = screen.getByRole('textbox', { name: '報告本文' });
+    body.focus();
+    fireEvent.keyDown(body, { key: 'g' });
+    fireEvent.keyDown(body, { key: '1' });
+
+    expect(screen.getByRole('heading', { name: '訪問・報告' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '訪問・報告' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
+  it('ignores out-of-range g then number keyboard chords', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW', 'PRESCRIPTION'] })} />);
+
+    const overviewTab = screen.getByRole('tab', { name: '概要' });
+    overviewTab.focus();
+    fireEvent.keyDown(overviewTab, { key: 'g' });
+    fireEvent.keyDown(overviewTab, { key: '6' });
+
+    expect(screen.getByRole('heading', { name: '概要' })).toBeTruthy();
+  });
+
   it('renders an empty tab state when the server returns no visible tabs', () => {
     render(<WorkspaceTabs detail={detail({ visible_tabs: [] })} />);
 

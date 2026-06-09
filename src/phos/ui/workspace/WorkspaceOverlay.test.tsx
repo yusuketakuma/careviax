@@ -216,6 +216,63 @@ describe('WorkspaceOverlay', () => {
     expect(onSelectOpenedCard).toHaveBeenCalledWith('card_2');
   });
 
+  it('switches opened cards with bracket keyboard shortcuts', () => {
+    const onSelectOpenedCard = vi.fn();
+    render(
+      <WorkspaceOverlay
+        detail={detail()}
+        open
+        openedCards={[
+          { card_id: 'card_1', label: '患者 山田太郎' },
+          { card_id: 'card_2', label: '患者 佐藤花子' },
+          { card_id: 'card_3', label: '患者 鈴木一郎' },
+        ]}
+        activeCardId="card_2"
+        onOpenChange={vi.fn()}
+        onSelectOpenedCard={onSelectOpenedCard}
+        onExecute={vi.fn()}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    const activeTab = screen.getByRole('button', { name: '患者 佐藤花子' });
+    activeTab.focus();
+    fireEvent.keyDown(activeTab, { key: ']' });
+    fireEvent.keyDown(activeTab, { key: '[' });
+
+    expect(onSelectOpenedCard).toHaveBeenNthCalledWith(1, 'card_3');
+    expect(onSelectOpenedCard).toHaveBeenNthCalledWith(2, 'card_1');
+  });
+
+  it('does not switch opened cards while typing in a Workspace text field', () => {
+    const onSelectOpenedCard = vi.fn();
+    render(
+      <WorkspaceOverlay
+        detail={{
+          ...detail(),
+          visible_tabs: ['OVERVIEW', 'VISIT_REPORT'],
+        }}
+        open
+        openedCards={[
+          { card_id: 'card_1', label: '患者 山田太郎' },
+          { card_id: 'card_2', label: '患者 佐藤花子' },
+        ]}
+        activeCardId="card_1"
+        onOpenChange={vi.fn()}
+        onSelectOpenedCard={onSelectOpenedCard}
+        onExecute={vi.fn()}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    const body = screen.getByRole('textbox', { name: '報告本文' });
+    body.focus();
+    fireEvent.keyDown(body, { key: ']' });
+
+    expect(onSelectOpenedCard).not.toHaveBeenCalled();
+  });
+
   it('renders a source drawer trigger in the right pane', () => {
     render(
       <WorkspaceOverlay

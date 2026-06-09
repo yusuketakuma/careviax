@@ -625,4 +625,28 @@ describe('PH-OS Final No-Go gate', () => {
       /does not hijack j or k/,
     ]);
   });
+
+  it('keeps Workspace tab and opened-card keyboard shortcuts covered', () => {
+    expectEvidence('src/phos/ui/workspace/WorkspaceTabs.tsx', [
+      /tabChordOpen/,
+      /event\.key === 'g'/,
+      /\^\[1-9\]\$/,
+      /isTextEntryTarget/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.tsx', [
+      /selectAdjacentOpenedCard/,
+      /event\.key !== '\[' && event\.key !== '\]'/,
+      /onSelectOpenedCard\(input\.openedCards\[nextIndex\]\?\.card_id/,
+      /isTextEntryTarget/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceTabs.test.tsx', [
+      /g then number keyboard chord/,
+      /does not hijack the g then number keyboard chord/,
+      /out-of-range g then number/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.test.tsx', [
+      /bracket keyboard shortcuts/,
+      /does not switch opened cards while typing/,
+    ]);
+  });
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import type { KeyboardEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PhosCurrentStepLabel, PhosDisplayStatusLabel } from '@/phos/contracts/phos_copy.ja';
 import type { ActionPhase } from '@/phos/contracts/phos_contracts';
@@ -45,6 +46,31 @@ export type WorkspaceOverlayProps = {
   onCompleteVisit?(): void;
 };
 
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName);
+}
+
+function selectAdjacentOpenedCard(
+  event: KeyboardEvent<HTMLElement>,
+  input: {
+    openedCards: Array<{ card_id: string; label: string }>;
+    activeCardId?: string;
+    onSelectOpenedCard?(cardId: string): void;
+  },
+) {
+  if (isTextEntryTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key !== '[' && event.key !== ']') return;
+  if (input.openedCards.length < 2 || !input.onSelectOpenedCard) return;
+  const activeIndex = input.openedCards.findIndex((card) => card.card_id === input.activeCardId);
+  if (activeIndex < 0) return;
+  const direction = event.key === ']' ? 1 : -1;
+  const nextIndex = (activeIndex + direction + input.openedCards.length) % input.openedCards.length;
+  event.preventDefault();
+  input.onSelectOpenedCard(input.openedCards[nextIndex]?.card_id ?? input.openedCards[0].card_id);
+}
+
 export function WorkspaceOverlay({
   detail,
   open,
@@ -70,7 +96,16 @@ export function WorkspaceOverlay({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="h-[min(92vh,920px)] max-w-[min(1120px,calc(100vw-1.5rem))] overflow-hidden p-0">
         {detail ? (
-          <div className="grid h-full grid-rows-[auto_1fr]">
+          <div
+            className="grid h-full grid-rows-[auto_1fr]"
+            onKeyDown={(event) =>
+              selectAdjacentOpenedCard(event, {
+                openedCards,
+                activeCardId,
+                onSelectOpenedCard,
+              })
+            }
+          >
             <DialogHeader className="space-y-3 border-b border-border/70 px-5 py-4">
               <div className="pr-10">
                 <DialogTitle className="text-xl">{detail.card.patient_name}</DialogTitle>
