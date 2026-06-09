@@ -466,6 +466,12 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       Description: expect.stringContaining('PreTokenGenerationConfig'),
       Value: { 'Fn::GetAtt': ['PhosCognitoPreTokenGenerationFunction', 'Arn'] },
     });
+    expect(template.Outputs.PhosHttpApiBaseUrl).toMatchObject({
+      Description: expect.stringContaining('PHOS_API_BASE_URL'),
+      Value: {
+        'Fn::Sub': 'https://${PhosHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}',
+      },
+    });
   });
 
   it('creates managed Lambda log groups with retention before runtime logging', () => {

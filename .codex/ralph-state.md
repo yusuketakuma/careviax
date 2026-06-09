@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-081254
+
+- current task: close low-risk PH-OS operator/static-gate follow-ups from read-only audit by exposing the deployed HTTP API base URL and hardening frontend boundary static checks.
+- files inspected: `git status --short`, `git diff`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and `tools/scripts/validate-phos-deploy-template.test.ts`.
+- files changed: `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the generated CloudFormation template did not output a stage-preserving HTTP API base URL even though live readiness requires `PHOS_API_BASE_URL`, forcing operators to reconstruct the URL manually. The frontend/app/API-client no-go gate blocked static imports of backend/AWS/Prisma dependencies but did not catch dynamic `import()` or CommonJS `require()` forms.
+- security risks found: `PhosHttpApiBaseUrl` now outputs `https://${PhosHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}` for direct mapping to `PHOS_API_BASE_URL`. The no-go gate now rejects dynamic import and require paths for `@/phos/backend`, `@/lib/db`, `@aws-sdk/*`, and `@prisma/client` in PH-OS app/UI/API-client boundaries.
+- performance issues found: no runtime path changed. This is deploy metadata and static test coverage only.
+- validation commands: `pnpm exec prettier --write src/phos/infra/api-gateway-lambda-template.ts src/phos/infra/api-gateway-lambda-template.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts`; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-template.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; focused ESLint for touched infra files; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:deploy-template:validate:report`; `git diff --check`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed. Focused infra/deploy/static-gate suite passed with 3 files / 71 tests. Focused ESLint passed. Standalone TypeScript passed. Non-strict deploy-template report passed, exported the template, passed Lambda artifact contract, and reported `aws` and `cfn-lint` missing. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4973 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs target inputs and installed `aws`/`cfn-lint` for strict deploy-template validation. The absolute `/api/phos` custom-domain base URL question remains intentionally unresolved because the spec/docs mix root-path and `/api/phos` examples and it needs a product/deployment decision before loosening the client guard.
+- next action: commit this operator/static-gate follow-up, then report the completed local audit-remediation slices and remaining external blockers.
+
 ### 20260610-080853
 
 - current task: harden the remaining PH-OS tenant second-boundary finding by carrying tenant tags through S3 evidence upload/verification and adding DynamoDB tenant leading-key IAM conditions.

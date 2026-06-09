@@ -1174,6 +1174,13 @@ export function buildPhosApiGatewayLambdaTemplate(
     },
     Resources: resources,
     Outputs: {
+      PhosHttpApiBaseUrl: {
+        Description:
+          'Set PHOS_API_BASE_URL to this stage-preserving HTTP API base URL for live readiness proof.',
+        Value: sub(
+          `https://\${PhosHttpApi}.execute-api.\${AWS::Region}.amazonaws.com/\${${stageNameParameter}}`,
+        ),
+      },
       PhosCognitoPreTokenGenerationFunctionArn: {
         Description:
           'Attach this ARN to the Cognito User Pool LambdaConfig.PreTokenGenerationConfig LambdaArn with LambdaVersion V2_0 or V3_0.',
