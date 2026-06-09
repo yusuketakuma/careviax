@@ -31,20 +31,23 @@ function readStringClaim(claims: JwtClaims, key: string): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function readScopes(claims: JwtClaims): string[] {
-  const scope = claims.scope;
-  if (typeof scope === 'string') {
-    return scope
+function normalizeScopeClaim(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return value
       .split(/\s+/)
       .map((item) => item.trim())
       .filter(Boolean);
   }
-  if (Array.isArray(scope)) {
-    return scope.filter(
+  if (Array.isArray(value)) {
+    return value.filter(
       (item): item is string => typeof item === 'string' && item.trim().length > 0,
     );
   }
   return [];
+}
+
+function readScopes(claims: JwtClaims): string[] {
+  return [...new Set([...normalizeScopeClaim(claims.scope), ...normalizeScopeClaim(claims.scp)])];
 }
 
 function normalizeRole(role: string | null): UserRoleType | null {

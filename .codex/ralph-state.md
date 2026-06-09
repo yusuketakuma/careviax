@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-034720
+
+- current task: align PH-OS Lambda tenant-context scope parsing with HTTP API JWT authorizer `scope`/`scp` behavior.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/tenant-context.ts`, `src/phos/backend/tenant-context.test.ts`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, and PH-OS backend/infra scope claim search results.
+- files changed: `src/phos/backend/tenant-context.ts`, `src/phos/backend/tenant-context.test.ts`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: after moving to HTTP API JWT Authorizer, API Gateway can authorize route scopes from either JWT `scope` or `scp`, but Lambda `TenantContext` only read `scope`. A token accepted by API Gateway via `scp` could reach Lambda and still fail app-level route authorization with a false 403.
+- security risks found: `TenantContext` now normalizes both `scope` and `scp`, supports string and array forms, and de-duplicates combined scopes. The runtime proof now exercises every manifest route with HTTP API v2 JWT claims containing only `scp`, so Gateway/Lambda route-scope semantics stay aligned without weakening required-scope enforcement.
+- performance issues found: no I/O, database, network, or handler path was expanded. Scope normalization remains a small in-memory claim parse at Lambda entry.
+- validation commands: Prettier for touched tenant-context/runtime files; focused `pnpm exec vitest run src/phos/backend/tenant-context.test.ts src/phos/infra/api-gateway-lambda-runtime.test.ts --reporter=dot`; focused `pnpm exec eslint src/phos/backend/tenant-context.ts src/phos/backend/tenant-context.test.ts src/phos/infra/api-gateway-lambda-runtime.test.ts --max-warnings=0`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm typecheck`; `pnpm build`.
+- validation results: Prettier was unchanged. Focused tenant/runtime suite passed with 2 files / 15 tests. Focused ESLint passed. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 100 files passed / 1 skipped and 726 tests passed / 1 skipped. Repo `pnpm typecheck` passed after `next typegen`. Next production build passed and generated 235 static pages.
+- remaining work: live Cognito/API Gateway proof is still external: a deployed access token using `scp`, Gateway scope matching, Lambda event delivery, and CloudWatch/security-event behavior still need target-environment verification.
+- next action: commit this JWT scope-claim alignment slice, then continue the backend-only goal from deploy-proof automation or the next local security/stability gap.
+
 ### 20260610-034200
 
 - current task: migrate the PH-OS business API deployment contract from REST API/Cognito authorizer to HTTP API/JWT Authorizer per the v1.1 spec.

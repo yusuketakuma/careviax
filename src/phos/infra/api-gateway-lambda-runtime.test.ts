@@ -511,7 +511,7 @@ function buildRuntimeSuccessCases(): Record<string, RuntimeSuccessCase> {
   };
 }
 
-function withJwtClaims(event: PhosHttpEvent, claims: Record<string, string>): PhosHttpEvent {
+function withJwtClaims(event: PhosHttpEvent, claims: Record<string, unknown>): PhosHttpEvent {
   const existingJwtClaims = event.requestContext?.authorizer?.jwt?.claims;
   const existingRestClaims = event.requestContext?.authorizer?.claims;
   return {
@@ -642,6 +642,23 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
         ]),
       );
       expectNoPhiInRuntimeLogs(route.route_key);
+    }
+  });
+
+  it('accepts scp-only HTTP API JWT route scopes for every manifest route', async () => {
+    const successCases = buildRuntimeSuccessCases();
+
+    for (const route of PHOS_API_ROUTES) {
+      clearConsoleSpies();
+      const testCase = successCases[route.route_key]!;
+      const response = await testCase.handler(
+        withJwtClaims(apiGatewayEventFor(route, testCase.overrides), {
+          scope: undefined,
+          scp: [...route.required_scopes],
+        }),
+      );
+
+      expect(response.statusCode, route.route_key).toBe(200);
     }
   });
 

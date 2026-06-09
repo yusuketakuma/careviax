@@ -29,6 +29,37 @@ describe('buildTenantContext', () => {
     });
   });
 
+  it('accepts HTTP API JWT scp claims as route scopes', () => {
+    expect(
+      buildTenantContext({
+        claims: {
+          token_use: 'access',
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user-uuid',
+          scp: ['phos/cards.read', 'phos/cards.write'],
+        },
+        request_id: 'req_scp',
+      }).scopes,
+    ).toEqual(['phos/cards.read', 'phos/cards.write']);
+  });
+
+  it('combines scope and scp claims without duplicate route scopes', () => {
+    expect(
+      buildTenantContext({
+        claims: {
+          token_use: 'access',
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user-uuid',
+          scope: 'phos/cards.read phos/cards.write',
+          scp: 'phos/cards.write phos/evidence.write',
+        },
+        request_id: 'req_scope_scp',
+      }).scopes,
+    ).toEqual(['phos/cards.read', 'phos/cards.write', 'phos/evidence.write']);
+  });
+
   it('normalizes custom Cognito attributes as migration-compatible input', () => {
     const ctx = buildTenantContext({
       claims: {
