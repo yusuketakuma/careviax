@@ -30,7 +30,8 @@ export function createEvidenceUploadPresigner(
   deps: EvidenceLambdaDependencies = {},
 ): EvidenceUploadPresigner {
   if (deps.presigner) return deps.presigner;
-  const bucket = deps.bucket ?? process.env.PHOS_EVIDENCE_BUCKET;
+  const bucket =
+    deps.bucket ?? process.env.PHOS_EVIDENCE_BUCKET ?? process.env.PHOS_EVIDENCE_BUCKET_NAME;
   if (!bucket) {
     throw new Error('PH-OS evidence S3 bucket is not configured');
   }

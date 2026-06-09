@@ -26,6 +26,7 @@ type CloudFormationParameter = {
   Description?: string;
   AllowedPattern?: string;
   MinLength?: number;
+  NoEcho?: boolean;
 };
 
 export type PhosApiGatewayLambdaTemplate = {
@@ -45,6 +46,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
   dynamodb_table_name_parameter?: string;
   evidence_bucket_name_parameter?: string;
   security_event_table_name_parameter?: string;
+  aurora_database_url_parameter?: string;
   lambda_runtime?: 'nodejs24.x';
 };
 
@@ -152,6 +154,8 @@ export function buildPhosApiGatewayLambdaTemplate(
     options.evidence_bucket_name_parameter ?? 'PhosEvidenceBucketName';
   const securityEventTableNameParameter =
     options.security_event_table_name_parameter ?? 'PhosSecurityEventTableName';
+  const auroraDatabaseUrlParameter =
+    options.aurora_database_url_parameter ?? 'PhosAuroraDatabaseUrl';
   const runtime = options.lambda_runtime ?? 'nodejs24.x';
   const bindings = buildPhosApiRouteDeploymentBindings();
 
@@ -287,6 +291,8 @@ export function buildPhosApiGatewayLambdaTemplate(
         Environment: {
           Variables: {
             PHOS_DYNAMODB_TABLE_NAME: ref(dynamodbTableNameParameter),
+            PHOS_AURORA_DATABASE_URL: ref(auroraDatabaseUrlParameter),
+            PHOS_EVIDENCE_BUCKET: ref(evidenceBucketNameParameter),
             PHOS_EVIDENCE_BUCKET_NAME: ref(evidenceBucketNameParameter),
             PHOS_SECURITY_EVENT_TABLE_NAME: ref(securityEventTableNameParameter),
             PHOS_SECURITY_EVENTS_DYNAMO: '1',
@@ -343,6 +349,10 @@ export function buildPhosApiGatewayLambdaTemplate(
       [dynamodbTableNameParameter]: parameter('String'),
       [evidenceBucketNameParameter]: parameter('String'),
       [securityEventTableNameParameter]: parameter('String'),
+      [auroraDatabaseUrlParameter]: parameter('String', {
+        NoEcho: true,
+        Description: 'Aurora PostgreSQL connection string for PH-OS FeeRule RLS access.',
+      }),
     },
     Resources: resources,
   };

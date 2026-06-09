@@ -117,6 +117,8 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           Environment: {
             Variables: {
               PHOS_DYNAMODB_TABLE_NAME: { Ref: 'PhosDynamoDbTableName' },
+              PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
+              PHOS_EVIDENCE_BUCKET: { Ref: 'PhosEvidenceBucketName' },
               PHOS_EVIDENCE_BUCKET_NAME: { Ref: 'PhosEvidenceBucketName' },
               PHOS_SECURITY_EVENT_TABLE_NAME: { Ref: 'PhosSecurityEventTableName' },
               PHOS_SECURITY_EVENTS_DYNAMO: '1',
@@ -126,6 +128,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         },
       });
     }
+  });
+
+  it('treats the Aurora database URL as a non-echoed deploy parameter', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
+      Type: 'String',
+      NoEcho: true,
+    });
+    expect(JSON.stringify(template)).not.toContain('postgres://');
+    expect(JSON.stringify(template)).not.toContain('postgresql://');
   });
 
   it('creates a Lambda execution role with PH-OS runtime permissions', () => {

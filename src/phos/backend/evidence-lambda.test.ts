@@ -1,4 +1,5 @@
 import { TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
+import type { S3Client } from '@aws-sdk/client-s3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EvidenceUploadPresigner } from './evidence-handlers';
 import {
@@ -86,7 +87,9 @@ describe('PH-OS evidence Lambda composition', () => {
 
   it('fails closed when the production bucket configuration is missing', () => {
     const previous = process.env.PHOS_EVIDENCE_BUCKET;
+    const previousName = process.env.PHOS_EVIDENCE_BUCKET_NAME;
     delete process.env.PHOS_EVIDENCE_BUCKET;
+    delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
 
     try {
       expect(() => createEvidenceUploadPresigner()).toThrow(
@@ -98,12 +101,41 @@ describe('PH-OS evidence Lambda composition', () => {
       } else {
         process.env.PHOS_EVIDENCE_BUCKET = previous;
       }
+      if (previousName === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET_NAME = previousName;
+      }
+    }
+  });
+
+  it('accepts the deployment template evidence bucket environment variable name', () => {
+    const previous = process.env.PHOS_EVIDENCE_BUCKET;
+    const previousName = process.env.PHOS_EVIDENCE_BUCKET_NAME;
+    delete process.env.PHOS_EVIDENCE_BUCKET;
+    process.env.PHOS_EVIDENCE_BUCKET_NAME = 'phos-evidence-prod';
+
+    try {
+      expect(() => createEvidenceUploadPresigner({ s3_client: {} as S3Client })).not.toThrow();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET = previous;
+      }
+      if (previousName === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET_NAME = previousName;
+      }
     }
   });
 
   it('rejects tenant_id query at the Lambda boundary before default S3 configuration is read', async () => {
     const previous = process.env.PHOS_EVIDENCE_BUCKET;
+    const previousName = process.env.PHOS_EVIDENCE_BUCKET_NAME;
     delete process.env.PHOS_EVIDENCE_BUCKET;
+    delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
 
     try {
       const response = await evidencePresignUploadHandler(
@@ -120,6 +152,11 @@ describe('PH-OS evidence Lambda composition', () => {
         delete process.env.PHOS_EVIDENCE_BUCKET;
       } else {
         process.env.PHOS_EVIDENCE_BUCKET = previous;
+      }
+      if (previousName === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET_NAME = previousName;
       }
     }
   });

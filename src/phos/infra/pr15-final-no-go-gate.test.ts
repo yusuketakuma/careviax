@@ -124,9 +124,20 @@ describe('PH-OS Final No-Go gate', () => {
         Type: 'AWS::Lambda::Function',
         Properties: {
           Role: { 'Fn::GetAtt': ['PhosLambdaExecutionRole', 'Arn'] },
+          Environment: {
+            Variables: {
+              PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
+              PHOS_EVIDENCE_BUCKET: { Ref: 'PhosEvidenceBucketName' },
+              PHOS_SECURITY_EVENTS_DYNAMO: '1',
+            },
+          },
         },
       });
     }
+    expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
+      Type: 'String',
+      NoEcho: true,
+    });
     expect(template.Resources.PhosLambdaExecutionRole).toMatchObject({
       Type: 'AWS::IAM::Role',
       Properties: {
