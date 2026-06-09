@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, normalize, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
@@ -51,6 +51,27 @@ function truncate(value: string, maxLength = 1000) {
   const trimmed = value.trim();
   if (trimmed.length <= maxLength) return trimmed;
   return `${trimmed.slice(0, maxLength)}...`;
+}
+
+export function resolveSafeArtifactPath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error('PH-OS artifact path is required');
+  if (isAbsolute(trimmed)) {
+    throw new Error('PH-OS artifact paths must be relative to the repository');
+  }
+  const normalized = normalize(trimmed);
+  const segments = normalized.split(sep);
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith(`..${sep}`) ||
+    segments[0] !== 'artifacts' ||
+    segments.length < 2 ||
+    segments.some((segment) => !segment || segment === '..' || segment.startsWith('.'))
+  ) {
+    throw new Error('PH-OS artifact paths must stay under artifacts/ with no hidden segments');
+  }
+  return normalized;
 }
 
 function runCommand(command: string, args: readonly string[]): CommandExecution {
@@ -109,7 +130,7 @@ export function writePhosApiGatewayLambdaTemplate(input: {
   output_path?: string;
   template_json?: string;
 }) {
-  const outputPath = resolve(input.output_path ?? DEFAULT_TEMPLATE_PATH);
+  const outputPath = resolve(resolveSafeArtifactPath(input.output_path ?? DEFAULT_TEMPLATE_PATH));
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(
     outputPath,

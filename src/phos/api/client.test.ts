@@ -588,6 +588,18 @@ describe('createPhosApiClient', () => {
     );
   });
 
+  it('rejects API base URLs with credentials, query strings, or fragments', () => {
+    for (const baseUrl of [
+      'https://user:pass@gateway.example.com/prod',
+      'https://gateway.example.com/prod?token=secret',
+      'https://gateway.example.com/prod#cards',
+    ]) {
+      expect(() => createPhosApiClient({ baseUrl })).toThrow(
+        'PH-OS API baseUrl must not include credentials, query, or fragment',
+      );
+    }
+  });
+
   it('rejects plaintext API base URLs outside local development', () => {
     expect(() => createPhosApiClient({ baseUrl: 'http://api.example.com/prod' })).toThrow(
       'PH-OS API baseUrl must use https outside local development',

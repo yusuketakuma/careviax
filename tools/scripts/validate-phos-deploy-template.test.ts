@@ -8,6 +8,7 @@ import {
   collectPhosCloudFormationLambdaHandlers,
   evaluateLambdaArtifactContract,
   renderPhosApiGatewayLambdaTemplateJson,
+  resolveSafeArtifactPath,
   writePhosApiGatewayLambdaTemplate,
 } from './validate-phos-deploy-template';
 import { buildPhosLambdaArtifact } from './build-phos-lambda-artifact';
@@ -42,14 +43,30 @@ describe('validate-phos-deploy-template', () => {
   });
 
   it('writes the template to the requested artifact path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'phos-template-'));
-    const outputPath = join(dir, 'template.json');
+    const outputPath = artifactPath('template-write', 'template.json');
 
-    expect(writePhosApiGatewayLambdaTemplate({ output_path: outputPath })).toBe(outputPath);
+    expect(writePhosApiGatewayLambdaTemplate({ output_path: outputPath })).toBe(
+      join(process.cwd(), outputPath),
+    );
     expect(existsSync(outputPath)).toBe(true);
     expect(JSON.parse(readFileSync(outputPath, 'utf8'))).toMatchObject({
       AWSTemplateFormatVersion: '2010-09-09',
     });
+  });
+
+  it('rejects deploy artifact paths outside the ignored artifacts directory', () => {
+    for (const unsafePath of [
+      '.',
+      '..',
+      '../template.json',
+      '/tmp/template.json',
+      'src/out.json',
+    ]) {
+      expect(() => resolveSafeArtifactPath(unsafePath)).toThrow('PH-OS artifact paths must');
+    }
+    expect(resolveSafeArtifactPath('artifacts/phos-api-gateway-lambda-template.json')).toBe(
+      'artifacts/phos-api-gateway-lambda-template.json',
+    );
   });
 
   it('passes when AWS CLI validate-template and cfn-lint both pass', () => {
@@ -57,7 +74,7 @@ describe('validate-phos-deploy-template', () => {
     const calls: Array<{ command: string; args: readonly string[] }> = [];
     const report = buildPhosDeployTemplateValidationReport({
       now: new Date('2026-06-10T00:00:00.000Z'),
-      output_path: join(mkdtempSync(join(tmpdir(), 'phos-template-')), 'template.json'),
+      output_path: artifactPath('template-pass', 'template.json'),
       env: { PHOS_LAMBDA_ARTIFACT_ROOT: artifactRoot },
       runner: (command, args) => {
         calls.push({ command, args });
@@ -91,13 +108,13 @@ describe('validate-phos-deploy-template', () => {
 
   it('reports missing external validation tools and fails only in strict mode', () => {
     const report = buildPhosDeployTemplateValidationReport({
-      output_path: join(mkdtempSync(join(tmpdir(), 'phos-template-')), 'template.json'),
+      output_path: artifactPath('template-missing', 'template.json'),
       env: { PHOS_LAMBDA_ARTIFACT_ROOT: '' },
       runner: () => ({ exit_code: null, stdout: '', stderr: '', error_code: 'ENOENT' }),
     });
     const strictReport = buildPhosDeployTemplateValidationReport({
       strict: true,
-      output_path: join(mkdtempSync(join(tmpdir(), 'phos-template-')), 'template.json'),
+      output_path: artifactPath('template-missing-strict', 'template.json'),
       env: { PHOS_LAMBDA_ARTIFACT_ROOT: '' },
       runner: () => ({ exit_code: null, stdout: '', stderr: '', error_code: 'ENOENT' }),
     });
@@ -121,7 +138,7 @@ describe('validate-phos-deploy-template', () => {
     const report = buildPhosDeployTemplateValidationReport({
       strict: true,
       external_validation: false,
-      output_path: join(mkdtempSync(join(tmpdir(), 'phos-template-')), 'template.json'),
+      output_path: artifactPath('template-artifact-only', 'template.json'),
       env: { PHOS_LAMBDA_ARTIFACT_ROOT: artifactRoot },
       runner: (command, args) => {
         calls.push({ command, args });
@@ -143,7 +160,7 @@ describe('validate-phos-deploy-template', () => {
   it('fails when an external validator returns a non-zero exit code', () => {
     const artifactRoot = createLambdaArtifactRoot();
     const report = buildPhosDeployTemplateValidationReport({
-      output_path: join(mkdtempSync(join(tmpdir(), 'phos-template-')), 'template.json'),
+      output_path: artifactPath('template-failure', 'template.json'),
       env: { PHOS_LAMBDA_ARTIFACT_ROOT: artifactRoot },
       runner: (command) =>
         command === 'aws'
@@ -173,7 +190,7 @@ describe('validate-phos-deploy-template', () => {
   });
 
   it('builds a reproducible local Lambda artifact and validates its CloudFormation handlers', () => {
-    const artifactRoot = join(mkdtempSync(join(tmpdir(), 'phos-built-lambda-artifact-')), 'out');
+    const artifactRoot = artifactPath('lambda-build', 'out');
 
     expect(buildPhosLambdaArtifact(artifactRoot)).toMatchObject({
       ok: true,
@@ -187,6 +204,12 @@ describe('validate-phos-deploy-template', () => {
       name: 'lambda_artifact_contract',
       status: 'passed',
     });
+  });
+
+  it('refuses to build Lambda artifacts outside artifacts/', () => {
+    for (const unsafePath of ['.', '..', '../out', '/tmp/phos-lambda-unpacked', 'src/out']) {
+      expect(() => buildPhosLambdaArtifact(unsafePath)).toThrow('PH-OS artifact paths must');
+    }
   });
 
   it('fails the artifact contract when a generated handler export is missing', () => {
@@ -215,4 +238,11 @@ function createLambdaArtifactRoot() {
     });
   }
   return artifactRoot;
+}
+
+let artifactPathCounter = 0;
+
+function artifactPath(group: string, leaf: string) {
+  artifactPathCounter += 1;
+  return join('artifacts', `phos-test-${process.pid}-${artifactPathCounter}-${group}`, leaf);
 }

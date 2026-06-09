@@ -77,7 +77,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         { now },
       ),
@@ -95,7 +95,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scp: ['phos/cards:read'],
+          scp: ['phos/cards.read'],
         }),
         { now },
       ),
@@ -113,7 +113,7 @@ describe('verify-phos-backend-live-readiness', () => {
           'custom:role': 'PHARMACIST',
           ...validTemporalClaims,
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         { now },
       ),
@@ -134,7 +134,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         { now },
       ),
@@ -155,7 +155,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         {
           now,
@@ -167,6 +167,37 @@ describe('verify-phos-backend-live-readiness', () => {
       name: 'access_token_claims',
       status: 'passed',
     });
+  });
+
+  it('rejects access tokens with scope typos or unknown roles before live smoke proof', () => {
+    for (const payload of [
+      {
+        ...validTemporalClaims,
+        tenant_id: 'tenant_abc123',
+        role: 'PHARMACIST',
+        sub: 'user_001',
+        scope: 'phos/cards:read',
+      },
+      {
+        ...validTemporalClaims,
+        tenant_id: 'tenant_abc123',
+        role: 'OWNER',
+        sub: 'user_001',
+        scope: 'phos/cards.read',
+      },
+      {
+        ...validTemporalClaims,
+        tenant_id: 'tenant_abc123',
+        role: 'PHARMACIST',
+        sub: 'user_001',
+        scp: ['phos/unknown.read'],
+      },
+    ]) {
+      expect(evaluateAccessTokenReadiness(jwt(payload), { now })).toMatchObject({
+        name: 'access_token_claims',
+        status: 'failed',
+      });
+    }
   });
 
   it('reports missing live inputs without failing non-strict readiness', async () => {
@@ -243,7 +274,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         PHOS_API_BASE_URL: 'https://api.example.test',
       },
@@ -262,6 +293,36 @@ describe('verify-phos-backend-live-readiness', () => {
     );
   });
 
+  it('fails the API smoke check before fetch when the API base URL carries unsafe URL parts', async () => {
+    const fetchImpl = async () => {
+      throw new Error('fetch should not run for invalid PHOS_API_BASE_URL');
+    };
+    const report = await buildPhosBackendLiveReadinessReport({
+      env: {
+        PHOS_COGNITO_ACCESS_TOKEN: jwt({
+          ...validTemporalClaims,
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user_001',
+          scope: 'phos/cards.read',
+        }),
+        PHOS_API_BASE_URL: 'https://token:secret@api.example.test/prod?debug=1#cards',
+      },
+      now,
+      fetch: fetchImpl,
+    });
+
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api_gateway_lambda_smoke',
+          status: 'failed',
+          detail: 'PHOS_API_BASE_URL must not include credentials, query, or fragment.',
+        }),
+      ]),
+    );
+  });
+
   it('preserves API Gateway stage paths when building the API smoke URL', async () => {
     let requestedUrl: string | undefined;
     const report = await buildPhosBackendLiveReadinessReport({
@@ -271,7 +332,7 @@ describe('verify-phos-backend-live-readiness', () => {
           tenant_id: 'tenant_abc123',
           role: 'PHARMACIST',
           sub: 'user_001',
-          scope: 'phos/cards:read',
+          scope: 'phos/cards.read',
         }),
         PHOS_API_BASE_URL: 'https://api.example.test/prod',
       },

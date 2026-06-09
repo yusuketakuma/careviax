@@ -11,6 +11,7 @@ origin. Root/stage paths such as `https://api.example.com/prod` are canonical.
 An absolute custom-domain mapping such as `https://gateway.example.com/api/phos`
 is also valid. Relative same-origin values like `/api/phos` and non-PH-OS
 Next.js paths such as `/api/files/*` are not valid PH-OS business API bases.
+The base URL must not include userinfo credentials, query strings, or fragments.
 
 ## Canonical PH-OS API Gateway Surface
 

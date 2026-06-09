@@ -1,7 +1,9 @@
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+import { UserRole } from '../../src/phos/contracts/phos_contracts';
 import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
+import { PHOS_API_ROUTES } from '../../src/phos/infra/api-gateway-routes';
 import { verifyCognitoPreTokenGenerationLiveProof } from './verify-phos-cognito-token-trigger';
 
 type CheckStatus = 'passed' | 'failed' | 'missing' | 'skipped';
@@ -40,11 +42,24 @@ function readEnv(env: Env, name: string): string | null {
   return value ? value : null;
 }
 
-function buildApiSmokeUrl(apiBaseUrl: string): URL {
-  const url = new URL(apiBaseUrl);
+function buildApiSmokeUrl(apiBaseUrl: string): URL | Error {
+  let url: URL;
+  try {
+    url = new URL(apiBaseUrl);
+  } catch {
+    return new Error('PHOS_API_BASE_URL must be an absolute http(s) URL.');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    return new Error('PHOS_API_BASE_URL must use http(s).');
+  }
+  const localHttpHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  if (url.protocol === 'http:' && !localHttpHosts.has(url.hostname)) {
+    return new Error('PHOS_API_BASE_URL must use https outside local development.');
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    return new Error('PHOS_API_BASE_URL must not include credentials, query, or fragment.');
+  }
   url.pathname = `${url.pathname.replace(/\/+$/, '')}/cards`;
-  url.search = '';
-  url.hash = '';
   return url;
 }
 
@@ -62,19 +77,33 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>;
 }
 
-function hasScope(payload: Record<string, unknown>) {
-  const scope = payload.scope;
-  const scp = payload.scp;
-  if (typeof scope === 'string' && scope.trim()) {
-    return true;
+function normalizeScopeClaim(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return value
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
-  if (Array.isArray(scp) && scp.some((value) => typeof value === 'string' && value.trim())) {
-    return true;
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0,
+    );
   }
-  if (typeof scp === 'string' && scp.trim()) {
-    return true;
-  }
-  return false;
+  return [];
+}
+
+function readTokenScopes(payload: Record<string, unknown>): string[] {
+  return [...new Set([...normalizeScopeClaim(payload.scope), ...normalizeScopeClaim(payload.scp)])];
+}
+
+function requiredReadinessScopes(): string[] {
+  const smokeRoute = PHOS_API_ROUTES.find((route) => route.route_key === 'GET /cards');
+  if (!smokeRoute) throw new Error('PH-OS readiness smoke route is not registered: GET /cards');
+  return [...smokeRoute.required_scopes];
+}
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === 'string' && Object.values(UserRole).includes(value as UserRole);
 }
 
 function hasAudience(payload: Record<string, unknown>, expected: string): boolean {
@@ -119,8 +148,15 @@ export function evaluateAccessTokenReadiness(
       const value = payload[claim];
       return typeof value !== 'string' || !value.trim();
     });
-    if (!hasScope(payload)) {
+    if (!isUserRole(payload.role)) {
+      missing.push('valid role');
+    }
+    const scopes = readTokenScopes(payload);
+    const missingScopes = requiredReadinessScopes().filter((scope) => !scopes.includes(scope));
+    if (scopes.length === 0) {
       missing.push('scope|scp');
+    } else if (missingScopes.length > 0) {
+      missing.push(`scope includes ${missingScopes.join(' ')}`);
     }
     if (payload.token_use !== 'access') {
       missing.push('token_use=access');
@@ -370,14 +406,23 @@ export async function buildPhosBackendLiveReadinessReport(
         'Set PHOS_API_BASE_URL and PHOS_COGNITO_ACCESS_TOKEN to run a read-only GET /cards smoke request.',
     });
   } else {
-    const response = await (input.fetch ?? fetch)(buildApiSmokeUrl(apiBaseUrl), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    checks.push({
-      name: 'api_gateway_lambda_smoke',
-      status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
-      detail: `GET /cards returned HTTP ${response.status}.`,
-    });
+    const smokeUrl = buildApiSmokeUrl(apiBaseUrl);
+    if (smokeUrl instanceof Error) {
+      checks.push({
+        name: 'api_gateway_lambda_smoke',
+        status: 'failed',
+        detail: smokeUrl.message,
+      });
+    } else {
+      const response = await (input.fetch ?? fetch)(smokeUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checks.push({
+        name: 'api_gateway_lambda_smoke',
+        status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
+        detail: `GET /cards returned HTTP ${response.status}.`,
+      });
+    }
   }
 
   const strict = input.strict ?? false;

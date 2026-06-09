@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import {
   DEFAULT_LAMBDA_ARTIFACT_ROOT,
   collectPhosCloudFormationLambdaHandlers,
+  resolveSafeArtifactPath,
 } from './validate-phos-deploy-template';
 
 export type PhosLambdaArtifactBuildReport = {
@@ -16,10 +17,11 @@ export type PhosLambdaArtifactBuildReport = {
 export function buildPhosLambdaArtifact(
   outputRoot = DEFAULT_LAMBDA_ARTIFACT_ROOT,
 ): PhosLambdaArtifactBuildReport {
+  const safeOutputRoot = resolveSafeArtifactPath(outputRoot);
   const entryPoints = [
     ...new Set(collectPhosCloudFormationLambdaHandlers().map((handler) => handler.source_file)),
   ].sort();
-  rmSync(outputRoot, { recursive: true, force: true });
+  rmSync(safeOutputRoot, { recursive: true, force: true });
 
   const result = spawnSync(
     'node_modules/.bin/esbuild',
@@ -31,7 +33,7 @@ export function buildPhosLambdaArtifact(
       '--format=cjs',
       '--outbase=.',
       '--entry-names=[dir]/[name]',
-      `--outdir=${outputRoot}`,
+      `--outdir=${safeOutputRoot}`,
       '--log-level=warning',
     ],
     {
@@ -50,7 +52,7 @@ export function buildPhosLambdaArtifact(
 
   return {
     ok: true,
-    output_root: outputRoot,
+    output_root: safeOutputRoot,
     entry_points: entryPoints,
   };
 }

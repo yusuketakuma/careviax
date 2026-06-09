@@ -65,6 +65,9 @@ function normalizeBaseUrl(baseUrl: string): string {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('PH-OS API baseUrl must use http(s)');
   }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error('PH-OS API baseUrl must not include credentials, query, or fragment');
+  }
   const localHttpHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
   if (parsed.protocol === 'http:' && !localHttpHosts.has(parsed.hostname)) {
     throw new Error('PH-OS API baseUrl must use https outside local development');
