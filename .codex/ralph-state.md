@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-132920
+
+- current task: implement UI-PR5C standalone Handoff Queue review/resolve/return lifecycle controls for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_contracts.ts`, related Handoff API/backend tests, and memory registry hits for the active careviax goal. A read-only subagent review could not be spawned because the agent thread limit was reached.
+- files changed: `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: the standalone pharmacist queue filtered out every Handoff except `OPEN`, so a Handoff disappeared from the queue immediately after `openHandoff` returned `IN_REVIEW`. The queue also had no resolve or return controls. `BoardClient` resolve/return handlers only looked inside the selected Workspace detail, so queue-only handoffs could not be resolved or returned without opening the card detail.
+- security risks found: no auth, tenant boundary, backend mutation semantics, evidence upload, report send, or persistence behavior changed. Standalone queue mutations still go through existing API Gateway client methods with server versions, structured return reason select, and no native `disabled`; raw return codes are not displayed in the queue UI.
+- performance issues found: changes are local queue filtering/form state over the already-loaded pharmacist handoffs. They add no fetch, Server Action, Route Handler, database call, scan, polling, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched HandoffQueue/BoardClient/gate files; focused `pnpm exec vitest run src/phos/ui/handoff/HandoffQueue.test.tsx src/phos/ui/board/BoardClient.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; production HandoffQueue raw-code/free-text grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 3 files / 63 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; production HandoffQueue raw-code/free-text grep returned no hits; full PH-OS Vitest passed with 87 files / 478 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UI-PR5 still has clerk-side task processing beyond opening returned cards and broader end-to-end role-flow coverage. UIUX v1.1 also still has VisitMode completion details, Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E hardening.
+- next action: commit this standalone Handoff Queue lifecycle slice, then continue to the next highest-value UIUX gap, likely VisitMode completion hardening or clerk returned-task processing.
+
 ### 20260609-132150
 
 - current task: implement UI-PR5B structured Handoff composer and return-reason controls for PH-OS UIUX v1.1

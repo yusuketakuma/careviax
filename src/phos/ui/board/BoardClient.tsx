@@ -652,9 +652,9 @@ export function BoardClient({
   const handleResolveHandoff = useCallback(
     async (handoffId: string, resolvedActionCode: ActionCode) => {
       if (!apiClient || action.phase === ActionPhase.SUBMITTING) return;
-      const handoff = selectedDetail?.handoffs?.find(
-        (candidate) => candidate.handoff_id === handoffId,
-      );
+      const handoff =
+        selectedDetail?.handoffs?.find((candidate) => candidate.handoff_id === handoffId) ??
+        pharmacistHandoffs.find((candidate) => candidate.handoff_id === handoffId);
       if (!handoff) return;
 
       setActionError(undefined);
@@ -676,15 +676,15 @@ export function BoardClient({
         enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, enqueueToast, selectedDetail],
+    [action.phase, apiClient, enqueueToast, pharmacistHandoffs, selectedDetail],
   );
 
   const handleReturnHandoff = useCallback(
     async (handoffId: string, reasonCode: string, note: string) => {
       if (!apiClient || action.phase === ActionPhase.SUBMITTING) return;
-      const handoff = selectedDetail?.handoffs?.find(
-        (candidate) => candidate.handoff_id === handoffId,
-      );
+      const handoff =
+        selectedDetail?.handoffs?.find((candidate) => candidate.handoff_id === handoffId) ??
+        pharmacistHandoffs.find((candidate) => candidate.handoff_id === handoffId);
       if (!handoff) return;
 
       setActionError(undefined);
@@ -707,7 +707,7 @@ export function BoardClient({
         enqueueToast(errorToast(message));
       }
     },
-    [action.phase, apiClient, enqueueToast, selectedDetail],
+    [action.phase, apiClient, enqueueToast, pharmacistHandoffs, selectedDetail],
   );
 
   const handleVisitArrivalOutcome = useCallback(
@@ -943,6 +943,8 @@ export function BoardClient({
             handoffs={pharmacistHandoffs}
             onOpenCard={handleOpenCard}
             onOpenReview={handleOpenHandoffReview}
+            onResolve={handleResolveHandoff}
+            onReturn={handleReturnHandoff}
           />
           <ClerkSupportWorkbench handoffs={returnedHandoffs} onOpenCard={handleOpenCard} />
           <ReportDeliveryQueue

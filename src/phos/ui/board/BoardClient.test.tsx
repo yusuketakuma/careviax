@@ -445,6 +445,63 @@ describe('BoardClient', () => {
     });
   });
 
+  it('resolves pharmacist queue handoffs after opening review without selected card detail', async () => {
+    const apiClient = client({
+      getHandoffs: vi
+        .fn()
+        .mockResolvedValueOnce(
+          handoffSearchResponse([
+            handoff({
+              status: HandoffStatus.OPEN,
+              requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            }),
+          ]),
+        )
+        .mockResolvedValueOnce(handoffSearchResponse([])),
+      openHandoff: vi.fn(async () =>
+        handoffMutationResponse(
+          handoff({
+            status: HandoffStatus.IN_REVIEW,
+            requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            server_version: 2,
+          }),
+        ),
+      ),
+      resolveHandoff: vi.fn(async () =>
+        handoffMutationResponse(
+          handoff({
+            status: HandoffStatus.RESOLVED,
+            requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            server_version: 3,
+          }),
+        ),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    await waitFor(() => expect(screen.getByText('薬剤師確認が必要です。')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '確認を開始' }));
+    await waitFor(() =>
+      expect(apiClient.openHandoff).toHaveBeenCalledWith(
+        'handoff_1',
+        expect.objectContaining({ client_version: 1 }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '確認依頼を解決する' }));
+
+    await waitFor(() =>
+      expect(apiClient.resolveHandoff).toHaveBeenCalledWith(
+        'handoff_1',
+        expect.objectContaining({
+          resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          client_version: 2,
+        }),
+      ),
+    );
+  });
+
   it('loads report delivery waiting replies through the PH-OS report delivery queue API', async () => {
     const apiClient = client({
       getReportDeliveries: vi

@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
+import { ActionCode, HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type { HandoffView } from '@/phos/contracts/phos_contracts';
 import { HandoffQueue } from './HandoffQueue';
 
@@ -42,6 +42,8 @@ describe('HandoffQueue', () => {
         ]}
         onOpenCard={vi.fn()}
         onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={vi.fn()}
       />,
     );
 
@@ -57,7 +59,15 @@ describe('HandoffQueue', () => {
 
   it('opens the source card instead of mutating handoff status in the browser', () => {
     const onOpenCard = vi.fn();
-    render(<HandoffQueue handoffs={[handoff()]} onOpenCard={onOpenCard} onOpenReview={vi.fn()} />);
+    render(
+      <HandoffQueue
+        handoffs={[handoff()]}
+        onOpenCard={onOpenCard}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'カードを開く' }));
 
@@ -67,11 +77,75 @@ describe('HandoffQueue', () => {
   it('opens pharmacist review through the lifecycle API callback', () => {
     const onOpenReview = vi.fn();
     render(
-      <HandoffQueue handoffs={[handoff()]} onOpenCard={vi.fn()} onOpenReview={onOpenReview} />,
+      <HandoffQueue
+        handoffs={[handoff()]}
+        onOpenCard={vi.fn()}
+        onOpenReview={onOpenReview}
+        onResolve={vi.fn()}
+        onReturn={vi.fn()}
+      />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '確認を開始' }));
 
     expect(onOpenReview).toHaveBeenCalledWith('handoff_1');
+  });
+
+  it('keeps IN_REVIEW handoffs in the pharmacist queue and resolves requested actions', () => {
+    const onResolve = vi.fn();
+    render(
+      <HandoffQueue
+        handoffs={[
+          handoff({
+            status: HandoffStatus.IN_REVIEW,
+            requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          }),
+        ]}
+        onOpenCard={vi.fn()}
+        onOpenReview={vi.fn()}
+        onResolve={onResolve}
+        onReturn={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/確認中/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '確認依頼を解決する' }));
+
+    expect(onResolve).toHaveBeenCalledWith('handoff_1', ActionCode.CONFIRM_PRESCRIPTION_DIFF);
+  });
+
+  it('returns IN_REVIEW handoffs with structured reason copy and note', () => {
+    const onReturn = vi.fn();
+    render(
+      <HandoffQueue
+        handoffs={[handoff({ status: HandoffStatus.IN_REVIEW })]}
+        onOpenCard={vi.fn()}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={onReturn}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '事務へ戻す' }));
+    fireEvent.click(screen.getByRole('button', { name: '差し戻す' }));
+
+    expect(screen.getByText('差し戻し理由とメモを入力してください。')).toBeTruthy();
+    expect(onReturn).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('差し戻し理由'), {
+      target: { value: 'NEED_MORE_INFO' },
+    });
+    fireEvent.change(screen.getByLabelText('差し戻しメモ'), {
+      target: { value: '施設連絡先を確認してください。' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '差し戻す' }));
+
+    expect(onReturn).toHaveBeenCalledWith(
+      'handoff_1',
+      'NEED_MORE_INFO',
+      '施設連絡先を確認してください。',
+    );
+    expect(screen.getByText('情報の追加が必要です')).toBeTruthy();
+    expect(screen.queryByText('NEED_MORE_INFO')).toBeNull();
   });
 });

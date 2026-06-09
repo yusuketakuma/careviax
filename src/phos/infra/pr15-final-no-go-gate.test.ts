@@ -482,4 +482,23 @@ describe('PH-OS Final No-Go gate', () => {
       /requested_action: input\.requested_action/,
     ]);
   });
+
+  it('keeps standalone pharmacist Handoff Queue actionable after review opens', () => {
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.tsx', [
+      /HandoffStatus\.IN_REVIEW/,
+      /PhosHandoffReturnReasonLabel/,
+      /PhosHandoffPanelCopy\.RESOLVE_ARIA/,
+      /onResolve/,
+      /onReturn/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.test.tsx', [
+      /keeps IN_REVIEW handoffs in the pharmacist queue/,
+      /returns IN_REVIEW handoffs with structured reason copy/,
+      /queryByText\('NEED_MORE_INFO'\)/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /resolves pharmacist queue handoffs after opening review without selected card detail/,
+      /client_version: 2/,
+    ]);
+  });
 });
