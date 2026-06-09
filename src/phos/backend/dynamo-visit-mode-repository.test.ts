@@ -47,6 +47,7 @@ function evidenceIntent(overrides: Partial<Record<string, unknown>> = {}) {
     mime_type: { S: 'image/jpeg' },
     sha256: { S: 'a'.repeat(64) },
     size_bytes: { N: '1024' },
+    expires_at: { S: '2026-06-09T07:35:00.000Z' },
     upload_status: { S: 'PRESIGNED' },
     ...Object.fromEntries(
       Object.entries(overrides).map(([key, value]) => [key, toDynamoAttributeValue(value)]),
@@ -136,6 +137,7 @@ describe('createDynamoVisitModeRepository', () => {
     };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
     await expect(
@@ -169,6 +171,7 @@ describe('createDynamoVisitModeRepository', () => {
     const verifier = { verifyObject: vi.fn(async () => undefined) };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
     await expect(
@@ -189,6 +192,7 @@ describe('createDynamoVisitModeRepository', () => {
   it('rejects missing S3 objects before completing evidence upload', async () => {
     const fakeClient = client();
     const store = createDynamoVisitModeRepository(fakeClient, {
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
       evidence_object_verifier: {
         verifyObject: vi.fn(async () => {
           throw new EvidenceObjectVerificationError('object_missing', {
@@ -210,6 +214,33 @@ describe('createDynamoVisitModeRepository', () => {
       error_code: 'ACTION_GUARD_FAILED',
       details: { reason: 'object_missing' },
     });
+  });
+
+  it('rejects expired evidence upload intents before S3 verification', async () => {
+    const fakeClient = client({
+      getEvidenceIntent: vi.fn(async () =>
+        evidenceIntent({ expires_at: '2026-06-09T07:29:59.000Z' }),
+      ),
+    });
+    const verifier = { verifyObject: vi.fn(async () => undefined) };
+    const store = createDynamoVisitModeRepository(fakeClient, {
+      evidence_object_verifier: verifier,
+      now: () => new Date('2026-06-09T07:30:00.000Z'),
+    });
+
+    await expect(
+      store.verifyEvidenceUpload(ctx, {
+        packet_id: 'packet_1',
+        step: 'EVIDENCE_UPLOAD',
+        visit: visit({ card_id: 'card_1' }),
+        evidence_key: 'evidence_1',
+      }),
+    ).rejects.toMatchObject({
+      status: 422,
+      error_code: 'ACTION_GUARD_FAILED',
+      details: { reason: 'evidence_upload_intent_expired' },
+    });
+    expect(verifier.verifyObject).not.toHaveBeenCalled();
   });
 
   it('includes verified evidence status update in the visit commit transaction', async () => {

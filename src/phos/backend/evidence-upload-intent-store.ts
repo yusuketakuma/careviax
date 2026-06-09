@@ -26,6 +26,7 @@ export type EvidenceUploadIntent = Pick<
   evidence_id: string;
   s3_key: string;
   expires_in_seconds: number;
+  expires_at: string;
 };
 
 export type EvidenceUploadIntentStore = {
@@ -42,7 +43,7 @@ export type DynamoEvidenceUploadIntentTransaction = {
   correlation_id: string;
 };
 
-type EvidenceIntentMatch = 'MATCH' | 'MISSING' | 'CONFLICT';
+type EvidenceIntentMatch = 'MATCH' | 'MISSING' | 'CONFLICT' | 'EXPIRED';
 
 function evidenceAuditSummary(intent: EvidenceUploadIntent) {
   return {
@@ -55,6 +56,7 @@ function evidenceAuditSummary(intent: EvidenceUploadIntent) {
     sha256: intent.sha256,
     size_bytes: intent.size_bytes,
     expires_in_seconds: intent.expires_in_seconds,
+    expires_at: intent.expires_at,
     upload_status: 'PRESIGNED',
   };
 }
@@ -89,6 +91,7 @@ function idempotencyConflict(intent: EvidenceUploadIntent, reason: string): Phos
 function compareExistingIntent(
   item: Record<string, AttributeValue> | null,
   intent: EvidenceUploadIntent,
+  now: Date,
 ): EvidenceIntentMatch {
   if (!item) return 'MISSING';
   const existing = {
@@ -100,9 +103,14 @@ function compareExistingIntent(
     mime_type: stringAttr(item, 'mime_type'),
     sha256: stringAttr(item, 'sha256'),
     size_bytes: numberAttr(item, 'size_bytes'),
+    expires_at: stringAttr(item, 'expires_at'),
     upload_status: stringAttr(item, 'upload_status'),
   };
   if (existing.upload_status !== 'PRESIGNED') return 'CONFLICT';
+  if (!existing.expires_at) return 'CONFLICT';
+  const expiresAtMs = Date.parse(existing.expires_at);
+  if (!Number.isFinite(expiresAtMs)) return 'CONFLICT';
+  if (expiresAtMs <= now.getTime()) return 'EXPIRED';
   return existing.idempotency_key === intent.idempotency_key &&
     existing.evidence_id === intent.evidence_id &&
     existing.card_id === intent.card_id &&
@@ -113,6 +121,14 @@ function compareExistingIntent(
     existing.size_bytes === intent.size_bytes
     ? 'MATCH'
     : 'CONFLICT';
+}
+
+function ttlEpochSeconds(expires_at: string): number {
+  const expiresAtMs = Date.parse(expires_at);
+  if (!Number.isFinite(expiresAtMs)) {
+    throw new Error(`Invalid evidence upload intent expires_at: ${expires_at}`);
+  }
+  return Math.floor(expiresAtMs / 1000);
 }
 
 export function buildDynamoEvidenceUploadIntentTransactWriteItems(
@@ -135,6 +151,8 @@ export function buildDynamoEvidenceUploadIntentTransactWriteItems(
           sha256: { S: input.intent.sha256 },
           size_bytes: { N: String(input.intent.size_bytes) },
           expires_in_seconds: { N: String(input.intent.expires_in_seconds) },
+          expires_at: { S: input.intent.expires_at },
+          ttl_epoch_seconds: { N: String(ttlEpochSeconds(input.intent.expires_at)) },
           upload_status: { S: 'PRESIGNED' },
           evidence: toDynamoAttributeValue(evidenceAuditSummary(input.intent)),
           created_by_user_id: { S: input.actor_user_id },
@@ -182,10 +200,15 @@ export function createDynamoEvidenceUploadIntentStore(input: {
   }
 
   async function assertReplayableOrMissing(ctx: TenantContext, intent: EvidenceUploadIntent) {
-    const match = compareExistingIntent(await readExistingIntent(ctx, intent), intent);
+    const match = compareExistingIntent(
+      await readExistingIntent(ctx, intent),
+      intent,
+      input.now?.() ?? new Date(),
+    );
     if (match === 'MATCH') return true;
     if (match === 'CONFLICT')
       throw idempotencyConflict(intent, 'existing_evidence_intent_mismatch');
+    if (match === 'EXPIRED') throw idempotencyConflict(intent, 'existing_evidence_intent_expired');
     return false;
   }
 

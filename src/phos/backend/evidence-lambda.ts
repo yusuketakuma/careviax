@@ -160,6 +160,7 @@ export function createEvidencePresignUploadLambdaHandler(deps: EvidenceLambdaDep
       max_size_bytes: deps.max_size_bytes,
       upload_intent_store: createLazyEvidenceUploadIntentStore(deps),
       upload_authorizer: createLazyEvidenceUploadAuthorizer(deps),
+      now: deps.now,
     }),
     {
       observability: createLambdaObservabilitySink(deps),

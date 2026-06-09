@@ -92,7 +92,7 @@ function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {
     file_name: parseRequiredString(input.file_name, 'file_name'),
     mime_type: parseRequiredString(input.mime_type, 'mime_type'),
     sha256: parseRequiredString(input.sha256, 'sha256').toLowerCase(),
-    size_bytes: Number(input.size_bytes),
+    size_bytes: parseUploadSize(input.size_bytes),
   };
 }
 
@@ -109,6 +109,13 @@ function parseRequiredString(value: unknown, field: string): string {
     throw new TenantStorageKeyError(`${field} is required`);
   }
   return value.trim();
+}
+
+function parseUploadSize(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new TenantStorageKeyError('size_bytes must be a number');
+  }
+  return value;
 }
 
 function assertUploadPolicy(input: EvidenceUploadRequest, max_size_bytes: number): void {
@@ -183,6 +190,7 @@ export function createEvidencePresignUploadHandler(
     max_size_bytes?: number;
     upload_intent_store?: EvidenceUploadIntentStore;
     upload_authorizer?: EvidenceUploadAuthorizer;
+    now?: () => Date;
   } = {},
 ): PhosHandler {
   return async ({ ctx, body }) => {
@@ -208,6 +216,9 @@ export function createEvidencePresignUploadHandler(
         sha256: request.sha256,
         size_bytes: request.size_bytes,
       });
+      const expires_at = new Date(
+        (options.now?.() ?? new Date()).getTime() + presigned.expires_in_seconds * 1000,
+      ).toISOString();
       await options.upload_intent_store?.recordUploadIntent(ctx, {
         idempotency_key: request.idempotency_key,
         evidence_id,
@@ -218,6 +229,7 @@ export function createEvidencePresignUploadHandler(
         sha256: request.sha256,
         size_bytes: request.size_bytes,
         expires_in_seconds: presigned.expires_in_seconds,
+        expires_at,
       });
 
       logEvidencePresign({ ctx, card_id: request.card_id, evidence_id });

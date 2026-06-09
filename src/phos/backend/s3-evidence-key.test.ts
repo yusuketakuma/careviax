@@ -56,6 +56,22 @@ describe('PH-OS S3 evidence key contract', () => {
 
     expect(() => validateEvidenceUploadRequest(base)).not.toThrow();
     expect(() =>
+      validateEvidenceUploadRequest({
+        ...base,
+        evidence_type: 'VISIT_PHOTO',
+        file_name: 'visit.png',
+        mime_type: 'image/png',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateEvidenceUploadRequest({
+        ...base,
+        evidence_type: 'DOCUMENT',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+      }),
+    ).not.toThrow();
+    expect(() =>
       validateEvidenceUploadRequest({ ...base, s3_key: 'tenants/other/evidence/x/y.jpg' }),
     ).toThrow(TenantStorageKeyError);
     expect(() => validateEvidenceUploadRequest({ ...base, card_id: '../card_1' })).toThrow(
@@ -67,6 +83,23 @@ describe('PH-OS S3 evidence key contract', () => {
     expect(() => validateEvidenceUploadRequest({ ...base, mime_type: 'not-a-mime' })).toThrow(
       TenantStorageKeyError,
     );
+    expect(() =>
+      validateEvidenceUploadRequest({
+        ...base,
+        file_name: 'photo.svg',
+        mime_type: 'image/svg+xml',
+      }),
+    ).toThrow(TenantStorageKeyError);
+    expect(() =>
+      validateEvidenceUploadRequest({ ...base, file_name: 'photo.jpg', mime_type: 'text/html' }),
+    ).toThrow(TenantStorageKeyError);
+    expect(() =>
+      validateEvidenceUploadRequest({
+        ...base,
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+      }),
+    ).toThrow(TenantStorageKeyError);
     expect(() => validateEvidenceUploadRequest({ ...base, size_bytes: 0 })).toThrow(
       TenantStorageKeyError,
     );

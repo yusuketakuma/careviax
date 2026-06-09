@@ -77,9 +77,9 @@ export function createDynamoVisitModeClient(input: {
                   TableName: transaction.table_name,
                   Key: dynamoKey(transaction.partition_key, transaction.evidence_sort_key),
                   UpdateExpression:
-                    'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at',
+                    'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at REMOVE ttl_epoch_seconds',
                   ConditionExpression:
-                    'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned',
+                    'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned AND expires_at > :updated_at',
                   ExpressionAttributeValues: {
                     ':verified': { S: 'VERIFIED' },
                     ':presigned': { S: 'PRESIGNED' },

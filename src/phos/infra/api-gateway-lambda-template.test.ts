@@ -181,6 +181,10 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         ]),
         PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
         SSESpecification: { SSEEnabled: true },
+        TimeToLiveSpecification: {
+          AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute,
+          Enabled: true,
+        },
       },
     });
     expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({

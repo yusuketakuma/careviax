@@ -52,6 +52,7 @@ describe('PH-OS DynamoDB table contract', () => {
       partition_key: 'GSI8PK',
       sort_key: null,
     });
+    expect(PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute).toBe('ttl_epoch_seconds');
 
     const backendSources = [
       'src/phos/backend/dynamo-cards-repository.ts',
@@ -153,6 +154,10 @@ describe('PH-OS DynamoDB table contract', () => {
         },
         SSESpecification: {
           SSEEnabled: true,
+        },
+        TimeToLiveSpecification: {
+          AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute,
+          Enabled: true,
         },
       },
     });

@@ -340,6 +340,14 @@ function buildPhosCoreDynamoDbTable(input: {
       SSESpecification: {
         SSEEnabled: true,
       },
+      ...(PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute
+        ? {
+            TimeToLiveSpecification: {
+              AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute,
+              Enabled: true,
+            },
+          }
+        : {}),
       Tags: [
         {
           Key: 'System',

@@ -73,6 +73,7 @@ describe('PH-OS evidence presign upload handler', () => {
         generateEvidenceId: () => 'evidence_1',
         max_size_bytes: 2048,
         upload_intent_store: uploadIntentStore,
+        now: () => new Date('2026-06-09T07:30:00.000Z'),
       }),
     );
 
@@ -100,6 +101,7 @@ describe('PH-OS evidence presign upload handler', () => {
         sha256: 'a'.repeat(64),
         size_bytes: 1024,
         expires_in_seconds: 300,
+        expires_at: '2026-06-09T07:35:00.000Z',
       },
     );
     expect(JSON.parse(response.body)).toEqual({
@@ -223,6 +225,27 @@ describe('PH-OS evidence presign upload handler', () => {
     expect(JSON.parse(response.body)).toMatchObject({
       error_code: 'VALIDATION_ERROR',
       details: { reason: 'card_id is required' },
+    });
+  });
+
+  it('rejects non-number size_bytes before presigning', async () => {
+    const fakePresigner = presigner();
+    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner));
+
+    const response = await handler(
+      event({
+        body: JSON.stringify({
+          ...baseBody,
+          size_bytes: '1024',
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { reason: 'size_bytes must be a number' },
     });
   });
 

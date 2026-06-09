@@ -114,6 +114,7 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
     mime_type: stringAttr(item, 'mime_type'),
     sha256: stringAttr(item, 'sha256'),
     size_bytes: numberAttr(item, 'size_bytes'),
+    expires_at: stringAttr(item, 'expires_at'),
     upload_status: stringAttr(item, 'upload_status'),
   };
   const size_bytes = intent.size_bytes;
@@ -123,6 +124,7 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
     !intent.s3_key ||
     !intent.mime_type ||
     !intent.sha256 ||
+    !intent.expires_at ||
     typeof size_bytes !== 'number' ||
     !Number.isSafeInteger(size_bytes) ||
     intent.upload_status !== 'PRESIGNED'
@@ -141,6 +143,7 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
     mime_type: intent.mime_type,
     sha256: intent.sha256,
     size_bytes,
+    expires_at: intent.expires_at,
   };
 }
 
@@ -149,6 +152,7 @@ async function verifyEvidenceUploadIntent(input: {
   verifier?: EvidenceObjectVerifier;
   verification: EvidenceUploadVerificationInput;
   item: DynamoItem | null;
+  now: Date;
 }): Promise<VerifiedEvidenceUpload> {
   const evidence_id = input.verification.evidence_key.trim();
   assertEvidenceIdShape(evidence_id);
@@ -169,6 +173,15 @@ async function verifyEvidenceUploadIntent(input: {
     });
   }
   const size_bytes = intent.size_bytes;
+  const expiresAtMs = Date.parse(intent.expires_at);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= input.now.getTime()) {
+    throw evidenceGuardFailed({
+      packet_id: input.verification.packet_id,
+      step: input.verification.step,
+      evidence_id,
+      reason: 'evidence_upload_intent_expired',
+    });
+  }
   try {
     assertTenantS3Key(input.ctx, intent.s3_key);
   } catch (error) {
@@ -280,6 +293,7 @@ export function createDynamoVisitModeRepository(
         verifier: options.evidence_object_verifier,
         verification,
         item,
+        now: options.now?.() ?? new Date(),
       });
     },
 

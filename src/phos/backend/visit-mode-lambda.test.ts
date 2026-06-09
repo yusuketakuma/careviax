@@ -65,8 +65,10 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
           PK: { S: 'TENANT#tenant_abc123' },
           SK: { S: 'EVIDENCE#evidence_1' },
         },
+        UpdateExpression:
+          'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at REMOVE ttl_epoch_seconds',
         ConditionExpression:
-          'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned',
+          'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned AND expires_at > :updated_at',
         ExpressionAttributeValues: {
           ':verified': { S: 'VERIFIED' },
           ':presigned': { S: 'PRESIGNED' },

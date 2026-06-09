@@ -55,7 +55,7 @@ export const PHOS_DYNAMODB_TABLE_CONTRACT = {
     'created_at',
     'updated_at',
   ],
-  ttl_attribute: null,
+  ttl_attribute: 'ttl_epoch_seconds',
   billing_mode: 'PAY_PER_REQUEST',
 } as const;
 
