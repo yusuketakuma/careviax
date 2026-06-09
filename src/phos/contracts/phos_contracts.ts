@@ -490,6 +490,9 @@ export type TabKey = (typeof TabKey)[keyof typeof TabKey];
 
 export type CardSummaryView = {
   card_id: string;
+  patient_id?: string;
+  assigned_user_id?: string;
+  packet_id?: string;
   card_type: CardType;
   patient_name: string;
   facility_name?: string;
@@ -497,6 +500,7 @@ export type CardSummaryView = {
   visit_time?: string;
   visit_date?: string;
   service_date?: string;
+  created_at?: string;
   due_at?: string;
   updated_at?: string;
   stale_minutes?: number;

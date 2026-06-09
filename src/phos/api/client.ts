@@ -353,6 +353,9 @@ function isCardSummary(value: unknown): boolean {
   return (
     isRecord(value) &&
     hasString(value, 'card_id') &&
+    hasOptionalString(value, 'patient_id') &&
+    hasOptionalString(value, 'assigned_user_id') &&
+    hasOptionalString(value, 'packet_id') &&
     isOneOf(Object.values(CardType), value.card_type) &&
     hasString(value, 'patient_name') &&
     hasOptionalString(value, 'facility_name') &&
@@ -360,6 +363,7 @@ function isCardSummary(value: unknown): boolean {
     hasOptionalString(value, 'visit_time') &&
     hasOptionalString(value, 'visit_date') &&
     hasOptionalString(value, 'service_date') &&
+    hasOptionalString(value, 'created_at') &&
     hasOptionalString(value, 'due_at') &&
     hasOptionalString(value, 'updated_at') &&
     hasOptionalNumber(value, 'stale_minutes') &&

@@ -36,8 +36,12 @@ function blocker(): BlockerView {
 function response(overrides: Partial<ActionResponse> = {}): ActionResponse {
   const card = {
     card_id: 'card_1',
+    patient_id: 'patient_1',
+    assigned_user_id: 'user_1',
+    packet_id: 'packet_1',
     card_type: CardType.PRESCRIPTION,
     patient_name: 'Test Patient',
+    created_at: '2026-06-08T00:00:00.000Z',
     due_at: '2026-06-10T09:00:00.000Z',
     current_step: CurrentStep.DISPENSING,
     display_status: DisplayStatus.IN_PROGRESS,
@@ -146,15 +150,25 @@ describe('Dynamo card action transaction client', () => {
           ':GSI1SK': {
             S: 'STEP#DISPENSING#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
           },
+          ':GSI2PK': { S: 'TENANT#tenant_abc123#ASSIGNEE#user_1' },
           ':GSI2SK': {
             S: 'STATUS#IN_PROGRESS#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
           },
+          ':GSI3PK': { S: 'TENANT#tenant_abc123#PATIENT#patient_1' },
+          ':GSI3SK': { S: 'CREATED#2026-06-08T00:00:00.000Z#CARD#card_1' },
+          ':GSI4PK': { S: 'TENANT#tenant_abc123#PACKET#packet_1' },
+          ':GSI4SK': { S: 'CARD#card_1' },
         },
       },
     });
     expect(items[0]?.Update?.UpdateExpression).toContain('#GSI1PK = :GSI1PK');
     expect(items[0]?.Update?.UpdateExpression).toContain('#GSI1SK = :GSI1SK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI2PK = :GSI2PK');
     expect(items[0]?.Update?.UpdateExpression).toContain('#GSI2SK = :GSI2SK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI3PK = :GSI3PK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI3SK = :GSI3SK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI4PK = :GSI4PK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI4SK = :GSI4SK');
     expect(items[1]).toMatchObject({
       Put: {
         TableName: 'phos_core',
@@ -201,12 +215,13 @@ describe('Dynamo card action transaction client', () => {
       '2026-06-09T00:00:00.000Z',
     );
 
-    expect(items[0]?.Update?.UpdateExpression).toContain('REMOVE #GSI1SK, #GSI2SK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('REMOVE #GSI1SK, #GSI2PK, #GSI2SK');
     expect(items[0]).toMatchObject({
       Update: {
         ExpressionAttributeNames: {
           '#GSI1PK': 'GSI1PK',
           '#GSI1SK': 'GSI1SK',
+          '#GSI2PK': 'GSI2PK',
           '#GSI2SK': 'GSI2SK',
         },
         ExpressionAttributeValues: {

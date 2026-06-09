@@ -43,8 +43,12 @@ import { PhosApiError } from './types';
 
 const readyCard = {
   card_id: 'card_1',
+  patient_id: 'patient_1',
+  assigned_user_id: 'user_1',
+  packet_id: 'packet_1',
   card_type: CardType.PRESCRIPTION,
   patient_name: 'Test Patient',
+  created_at: '2026-06-08T00:00:00.000Z',
   current_step: CurrentStep.DIFF_REVIEW,
   display_status: DisplayStatus.READY,
   server_version: 1,
