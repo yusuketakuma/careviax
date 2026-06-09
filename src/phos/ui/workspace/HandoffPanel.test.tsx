@@ -48,6 +48,9 @@ describe('HandoffPanel', () => {
     ).toContain('至急確認');
     expect(screen.getByText('2件')).toBeTruthy();
     expect(screen.getAllByText('処方箋 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('処方原文').length).toBeGreaterThan(0);
+    expect(screen.queryByText('PRESCRIPTION')).toBeNull();
+    expect(screen.queryByText('rx_1')).toBeNull();
   });
 
   it('creates handoffs with reason, summary, urgency, and source refs', () => {

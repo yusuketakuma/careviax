@@ -10,6 +10,7 @@ import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type { ActionCode, HandoffView, SourceRef } from '@/phos/contracts/phos_contracts';
 import { sortHandoffQueue } from '@/phos/domain/handoff/handoffLifecycle';
 import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
+import { SourceRefList } from './SourceRefList';
 
 export type HandoffCreateInput = {
   reason_code: string;
@@ -25,21 +26,6 @@ export type HandoffPanelProps = {
   onResolve(handoffId: string, resolvedActionCode: ActionCode): void;
   onReturn(handoffId: string, reasonCode: string, note: string): void;
 };
-
-function SourceRefList({ sources }: { sources: SourceRef[] }) {
-  if (sources.length === 0) return null;
-  return (
-    <ul className="mt-2 space-y-1 border-t border-border/70 pt-2">
-      {sources.map((source) => (
-        <li key={`${source.kind}:${source.ref_id}`} className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{source.label}</span>
-          <span> / {source.kind}</span>
-          {source.captured_at ? <span> / {source.captured_at}</span> : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export function HandoffPanel({
   handoffs,

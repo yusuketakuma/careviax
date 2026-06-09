@@ -6,10 +6,12 @@ import {
   PhosDisabledReason,
   PhosEmptyState,
   PhosRejectReasonLabel,
+  PhosSourceDrawerCopy,
+  PhosSourceRefKindLabel,
   PhosToast,
   PhosToastMessageByKey,
 } from './phos_copy.ja';
-import { BoardDensity, ButtonState } from './phos_contracts';
+import { BoardDensity, ButtonState, SourceRefKind } from './phos_contracts';
 
 describe('PH-OS Japanese copy contract', () => {
   it('contains required toast keys', () => {
@@ -45,6 +47,16 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosButtonStateCopy.NO_PERMISSION).toBe('この操作は薬剤師確認が必要です。');
   });
 
+  it('contains source ref kind labels for Source Drawer display', () => {
+    expect(Object.keys(PhosSourceRefKindLabel).sort()).toEqual(Object.values(SourceRefKind).sort());
+    expect(PhosSourceRefKindLabel.PRESCRIPTION).toBe('処方原文');
+    expect(PhosSourceRefKindLabel.EVIDENCE_FILE).toBe('写真・証跡');
+    expect(PhosSourceDrawerCopy.OPEN).toBe('参照情報を開く');
+    expect(PhosSourceDrawerCopy.EMPTY).toBe('参照情報はありません。');
+    expect(PhosSourceDrawerCopy.COUNT_SUFFIX).toBe('件');
+    expect(PhosSourceDrawerCopy.WORKSPACE_SECTION_HEADING).toBe('参照情報');
+  });
+
   it('contains reason labels and no prohibited double-L cancellation copy', () => {
     const prohibitedCanceledSpelling = ['CANCEL', 'LED'].join('');
     const allCopy = [
@@ -54,6 +66,8 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosDisabledReason),
       ...Object.values(PhosEmptyState),
       ...Object.values(PhosRejectReasonLabel),
+      ...Object.values(PhosSourceDrawerCopy),
+      ...Object.values(PhosSourceRefKindLabel),
       ...Object.values(PhosToast),
       ...Object.values(PhosToastMessageByKey),
     ].join('\n');

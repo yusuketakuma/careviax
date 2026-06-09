@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-124930
+
+- current task: implement UI-PR4A Source Drawer sheet and shared SourceRef presentation for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/phos/ui/workspace/SourceDrawerTrigger.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, related workspace/copy/no-go tests, and read-only implementation review subagent `019eaa79-f27b-7a22-982a-c4a7f3cb05e7`
+- files changed: `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/workspace/SourceRefList.tsx`, `src/phos/ui/workspace/SourceDrawerTrigger.tsx`, `src/phos/ui/workspace/SourceDrawerTrigger.test.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceTabs.test.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, `src/phos/ui/workspace/HandoffPanel.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: Source refs were rendered inline in multiple workspace panels instead of a right-side Source Drawer; raw `SourceRef.kind` / `ref_id` enum-style values could leak into operator-facing workspace source displays; the initial source-link guard allowed protocol-relative `//evil.example` URLs; and the first Source Drawer test name claimed focus trap coverage without proving focus stayed inside the Sheet.
+- security risks found: source evidence links now reject blank values, protocol-relative URLs, and non-http(s) schemes, while allowing only same-path relative links and explicit http/https URLs. Handoff and Workspace source displays use shared source-kind copy labels instead of raw enum literals. No auth, tenant boundary, API route, mutation, evidence upload, report send, or backend persistence behavior was changed.
+- performance issues found: the shared `SourceRefList` is a small bounded render helper for already-loaded `source_refs`; the Sheet opens on demand and adds no query, network request, polling, database work, chart rendering, or broad recomputation.
+- validation commands: focused `pnpm exec vitest run src/phos/ui/workspace/SourceDrawerTrigger.test.tsx src/phos/ui/workspace/WorkspaceTabs.test.tsx src/phos/ui/workspace/WorkspaceOverlay.test.tsx src/phos/ui/workspace/HandoffPanel.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; no-go grep for native `disabled`; raw source display grep for `source.kind` / `source.ref_id`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: focused SourceDrawer/Workspace/Handoff/copy/no-go suite passed with 6 files / 44 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; raw source grep found only tab filtering, React key generation, and copy-label lookup, not raw display leakage; full PH-OS Vitest passed with 85 files / 457 tests; Next production build passed.
+- remaining work: UI-PR4 is not fully complete. PharmacistBrief still needs richer clinical-signal, decision-required, communication recommendation, and claim-warning panels. Broader report/handoff queue source displays outside `src/phos/ui/workspace` still need a later source-label cleanup. Full UIUX v1.1 work also still includes Clerk/Handoff expansion, VisitMode, Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E.
+- next action: commit this UI-PR4A Source Drawer slice, then continue with PharmacistBrief/Decision UI or the next highest-value UIUX gap.
+
 ### 20260609-121005
 
 - current task: implement the next PH-OS UIUX v1.1 UI-PR2 Board/CardTile slice after committing the UIUX contract-entrypoint baseline

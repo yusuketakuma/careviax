@@ -1,7 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { PhosCurrentStepLabel, PhosDisplayStatusLabel } from '@/phos/contracts/phos_copy.ja';
+import {
+  PhosCurrentStepLabel,
+  PhosDisplayStatusLabel,
+  PhosSourceDrawerCopy,
+} from '@/phos/contracts/phos_copy.ja';
 import {
   SourceRefKind,
   type ActionPhase,
@@ -13,6 +17,7 @@ import {
   type VisitStep,
 } from '@/phos/contracts/phos_contracts';
 import { VisitMode } from '@/phos/ui/visit/VisitMode';
+import { SourceRefList } from './SourceRefList';
 
 export type WorkspaceTabsProps = {
   detail: CardDetailResponse;
@@ -57,25 +62,6 @@ function selectSources(detail: CardDetailResponse, tab: TabKey): SourceRef[] {
   const sourceKinds = SOURCE_KIND_BY_TAB[tab];
   if (!sourceKinds) return detail.source_refs;
   return detail.source_refs.filter((source) => sourceKinds.has(source.kind));
-}
-
-function SourceList({ sources }: { sources: SourceRef[] }) {
-  if (sources.length === 0) {
-    return <p className="text-sm text-muted-foreground">参照情報はありません。</p>;
-  }
-
-  return (
-    <ul className="divide-y divide-border/70 rounded-md border border-border/70 bg-background">
-      {sources.map((source) => (
-        <li key={`${source.kind}:${source.ref_id}`} className="px-3 py-2 text-sm">
-          <p className="font-medium text-foreground">{source.label}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {source.kind} / {source.ref_id}
-          </p>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 export function WorkspaceTabs({
@@ -173,8 +159,10 @@ export function WorkspaceTabs({
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-foreground">参照情報</h4>
-          <SourceList sources={activeSources} />
+          <h4 className="text-sm font-semibold text-foreground">
+            {PhosSourceDrawerCopy.WORKSPACE_SECTION_HEADING}
+          </h4>
+          <SourceRefList sources={activeSources} />
         </div>
       </div>
     </section>

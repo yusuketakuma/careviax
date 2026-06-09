@@ -9,6 +9,7 @@ import {
   HandoffStatus,
   HandoffUrgency,
   RejectReason,
+  SourceRefKind,
   TriageLane,
   UserRole,
   VisitArrivalOutcome,
@@ -79,6 +80,27 @@ export const PhosBlockerMessageLabel: Readonly<Record<string, string>> = {
   'blocker.need_pharmacist': '薬剤師の判断が必要です。',
   'blocker.pharmacist_review': '薬剤師の確認が必要です。',
   'blocker.visit_absent_followup': '不在後のフォローが必要です。',
+} as const;
+
+export const PhosSourceRefKindLabel = {
+  [SourceRefKind.PRESCRIPTION]: '処方原文',
+  [SourceRefKind.PREVIOUS_VISIT]: '前回訪問記録',
+  [SourceRefKind.MEDICATION_HISTORY]: '薬歴・服薬履歴',
+  [SourceRefKind.OTHER_PRO_MESSAGE]: '他職種メッセージ',
+  [SourceRefKind.RULE_DOCUMENT]: '算定・制度資料',
+  [SourceRefKind.EVIDENCE_FILE]: '写真・証跡',
+  [SourceRefKind.CARE_PLAN]: 'ケアプラン',
+} as const satisfies Record<SourceRefKind, string>;
+
+export const PhosSourceDrawerCopy = {
+  TITLE: '参照情報',
+  OPEN: '参照情報を開く',
+  EMPTY: '参照情報はありません。',
+  DESCRIPTION: '処方原文、前回訪問記録、写真証跡などの根拠を確認します。',
+  CAPTURED_AT: '取得日時',
+  COUNT_SUFFIX: '件',
+  ORIGINAL: '原文',
+  WORKSPACE_SECTION_HEADING: '参照情報',
 } as const;
 
 export const PhosToast = {

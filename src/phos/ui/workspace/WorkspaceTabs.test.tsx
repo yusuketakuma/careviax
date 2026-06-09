@@ -73,12 +73,16 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW', 'CLAIM_HISTORY'] })} />);
 
     expect(screen.getByText('処方箋 1')).toBeTruthy();
+    expect(screen.getByText('処方原文')).toBeTruthy();
     expect(screen.getByText('算定ルール')).toBeTruthy();
+    expect(screen.queryByText('PRESCRIPTION / rx_1')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: '算定' }));
 
     expect(screen.queryByText('処方箋 1')).toBeNull();
     expect(screen.getByText('算定ルール')).toBeTruthy();
+    expect(screen.getByText('算定・制度資料')).toBeTruthy();
+    expect(screen.queryByText('RULE_DOCUMENT / rule_1')).toBeNull();
   });
 
   it('renders an empty tab state when the server returns no visible tabs', () => {

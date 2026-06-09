@@ -351,4 +351,33 @@ describe('PH-OS Final No-Go gate', () => {
       /closes on Escape/,
     ]);
   });
+
+  it('keeps Source Drawer as a focus-returning sheet with source kind copy', () => {
+    expectEvidence('src/phos/ui/workspace/SourceDrawerTrigger.tsx', [
+      /SheetContent/,
+      /side="right"/,
+      /triggerRef\.current\?\.focus/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/SourceRefList.tsx', [
+      /PhosSourceRefKindLabel/,
+      /safeSourceHref/,
+      /!normalized\.startsWith\('\/\/'\)/,
+      /parsed\.protocol === 'https:'/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/SourceDrawerTrigger.test.tsx', [
+      /keeps focus inside the source drawer/,
+      /getByRole\('dialog'/,
+      /queryByText\('rx_1'\)/,
+      /\/\/evil\.example\/source/,
+      /data:text\/html/,
+      /fireEvent\.keyDown\(document, \{ key: 'Tab' \}\)/,
+      /drawer\.contains\(document\.activeElement\)/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.tsx', [/SourceRefList/]);
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.test.tsx', [
+      /getAllByText\('処方原文'\)/,
+      /queryByText\('PRESCRIPTION'\)/,
+      /queryByText\('rx_1'\)/,
+    ]);
+  });
 });
