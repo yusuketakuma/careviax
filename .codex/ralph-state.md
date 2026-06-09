@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-051057
+
+- current task: add a PH-OS deploy-template proof gate for CloudFormation parser validation and Lambda artifact handler contract inspection.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `tools/scripts/README.md`, `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, `tools/scripts/verify-phos-cognito-token-trigger.ts`, `tools/scripts/verify-phos-cognito-token-trigger.test.ts`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, route manifest references, and read-only spec/security findings from the previous slice.
+- files changed: `package.json`, `tools/scripts/README.md`, `tools/scripts/validate-phos-deploy-template.ts`, `tools/scripts/validate-phos-deploy-template.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the repo had strong unit-shape tests for the generated CloudFormation object and source handler exports, but no script that exported the template to a real file, invoked external CloudFormation validators, or inspected an unpacked Lambda artifact directory against the CloudFormation handler strings.
+- security risks found: added `pnpm phos:deploy-template:validate` as a strict gate and `pnpm phos:deploy-template:validate:report` as a non-strict report. The script writes `artifacts/phos-api-gateway-lambda-template.json`, runs `aws cloudformation validate-template`, runs `cfn-lint`, and checks `PHOS_LAMBDA_ARTIFACT_ROOT` for every Lambda handler module/export referenced by the PH-OS route manifest. Missing AWS CLI, cfn-lint, or artifact root are machine-readable `missing` checks and fail strict mode instead of being silently skipped.
+- performance issues found: no application runtime path changed. The new work is operator/CI-only validation. The artifact inspection is bounded by the PH-OS route manifest and reads one generated handler file per route binding.
+- validation commands: focused `pnpm exec vitest run tools/scripts/validate-phos-deploy-template.test.ts src/phos/infra/api-gateway-lambda-template.test.ts --reporter=dot`; focused `pnpm exec eslint tools/scripts/validate-phos-deploy-template.ts tools/scripts/validate-phos-deploy-template.test.ts --max-warnings=0`; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:deploy-template:validate:report`; `pnpm phos:deploy-template:validate`; `git diff --check`; `pnpm lint`; `pnpm test`; `pnpm build`; `pnpm typecheck`.
+- validation results: focused deploy-template/API template suite passed with 2 files / 29 tests. Focused ESLint passed. Standalone TypeScript passed. Non-strict deploy-template report passed and wrote the template artifact, while reporting `aws`, `cfn-lint`, and `PHOS_LAMBDA_ARTIFACT_ROOT` as missing. Strict deploy-template validation failed as intended in this environment with the same missing proof requirements. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 749 files passed / 1 skipped and 4953 tests passed / 1 skipped. `pnpm build` passed, compiled successfully, and generated 235 static pages. Sequential `pnpm typecheck` passed after `next typegen`.
+- remaining work: install/provide `aws`, `cfn-lint`, and an unpacked PH-OS Lambda artifact directory via `PHOS_LAMBDA_ARTIFACT_ROOT`, then rerun strict `pnpm phos:deploy-template:validate` in the target build/deploy environment. Live AWS/JWT/API readiness proof remains external until credentials, token, and API base URL are available.
+- next action: commit this deploy proof gate, then continue with the remaining external live proof or any local backend proof gaps discovered by another focused review.
+
 ### 20260610-050350
 
 - current task: close the PH-OS production exposure gap for legacy Next file APIs by adding a fail-closed compatibility gate.
