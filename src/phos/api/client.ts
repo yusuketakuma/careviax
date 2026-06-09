@@ -56,7 +56,12 @@ export type CreatePhosApiClientOptions = {
 function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
   if (!trimmed) throw new Error('PH-OS API baseUrl is required');
-  const parsed = new URL(trimmed);
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('PH-OS API baseUrl must be an absolute http(s) URL');
+  }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('PH-OS API baseUrl must use http(s)');
   }
@@ -64,7 +69,12 @@ function normalizeBaseUrl(baseUrl: string): string {
   if (parsed.protocol === 'http:' && !localHttpHosts.has(parsed.hostname)) {
     throw new Error('PH-OS API baseUrl must use https outside local development');
   }
-  if (parsed.pathname === '/api' || parsed.pathname.startsWith('/api/')) {
+  const isApiGatewayCustomDomainPath =
+    parsed.pathname === '/api/phos' || parsed.pathname.startsWith('/api/phos/');
+  if (
+    (parsed.pathname === '/api' || parsed.pathname.startsWith('/api/')) &&
+    !isApiGatewayCustomDomainPath
+  ) {
     throw new Error('PH-OS business API must not use Next.js /api routes');
   }
   return trimmed;

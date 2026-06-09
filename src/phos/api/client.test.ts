@@ -549,8 +549,41 @@ describe('createPhosApiClient', () => {
     );
   });
 
+  it('allows API Gateway custom-domain /api/phos base paths', async () => {
+    const searchResponse = {
+      items: [{ card: readyCard, next_action: nextAction }],
+      next_cursor: 'cursor_2',
+      server_time: '2026-06-09T00:00:00.000Z',
+    } satisfies CardSearchResponse;
+    const fetchImpl = vi.fn(async () => jsonResponse(searchResponse));
+    const client = createPhosApiClient({
+      baseUrl: 'https://gateway.example.com/api/phos/',
+      fetchImpl,
+      getAccessToken: async () => 'access-token',
+    });
+
+    await expect(client.getCards({ limit: 10 })).resolves.toEqual(searchResponse);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://gateway.example.com/api/phos/cards?limit=10',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Accept: 'application/json',
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+    );
+  });
+
   it('rejects Next.js /api base URLs for PH-OS business operations', () => {
+    expect(() => createPhosApiClient({ baseUrl: '/api/phos' })).toThrow(
+      'PH-OS API baseUrl must be an absolute http(s) URL',
+    );
     expect(() => createPhosApiClient({ baseUrl: 'https://app.example.com/api' })).toThrow(
+      'PH-OS business API must not use Next.js /api routes',
+    );
+    expect(() => createPhosApiClient({ baseUrl: 'https://app.example.com/api/files' })).toThrow(
       'PH-OS business API must not use Next.js /api routes',
     );
   });

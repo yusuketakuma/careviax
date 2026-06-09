@@ -6,6 +6,12 @@ as Next.js Route Handlers under `src/app/api`. Frontend-facing examples may use
 the `/api/phos/*` prefix, but that prefix is an API Gateway/custom-domain base
 path, not a Next.js API subtree.
 
+`PHOS_API_BASE_URL` and `createPhosApiClient` must use an absolute API Gateway
+origin. Root/stage paths such as `https://api.example.com/prod` are canonical.
+An absolute custom-domain mapping such as `https://gateway.example.com/api/phos`
+is also valid. Relative same-origin values like `/api/phos` and non-PH-OS
+Next.js paths such as `/api/files/*` are not valid PH-OS business API bases.
+
 ## Canonical PH-OS API Gateway Surface
 
 - `/cards`

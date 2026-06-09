@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-081956
+
+- current task: allow the documented PH-OS API Gateway custom-domain `/api/phos` base path without reopening legacy Next.js `/api` business route usage.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `src/phos/infra/legacy-next-api-isolation.test.ts`, and `docs/phos-legacy-api-isolation.md`.
+- files changed: `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, `docs/phos-legacy-api-isolation.md`, and `.codex/ralph-state.md`.
+- bugs found: `createPhosApiClient` rejected every absolute URL whose pathname started with `/api/`, which blocked a documented API Gateway/custom-domain mapping such as `https://gateway.example.com/api/phos` even though that prefix is not a Next.js Route Handler subtree. The client also exposed Node's raw `Invalid URL` error for relative same-origin values such as `/api/phos`.
+- security risks found: the client still rejects relative same-origin `/api/phos`, absolute `/api`, and non-PH-OS legacy paths such as `/api/files`. The only `/api/*` allowance is an absolute API Gateway custom-domain base path at `/api/phos` or below it, while the PR-15 static gate continues to forbid PH-OS UI/app same-origin `/api/phos` literals.
+- performance issues found: no hot path or network behavior changed beyond one small base URL pathname check during client construction.
+- validation commands: `pnpm exec prettier --write src/phos/api/client.ts src/phos/api/client.test.ts docs/phos-legacy-api-isolation.md`; focused `pnpm exec vitest run src/phos/api/client.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts src/phos/infra/legacy-next-api-isolation.test.ts --reporter=dot`; focused ESLint for the touched client and isolation gate files; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`; `git diff --check`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier was unchanged. Focused API-client/isolation suite passed with 3 files / 83 tests. Focused ESLint passed. Standalone TypeScript passed. PH-OS Vitest passed with 102 files passed / 1 skipped and 747 tests passed / 1 skipped. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4974 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs target environment inputs and installed deploy-validation tooling. No local code gap remains for the `/api/phos` custom-domain base URL boundary.
+- next action: commit this API-client custom-domain boundary slice, then reassess whether any locally actionable PH-OS backend proof gap remains before stopping on external live-environment blockers.
+
 ### 20260610-081254
 
 - current task: close low-risk PH-OS operator/static-gate follow-ups from read-only audit by exposing the deployed HTTP API base URL and hardening frontend boundary static checks.
