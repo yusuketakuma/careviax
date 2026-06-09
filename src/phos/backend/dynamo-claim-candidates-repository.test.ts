@@ -74,7 +74,7 @@ describe('createDynamoClaimCandidatesRepository', () => {
 
     expect(fakeClient.queryClaimCandidates).toHaveBeenCalledWith({
       table_name: 'phos_core',
-      index_name: 'GSI1',
+      index_name: 'GSI7',
       partition_key: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#MISSING_EVIDENCE',
       limit: 25,
       cursor: undefined,
@@ -89,7 +89,7 @@ describe('createDynamoClaimCandidatesRepository', () => {
 
     expect(fakeClient.queryClaimCandidates).toHaveBeenCalledWith(
       expect.objectContaining({
-        index_name: 'GSI2',
+        index_name: 'GSI8',
         partition_key: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_CARD#card_1',
       }),
     );

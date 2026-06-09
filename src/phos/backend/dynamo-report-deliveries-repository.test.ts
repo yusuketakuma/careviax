@@ -65,7 +65,7 @@ describe('createDynamoReportDeliveriesRepository', () => {
 
     expect(fakeClient.queryReportDeliveries).toHaveBeenCalledWith({
       table_name: 'phos_core',
-      index_name: 'GSI1',
+      index_name: 'GSI6',
       partition_key: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
       limit: 25,
       cursor: undefined,

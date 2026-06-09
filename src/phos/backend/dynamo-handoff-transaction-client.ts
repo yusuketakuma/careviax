@@ -69,8 +69,8 @@ export function buildDynamoHandoffCreateTransactWriteItems(
         Item: {
           ...dynamoKey(input.partition_key, input.handoff_sort_key),
           entity_type: { S: 'HANDOFF' },
-          GSI1PK: { S: input.queue_gsi_pk },
-          GSI1SK: { S: queueSortKey(input) },
+          GSI5PK: { S: input.queue_gsi_pk },
+          GSI5SK: { S: queueSortKey(input) },
           handoff_id: { S: handoff.handoff_id },
           card_id: { S: handoff.card_id },
           status: { S: handoff.status },
@@ -172,7 +172,7 @@ export function buildDynamoHandoffTransitionTransactWriteItems(
           ? '#server_version = :expected_server_version AND #assignee_user_id = :expected_assignee_user_id'
           : '#server_version = :expected_server_version AND attribute_not_exists(#assignee_user_id)',
         UpdateExpression:
-          'SET #server_version = :server_version, #status = :status, #updated_at = :updated_at, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk, handoff = :handoff',
+          'SET #server_version = :server_version, #status = :status, #updated_at = :updated_at, GSI5PK = :gsi5pk, GSI5SK = :gsi5sk, handoff = :handoff',
         ExpressionAttributeNames: {
           '#server_version': 'server_version',
           '#status': 'status',
@@ -187,8 +187,8 @@ export function buildDynamoHandoffTransitionTransactWriteItems(
           ':server_version': { N: String(input.response.server_version) },
           ':status': { S: handoff.status },
           ':updated_at': { S: committed_at },
-          ':gsi1pk': { S: input.queue_gsi_pk },
-          ':gsi1sk': { S: queueSortKey(input) },
+          ':gsi5pk': { S: input.queue_gsi_pk },
+          ':gsi5sk': { S: queueSortKey(input) },
           ':handoff': toDynamoAttributeValue(handoff),
         },
       },

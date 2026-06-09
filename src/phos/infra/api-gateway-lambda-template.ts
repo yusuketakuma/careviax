@@ -1,4 +1,5 @@
 import { PHOS_API_ROUTES, type PhosApiRoute } from './api-gateway-routes';
+import { PHOS_DYNAMODB_TABLE_CONTRACT } from './dynamodb-table-contract';
 
 type CloudFormationReference = { Ref: string };
 type CloudFormationGetAtt = { 'Fn::GetAtt': readonly [string, string] };
@@ -239,7 +240,7 @@ function buildLambdaPolicyStatements(input: {
     statements.push({
       Effect: 'Allow',
       Action: s3Actions,
-      Resource: sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/tenants/*`),
+      Resource: sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/tenants/*/evidence/*`),
     });
   }
 
@@ -274,6 +275,75 @@ function buildLambdaExecutionRole(input: {
             Version: '2012-10-17',
             Statement: buildLambdaPolicyStatements(input),
           },
+        },
+      ],
+    },
+  };
+}
+
+function buildPhosCoreDynamoDbTable(input: {
+  dynamodbTableNameParameter: string;
+}): CloudFormationResource {
+  const attributeNames = new Set<string>([
+    PHOS_DYNAMODB_TABLE_CONTRACT.primary_key.partition_key,
+    PHOS_DYNAMODB_TABLE_CONTRACT.primary_key.sort_key,
+  ]);
+  for (const index of Object.values(PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes)) {
+    attributeNames.add(index.partition_key);
+    if (index.sort_key) attributeNames.add(index.sort_key);
+  }
+
+  return {
+    Type: 'AWS::DynamoDB::Table',
+    Properties: {
+      TableName: ref(input.dynamodbTableNameParameter),
+      BillingMode: PHOS_DYNAMODB_TABLE_CONTRACT.billing_mode,
+      AttributeDefinitions: [...attributeNames].map((AttributeName) => ({
+        AttributeName,
+        AttributeType: 'S',
+      })),
+      KeySchema: [
+        {
+          AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.primary_key.partition_key,
+          KeyType: 'HASH',
+        },
+        {
+          AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.primary_key.sort_key,
+          KeyType: 'RANGE',
+        },
+      ],
+      GlobalSecondaryIndexes: Object.entries(
+        PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes,
+      ).map(([IndexName, index]) => ({
+        IndexName,
+        KeySchema: [
+          {
+            AttributeName: index.partition_key,
+            KeyType: 'HASH',
+          },
+          ...(index.sort_key
+            ? [
+                {
+                  AttributeName: index.sort_key,
+                  KeyType: 'RANGE',
+                },
+              ]
+            : []),
+        ],
+        Projection: {
+          ProjectionType: 'ALL',
+        },
+      })),
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true,
+      },
+      SSESpecification: {
+        SSEEnabled: true,
+      },
+      Tags: [
+        {
+          Key: 'System',
+          Value: 'PH-OS',
         },
       ],
     },
@@ -344,6 +414,7 @@ export function buildPhosApiGatewayLambdaTemplate(
         },
       },
     },
+    PhosCoreDynamoDbTable: buildPhosCoreDynamoDbTable({ dynamodbTableNameParameter }),
   };
 
   for (const binding of bindings) {
@@ -426,7 +497,11 @@ export function buildPhosApiGatewayLambdaTemplate(
       [lambdaArtifactKeyParameter]: parameter('String'),
       [cognitoIssuerParameter]: parameter('String'),
       [cognitoAudienceParameter]: parameter('String'),
-      [dynamodbTableNameParameter]: parameter('String'),
+      [dynamodbTableNameParameter]: parameter('String', {
+        Default: 'phos_core',
+        AllowedPattern: '^phos_core$',
+        Description: 'Fixed PH-OS P0 DynamoDB single-table name.',
+      }),
       [evidenceBucketNameParameter]: parameter('String'),
       [securityEventTableNameParameter]: parameter('String'),
       [auroraDatabaseUrlParameter]: parameter('String', {

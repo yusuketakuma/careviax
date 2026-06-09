@@ -100,8 +100,8 @@ describe('Dynamo report delivery transaction client', () => {
           ':expected_server_version': { N: '1' },
           ':server_version': { N: '2' },
           ':status': { S: ReportDeliveryStatus.ACTION_DONE },
-          ':gsi1pk': { S: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#ACTION_DONE' },
-          ':gsi1sk': {
+          ':gsi6pk': { S: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#ACTION_DONE' },
+          ':gsi6sk': {
             S: 'STALE#00000000#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
           },
         },

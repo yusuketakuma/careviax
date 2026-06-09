@@ -5,6 +5,7 @@ import {
   buildPhosApiGatewayLambdaTemplate,
   buildPhosApiRouteDeploymentBindings,
 } from './api-gateway-lambda-template';
+import { PHOS_DYNAMODB_TABLE_CONTRACT } from './dynamodb-table-contract';
 
 function resourcesByType(type: string) {
   const template = buildPhosApiGatewayLambdaTemplate();
@@ -137,6 +138,57 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template)).not.toContain('postgresql://');
   });
 
+  it('creates the PH-OS core DynamoDB table with the contract primary key and GSIs', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    expect(template.Resources.PhosCoreDynamoDbTable).toMatchObject({
+      Type: 'AWS::DynamoDB::Table',
+      Properties: {
+        TableName: { Ref: 'PhosDynamoDbTableName' },
+        BillingMode: PHOS_DYNAMODB_TABLE_CONTRACT.billing_mode,
+        AttributeDefinitions: expect.arrayContaining([
+          { AttributeName: 'PK', AttributeType: 'S' },
+          { AttributeName: 'SK', AttributeType: 'S' },
+          { AttributeName: 'GSI1PK', AttributeType: 'S' },
+          { AttributeName: 'GSI1SK', AttributeType: 'S' },
+          { AttributeName: 'GSI2PK', AttributeType: 'S' },
+          { AttributeName: 'GSI2SK', AttributeType: 'S' },
+          { AttributeName: 'GSI3PK', AttributeType: 'S' },
+          { AttributeName: 'GSI3SK', AttributeType: 'S' },
+          { AttributeName: 'GSI4PK', AttributeType: 'S' },
+          { AttributeName: 'GSI4SK', AttributeType: 'S' },
+          { AttributeName: 'GSI5PK', AttributeType: 'S' },
+          { AttributeName: 'GSI5SK', AttributeType: 'S' },
+          { AttributeName: 'GSI6PK', AttributeType: 'S' },
+          { AttributeName: 'GSI6SK', AttributeType: 'S' },
+          { AttributeName: 'GSI7PK', AttributeType: 'S' },
+          { AttributeName: 'GSI7SK', AttributeType: 'S' },
+          { AttributeName: 'GSI8PK', AttributeType: 'S' },
+        ]),
+        KeySchema: [
+          { AttributeName: 'PK', KeyType: 'HASH' },
+          { AttributeName: 'SK', KeyType: 'RANGE' },
+        ],
+        GlobalSecondaryIndexes: expect.arrayContaining([
+          expect.objectContaining({ IndexName: 'GSI1' }),
+          expect.objectContaining({ IndexName: 'GSI2' }),
+          expect.objectContaining({ IndexName: 'GSI3' }),
+          expect.objectContaining({ IndexName: 'GSI4' }),
+          expect.objectContaining({ IndexName: 'GSI5' }),
+          expect.objectContaining({ IndexName: 'GSI6' }),
+          expect.objectContaining({ IndexName: 'GSI7' }),
+          expect.objectContaining({ IndexName: 'GSI8' }),
+        ]),
+        PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
+        SSESpecification: { SSEEnabled: true },
+      },
+    });
+    expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({
+      Default: 'phos_core',
+      AllowedPattern: '^phos_core$',
+    });
+  });
+
   it('creates per-route Lambda execution roles with capability-scoped permissions and env', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const roleResources = resourcesByType('AWS::IAM::Role');
@@ -231,10 +283,16 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     );
 
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain('s3:PutObject');
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
+      'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
+    );
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
       's3:GetObject',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain('s3:GetObject');
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
+    );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).not.toContain(
       's3:PutObject',
     );

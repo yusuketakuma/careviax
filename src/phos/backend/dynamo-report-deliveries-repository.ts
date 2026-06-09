@@ -1,7 +1,7 @@
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { ReportDeliveryStatus, type ReportDeliveryView } from '@/phos/contracts/phos_contracts';
 import { assertTenantGsiKey, reportDeliveryStatusGsiPk } from './dynamodb-keys';
-import { phosCoreTableName } from './dynamo-cards-repository';
+import { PHOS_REPORT_DELIVERY_STATUS_GSI, phosCoreTableName } from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import type {
   PhosReportDeliverySearchRepository,
@@ -76,7 +76,7 @@ export function createDynamoReportDeliveriesRepository(
 
       const result = await client.queryReportDeliveries({
         table_name: phosCoreTableName(),
-        index_name: 'GSI1',
+        index_name: PHOS_REPORT_DELIVERY_STATUS_GSI,
         partition_key,
         limit: query.limit,
         cursor: query.cursor,

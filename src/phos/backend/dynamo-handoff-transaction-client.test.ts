@@ -204,8 +204,8 @@ describe('Dynamo handoff transaction client', () => {
           PK: { S: 'TENANT#tenant_abc123' },
           SK: { S: 'HANDOFF#handoff_1' },
           entity_type: { S: 'HANDOFF' },
-          GSI1PK: { S: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist' },
-          GSI1SK: {
+          GSI5PK: { S: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist' },
+          GSI5SK: {
             S: 'STATUS#OPEN#URGENCY#0#CREATED#2026-06-09T00:00:00.000Z#HANDOFF#handoff_1',
           },
           status: { S: HandoffStatus.OPEN },
@@ -268,7 +268,7 @@ describe('Dynamo handoff transaction client', () => {
           ':expected_assignee_user_id': { S: 'user_pharmacist' },
           ':server_version': { N: '2' },
           ':status': { S: HandoffStatus.RESOLVED },
-          ':gsi1sk': {
+          ':gsi5sk': {
             S: 'STATUS#RESOLVED#URGENCY#0#CREATED#2026-06-09T00:00:00.000Z#HANDOFF#handoff_1',
           },
         },

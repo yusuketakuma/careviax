@@ -44,7 +44,7 @@ export function buildDynamoReportDeliveryTransitionTransactWriteItems(
         Key: dynamoKey(input.partition_key, input.delivery_sort_key),
         ConditionExpression: '#server_version = :expected_server_version',
         UpdateExpression:
-          'SET #server_version = :server_version, #status = :status, #updated_at = :updated_at, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk, report_delivery = :report_delivery, reply_received_at = :reply_received_at, reply_summary = :reply_summary, action_required_note = :action_required_note, action_done_at = :action_done_at, action_done_by_user_id = :action_done_by_user_id',
+          'SET #server_version = :server_version, #status = :status, #updated_at = :updated_at, GSI6PK = :gsi6pk, GSI6SK = :gsi6sk, report_delivery = :report_delivery, reply_received_at = :reply_received_at, reply_summary = :reply_summary, action_required_note = :action_required_note, action_done_at = :action_done_at, action_done_by_user_id = :action_done_by_user_id',
         ExpressionAttributeNames: {
           '#server_version': 'server_version',
           '#status': 'status',
@@ -55,8 +55,8 @@ export function buildDynamoReportDeliveryTransitionTransactWriteItems(
           ':server_version': { N: String(input.response.server_version) },
           ':status': { S: delivery.status },
           ':updated_at': { S: committed_at },
-          ':gsi1pk': { S: input.status_gsi_pk },
-          ':gsi1sk': { S: input.status_gsi_sk },
+          ':gsi6pk': { S: input.status_gsi_pk },
+          ':gsi6sk': { S: input.status_gsi_sk },
           ':report_delivery': toDynamoAttributeValue(delivery),
           ':reply_received_at': toDynamoAttributeValue(delivery.reply_received_at ?? null),
           ':reply_summary': toDynamoAttributeValue(delivery.reply_summary ?? null),

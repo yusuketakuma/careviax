@@ -114,7 +114,7 @@ describe('claim-candidates Lambda Dynamo client', () => {
     await expect(
       client.queryClaimCandidates({
         table_name: 'phos_core',
-        index_name: 'GSI1',
+        index_name: 'GSI7',
         partition_key: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#READY',
         limit: 25,
       }),
@@ -123,8 +123,9 @@ describe('claim-candidates Lambda Dynamo client', () => {
     expect(send).toHaveBeenCalledOnce();
     expect(send.mock.calls[0]?.[0].input).toMatchObject({
       TableName: 'phos_core',
-      IndexName: 'GSI1',
+      IndexName: 'GSI7',
       KeyConditionExpression: '#pk = :pk',
+      ExpressionAttributeNames: { '#pk': 'GSI7PK' },
       Limit: 25,
       ExpressionAttributeValues: {
         ':pk': { S: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#READY' },
@@ -139,7 +140,7 @@ describe('claim-candidates Lambda Dynamo client', () => {
     await expect(
       client.queryClaimCandidates({
         table_name: 'phos_core',
-        index_name: 'GSI1',
+        index_name: 'GSI7',
         partition_key: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#READY',
         limit: 25,
         cursor: 'not-base64-json',
@@ -205,12 +206,12 @@ describe('claim-candidates Lambda Dynamo client', () => {
           SK: { S: 'CLAIM_CANDIDATE#claim_1' },
         },
         UpdateExpression:
-          'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi1pk = :status_gsi_pk, #gsi1sk = :status_gsi_sk',
+          'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi7pk = :status_gsi_pk, #gsi7sk = :status_gsi_sk',
         ConditionExpression:
           'server_version = :client_version AND claim_candidate.#status <> :approved AND claim_candidate.#status <> :excluded',
         ExpressionAttributeNames: {
-          '#gsi1pk': 'GSI1PK',
-          '#gsi1sk': 'GSI1SK',
+          '#gsi7pk': 'GSI7PK',
+          '#gsi7sk': 'GSI7SK',
         },
         ExpressionAttributeValues: {
           ':status_gsi_pk': {

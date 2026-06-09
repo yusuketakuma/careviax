@@ -28,7 +28,7 @@ import type {
   DynamoQueryInput,
   DynamoQueryOutput,
 } from './dynamo-cards-repository';
-import { PHOS_BOARD_GSI, phosCoreTableName } from './dynamo-cards-repository';
+import { PHOS_HANDOFF_QUEUE_GSI, phosCoreTableName } from './dynamo-cards-repository';
 import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
@@ -171,7 +171,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
 
       const result = await client.queryHandoffs({
         table_name: phosCoreTableName(),
-        index_name: PHOS_BOARD_GSI,
+        index_name: PHOS_HANDOFF_QUEUE_GSI,
         partition_key,
         key_type: 'GSI',
         sort_key_begins_with: query.status ? `STATUS#${query.status}#` : undefined,

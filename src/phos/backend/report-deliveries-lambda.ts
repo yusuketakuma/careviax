@@ -52,7 +52,7 @@ export function createDynamoReportDeliveriesClient(input: {
           IndexName: query.index_name,
           KeyConditionExpression: '#pk = :pk',
           ExpressionAttributeNames: {
-            '#pk': 'GSI1PK',
+            '#pk': `${query.index_name}PK`,
           },
           ExpressionAttributeValues: {
             ':pk': { S: query.partition_key },

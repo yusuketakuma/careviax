@@ -88,7 +88,7 @@ export function createDynamoClaimCandidatesClient(input: {
           TableName: query.table_name,
           IndexName: query.index_name,
           KeyConditionExpression: '#pk = :pk',
-          ExpressionAttributeNames: { '#pk': query.index_name === 'GSI2' ? 'GSI2PK' : 'GSI1PK' },
+          ExpressionAttributeNames: { '#pk': `${query.index_name}PK` },
           ExpressionAttributeValues: { ':pk': { S: query.partition_key } },
           Limit: query.limit,
           ExclusiveStartKey: decodeDynamoCursor(query.cursor),
@@ -169,13 +169,13 @@ export function createDynamoClaimCandidatesClient(input: {
                   TableName: command.table_name,
                   Key: dynamoKey(command.partition_key, command.sort_key),
                   UpdateExpression:
-                    'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi1pk = :status_gsi_pk, #gsi1sk = :status_gsi_sk',
+                    'SET claim_candidate = :candidate, server_version = :version, updated_at = :updated_at, #gsi7pk = :status_gsi_pk, #gsi7sk = :status_gsi_sk',
                   ConditionExpression:
                     'server_version = :client_version AND claim_candidate.#status <> :approved AND claim_candidate.#status <> :excluded',
                   ExpressionAttributeNames: {
                     '#status': 'status',
-                    '#gsi1pk': 'GSI1PK',
-                    '#gsi1sk': 'GSI1SK',
+                    '#gsi7pk': 'GSI7PK',
+                    '#gsi7sk': 'GSI7SK',
                   },
                   ExpressionAttributeValues: {
                     ':candidate': toDynamoAttributeValue(response.candidate),

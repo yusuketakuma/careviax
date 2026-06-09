@@ -213,7 +213,7 @@ describe('PH-OS handoffs Lambda composition', () => {
       client.queryHandoffs({
         table_name: 'phos_core',
         key_type: 'GSI',
-        index_name: 'GSI1',
+        index_name: 'GSI5',
         partition_key: 'TENANT#tenant_abc123#HANDOFF_STATUS#OPEN',
         limit: 25,
         cursor: 'not-base64-json',

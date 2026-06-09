@@ -158,7 +158,7 @@ describe('report-deliveries lambda composition', () => {
     await expect(
       client.queryReportDeliveries({
         table_name: 'phos_core',
-        index_name: 'GSI1',
+        index_name: 'GSI6',
         partition_key: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
         limit: 10,
       }),
@@ -171,9 +171,9 @@ describe('report-deliveries lambda composition', () => {
       expect.objectContaining({
         input: expect.objectContaining({
           TableName: 'phos_core',
-          IndexName: 'GSI1',
+          IndexName: 'GSI6',
           KeyConditionExpression: '#pk = :pk',
-          ExpressionAttributeNames: { '#pk': 'GSI1PK' },
+          ExpressionAttributeNames: { '#pk': 'GSI6PK' },
           ExpressionAttributeValues: {
             ':pk': { S: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY' },
           },
@@ -191,7 +191,7 @@ describe('report-deliveries lambda composition', () => {
     await expect(
       client.queryReportDeliveries({
         table_name: 'phos_core',
-        index_name: 'GSI1',
+        index_name: 'GSI6',
         partition_key: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
         limit: 10,
         cursor: 'not-base64-json',

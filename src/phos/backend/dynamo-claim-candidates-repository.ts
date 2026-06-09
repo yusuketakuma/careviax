@@ -14,7 +14,11 @@ import {
   claimCandidateStatusGsiPk,
   tenantPk,
 } from './dynamodb-keys';
-import { phosCoreTableName } from './dynamo-cards-repository';
+import {
+  PHOS_CLAIM_CANDIDATE_CARD_GSI,
+  PHOS_CLAIM_CANDIDATE_STATUS_GSI,
+  phosCoreTableName,
+} from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import type {
   ClaimCandidateSearchQuery,
@@ -169,7 +173,7 @@ export function createDynamoClaimCandidatesRepository(
 
       const result = await client.queryClaimCandidates({
         table_name: phosCoreTableName(),
-        index_name: query.card_id ? 'GSI2' : 'GSI1',
+        index_name: query.card_id ? PHOS_CLAIM_CANDIDATE_CARD_GSI : PHOS_CLAIM_CANDIDATE_STATUS_GSI,
         partition_key,
         limit: query.limit,
         cursor: query.cursor,

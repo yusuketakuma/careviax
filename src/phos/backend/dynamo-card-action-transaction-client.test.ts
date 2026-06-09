@@ -272,8 +272,8 @@ describe('Dynamo card action transaction client', () => {
           report_id: { S: 'report_1' },
           delivery_id: { S: 'delivery_1' },
           status: { S: ReportDeliveryStatus.WAITING_REPLY },
-          GSI1PK: { S: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY' },
-          GSI1SK: {
+          GSI6PK: { S: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY' },
+          GSI6SK: {
             S: 'STALE#00000090#SENT#2026-06-09T00:00:00.000Z#DELIVERY#delivery_1',
           },
         },

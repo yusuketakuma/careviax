@@ -13,6 +13,7 @@ import {
   bindPhosApiRouteForDeployment,
   buildPhosApiGatewayLambdaTemplate,
 } from './api-gateway-lambda-template';
+import { PHOS_DYNAMODB_TABLE_CONTRACT } from './dynamodb-table-contract';
 
 const repoRoot = process.cwd();
 const canonicalRoot = join(repoRoot, 'src/phos');
@@ -156,6 +157,36 @@ describe('PH-OS Final No-Go gate', () => {
     expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
       Type: 'String',
       NoEcho: true,
+    });
+    expect(template.Resources.PhosCoreDynamoDbTable).toMatchObject({
+      Type: 'AWS::DynamoDB::Table',
+      Properties: {
+        TableName: { Ref: PHOS_DYNAMODB_TABLE_CONTRACT.table_name_parameter },
+        KeySchema: [
+          { AttributeName: 'PK', KeyType: 'HASH' },
+          { AttributeName: 'SK', KeyType: 'RANGE' },
+        ],
+        GlobalSecondaryIndexes: expect.arrayContaining([
+          expect.objectContaining({ IndexName: 'GSI1' }),
+          expect.objectContaining({
+            IndexName: 'GSI2',
+            KeySchema: [
+              { AttributeName: 'GSI2PK', KeyType: 'HASH' },
+              { AttributeName: 'GSI2SK', KeyType: 'RANGE' },
+            ],
+          }),
+          expect.objectContaining({ IndexName: 'GSI3' }),
+          expect.objectContaining({ IndexName: 'GSI4' }),
+          expect.objectContaining({ IndexName: 'GSI5' }),
+          expect.objectContaining({ IndexName: 'GSI6' }),
+          expect.objectContaining({ IndexName: 'GSI7' }),
+          expect.objectContaining({ IndexName: 'GSI8' }),
+        ]),
+      },
+    });
+    expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({
+      Default: 'phos_core',
+      AllowedPattern: '^phos_core$',
     });
     expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
     expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(

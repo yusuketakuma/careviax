@@ -21,6 +21,10 @@ import type { TenantContext } from './tenant-context';
 
 export const PHOS_CORE_TABLE = 'phos_core';
 export const PHOS_BOARD_GSI = 'GSI1';
+export const PHOS_HANDOFF_QUEUE_GSI = 'GSI5';
+export const PHOS_REPORT_DELIVERY_STATUS_GSI = 'GSI6';
+export const PHOS_CLAIM_CANDIDATE_STATUS_GSI = 'GSI7';
+export const PHOS_CLAIM_CANDIDATE_CARD_GSI = 'GSI8';
 
 export function phosCoreTableName(): string {
   const tableName = process.env.PHOS_DYNAMODB_TABLE_NAME?.trim();

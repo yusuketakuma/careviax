@@ -17,7 +17,7 @@ import {
   type DynamoHandoffStoreClient,
   type DynamoHandoffStoreMapper,
 } from './dynamo-handoff-lifecycle-store';
-import { PHOS_BOARD_GSI, PHOS_CORE_TABLE } from './dynamo-cards-repository';
+import { PHOS_CORE_TABLE, PHOS_HANDOFF_QUEUE_GSI } from './dynamo-cards-repository';
 import type { TenantContext } from './tenant-context';
 
 type HandoffItem = { id: string; status: HandoffStatus; version: number };
@@ -183,7 +183,7 @@ describe('createDynamoHandoffLifecycleStore', () => {
 
     expect(fakeClient.queryHandoffs).toHaveBeenCalledWith({
       table_name: PHOS_CORE_TABLE,
-      index_name: PHOS_BOARD_GSI,
+      index_name: PHOS_HANDOFF_QUEUE_GSI,
       partition_key: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist',
       key_type: 'GSI',
       sort_key_begins_with: 'STATUS#OPEN#',

@@ -117,8 +117,8 @@ export function createDynamoHandoffStoreClient(input: {
 
   return {
     async queryHandoffs(query) {
-      const partitionName = query.key_type === 'GSI' ? 'GSI1PK' : 'PK';
-      const sortName = query.key_type === 'GSI' ? 'GSI1SK' : 'SK';
+      const partitionName = query.key_type === 'GSI' ? `${query.index_name}PK` : 'PK';
+      const sortName = query.key_type === 'GSI' ? `${query.index_name}SK` : 'SK';
       const command = new QueryCommand({
         TableName: query.table_name,
         IndexName: query.index_name,
