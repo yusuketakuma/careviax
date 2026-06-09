@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-134710
+
+- current task: wire UI-PR8 Capacity Dashboard into the PH-OS `/capacity` route with manager-grade fetch gating
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(phos)/board/page.tsx`, `src/app/(phos)/layout.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/capacity/CapacityDashboard.tsx`, `src/phos/ui/capacity/CapacityDashboard.test.tsx`, `src/phos/api/client.ts`, and PH-OS app route search results.
+- files changed: `src/app/(phos)/capacity/page.tsx`, `src/phos/ui/capacity/CapacityDashboardClient.tsx`, `src/phos/ui/capacity/CapacityDashboardClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: the UI-PR8 CapacityDashboard component existed after the previous slice, but the PH-OS route tree still only exposed `/board`. There was no `/capacity` page and no PH-OS API-client wiring for manager/admin users to load capacity data outside the Board bar.
+- security risks found: no backend auth, tenant boundary, route handler, database, evidence upload, report send, persistence, or logging behavior changed. The client uses the existing PH-OS API Gateway client with the session access token and only calls `getCapacity` when the session role or Cognito group is `MANAGER` or `ADMIN`; non-manager sessions render the no-permission dashboard state and do not fetch.
+- performance issues found: the route performs one client-side capacity fetch for manager/admin sessions and no fetch for other roles. It adds no polling, scan, broad recomputation, Server Action, Next Route Handler, or direct database access.
+- validation commands: Prettier for capacity page/client/gate files; focused `pnpm exec vitest run src/phos/ui/capacity/CapacityDashboard.test.tsx src/phos/ui/capacity/CapacityDashboardClient.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for capacity page/client/gate files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; native `disabled` grep; `pnpm build`
+- validation results: focused suite passed with 3 files / 31 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; full PH-OS Vitest passed with 89 files / 491 tests; full PH-OS ESLint passed with zero warnings; native `disabled` grep returned no hits; Next production build passed and listed `/capacity` with 234 generated static pages.
+- remaining work: UI-PR8 is now route-visible but could still be expanded with richer historical trends once the API supplies trend series. UIUX v1.1 still needs Report Composer/send confirmation work and UI-PR9 accessibility/E2E hardening.
+- next action: commit this `/capacity` route wiring slice, then continue with Report Composer/send confirmation.
+
 ### 20260609-134246
 
 - current task: implement UI-PR8A Capacity Dashboard Recharts/table fallback component for PH-OS UIUX v1.1

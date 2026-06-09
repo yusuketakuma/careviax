@@ -550,5 +550,14 @@ describe('PH-OS Final No-Go gate', () => {
       /Recharts charts, and table fallback/,
       /role gate/,
     ]);
+    expectEvidence('src/phos/ui/capacity/CapacityDashboardClient.tsx', [
+      /getCapacity/,
+      /sessionHasCapacityRole/,
+      /CapacityScope\.PHARMACY/,
+    ]);
+    expectEvidence('src/app/(phos)/capacity/page.tsx', [
+      /CapacityDashboardClient/,
+      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+    ]);
   });
 });
