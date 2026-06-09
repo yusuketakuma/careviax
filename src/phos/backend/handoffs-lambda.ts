@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -21,6 +20,7 @@ import type {
   DynamoHandoffStoreMapper,
 } from './dynamo-handoff-lifecycle-store';
 import { createDynamoHandoffTransactionClient } from './dynamo-handoff-transaction-client';
+import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
 import { dynamoKey, fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createHandoffLifecycleRepository } from './handoff-lifecycle-repository';
 import type { HandoffCreateCardContext } from './handoff-lifecycle-repository';
@@ -49,19 +49,6 @@ type HandoffsLambdaDependencies = PhosLambdaRuntimeDependencies & {
   mapper?: DynamoHandoffStoreMapper<DynamoItem, DynamoItem>;
   createHandoffId?: () => string;
 };
-
-function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
-  if (!key) return undefined;
-  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): Record<string, AttributeValue> | undefined {
-  if (!cursor) return undefined;
-  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
-    string,
-    AttributeValue
-  >;
-}
 
 function objectAttr(item: DynamoItem, key: string): Record<string, unknown> {
   const value = item[key];
@@ -149,12 +136,12 @@ export function createDynamoHandoffStoreClient(input: {
             : {}),
         },
         Limit: query.limit,
-        ExclusiveStartKey: decodeCursor(query.cursor),
+        ExclusiveStartKey: decodeDynamoCursor(query.cursor),
       });
       const result = await input.client.send(command);
       return {
         items: result.Items ?? [],
-        next_cursor: encodeCursor(result.LastEvaluatedKey),
+        next_cursor: encodeDynamoCursor(result.LastEvaluatedKey),
       };
     },
 

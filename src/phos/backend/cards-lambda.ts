@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -36,6 +35,7 @@ import {
   type DynamoGetInput,
   type DynamoQueryOutput,
 } from './dynamo-cards-repository';
+import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
 import { dynamoKey, fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import {
   createLambdaObservabilitySink,
@@ -53,19 +53,6 @@ type CardsLambdaDependencies = PhosLambdaRuntimeDependencies & {
   cards_mapper?: DynamoCardsMapper<DynamoItem, DynamoItem>;
   action_mapper?: DynamoCardActionStoreMapper<DynamoItem, DynamoItem>;
 };
-
-function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
-  if (!key) return undefined;
-  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): Record<string, AttributeValue> | undefined {
-  if (!cursor) return undefined;
-  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
-    string,
-    AttributeValue
-  >;
-}
 
 function attr(item: DynamoItem, key: string): unknown {
   const value = item[key];
@@ -119,12 +106,12 @@ export function createDynamoCardsClient(input: {
             ':pk': { S: query.partition_key },
           },
           Limit: query.limit,
-          ExclusiveStartKey: decodeCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
         }),
       );
       return {
         items: (result.Items ?? []) as DynamoItem[],
-        next_cursor: encodeCursor(result.LastEvaluatedKey),
+        next_cursor: encodeDynamoCursor(result.LastEvaluatedKey),
       };
     },
     async get(query: DynamoGetInput) {

@@ -50,26 +50,62 @@ describe('report-deliveries lambda composition', () => {
     );
   });
 
+  it('returns validation error for malformed Dynamo cursors in the composed report-delivery search handler', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const handler = createReportDeliverySearchLambdaHandler({ dynamo_client: { send } });
+
+    const response = await handler({
+      routeKey: 'GET /report-deliveries',
+      queryStringParameters: {
+        status: ReportDeliveryStatus.WAITING_REPLY,
+        cursor: 'not-base64-json',
+      },
+      requestContext: {
+        requestId: 'req_1',
+        authorizer: {
+          jwt: {
+            claims: {
+              tenant_id: 'tenant_abc123',
+              sub: 'user_1',
+              role: UserRole.PHARMACY_CLERK,
+              token_use: 'access',
+              scope: 'phos/report-deliveries.read',
+            },
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('exports composed mutation handlers for registering report replies', async () => {
     const repository = {
       searchReportDeliveries: vi.fn(),
-      registerReportReply: vi.fn(async (): Promise<ReportDeliveryMutationResponse> => ({
-        delivery: {
-          delivery_id: 'delivery_1',
-          card_id: 'card_1',
-          report_id: 'report_1',
-          patient_name: '患者 山田太郎',
-          target_label: '山田医師',
-          sent_at: '2026-06-09T00:00:00.000Z',
-          stale_minutes: 0,
-          status: ReportDeliveryStatus.ACTION_DONE,
-          delivery_method: 'FAX',
+      registerReportReply: vi.fn(
+        async (): Promise<ReportDeliveryMutationResponse> => ({
+          delivery: {
+            delivery_id: 'delivery_1',
+            card_id: 'card_1',
+            report_id: 'report_1',
+            patient_name: '患者 山田太郎',
+            target_label: '山田医師',
+            sent_at: '2026-06-09T00:00:00.000Z',
+            stale_minutes: 0,
+            status: ReportDeliveryStatus.ACTION_DONE,
+            delivery_method: 'FAX',
+            server_version: 2,
+            source_refs: [],
+          },
+          side_effects: [{ type: 'REPORT_ACTION_DONE', delivery_id: 'delivery_1' }],
           server_version: 2,
-          source_refs: [],
-        },
-        side_effects: [{ type: 'REPORT_ACTION_DONE', delivery_id: 'delivery_1' }],
-        server_version: 2,
-      })),
+        }),
+      ),
       markReportActionDone: vi.fn(),
     };
     const handler = createRegisterReportReplyLambdaHandler({ repository });
@@ -146,5 +182,26 @@ describe('report-deliveries lambda composition', () => {
         }),
       }),
     );
+  });
+
+  it('rejects malformed Dynamo cursors before querying report deliveries', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const client = createDynamoReportDeliveriesClient({ client: { send } });
+
+    await expect(
+      client.queryReportDeliveries({
+        table_name: 'phos_core',
+        index_name: 'GSI1',
+        partition_key: 'TENANT#tenant_abc123#REPORT_DELIVERY_STATUS#WAITING_REPLY',
+        limit: 10,
+        cursor: 'not-base64-json',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

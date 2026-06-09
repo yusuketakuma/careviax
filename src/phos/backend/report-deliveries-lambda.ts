@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -18,6 +17,7 @@ import {
   type DynamoReportDeliveryLifecycleMapper,
 } from './dynamo-report-delivery-lifecycle-store';
 import { createDynamoReportDeliveryTransactionClient } from './dynamo-report-delivery-transaction-client';
+import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createReportDeliveryLifecycleRepository } from './report-delivery-lifecycle-repository';
 import {
@@ -41,19 +41,6 @@ type ReportDeliveriesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   lifecycle_client?: DynamoReportDeliveryLifecycleClient<DynamoItem, DynamoItem>;
 };
 
-function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
-  if (!key) return undefined;
-  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): Record<string, AttributeValue> | undefined {
-  if (!cursor) return undefined;
-  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
-    string,
-    AttributeValue
-  >;
-}
-
 export function createDynamoReportDeliveriesClient(input: {
   client: Pick<AwsDynamoDBClient, 'send'>;
 }): DynamoReportDeliveriesClient {
@@ -71,13 +58,13 @@ export function createDynamoReportDeliveriesClient(input: {
             ':pk': { S: query.partition_key },
           },
           Limit: query.limit,
-          ExclusiveStartKey: decodeCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
           ScanIndexForward: false,
         }),
       );
       return {
         items: (result.Items ?? []) as DynamoItem[],
-        next_cursor: encodeCursor(result.LastEvaluatedKey),
+        next_cursor: encodeDynamoCursor(result.LastEvaluatedKey),
       };
     },
   };

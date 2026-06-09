@@ -5,9 +5,16 @@ import {
   type AttributeValue,
 } from '@aws-sdk/client-dynamodb';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClaimCandidateView } from '@/phos/contracts/phos_contracts';
+import {
+  ClaimCandidateStatus,
+  UserRole,
+  type ClaimCandidateView,
+} from '@/phos/contracts/phos_contracts';
 import { toDynamoAttributeValue } from './dynamodb-attribute-values';
-import { createDynamoClaimCandidatesClient } from './claim-candidates-lambda';
+import {
+  createClaimCandidateSearchLambdaHandler,
+  createDynamoClaimCandidatesClient,
+} from './claim-candidates-lambda';
 
 function candidate(overrides: Partial<ClaimCandidateView> = {}): ClaimCandidateView {
   return {
@@ -39,6 +46,40 @@ function item(): Record<string, AttributeValue> {
 }
 
 describe('claim-candidates Lambda Dynamo client', () => {
+  it('returns validation error for malformed Dynamo cursors in the composed claim-candidate search handler', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const handler = createClaimCandidateSearchLambdaHandler({ dynamo_client: { send } });
+
+    const response = await handler({
+      routeKey: 'GET /claim-candidates',
+      queryStringParameters: {
+        status: ClaimCandidateStatus.READY,
+        cursor: 'not-base64-json',
+      },
+      requestContext: {
+        requestId: 'req_1',
+        authorizer: {
+          jwt: {
+            claims: {
+              tenant_id: 'tenant_abc123',
+              sub: 'user_1',
+              role: UserRole.PHARMACIST,
+              token_use: 'access',
+              scope: 'phos/claim-candidates.read',
+            },
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('gets claim candidate idempotency records under the tenant partition', async () => {
     const send = vi.fn(async (command: GetItemCommand) => {
       expect(command).toBeInstanceOf(GetItemCommand);
@@ -89,6 +130,27 @@ describe('claim-candidates Lambda Dynamo client', () => {
         ':pk': { S: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#READY' },
       },
     });
+  });
+
+  it('rejects malformed Dynamo cursors before querying claim candidates', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const client = createDynamoClaimCandidatesClient({ client: { send } });
+
+    await expect(
+      client.queryClaimCandidates({
+        table_name: 'phos_core',
+        index_name: 'GSI1',
+        partition_key: 'TENANT#tenant_abc123#CLAIM_CANDIDATE_STATUS#READY',
+        limit: 25,
+        cursor: 'not-base64-json',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('updates candidate, idempotency, and card unresolved count in one transaction', async () => {

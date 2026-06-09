@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-172350
+
+- current task: convert malformed Dynamo pagination cursors from internal errors to deterministic validation errors
+- files inspected: `git status --short`, `.codex/ralph-state.md`, API contract subagent findings, `src/phos/backend/cards-lambda.ts`, `src/phos/backend/cards-lambda.test.ts`, `src/phos/backend/handoffs-lambda.ts`, `src/phos/backend/handoffs-lambda.test.ts`, `src/phos/backend/report-deliveries-lambda.ts`, `src/phos/backend/report-deliveries-lambda.test.ts`, `src/phos/backend/claim-candidates-lambda.ts`, and `src/phos/backend/claim-candidates-lambda.test.ts`
+- files changed: `src/phos/backend/dynamodb-cursor.ts`, `src/phos/backend/cards-lambda.ts`, `src/phos/backend/cards-lambda.test.ts`, `src/phos/backend/handoffs-lambda.ts`, `src/phos/backend/handoffs-lambda.test.ts`, `src/phos/backend/report-deliveries-lambda.ts`, `src/phos/backend/report-deliveries-lambda.test.ts`, `src/phos/backend/claim-candidates-lambda.ts`, `src/phos/backend/claim-candidates-lambda.test.ts`, `.codex/ralph-state.md`
+- bugs found: cards, handoffs, report-deliveries, and claim-candidates Dynamo clients decoded opaque cursors with unguarded base64url JSON parsing. Malformed external cursor input could throw a generic exception before DynamoDB access and surface as an internal error instead of a deterministic API validation response.
+- security risks found: no tenant key construction, auth, authorization, route manifest, repository partition policy, S3, Aurora, frontend, or mutation semantics changed. Malformed user-controlled cursor input is now rejected before AWS SDK calls with canonical `VALIDATION_ERROR` details and does not reach DynamoDB.
+- performance issues found: no new data access or runtime loop was introduced. Shared cursor decoding removes duplicate base64/JSON parsing code and fails before network I/O for malformed cursor values.
+- validation commands: Prettier for touched Dynamo cursor/Lambda files; focused `pnpm exec vitest run src/phos/backend/cards-lambda.test.ts src/phos/backend/handoffs-lambda.test.ts src/phos/backend/report-deliveries-lambda.test.ts src/phos/backend/claim-candidates-lambda.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; targeted ESLint for touched files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed; focused Lambda/client suite passed with 4 files / 21 tests; TypeScript passed; targeted ESLint passed with zero warnings; whitespace diff check passed; full PH-OS Vitest passed with 94 files / 576 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. Remaining backend audit targets include card search filter/sort validation policy, Aurora fee-rule cursor/RLS application evidence, live AWS/API Gateway/Cognito/X-Ray proof, and deeper repository lifecycle/idempotency edge cases.
+- next action: commit this Dynamo cursor slice, then continue with card search filter/sort boundary validation or Aurora/RLS deployment-evidence hardening depending on highest live risk.
+
 ### 20260609-171820
 
 - current task: harden PH-OS backend list query validation and VisitMode evidence upload completion semantics

@@ -8,6 +8,7 @@ import type {
 import type { PhosHandoffsRepository } from './handoffs-repository';
 import {
   createCreateHandoffLambdaHandler,
+  createDynamoHandoffStoreClient,
   createHandoffSearchLambdaHandler,
   createOpenHandoffLambdaHandler,
 } from './handoffs-lambda';
@@ -123,6 +124,22 @@ describe('PH-OS handoffs Lambda composition', () => {
     );
   });
 
+  it('returns validation error for malformed Dynamo cursors in the composed handoff search handler', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const handler = createHandoffSearchLambdaHandler({ dynamo_client: { send } });
+
+    const response = await handler(
+      event({ queryStringParameters: { status: HandoffStatus.OPEN, cursor: 'not-base64-json' } }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('wires POST /handoffs through the composed create handler', async () => {
     const repo = repository();
     const handler = createCreateHandoffLambdaHandler({ repository: repo });
@@ -186,5 +203,27 @@ describe('PH-OS handoffs Lambda composition', () => {
       'handoff_1',
       { idempotency_key: 'idem_open', client_version: 1 },
     );
+  });
+
+  it('rejects malformed Dynamo cursors before querying handoffs', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const client = createDynamoHandoffStoreClient({ client: { send } });
+
+    await expect(
+      client.queryHandoffs({
+        table_name: 'phos_core',
+        key_type: 'GSI',
+        index_name: 'GSI1',
+        partition_key: 'TENANT#tenant_abc123#HANDOFF_STATUS#OPEN',
+        limit: 25,
+        cursor: 'not-base64-json',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

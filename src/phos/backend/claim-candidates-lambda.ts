@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -23,6 +22,7 @@ import {
   type DynamoClaimCandidateQueryOutput,
   type DynamoClaimCandidatesClient,
 } from './dynamo-claim-candidates-repository';
+import { decodeDynamoCursor, encodeDynamoCursor } from './dynamodb-cursor';
 import {
   dynamoKey,
   fromDynamoAttributeValue,
@@ -41,19 +41,6 @@ type ClaimCandidatesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   store_client?: DynamoClaimCandidatesClient;
 };
-
-function encodeCursor(key: Record<string, AttributeValue> | undefined): string | undefined {
-  if (!key) return undefined;
-  return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): Record<string, AttributeValue> | undefined {
-  if (!cursor) return undefined;
-  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
-    string,
-    AttributeValue
-  >;
-}
 
 function objectAttr(item: DynamoItem, key: string): Record<string, unknown> {
   const value = item[key];
@@ -102,13 +89,13 @@ export function createDynamoClaimCandidatesClient(input: {
           ExpressionAttributeNames: { '#pk': query.index_name === 'GSI2' ? 'GSI2PK' : 'GSI1PK' },
           ExpressionAttributeValues: { ':pk': { S: query.partition_key } },
           Limit: query.limit,
-          ExclusiveStartKey: decodeCursor(query.cursor),
+          ExclusiveStartKey: decodeDynamoCursor(query.cursor),
           ScanIndexForward: true,
         }),
       );
       return {
         items: (result.Items ?? []) as DynamoItem[],
-        next_cursor: encodeCursor(result.LastEvaluatedKey),
+        next_cursor: encodeDynamoCursor(result.LastEvaluatedKey),
       };
     },
     async excludeClaimCandidate(command): Promise<ClaimCandidateMutationResponse> {

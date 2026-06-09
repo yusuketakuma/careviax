@@ -22,6 +22,7 @@ import type {
 import {
   createCardDetailLambdaHandler,
   createCardSearchLambdaHandler,
+  createDynamoCardsClient,
   createExecuteCardActionLambdaHandler,
 } from './cards-lambda';
 import type { PhosHttpEvent } from './lambda-handler';
@@ -128,6 +129,20 @@ describe('PH-OS cards Lambda composition', () => {
     );
   });
 
+  it('returns validation error for malformed Dynamo cursors in the composed card search handler', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const handler = createCardSearchLambdaHandler({ dynamo_client: { send } });
+
+    const response = await handler(event({ queryStringParameters: { cursor: 'not-base64-json' } }));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('wires GET /cards/{card_id} through a composed Lambda export', async () => {
     const repo = repository();
     const handler = createCardDetailLambdaHandler({ repository: repo });
@@ -176,6 +191,27 @@ describe('PH-OS cards Lambda composition', () => {
         action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
       }),
     );
+  });
+
+  it('rejects malformed Dynamo cursors before querying cards', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const client = createDynamoCardsClient({ client: { send } });
+
+    await expect(
+      client.query({
+        table_name: 'phos_core',
+        index_name: 'GSI1',
+        partition_key: 'TENANT#tenant_abc123#BOARD',
+        limit: 25,
+        cursor: 'not-base64-json',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('fails claim review with ACTION_GUARD_FAILED when the Dynamo aggregate is missing', async () => {
