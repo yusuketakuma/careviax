@@ -189,6 +189,29 @@ describe('validate-phos-deploy-template', () => {
     });
   });
 
+  it('does not execute artifact modules while checking handler exports', () => {
+    const artifactRoot = createLambdaArtifactRoot();
+    const markerPath = artifactPath('artifact-side-effect', 'executed.txt');
+    mkdirSync(dirname(markerPath), { recursive: true });
+    const handler = collectPhosCloudFormationLambdaHandlers().find(
+      (entry) => entry.logical_id === 'PhosCognitoPreTokenGenerationFunction',
+    );
+    if (!handler) throw new Error('Cognito trigger handler fixture is required');
+    writeFileSync(
+      join(artifactRoot, handler.artifact_file),
+      [
+        `require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'executed');`,
+        `exports.${handler.handler_export} = async () => ({});`,
+      ].join('\n'),
+    );
+
+    expect(evaluateLambdaArtifactContract({ artifact_root: artifactRoot })).toMatchObject({
+      name: 'lambda_artifact_contract',
+      status: 'passed',
+    });
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
   it('builds a reproducible local Lambda artifact and validates its CloudFormation handlers', () => {
     const artifactRoot = artifactPath('lambda-build', 'out');
 

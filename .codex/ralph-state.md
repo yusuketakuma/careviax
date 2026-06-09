@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-084140
+
+- current task: harden PH-OS Lambda artifact contract validation so deploy-template proof does not execute generated artifact JavaScript while checking CloudFormation handler exports.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/scripts/validate-phos-deploy-template.ts`, `tools/scripts/validate-phos-deploy-template.test.ts`, current `artifacts/phos-lambda-unpacked/src/phos/backend/cards-lambda.js`, generated Cognito trigger artifact output from the focused test build, and prior `security-auditor the 8th` low-risk finding.
+- files changed: `tools/scripts/validate-phos-deploy-template.ts`, `tools/scripts/validate-phos-deploy-template.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: `evaluateLambdaArtifactContract` used `createRequire()` to load each generated Lambda artifact file in order to check handler exports, which executed top-level artifact code during a deploy validation step.
+- security risks found: artifact validation now reads generated JavaScript as text and checks CommonJS/esbuild export declarations without executing artifact modules. A regression test writes a top-level filesystem side effect into an artifact fixture and proves the marker file is not created during validation.
+- performance issues found: no runtime request path changed. Deploy validation now avoids module evaluation and only reads each bounded Lambda artifact file once.
+- validation commands: `pnpm exec prettier --write tools/scripts/validate-phos-deploy-template.ts tools/scripts/validate-phos-deploy-template.test.ts`; `pnpm exec vitest run tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; focused ESLint for the touched deploy-template script/test; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:deploy-template:validate:artifact`; `pnpm phos:backend-live:readiness:report`; `pnpm audit --audit-level moderate`; `git diff --check`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed. Focused deploy-template suite passed with 1 file / 13 tests. Focused ESLint passed. Standalone TypeScript passed. Strict artifact-only deploy validation rebuilt `artifacts/phos-lambda-unpacked` and passed with all CloudFormation Lambda handler exports declared. Non-strict backend live-readiness report passed with local checks passed and live AWS/JWT/API inputs still missing. Dependency audit reported no known vulnerabilities. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4980 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs target environment inputs and installed service validators for full strict CloudFormation/cfn-lint validation. The remaining lower-priority log-minimization finding needs reconciliation with the current PH-OS structured-log spec before changing emitted identifiers.
+- next action: commit this artifact validation hardening slice, then continue with the next locally actionable PH-OS backend proof/security item or stop only on live-environment blockers.
+
 ### 20260610-083455
 
 - current task: harden PH-OS live-readiness/operator proof inputs after read-only spec/security review found access-token and artifact-path false-positive risks.

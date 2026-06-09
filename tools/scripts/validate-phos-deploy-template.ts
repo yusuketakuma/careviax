@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, normalize, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -36,7 +35,6 @@ export type PhosDeployTemplateValidationReport = {
 const DEFAULT_TEMPLATE_PATH = 'artifacts/phos-api-gateway-lambda-template.json';
 export const DEFAULT_LAMBDA_ARTIFACT_ROOT = 'artifacts/phos-lambda-unpacked';
 const ARTIFACT_ROOT_ENV = 'PHOS_LAMBDA_ARTIFACT_ROOT';
-const requireArtifact = createRequire(import.meta.url);
 
 export type PhosLambdaArtifactHandler = {
   logical_id: string;
@@ -171,10 +169,36 @@ export function collectPhosCloudFormationLambdaHandlers(): PhosLambdaArtifactHan
     .sort((a, b) => a.handler.localeCompare(b.handler));
 }
 
-function requireHandlerExport(artifactFile: string, exportName: string) {
-  delete requireArtifact.cache[requireArtifact.resolve(artifactFile)];
-  const moduleExports = requireArtifact(artifactFile) as Record<string, unknown>;
-  return typeof moduleExports[exportName] === 'function';
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function declaresHandlerExport(artifactSource: string, exportName: string) {
+  const escapedExportName = escapeRegExp(exportName);
+  const stringProperty = `["']${escapedExportName}["']`;
+  const arrowFunctionExpression = String.raw`(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>`;
+  const functionExpression = String.raw`(?:async\s+)?function\b`;
+  const exportAssignmentValue = `(?:${functionExpression}|${arrowFunctionExpression})`;
+  const commonJsPatterns = [
+    new RegExp(String.raw`\bexports\s*\.\s*${escapedExportName}\s*=\s*${exportAssignmentValue}`),
+    new RegExp(String.raw`\bexports\s*\[\s*${stringProperty}\s*\]\s*=\s*${exportAssignmentValue}`),
+    new RegExp(
+      String.raw`\bmodule\s*\.\s*exports\s*\.\s*${escapedExportName}\s*=\s*${exportAssignmentValue}`,
+    ),
+    new RegExp(
+      String.raw`\bmodule\s*\.\s*exports\s*\[\s*${stringProperty}\s*\]\s*=\s*${exportAssignmentValue}`,
+    ),
+    new RegExp(
+      String.raw`\bmodule\s*\.\s*exports\s*=\s*\{[\s\S]*?\b${escapedExportName}\b\s*(?:,|:|\})`,
+    ),
+  ];
+  const esbuildExportPattern = new RegExp(
+    String.raw`\b__export\s*\([^,]+,\s*\{[\s\S]*?\b${escapedExportName}\b\s*:\s*\(\)\s*=>`,
+  );
+  return (
+    commonJsPatterns.some((pattern) => pattern.test(artifactSource)) ||
+    esbuildExportPattern.test(artifactSource)
+  );
 }
 
 export function evaluateLambdaArtifactContract(input: {
@@ -197,14 +221,15 @@ export function evaluateLambdaArtifactContract(input: {
       continue;
     }
     try {
-      if (!requireHandlerExport(artifactFile, handler.handler_export)) {
+      const artifactSource = readFileSync(artifactFile, 'utf8');
+      if (!declaresHandlerExport(artifactSource, handler.handler_export)) {
         failures.push(
           `${handler.logical_id}: ${artifactFile} does not export function ${handler.handler_export}`,
         );
       }
     } catch (error) {
       failures.push(
-        `${handler.logical_id}: cannot load ${artifactFile}: ${
+        `${handler.logical_id}: cannot inspect ${artifactFile}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -220,7 +245,7 @@ export function evaluateLambdaArtifactContract(input: {
     : {
         name: 'lambda_artifact_contract',
         status: 'passed',
-        detail: `All PH-OS Lambda handlers referenced by CloudFormation load from ${resolve(artifactRoot)}.`,
+        detail: `All PH-OS Lambda handlers referenced by CloudFormation are declared in ${resolve(artifactRoot)}.`,
       };
 }
 
