@@ -239,10 +239,11 @@ describe('PH-OS Final No-Go gate', () => {
       MaxLength: 16,
       AllowedPattern: '^[A-Za-z0-9-]+$',
     });
-    expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
+    expect(template.Parameters.PhosAuroraDatabaseSecretArn).toMatchObject({
       Type: 'String',
-      NoEcho: true,
     });
+    expect(template.Parameters).not.toHaveProperty('PhosAuroraDatabaseUrl');
+    expect(JSON.stringify(template)).not.toContain('PHOS_AURORA_DATABASE_URL');
     expect(template.Resources.PhosCoreDynamoDbTable).toMatchObject({
       Type: 'AWS::DynamoDB::Table',
       Properties: {

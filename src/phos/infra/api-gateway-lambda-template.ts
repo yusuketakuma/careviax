@@ -51,7 +51,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
   evidence_bucket_name_parameter?: string;
   evidence_upload_allowed_origin_parameter?: string;
   security_event_table_name_parameter?: string;
-  aurora_database_url_parameter?: string;
+  aurora_database_secret_arn_parameter?: string;
   lambda_runtime?: 'nodejs24.x';
 };
 
@@ -291,7 +291,7 @@ function buildLambdaEnvironment(input: {
   route: PhosApiRoute;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
-  auroraDatabaseUrlParameter: string;
+  auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
 }): Record<string, CloudFormationValue> {
   return {
@@ -299,7 +299,7 @@ function buildLambdaEnvironment(input: {
       ? { PHOS_DYNAMODB_TABLE_NAME: ref(input.dynamodbTableNameParameter) }
       : {}),
     ...(routeUsesAurora(input.route)
-      ? { PHOS_AURORA_DATABASE_URL: ref(input.auroraDatabaseUrlParameter) }
+      ? { PHOS_AURORA_DATABASE_SECRET_ARN: ref(input.auroraDatabaseSecretArnParameter) }
       : {}),
     ...(routeS3Actions(input.route).length > 0
       ? {
@@ -318,6 +318,7 @@ function buildLambdaPolicyStatements(input: {
   functionLogGroupName: string;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
+  auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
 }): CloudFormationValue[] {
   const statements: CloudFormationValue[] = [
@@ -364,6 +365,14 @@ function buildLambdaPolicyStatements(input: {
     });
   }
 
+  if (routeUsesAurora(input.route)) {
+    statements.push({
+      Effect: 'Allow',
+      Action: ['secretsmanager:GetSecretValue'],
+      Resource: ref(input.auroraDatabaseSecretArnParameter),
+    });
+  }
+
   const s3Actions = routeS3Actions(input.route);
   if (s3Actions.length > 0) {
     statements.push({
@@ -381,6 +390,7 @@ function buildLambdaExecutionRole(input: {
   functionLogGroupName: string;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
+  auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
 }): CloudFormationResource {
   return {
@@ -669,8 +679,8 @@ export function buildPhosApiGatewayLambdaTemplate(
     options.evidence_upload_allowed_origin_parameter ?? 'PhosEvidenceUploadAllowedOrigin';
   const securityEventTableNameParameter =
     options.security_event_table_name_parameter ?? 'PhosSecurityEventTableName';
-  const auroraDatabaseUrlParameter =
-    options.aurora_database_url_parameter ?? 'PhosAuroraDatabaseUrl';
+  const auroraDatabaseSecretArnParameter =
+    options.aurora_database_secret_arn_parameter ?? 'PhosAuroraDatabaseSecretArn';
   const runtime = options.lambda_runtime ?? 'nodejs24.x';
   const bindings = buildPhosApiRouteDeploymentBindings();
 
@@ -799,6 +809,7 @@ export function buildPhosApiGatewayLambdaTemplate(
       functionLogGroupName,
       dynamodbTableNameParameter,
       securityEventTableNameParameter,
+      auroraDatabaseSecretArnParameter,
       evidenceBucketNameParameter,
     });
     resources[binding.log_group_logical_id] = buildLambdaLogGroup({
@@ -828,7 +839,7 @@ export function buildPhosApiGatewayLambdaTemplate(
             route: binding.route,
             dynamodbTableNameParameter,
             securityEventTableNameParameter,
-            auroraDatabaseUrlParameter,
+            auroraDatabaseSecretArnParameter,
             evidenceBucketNameParameter,
           }),
         },
@@ -892,9 +903,8 @@ export function buildPhosApiGatewayLambdaTemplate(
         Description: 'HTTPS origin allowed to PUT PH-OS evidence objects through presigned URLs.',
       }),
       [securityEventTableNameParameter]: parameter('String'),
-      [auroraDatabaseUrlParameter]: parameter('String', {
-        NoEcho: true,
-        Description: 'Aurora PostgreSQL connection string for PH-OS FeeRule RLS access.',
+      [auroraDatabaseSecretArnParameter]: parameter('String', {
+        Description: 'Secrets Manager ARN containing the PH-OS Aurora PostgreSQL connection URL.',
       }),
     },
     Resources: resources,

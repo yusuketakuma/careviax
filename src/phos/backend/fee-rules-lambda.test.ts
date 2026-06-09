@@ -7,6 +7,7 @@ import {
   feeRuleSearchHandler,
 } from './fee-rules-lambda';
 import type { AuroraFeeRulesClient } from './aurora-fee-rules-repository';
+import type { PhosFeeRulesRepository } from './fee-rules-repository';
 
 function event() {
   return {
@@ -105,9 +106,9 @@ describe('fee-rules lambda composition', () => {
   });
 
   it('does not retain an empty default repository when Aurora configuration is missing', () => {
-    const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
+    const previousSecretArn = process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     const previousDatabaseUrl = process.env.DATABASE_URL;
-    delete process.env.PHOS_AURORA_DATABASE_URL;
+    delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     delete process.env.DATABASE_URL;
 
     try {
@@ -115,10 +116,10 @@ describe('fee-rules lambda composition', () => {
         'PH-OS FeeRule Aurora database URL is not configured',
       );
     } finally {
-      if (previousAuroraUrl === undefined) {
-        delete process.env.PHOS_AURORA_DATABASE_URL;
+      if (previousSecretArn === undefined) {
+        delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
       } else {
-        process.env.PHOS_AURORA_DATABASE_URL = previousAuroraUrl;
+        process.env.PHOS_AURORA_DATABASE_SECRET_ARN = previousSecretArn;
       }
       if (previousDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;
@@ -129,9 +130,9 @@ describe('fee-rules lambda composition', () => {
   });
 
   it('does not fall back to generic DATABASE_URL for the PH-OS FeeRule repository', () => {
-    const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
+    const previousSecretArn = process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     const previousDatabaseUrl = process.env.DATABASE_URL;
-    delete process.env.PHOS_AURORA_DATABASE_URL;
+    delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     process.env.DATABASE_URL = 'postgres://legacy-app-wide-credential';
 
     try {
@@ -139,10 +140,10 @@ describe('fee-rules lambda composition', () => {
         'PH-OS FeeRule Aurora database URL is not configured',
       );
     } finally {
-      if (previousAuroraUrl === undefined) {
-        delete process.env.PHOS_AURORA_DATABASE_URL;
+      if (previousSecretArn === undefined) {
+        delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
       } else {
-        process.env.PHOS_AURORA_DATABASE_URL = previousAuroraUrl;
+        process.env.PHOS_AURORA_DATABASE_SECRET_ARN = previousSecretArn;
       }
       if (previousDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;
@@ -152,10 +153,45 @@ describe('fee-rules lambda composition', () => {
     }
   });
 
+  it('loads the Aurora URL from Secrets Manager before constructing the default repository', async () => {
+    const repository: PhosFeeRulesRepository = {
+      searchFeeRules: vi.fn(async () => ({
+        items: [],
+        server_time: '2026-06-09T00:00:00.000Z',
+      })),
+    };
+    const secretsClient = {
+      send: vi.fn(async (command: { input?: { SecretId?: string } }) => {
+        expect(command.input?.SecretId).toBe(
+          'arn:aws:secretsmanager:ap-northeast-1:123:secret:phos',
+        );
+        return {
+          SecretString: JSON.stringify({
+            databaseUrl: 'postgres://phos-secret-url',
+          }),
+        };
+      }),
+    };
+    const repositoryFromDatabaseUrl = vi.fn(() => repository);
+    const handler = createFeeRuleSearchLambdaHandler({
+      databaseSecretArn: 'arn:aws:secretsmanager:ap-northeast-1:123:secret:phos',
+      secretsClient,
+      repositoryFromDatabaseUrl,
+      now: () => new Date('2026-06-09T00:00:00.000Z'),
+    });
+
+    expect(parseJsonResponse(await handler(event()))).toMatchObject({
+      items: [],
+      server_time: '2026-06-09T00:00:00.000Z',
+    });
+    expect(repositoryFromDatabaseUrl).toHaveBeenCalledWith('postgres://phos-secret-url');
+    expect(repository.searchFeeRules).toHaveBeenCalledOnce();
+  });
+
   it('rejects tenant_id query at the Lambda boundary before default Aurora configuration is read', async () => {
-    const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
+    const previousSecretArn = process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     const previousDatabaseUrl = process.env.DATABASE_URL;
-    delete process.env.PHOS_AURORA_DATABASE_URL;
+    delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
     delete process.env.DATABASE_URL;
 
     try {
@@ -167,10 +203,10 @@ describe('fee-rules lambda composition', () => {
         details: { source: 'query' },
       });
     } finally {
-      if (previousAuroraUrl === undefined) {
-        delete process.env.PHOS_AURORA_DATABASE_URL;
+      if (previousSecretArn === undefined) {
+        delete process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
       } else {
-        process.env.PHOS_AURORA_DATABASE_URL = previousAuroraUrl;
+        process.env.PHOS_AURORA_DATABASE_SECRET_ARN = previousSecretArn;
       }
       if (previousDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;

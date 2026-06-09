@@ -344,15 +344,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     }
   });
 
-  it('treats the Aurora database URL as a non-echoed deploy parameter', () => {
+  it('treats the Aurora database URL as a Secrets Manager value instead of Lambda env', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
 
-    expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
+    expect(template.Parameters.PhosAuroraDatabaseSecretArn).toMatchObject({
       Type: 'String',
-      NoEcho: true,
+      Description: expect.stringContaining('Secrets Manager ARN'),
     });
+    expect(template.Parameters).not.toHaveProperty('PhosAuroraDatabaseUrl');
     expect(JSON.stringify(template)).not.toContain('postgres://');
     expect(JSON.stringify(template)).not.toContain('postgresql://');
+    expect(JSON.stringify(template)).not.toContain('PHOS_AURORA_DATABASE_URL');
   });
 
   it('creates the PH-OS core DynamoDB table with the contract primary key and GSIs', () => {
@@ -648,7 +650,10 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       'PHOS_EVIDENCE_BUCKET',
     );
     expect(JSON.stringify(template.Resources[capacity.function_logical_id])).not.toContain(
-      'PHOS_AURORA_DATABASE_URL',
+      'PHOS_AURORA_DATABASE',
+    );
+    expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
+      'secretsmanager:GetSecretValue',
     );
     expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
       'dynamodb:TransactWriteItems',
@@ -662,14 +667,20 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(template.Resources[feeRules.function_logical_id].Properties.Environment).toMatchObject({
       Variables: {
-        PHOS_AURORA_DATABASE_URL: { Ref: 'PhosAuroraDatabaseUrl' },
+        PHOS_AURORA_DATABASE_SECRET_ARN: { Ref: 'PhosAuroraDatabaseSecretArn' },
       },
+    });
+    expect(statementWithAction('GET /fee-rules', 'secretsmanager:GetSecretValue')).toMatchObject({
+      Resource: { Ref: 'PhosAuroraDatabaseSecretArn' },
     });
     expect(JSON.stringify(template.Resources[feeRules.function_logical_id])).not.toContain(
       'PHOS_DYNAMODB_TABLE_NAME',
     );
     expect(JSON.stringify(template.Resources[feeRules.function_logical_id])).not.toContain(
       'PHOS_EVIDENCE_BUCKET',
+    );
+    expect(JSON.stringify(template.Resources[feeRules.function_logical_id])).not.toContain(
+      'PHOS_AURORA_DATABASE_URL',
     );
 
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain('s3:PutObject');

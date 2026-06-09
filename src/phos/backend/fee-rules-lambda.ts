@@ -1,4 +1,9 @@
 import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+  type SecretsManagerClient as AwsSecretsManagerClient,
+} from '@aws-sdk/client-secrets-manager';
+import {
   createAuroraFeeRulesRepository,
   type AuroraFeeRulesClient,
 } from './aurora-fee-rules-repository';
@@ -14,7 +19,42 @@ type FeeRulesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosFeeRulesRepository;
   auroraPool?: AuroraFeeRulesClient;
   databaseUrl?: string;
+  databaseSecretArn?: string;
+  secretsClient?: Pick<AwsSecretsManagerClient, 'send'>;
+  repositoryFromDatabaseUrl?: (databaseUrl: string) => PhosFeeRulesRepository;
 };
+
+function parseDatabaseUrlSecret(secret: string): string {
+  const trimmed = secret.trim();
+  if (!trimmed) throw new Error('PH-OS FeeRule Aurora database secret is empty');
+  if (!trimmed.startsWith('{')) return trimmed;
+
+  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  const value =
+    parsed.databaseUrl ??
+    parsed.database_url ??
+    parsed.connectionString ??
+    parsed.connection_string ??
+    parsed.url;
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('PH-OS FeeRule Aurora database secret does not contain a connection URL');
+  }
+  return value.trim();
+}
+
+async function loadAuroraDatabaseUrl(deps: FeeRulesLambdaDependencies): Promise<string> {
+  if (deps.databaseUrl) return deps.databaseUrl;
+  const secretArn = deps.databaseSecretArn ?? process.env.PHOS_AURORA_DATABASE_SECRET_ARN;
+  if (!secretArn) {
+    throw new Error('PH-OS FeeRule Aurora database secret ARN is not configured');
+  }
+  const client = deps.secretsClient ?? new SecretsManagerClient({});
+  const secret = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
+  if (typeof secret.SecretString !== 'string') {
+    throw new Error('PH-OS FeeRule Aurora database secret string is not configured');
+  }
+  return parseDatabaseUrlSecret(secret.SecretString);
+}
 
 export function createFeeRulesRepository(
   deps: FeeRulesLambdaDependencies = {},
@@ -22,19 +62,32 @@ export function createFeeRulesRepository(
   if (deps.repository) return deps.repository;
   return createAuroraFeeRulesRepository({
     pool: deps.auroraPool,
-    databaseUrl: deps.databaseUrl ?? process.env.PHOS_AURORA_DATABASE_URL,
+    databaseUrl: deps.databaseUrl,
     now: deps.now,
   });
+}
+
+async function createFeeRulesRepositoryFromSecret(
+  deps: FeeRulesLambdaDependencies = {},
+): Promise<PhosFeeRulesRepository> {
+  if (deps.repository || deps.auroraPool || deps.databaseUrl) return createFeeRulesRepository(deps);
+  const databaseUrl = await loadAuroraDatabaseUrl(deps);
+  return deps.repositoryFromDatabaseUrl
+    ? deps.repositoryFromDatabaseUrl(databaseUrl)
+    : createAuroraFeeRulesRepository({
+        databaseUrl,
+        now: deps.now,
+      });
 }
 
 function createLazyFeeRulesRepository(
   deps: FeeRulesLambdaDependencies = {},
 ): PhosFeeRulesRepository {
-  let repository: PhosFeeRulesRepository | undefined;
+  let repository: Promise<PhosFeeRulesRepository> | undefined;
   return {
-    searchFeeRules(ctx, query) {
-      repository ??= createFeeRulesRepository(deps);
-      return repository.searchFeeRules(ctx, query);
+    async searchFeeRules(ctx, query) {
+      repository ??= createFeeRulesRepositoryFromSecret(deps);
+      return (await repository).searchFeeRules(ctx, query);
     },
   };
 }
