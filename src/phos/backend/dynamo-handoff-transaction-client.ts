@@ -1,5 +1,6 @@
 import {
   TransactWriteItemsCommand,
+  type AttributeValue,
   type DynamoDBClient,
   type TransactWriteItem,
 } from '@aws-sdk/client-dynamodb';
@@ -10,6 +11,7 @@ import {
 } from './dynamo-handoff-lifecycle-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { buildDynamoCardGsiProjectionUpdate } from './dynamodb-card-gsi-projection';
 import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { cardBlockerSk, handoffAssigneeGsiSk } from './dynamodb-keys';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
@@ -135,40 +137,81 @@ export function buildDynamoHandoffTransitionTransactWriteItems(
       ]
     : [];
   const cardAggregate = input.card_aggregate_update;
-  const cardAggregateUpdate: TransactWriteItem[] = cardAggregate?.update
-    ? [
-        {
-          Update: {
-            TableName: input.table_name,
-            Key: dynamoKey(input.partition_key, cardAggregate.card_sort_key),
-            ConditionExpression: '#server_version = :expected_card_server_version',
-            UpdateExpression:
-              'SET #server_version = :card_server_version, #display_status = :card_display_status, #updated_at = :updated_at, #card = :card, #next_action = :next_action, #blockers = :blockers',
-            ExpressionAttributeNames: {
-              '#server_version': 'server_version',
-              '#display_status': 'display_status',
-              '#updated_at': 'updated_at',
-              '#card': 'card',
-              '#next_action': 'next_action',
-              '#blockers': 'blockers',
-            },
-            ExpressionAttributeValues: {
-              ':expected_card_server_version': {
-                N: String(cardAggregate.expected_card_server_version),
-              },
-              ':card_server_version': { N: String(cardAggregate.update.server_version) },
-              ':card_display_status': {
-                S: cardAggregate.update.card.display_status,
-              },
-              ':updated_at': { S: committed_at },
-              ':card': toDynamoAttributeValue(cardAggregate.update.card),
-              ':next_action': toDynamoAttributeValue(cardAggregate.update.next_action),
-              ':blockers': toDynamoAttributeValue(cardAggregate.update.blockers),
+  const cardAggregateUpdateInput = cardAggregate?.update;
+  const cardAggregateGsiUpdate = cardAggregateUpdateInput
+    ? buildDynamoCardGsiProjectionUpdate({
+        tenant_partition_key: input.partition_key,
+        card: cardAggregateUpdateInput.card,
+      })
+    : undefined;
+  const cardAggregateExpressionAttributeNames: Record<string, string> = {
+    '#server_version': 'server_version',
+    '#display_status': 'display_status',
+    '#updated_at': 'updated_at',
+    '#card': 'card',
+    '#next_action': 'next_action',
+    '#blockers': 'blockers',
+  };
+  const cardAggregateExpressionAttributeValues: Record<string, AttributeValue> =
+    cardAggregate && cardAggregateUpdateInput
+      ? {
+          ':expected_card_server_version': {
+            N: String(cardAggregate.expected_card_server_version),
+          },
+          ':card_server_version': { N: String(cardAggregateUpdateInput.server_version) },
+          ':card_display_status': {
+            S: cardAggregateUpdateInput.card.display_status,
+          },
+          ':updated_at': { S: committed_at },
+          ':card': toDynamoAttributeValue(cardAggregateUpdateInput.card),
+          ':next_action': toDynamoAttributeValue(cardAggregateUpdateInput.next_action),
+          ':blockers': toDynamoAttributeValue(cardAggregateUpdateInput.blockers),
+        }
+      : {};
+  const cardAggregateIndexSetExpressions = Object.entries(cardAggregateGsiUpdate?.set ?? {}).map(
+    ([attributeName, value]) => {
+      const nameAlias = `#${attributeName}`;
+      const valueAlias = `:${attributeName}`;
+      cardAggregateExpressionAttributeNames[nameAlias] = attributeName;
+      cardAggregateExpressionAttributeValues[valueAlias] = value;
+      return `${nameAlias} = ${valueAlias}`;
+    },
+  );
+  const cardAggregateIndexRemoveExpressions = (cardAggregateGsiUpdate?.remove ?? []).map(
+    (attributeName) => {
+      const nameAlias = `#${attributeName}`;
+      cardAggregateExpressionAttributeNames[nameAlias] = attributeName;
+      return nameAlias;
+    },
+  );
+  const cardAggregateSetExpression = [
+    '#server_version = :card_server_version',
+    '#display_status = :card_display_status',
+    '#updated_at = :updated_at',
+    '#card = :card',
+    '#next_action = :next_action',
+    '#blockers = :blockers',
+    ...cardAggregateIndexSetExpressions,
+  ].join(', ');
+  const cardAggregateRemoveExpression =
+    cardAggregateIndexRemoveExpressions.length > 0
+      ? ` REMOVE ${cardAggregateIndexRemoveExpressions.join(', ')}`
+      : '';
+  const cardAggregateUpdate: TransactWriteItem[] =
+    cardAggregate && cardAggregateUpdateInput
+      ? [
+          {
+            Update: {
+              TableName: input.table_name,
+              Key: dynamoKey(input.partition_key, cardAggregate.card_sort_key),
+              ConditionExpression: '#server_version = :expected_card_server_version',
+              UpdateExpression: `SET ${cardAggregateSetExpression}${cardAggregateRemoveExpression}`,
+              ExpressionAttributeNames: cardAggregateExpressionAttributeNames,
+              ExpressionAttributeValues: cardAggregateExpressionAttributeValues,
             },
           },
-        },
-      ]
-    : [];
+        ]
+      : [];
 
   return [
     {

@@ -1,11 +1,13 @@
 import {
   TransactWriteItemsCommand,
+  type AttributeValue,
   type DynamoDBClient,
   type TransactWriteItem,
 } from '@aws-sdk/client-dynamodb';
 import type { DynamoActionCommitTransaction } from './dynamo-card-action-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { buildDynamoCardGsiProjectionUpdate } from './dynamodb-card-gsi-projection';
 import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
@@ -13,7 +15,7 @@ export function buildDynamoActionCommitTransactWriteItems(
   input: DynamoActionCommitTransaction,
   committed_at: string,
 ): TransactWriteItem[] {
-  const expressionAttributeNames = {
+  const expressionAttributeNames: Record<string, string> = {
     '#server_version': 'server_version',
     '#current_step': 'current_step',
     '#display_status': 'display_status',
@@ -26,9 +28,50 @@ export function buildDynamoActionCommitTransactWriteItems(
       ? { '#unresolved_claim_candidate_count': 'unresolved_claim_candidate_count' }
       : {}),
   };
+  const expressionAttributeValues: Record<string, AttributeValue> = {
+    ':expected_server_version': { N: String(input.expected_server_version) },
+    ':server_version': { N: String(input.projected_response.server_version) },
+    ':current_step': { S: input.projected_response.card.current_step },
+    ':display_status': { S: input.projected_response.display_status },
+    ':action_code': { S: input.command.action_code },
+    ':updated_at': { S: committed_at },
+    ':card': toDynamoAttributeValue(input.projected_response.card),
+    ':next_action': toDynamoAttributeValue(input.projected_response.next_action),
+    ':blockers': toDynamoAttributeValue(input.projected_response.blockers),
+    ...(input.claim_review_guard ? { ':zero_unresolved_claim_candidate_count': { N: '0' } } : {}),
+  };
+  const cardGsiUpdate = buildDynamoCardGsiProjectionUpdate({
+    tenant_partition_key: input.partition_key,
+    card: input.projected_response.card,
+  });
+  const indexSetExpressions = Object.entries(cardGsiUpdate.set).map(([attributeName, value]) => {
+    const nameAlias = `#${attributeName}`;
+    const valueAlias = `:${attributeName}`;
+    expressionAttributeNames[nameAlias] = attributeName;
+    expressionAttributeValues[valueAlias] = value;
+    return `${nameAlias} = ${valueAlias}`;
+  });
+  const indexRemoveExpressions = cardGsiUpdate.remove.map((attributeName) => {
+    const nameAlias = `#${attributeName}`;
+    expressionAttributeNames[nameAlias] = attributeName;
+    return nameAlias;
+  });
   const conditionExpression = input.claim_review_guard
     ? '#server_version = :expected_server_version AND attribute_exists(#unresolved_claim_candidate_count) AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count'
     : '#server_version = :expected_server_version';
+  const updateExpression = [
+    '#server_version = :server_version',
+    '#current_step = :current_step',
+    '#display_status = :display_status',
+    '#action_code = :action_code',
+    '#updated_at = :updated_at',
+    '#card = :card',
+    '#next_action = :next_action',
+    '#blockers = :blockers',
+    ...indexSetExpressions,
+  ].join(', ');
+  const removeExpression =
+    indexRemoveExpressions.length > 0 ? ` REMOVE ${indexRemoveExpressions.join(', ')}` : '';
 
   return [
     {
@@ -36,23 +79,9 @@ export function buildDynamoActionCommitTransactWriteItems(
         TableName: input.table_name,
         Key: dynamoKey(input.partition_key, input.card_sort_key),
         ConditionExpression: conditionExpression,
-        UpdateExpression:
-          'SET #server_version = :server_version, #current_step = :current_step, #display_status = :display_status, #action_code = :action_code, #updated_at = :updated_at, #card = :card, #next_action = :next_action, #blockers = :blockers',
+        UpdateExpression: `SET ${updateExpression}${removeExpression}`,
         ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: {
-          ':expected_server_version': { N: String(input.expected_server_version) },
-          ':server_version': { N: String(input.projected_response.server_version) },
-          ':current_step': { S: input.projected_response.card.current_step },
-          ':display_status': { S: input.projected_response.display_status },
-          ':action_code': { S: input.command.action_code },
-          ':updated_at': { S: committed_at },
-          ':card': toDynamoAttributeValue(input.projected_response.card),
-          ':next_action': toDynamoAttributeValue(input.projected_response.next_action),
-          ':blockers': toDynamoAttributeValue(input.projected_response.blockers),
-          ...(input.claim_review_guard
-            ? { ':zero_unresolved_claim_candidate_count': { N: '0' } }
-            : {}),
-        },
+        ExpressionAttributeValues: expressionAttributeValues,
       },
     },
     ...input.blocker_puts.map(

@@ -38,6 +38,7 @@ function response(overrides: Partial<ActionResponse> = {}): ActionResponse {
     card_id: 'card_1',
     card_type: CardType.PRESCRIPTION,
     patient_name: 'Test Patient',
+    due_at: '2026-06-10T09:00:00.000Z',
     current_step: CurrentStep.DISPENSING,
     display_status: DisplayStatus.IN_PROGRESS,
     server_version: 4,
@@ -141,9 +142,19 @@ describe('Dynamo card action transaction client', () => {
           ':current_step': { S: CurrentStep.DISPENSING },
           ':display_status': { S: DisplayStatus.IN_PROGRESS },
           ':action_code': { S: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+          ':GSI1PK': { S: 'TENANT#tenant_abc123#BOARD' },
+          ':GSI1SK': {
+            S: 'STEP#DISPENSING#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
+          },
+          ':GSI2SK': {
+            S: 'STATUS#IN_PROGRESS#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
+          },
         },
       },
     });
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI1PK = :GSI1PK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI1SK = :GSI1SK');
+    expect(items[0]?.Update?.UpdateExpression).toContain('#GSI2SK = :GSI2SK');
     expect(items[1]).toMatchObject({
       Put: {
         TableName: 'phos_core',
@@ -174,6 +185,33 @@ describe('Dynamo card action transaction client', () => {
         },
         ConditionExpression:
           'attribute_not_exists(PK) OR request_fingerprint = :request_fingerprint',
+      },
+    });
+  });
+
+  it('removes stale due-date GSI sort keys when the projected card no longer has a due date', () => {
+    const projected = response({
+      card: {
+        ...response().card,
+        due_at: undefined,
+      },
+    });
+    const items = buildDynamoActionCommitTransactWriteItems(
+      transaction({ projected_response: projected }),
+      '2026-06-09T00:00:00.000Z',
+    );
+
+    expect(items[0]?.Update?.UpdateExpression).toContain('REMOVE #GSI1SK, #GSI2SK');
+    expect(items[0]).toMatchObject({
+      Update: {
+        ExpressionAttributeNames: {
+          '#GSI1PK': 'GSI1PK',
+          '#GSI1SK': 'GSI1SK',
+          '#GSI2SK': 'GSI2SK',
+        },
+        ExpressionAttributeValues: {
+          ':GSI1PK': { S: 'TENANT#tenant_abc123#BOARD' },
+        },
       },
     });
   });

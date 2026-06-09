@@ -186,6 +186,23 @@ describe('claim-candidates Lambda Dynamo client', () => {
 
     const transaction = send.mock.calls[1]?.[0] as TransactWriteItemsCommand | undefined;
     expect(transaction?.input.TransactItems).toHaveLength(3);
+    expect(transaction?.input.TransactItems?.[0]).toMatchObject({
+      Put: {
+        TableName: 'phos_core',
+        Item: {
+          PK: { S: 'TENANT#tenant_abc123' },
+          SK: { S: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#claim_1#idem_1' },
+          entity_type: { S: 'CLAIM_CANDIDATE_IDEMPOTENCY' },
+          tenant_id: { S: 'tenant_abc123' },
+          server_version: { N: '1' },
+          created_at: { S: '2026-06-09T01:00:00.000Z' },
+          updated_at: { S: '2026-06-09T01:00:00.000Z' },
+          candidate_id: { S: 'claim_1' },
+          request_fingerprint: { S: 'fp_1' },
+        },
+        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+      },
+    });
     expect(transaction?.input.TransactItems?.[1]).toMatchObject({
       Update: {
         TableName: 'phos_core',

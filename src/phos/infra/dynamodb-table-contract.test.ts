@@ -77,6 +77,31 @@ describe('PH-OS DynamoDB table contract', () => {
     }
   });
 
+  it('keeps canonical card GSIs aligned with the PH-OS v1.1 single-table spec', () => {
+    expect(PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes).toMatchObject({
+      GSI1: {
+        partition_key: 'GSI1PK',
+        sort_key: 'GSI1SK',
+        query_shapes: ['board cards by tenant board queue'],
+      },
+      GSI2: {
+        partition_key: 'GSI2PK',
+        sort_key: 'GSI2SK',
+        query_shapes: ['cards by assignee status and due date'],
+      },
+      GSI3: {
+        partition_key: 'GSI3PK',
+        sort_key: 'GSI3SK',
+        query_shapes: ['cards by patient timeline'],
+      },
+      GSI4: {
+        partition_key: 'GSI4PK',
+        sort_key: 'GSI4SK',
+        query_shapes: ['cards by visit packet'],
+      },
+    });
+  });
+
   it('keeps the API Gateway/Lambda template aligned with the table contract parameter', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
 
@@ -210,6 +235,7 @@ describe('PH-OS DynamoDB table contract', () => {
       'src/phos/backend/dynamo-handoff-transaction-client.ts',
       'src/phos/backend/dynamo-report-delivery-transaction-client.ts',
       'src/phos/backend/evidence-upload-intent-store.ts',
+      'src/phos/backend/claim-candidates-lambda.ts',
       'src/phos/backend/security-events.ts',
     ];
 

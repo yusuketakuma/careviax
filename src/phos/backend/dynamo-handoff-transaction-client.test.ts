@@ -151,6 +151,7 @@ function transitionTransaction(
           card_id: 'card_1',
           card_type: CardType.PRESCRIPTION,
           patient_name: '患者 山田太郎',
+          due_at: '2026-06-10T09:00:00.000Z',
           current_step: CurrentStep.DIFF_REVIEW,
           display_status: DisplayStatus.READY,
           server_version: 4,
@@ -296,9 +297,19 @@ describe('Dynamo handoff transaction client', () => {
           ':expected_card_server_version': { N: '3' },
           ':card_server_version': { N: '4' },
           ':card_display_status': { S: DisplayStatus.READY },
+          ':GSI1PK': { S: 'TENANT#tenant_abc123#BOARD' },
+          ':GSI1SK': {
+            S: 'STEP#DIFF_REVIEW#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
+          },
+          ':GSI2SK': {
+            S: 'STATUS#READY#DUE#2026-06-10T09:00:00.000Z#CARD#card_1',
+          },
         },
       },
     });
+    expect(items[2]?.Update?.UpdateExpression).toContain('#GSI1PK = :GSI1PK');
+    expect(items[2]?.Update?.UpdateExpression).toContain('#GSI1SK = :GSI1SK');
+    expect(items[2]?.Update?.UpdateExpression).toContain('#GSI2SK = :GSI2SK');
     expect(items[3]).toMatchObject({
       Put: {
         Item: {

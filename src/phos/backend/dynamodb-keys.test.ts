@@ -4,6 +4,7 @@ import {
   assertTenantPk,
   assertTenantScopedDynamoOperation,
   assigneeGsiPk,
+  assigneeStatusDueGsiSk,
   boardGsiPk,
   boardGsiSk,
   cardActionIdempotencySk,
@@ -20,6 +21,7 @@ import {
   packetGsiPk,
   packetGsiSk,
   patientGsiPk,
+  patientTimelineGsiSk,
   reportDeliveryIdempotencySk,
   reportDeliverySk,
   reportDeliveryStatusGsiPk,
@@ -85,6 +87,13 @@ describe('PH-OS DynamoDB key contract', () => {
       boardGsiSk({ current_step: 'REPORT', due_at: '2026-06-08T00:00:00Z', card_id: 'card_1' }),
     ).toBe('STEP#REPORT#DUE#2026-06-08T00:00:00Z#CARD#card_1');
     expect(assigneeGsiPk(ctx, 'user_1')).toBe('TENANT#tenant_abc123#ASSIGNEE#user_1');
+    expect(
+      assigneeStatusDueGsiSk({
+        display_status: 'READY',
+        due_at: '2026-06-09T09:00:00Z',
+        card_id: 'card_1',
+      }),
+    ).toBe('STATUS#READY#DUE#2026-06-09T09:00:00Z#CARD#card_1');
     expect(handoffAssigneeGsiPk(ctx, 'user_1')).toBe(
       'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_1',
     );
@@ -107,6 +116,9 @@ describe('PH-OS DynamoDB key contract', () => {
       }),
     ).toBe('STATUS#OPEN#URGENCY#3#CREATED#2026-06-08T00:00:00Z#HANDOFF#handoff_1');
     expect(patientGsiPk(ctx, 'patient_1')).toBe('TENANT#tenant_abc123#PATIENT#patient_1');
+    expect(patientTimelineGsiSk({ created_at: '2026-06-08T00:00:00Z', card_id: 'card_1' })).toBe(
+      'CREATED#2026-06-08T00:00:00Z#CARD#card_1',
+    );
     expect(packetGsiPk(ctx, 'packet_1')).toBe('TENANT#tenant_abc123#PACKET#packet_1');
     expect(packetGsiSk('card_1')).toBe('CARD#card_1');
   });

@@ -32,6 +32,7 @@ import {
   fromDynamoAttributeValue,
   toDynamoAttributeValue,
 } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import {
   createLambdaObservabilitySink,
   type PhosLambdaRuntimeDependencies,
@@ -148,9 +149,14 @@ export function createDynamoClaimCandidatesClient(input: {
                   Item: {
                     PK: { S: command.partition_key },
                     SK: { S: command.idempotency_sort_key },
+                    entity_type: { S: 'CLAIM_CANDIDATE_IDEMPOTENCY' },
+                    ...dynamoEntityMetadata({
+                      partition_key: command.partition_key,
+                      created_at: command.updated_at,
+                    }),
+                    candidate_id: { S: command.candidate_id },
                     request_fingerprint: { S: command.request_fingerprint },
                     response_json: { S: JSON.stringify(response) },
-                    created_at: { S: command.updated_at },
                   },
                   ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
                 },
