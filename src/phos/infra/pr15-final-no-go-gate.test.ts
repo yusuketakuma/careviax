@@ -537,4 +537,18 @@ describe('PH-OS Final No-Go gate', () => {
       /submits VisitMode draft save only for completed non-arrival steps/,
     ]);
   });
+
+  it('keeps Capacity Dashboard chart usage scoped with a table fallback and role gate', () => {
+    expectEvidence('src/phos/ui/capacity/CapacityDashboard.tsx', [
+      /from 'recharts'/,
+      /BarChart/,
+      /Capacity Dashboard table fallback/,
+      /canView/,
+      /管理薬剤師または管理者のみ確認できます/,
+    ]);
+    expectEvidence('src/phos/ui/capacity/CapacityDashboard.test.tsx', [
+      /Recharts charts, and table fallback/,
+      /role gate/,
+    ]);
+  });
 });

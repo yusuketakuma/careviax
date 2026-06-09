@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-134246
+
+- current task: implement UI-PR8A Capacity Dashboard Recharts/table fallback component for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `package.json`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_design_tokens.ts`, `src/phos/ui/board/CapacityBar.tsx`, `src/phos/ui/board/CapacityBar.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and PH-OS report/capacity component search results.
+- files changed: `package.json`, `pnpm-lock.yaml`, `src/phos/ui/capacity/CapacityDashboard.tsx`, `src/phos/ui/capacity/CapacityDashboard.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: PH-OS had a compact manager-only `CapacityBar`, but no UI-PR8 Capacity Dashboard surface with Recharts usage scoped to capacity, bottleneck/work-minute charts, table fallback, and an explicit manager-grade role gate. The first implementation attempt also used the wrong Recharts tooltip type (`TooltipProps` instead of `TooltipContentProps`) and failed TypeScript until corrected.
+- security risks found: no auth, authorization, tenant boundary, backend route, API client, database, evidence upload, report send, persistence, or logging behavior changed. The dashboard requires an explicit `canView` prop and renders a no-permission message instead of capacity details when false. Recharts is used only in `src/phos/ui/capacity/CapacityDashboard.tsx`, with chart colors supplied from existing design tokens and table fallback always present.
+- performance issues found: the dashboard renders already-loaded `CapacityResponse` data. It adds the Recharts dependency required by UIUX v1.1 but introduces no fetch, Server Action, Route Handler, database call, polling, scan, or broad recomputation.
+- validation commands: `pnpm add recharts`; Prettier for package/lock/capacity/gate files; focused `pnpm exec vitest run src/phos/ui/capacity/CapacityDashboard.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for capacity/gate files; `git diff --check`; native `disabled` grep; `pnpm audit --prod`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: dependency install completed with `recharts@3.8.1`; focused suite passed with 2 files / 29 tests; TypeScript passed after tooltip typing correction; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; production dependency audit reported no known vulnerabilities; full PH-OS Vitest passed with 88 files / 489 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: this adds the UI-PR8 component foundation but does not yet route `/capacity` or wire live Board/manager navigation into this dashboard. UIUX v1.1 still needs full Report Composer/send confirmation work and UI-PR9 accessibility/E2E hardening.
+- next action: commit this Capacity Dashboard slice, then continue with route integration or the Report Composer/send confirmation surface.
+
 ### 20260609-133638
 
 - current task: implement UI-PR6B VisitMode sticky footer navigation and safe draft-save behavior for PH-OS UIUX v1.1
