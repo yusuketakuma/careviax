@@ -157,6 +157,8 @@ describe('/api/pharmacists/import POST', () => {
       email: 'bulk@example.com',
       name: '山田 太郎',
       phone: '090-1111-2222',
+      phosTenantId: 'org_1',
+      phosRole: 'PHARMACIST',
     });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -232,6 +234,8 @@ describe('/api/pharmacists/import POST', () => {
       email: 'blank@example.com',
       name: '山田 花子',
       phone: undefined,
+      phosTenantId: 'org_1',
+      phosRole: 'PHARMACIST',
     });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -271,6 +275,8 @@ describe('/api/pharmacists/import POST', () => {
       email: 'e164@example.com',
       name: '佐藤 次郎',
       phone: '+819012345678',
+      phosTenantId: 'org_1',
+      phosRole: 'PHARMACIST',
     });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -352,6 +358,8 @@ describe('/api/pharmacists/import POST', () => {
       email: 'valid@example.com',
       name: '佐藤 花子',
       phone: '090-1234-5678',
+      phosTenantId: 'org_1',
+      phosRole: 'PHARMACIST',
     });
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({

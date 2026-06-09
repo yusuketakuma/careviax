@@ -7,6 +7,7 @@ import {
   isOperationalMemberRole,
   membershipFlagsForRole,
 } from '@/lib/auth/member-roles';
+import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -196,6 +197,8 @@ export const POST = withAuth(
         email: parsed.data.email,
         name: parsed.data.name,
         phone: parsed.data.phone,
+        phosTenantId: req.orgId,
+        phosRole: phosRoleFromMemberRole(parsed.data.role),
       });
     } catch (error) {
       return validationError(

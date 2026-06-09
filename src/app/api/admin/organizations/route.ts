@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
 import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
+import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 
 function trimStringOrUndefined(value: unknown) {
   if (value === null || value === undefined) return undefined;
@@ -175,6 +176,8 @@ export async function POST(req: NextRequest) {
     const cognitoUser = await inviteCognitoUser({
       email: adminEmail,
       name: data.admin_name,
+      phosTenantId: result.org.id,
+      phosRole: phosRoleFromMemberRole('owner'),
     });
     cognitoSub = cognitoUser.sub;
     cognitoUsername = cognitoUser.username;

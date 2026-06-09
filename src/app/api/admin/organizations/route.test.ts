@@ -362,6 +362,8 @@ describe('/api/admin/organizations POST', () => {
     expect(inviteCognitoUserMock).toHaveBeenCalledWith({
       email: 'admin@example.com',
       name: '管理者',
+      phosTenantId: 'org_new',
+      phosRole: 'ADMIN',
     });
     expect(userUpdateMock).toHaveBeenCalledWith({
       where: { id: 'user_new' },

@@ -8,6 +8,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { isOperationalMemberRole, membershipFlagsForRole } from '@/lib/auth/member-roles';
+import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import { updatePharmacistSchema } from '@/lib/validations/pharmacist';
 import {
   disableCognitoUser,
@@ -74,6 +75,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         email: pharmacist.email,
         name: data.name,
         phone: data.phone,
+        phosTenantId: ctx.orgId,
+        phosRole: phosRoleFromMemberRole(data.role),
       });
     } catch (error) {
       return validationError(

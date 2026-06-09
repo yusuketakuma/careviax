@@ -436,6 +436,8 @@ describe('/api/pharmacists POST', () => {
       email: 'visit@example.com',
       name: '訪問 薬剤師',
       phone: '090-1234-5678',
+      phosTenantId: 'org_1',
+      phosRole: 'PHARMACIST',
     });
     expect(userCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -469,6 +471,8 @@ describe('/api/pharmacists POST', () => {
       email: 'rollback@example.com',
       name: '失敗 薬剤師',
       phone: undefined,
+      phosTenantId: 'org_1',
+      phosRole: null,
     });
     expect(deleteCognitoUserMock).toHaveBeenCalledWith('external@example.com');
     await expect(response.json()).resolves.toMatchObject({

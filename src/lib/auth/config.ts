@@ -4,7 +4,7 @@ import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextRequest } from 'next/server';
 import { readJsonObject } from '@/lib/db/json';
-import { UserRole, type UserRole as PhosUserRole } from '@/phos/contracts/phos_contracts';
+import { normalizePhosRole } from './phos-role';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
@@ -21,12 +21,6 @@ const authBaseUrl = getAuthBaseUrl();
 
 if (authBaseUrl && !process.env.NEXTAUTH_URL) {
   process.env.NEXTAUTH_URL = authBaseUrl;
-}
-
-function normalizePhosRole(value: unknown): PhosUserRole | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toUpperCase();
-  return Object.values(UserRole).find((role) => role === normalized);
 }
 
 export const authOptions: NextAuthOptions = {

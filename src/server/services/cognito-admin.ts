@@ -9,6 +9,8 @@ import {
   CognitoIdentityProviderClient,
   type AttributeType,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { normalizePhosRole } from '@/lib/auth/phos-role';
+import type { UserRole as PhosUserRole } from '@/phos/contracts/phos_contracts';
 
 const DEFAULT_REGION = 'ap-northeast-1';
 
@@ -37,7 +39,19 @@ function getAttributeValue(attributes: AttributeType[] | undefined, name: string
   return attributes?.find((attribute) => attribute.Name === name)?.Value;
 }
 
-function buildAttributes(args: { email: string; name: string; phone?: string | null }) {
+function assertSafePhosTenantId(tenantId: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(tenantId)) {
+    throw new Error('COGNITO_PHOS_TENANT_ID_INVALID');
+  }
+}
+
+export function buildCognitoUserAttributes(args: {
+  email: string;
+  name: string;
+  phone?: string | null;
+  phosTenantId?: string | null;
+  phosRole?: PhosUserRole | string | null;
+}) {
   const attributes: AttributeType[] = [
     { Name: 'email', Value: args.email },
     { Name: 'email_verified', Value: 'true' },
@@ -46,6 +60,19 @@ function buildAttributes(args: { email: string; name: string; phone?: string | n
 
   if (args.phone?.startsWith('+')) {
     attributes.push({ Name: 'phone_number', Value: args.phone });
+  }
+
+  if (args.phosTenantId) {
+    assertSafePhosTenantId(args.phosTenantId);
+    attributes.push({ Name: 'custom:tenant_id', Value: args.phosTenantId });
+  }
+
+  if (args.phosRole) {
+    const role = normalizePhosRole(args.phosRole);
+    if (!role) {
+      throw new Error('COGNITO_PHOS_ROLE_INVALID');
+    }
+    attributes.push({ Name: 'custom:role', Value: role });
   }
 
   return attributes;
@@ -75,6 +102,8 @@ export async function inviteCognitoUser(args: {
   email: string;
   name: string;
   phone?: string | null;
+  phosTenantId?: string | null;
+  phosRole?: PhosUserRole | string | null;
 }) {
   const { userPoolId } = getRequiredCognitoConfig();
   const username = normalizeCognitoUsername(args.email);
@@ -83,7 +112,7 @@ export async function inviteCognitoUser(args: {
       UserPoolId: userPoolId,
       Username: username,
       DesiredDeliveryMediums: ['EMAIL'],
-      UserAttributes: buildAttributes(args),
+      UserAttributes: buildCognitoUserAttributes(args),
     }),
   );
 
@@ -119,13 +148,15 @@ export async function updateCognitoUserProfile(args: {
   email: string;
   name: string;
   phone?: string | null;
+  phosTenantId?: string | null;
+  phosRole?: PhosUserRole | string | null;
 }) {
   const { userPoolId } = getRequiredCognitoConfig();
   await getClient().send(
     new AdminUpdateUserAttributesCommand({
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(args.username),
-      UserAttributes: buildAttributes(args),
+      UserAttributes: buildCognitoUserAttributes(args),
     }),
   );
 }

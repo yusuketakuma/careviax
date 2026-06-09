@@ -12,6 +12,7 @@ import {
   membershipFlagsForRole,
   roleRequiresSite,
 } from '@/lib/auth/member-roles';
+import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import {
   type PharmacistImportRow,
   pharmacistImportEnvelopeSchema,
@@ -226,6 +227,8 @@ export async function POST(req: NextRequest) {
         email: row.email,
         name: row.name,
         phone: row.phone ?? undefined,
+        phosTenantId: ctx.orgId,
+        phosRole: phosRoleFromMemberRole(row.role),
       });
     } catch (error) {
       results.push({

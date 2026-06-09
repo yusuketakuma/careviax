@@ -237,6 +237,8 @@ describe('/api/pharmacists/[id] PATCH', () => {
       email: 'pharmacist@example.com',
       name: '更新 薬剤師',
       phone: '090-1111-2222',
+      phosTenantId: 'org_1',
+      phosRole: 'ADMIN',
     });
     expect(userUpdateMock).toHaveBeenCalledWith({
       where: { id: 'user_1' },
