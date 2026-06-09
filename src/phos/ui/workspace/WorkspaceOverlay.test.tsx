@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
@@ -116,6 +116,36 @@ describe('WorkspaceOverlay', () => {
     expect(screen.getByRole('heading', { name: '不足・確認事項' })).toBeTruthy();
     expect(screen.getByText('証跡が不足しています。')).toBeTruthy();
     expect(screen.getByText('必要操作: 証跡を添付する')).toBeTruthy();
+  });
+
+  it('renders opened card tabs and delegates card switching', () => {
+    const onSelectOpenedCard = vi.fn();
+    render(
+      <WorkspaceOverlay
+        detail={detail()}
+        open
+        openedCards={[
+          { card_id: 'card_1', label: '患者 山田太郎' },
+          { card_id: 'card_2', label: '患者 佐藤花子' },
+        ]}
+        activeCardId="card_1"
+        onOpenChange={vi.fn()}
+        onSelectOpenedCard={onSelectOpenedCard}
+        onExecute={vi.fn()}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    const openedCardTabs = screen.getByRole('group', { name: 'OpenedCardTabs' });
+    expect(
+      within(openedCardTabs)
+        .getByRole('button', { name: '患者 山田太郎' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    fireEvent.click(within(openedCardTabs).getByRole('button', { name: '患者 佐藤花子' }));
+
+    expect(onSelectOpenedCard).toHaveBeenCalledWith('card_2');
   });
 
   it('renders a source drawer trigger in the right pane', () => {

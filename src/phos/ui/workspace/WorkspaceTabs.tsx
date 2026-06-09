@@ -106,7 +106,7 @@ export function WorkspaceTabs({
 
   return (
     <section className="space-y-4">
-      <div role="tablist" aria-label="OpenedCardTabs" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="WorkspaceTabs" className="flex flex-wrap gap-2">
         {visibleTabs.map((tab) => (
           <button
             key={tab}

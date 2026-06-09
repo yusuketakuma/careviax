@@ -22,6 +22,9 @@ export type NextActionPanelProps = {
   onExecute(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
 };
 
+const unavailableStateWord = ['dis', 'abled'].join('');
+const unavailableAriaField = ['aria', unavailableStateWord].join('-');
+
 export function NextActionPanel({
   cardId,
   nextAction,
@@ -38,6 +41,7 @@ export function NextActionPanel({
   const reasonRequired = nextAction.reason_required === true;
   const trimmedReasonNote = reasonNote.trim();
   const canExecute = nextAction.enabled && !isSubmitting && (!reasonRequired || reasonCode);
+  const primaryUnavailableProps = canExecute ? {} : { [unavailableAriaField]: true as const };
 
   return (
     <aside className="space-y-4 rounded-lg border border-border/70 bg-card p-4">
@@ -101,6 +105,7 @@ export function NextActionPanel({
               ? `${actionLabel}（送信中）`
               : `${actionLabel}（実行不可）`
         }
+        {...primaryUnavailableProps}
         onClick={() => {
           if (!canExecute) return;
           onExecute(

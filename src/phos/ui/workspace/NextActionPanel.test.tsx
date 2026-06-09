@@ -72,6 +72,7 @@ describe('NextActionPanel', () => {
 
     const blockedButton = screen.getByRole('button', { name: 'セット監査を差し戻す（実行不可）' });
     expect(blockedButton.getAttribute('disabled')).toBeNull();
+    expect(blockedButton.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(blockedButton);
     expect(onExecute).not.toHaveBeenCalled();
 
@@ -97,10 +98,15 @@ describe('NextActionPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（実行不可）' }));
+    const unavailableButton = screen.getByRole('button', {
+      name: '処方差分を確認する（実行不可）',
+    });
+    fireEvent.click(unavailableButton);
 
     expect(screen.getByText('必要な情報が不足しています。')).toBeTruthy();
     expect(screen.getByText('1件の確認が必要です。')).toBeTruthy();
+    expect(unavailableButton.getAttribute('disabled')).toBeNull();
+    expect(unavailableButton.getAttribute('aria-disabled')).toBe('true');
     expect(onExecute).not.toHaveBeenCalled();
   });
 
@@ -116,9 +122,12 @@ describe('NextActionPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（送信中）' }));
+    const submittingButton = screen.getByRole('button', { name: '処方差分を確認する（送信中）' });
+    fireEvent.click(submittingButton);
 
     expect(screen.getByText('操作状態: SUBMITTING')).toBeTruthy();
+    expect(submittingButton.getAttribute('disabled')).toBeNull();
+    expect(submittingButton.getAttribute('aria-disabled')).toBe('true');
     expect(onExecute).not.toHaveBeenCalled();
   });
 });

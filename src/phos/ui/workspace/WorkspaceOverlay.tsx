@@ -20,11 +20,14 @@ import { WorkspaceTabs } from './WorkspaceTabs';
 export type WorkspaceOverlayProps = {
   detail: CardDetailResponse | null;
   open: boolean;
+  openedCards?: Array<{ card_id: string; label: string }>;
+  activeCardId?: string;
   detailError?: string;
   actionPhase?: ActionPhase;
   actionMessage?: string;
   pendingEvidence?: EvidencePendingView[];
   onOpenChange(open: boolean): void;
+  onSelectOpenedCard?(cardId: string): void;
   onExecute(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
   onCreateHandoff?(cardId: string, input: HandoffCreateInput): void;
   onOpenHandoffReview(handoffId: string): void;
@@ -38,11 +41,14 @@ export type WorkspaceOverlayProps = {
 export function WorkspaceOverlay({
   detail,
   open,
+  openedCards = [],
+  activeCardId,
   detailError,
   actionPhase,
   actionMessage,
   pendingEvidence = [],
   onOpenChange,
+  onSelectOpenedCard,
   onExecute,
   onCreateHandoff,
   onOpenHandoffReview,
@@ -57,7 +63,7 @@ export function WorkspaceOverlay({
       <DialogContent className="h-[min(92vh,920px)] max-w-[min(1120px,calc(100vw-1.5rem))] overflow-hidden p-0">
         {detail ? (
           <div className="grid h-full grid-rows-[auto_1fr]">
-            <DialogHeader className="border-b border-border/70 px-5 py-4">
+            <DialogHeader className="space-y-3 border-b border-border/70 px-5 py-4">
               <div className="pr-10">
                 <DialogTitle className="text-xl">{detail.card.patient_name}</DialogTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -65,6 +71,25 @@ export function WorkspaceOverlay({
                   {PhosCurrentStepLabel[detail.card.current_step]}
                 </p>
               </div>
+              {openedCards.length > 1 ? (
+                <div
+                  role="group"
+                  aria-label="OpenedCardTabs"
+                  className="flex gap-2 overflow-x-auto pb-1"
+                >
+                  {openedCards.map((card) => (
+                    <button
+                      key={card.card_id}
+                      type="button"
+                      aria-pressed={card.card_id === activeCardId}
+                      className="min-h-11 shrink-0 rounded-md border border-border/70 bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+                      onClick={() => onSelectOpenedCard?.(card.card_id)}
+                    >
+                      {card.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </DialogHeader>
 
             <div className="grid min-h-0 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px]">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
@@ -60,6 +60,7 @@ export type BoardClientProps = {
   apiBaseUrl?: string;
   client?: PhosApiClient;
   getAccessToken?: () => string | Promise<string>;
+  initialSelectedCardId?: string;
   initialItems?: CardBoardItemView[];
   offlineActionQueue?: PhosOfflineActionQueue;
   offlineEvidenceQueue?: PhosOfflineEvidenceQueue;
@@ -222,6 +223,26 @@ function focusSourceCardOrBoard(cardId: string): void {
   (cardButton ?? fallback)?.focus();
 }
 
+function readCardIdFromUrl(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const cardId = new URL(window.location.href).searchParams.get('card')?.trim();
+  return cardId || undefined;
+}
+
+function syncCardIdToUrl(cardId: string | undefined): void {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  const current = url.searchParams.get('card') ?? undefined;
+  if (cardId) {
+    if (current === cardId) return;
+    url.searchParams.set('card', cardId);
+  } else {
+    if (!current) return;
+    url.searchParams.delete('card');
+  }
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 const defaultOfflineEvidenceQueue: PhosOfflineEvidenceQueue = {
   listPendingEvidence: listPhosPendingEvidence,
   retryUploads: retryPhosOfflineEvidenceUploads,
@@ -231,6 +252,7 @@ export function BoardClient({
   apiBaseUrl,
   client,
   getAccessToken,
+  initialSelectedCardId,
   initialItems = [],
   offlineActionQueue,
   offlineEvidenceQueue = defaultOfflineEvidenceQueue,
@@ -245,7 +267,10 @@ export function BoardClient({
   const [density, setDensity] = useState<BoardDensity>(BoardDensity.COMFORTABLE);
   const [quickFilter, setQuickFilter] = useState<BoardQuickFilter>(BoardQuickFilter.ALL);
   const [triageLane, setTriageLane] = useState<TriageLane | undefined>();
-  const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
+  const [selectedCardId, setSelectedCardId] = useState<string | undefined>(initialSelectedCardId);
+  const [openedCardIds, setOpenedCardIds] = useState<string[]>(
+    initialSelectedCardId ? [initialSelectedCardId] : [],
+  );
   const [selectedDetail, setSelectedDetail] = useState<CardDetailResponse | null>(null);
   const [detailError, setDetailError] = useState<string | undefined>();
   const [phase, setPhase] = useState<BoardPhase>(initialItems.length > 0 ? 'READY' : 'LOADING');
@@ -266,6 +291,8 @@ export function BoardClient({
   const [capacity, setCapacity] = useState<CapacityResponse | undefined>();
   const [capacityPhase, setCapacityPhase] = useState<CapacityPhase>('LOADING');
   const [capacityError, setCapacityError] = useState<string | undefined>();
+  const urlSyncReady = useRef(false);
+  const lastAppliedInitialSelectedCardId = useRef<string | undefined>(undefined);
   const effectiveGetAccessToken = useMemo(() => {
     if (getAccessToken) return getAccessToken;
     if (!phosAccessToken) return undefined;
@@ -300,6 +327,42 @@ export function BoardClient({
   const enqueueToast = useCallback((toast: PhosToastInput) => {
     setToasts((current) => appendPhosToast(current, toast, Date.now()));
   }, []);
+
+  useEffect(() => {
+    if (initialSelectedCardId) {
+      urlSyncReady.current = true;
+      if (lastAppliedInitialSelectedCardId.current !== initialSelectedCardId) {
+        lastAppliedInitialSelectedCardId.current = initialSelectedCardId;
+        setSelectedDetail(null);
+        setDetailError(undefined);
+        setSelectedCardId(initialSelectedCardId);
+        setOpenedCardIds((current) =>
+          current.includes(initialSelectedCardId) ? current : [...current, initialSelectedCardId],
+        );
+      }
+      syncCardIdToUrl(initialSelectedCardId);
+      return;
+    }
+    lastAppliedInitialSelectedCardId.current = undefined;
+    const cardId = readCardIdFromUrl();
+    if (!cardId) {
+      urlSyncReady.current = true;
+      return;
+    }
+    setSelectedDetail(null);
+    setDetailError(undefined);
+    setSelectedCardId(cardId);
+    setOpenedCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
+    window.setTimeout(() => {
+      urlSyncReady.current = true;
+      syncCardIdToUrl(cardId);
+    }, 0);
+  }, [initialSelectedCardId]);
+
+  useEffect(() => {
+    if (!urlSyncReady.current) return;
+    syncCardIdToUrl(selectedCardId);
+  }, [selectedCardId]);
 
   useEffect(() => {
     if (initialItems.length > 0) return;
@@ -522,6 +585,7 @@ export function BoardClient({
     setSelectedDetail(null);
     setDetailError(undefined);
     setSelectedCardId(cardId);
+    setOpenedCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
   }, []);
 
   const handleCreateHandoff = useCallback(
@@ -777,6 +841,18 @@ export function BoardClient({
 
   const activeDetail =
     selectedDetail && selectedDetail.card.card_id === selectedCardId ? selectedDetail : null;
+  const openedCards = useMemo(
+    () =>
+      openedCardIds.map((cardId) => {
+        const item = items.find((candidate) => candidate.card.card_id === cardId);
+        const label =
+          activeDetail?.card.card_id === cardId
+            ? activeDetail.card.patient_name
+            : (item?.card.patient_name ?? cardId);
+        return { card_id: cardId, label };
+      }),
+    [activeDetail, items, openedCardIds],
+  );
   const activePendingEvidence = activeDetail?.visit_mode
     ? (pendingEvidenceByPacket[activeDetail.visit_mode.packet_id] ?? [])
     : [];
@@ -905,11 +981,14 @@ export function BoardClient({
       <WorkspaceOverlay
         detail={activeDetail}
         open={Boolean(selectedCardId)}
+        openedCards={openedCards}
+        activeCardId={selectedCardId}
         detailError={detailError}
         actionPhase={action.phase === ActionPhase.IDLE ? undefined : action.phase}
         actionMessage={actionError}
         pendingEvidence={activePendingEvidence}
         onOpenChange={handleWorkspaceOpenChange}
+        onSelectOpenedCard={handleOpenCard}
         onExecute={handlePrimaryAction}
         onCreateHandoff={handleCreateHandoff}
         onOpenHandoffReview={handleOpenHandoffReview}

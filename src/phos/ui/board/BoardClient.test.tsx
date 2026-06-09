@@ -326,6 +326,7 @@ describe('BoardClient', () => {
       phosRole: undefined,
       user: { name: '薬剤師A' },
     };
+    window.history.replaceState(null, '', '/board');
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -701,6 +702,145 @@ describe('BoardClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     await waitFor(() => expect(document.activeElement).toBe(cardButton));
+  });
+
+  it('opens a deep-linked card from the server-provided initial card id and removes the query on close', async () => {
+    window.history.replaceState(null, '', '/board?card=card_1');
+    const apiClient = client();
+
+    render(<BoardClient client={apiClient} initialItems={[item]} initialSelectedCardId="card_1" />);
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(window.location.search).toBe('?card=card_1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('syncs selected card state when the server-provided card query changes on the same route', async () => {
+    window.history.replaceState(null, '', '/board?card=card_1');
+    const apiClient = client({
+      getCardDetail: vi.fn(async (cardId: string) =>
+        detailResponse({
+          card:
+            cardId === 'card_2'
+              ? {
+                  ...readyCard,
+                  card_id: 'card_2',
+                  patient_name: '患者 佐藤花子',
+                }
+              : readyCard,
+        }),
+      ),
+    });
+
+    const { rerender } = render(
+      <BoardClient client={apiClient} initialItems={[item]} initialSelectedCardId="card_1" />,
+    );
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+
+    rerender(
+      <BoardClient client={apiClient} initialItems={[item]} initialSelectedCardId="card_2" />,
+    );
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_2'));
+    expect(screen.getByRole('heading', { name: '患者 佐藤花子' })).toBeTruthy();
+    expect(window.location.search).toBe('?card=card_2');
+  });
+
+  it('opens a deep-linked card from the current URL when no server prop is available', async () => {
+    window.history.replaceState(null, '', '/board?card=card_1');
+    const apiClient = client();
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(window.location.search).toBe('?card=card_1');
+  });
+
+  it('returns focus to the board root when a deep-linked source card is not in the current list', async () => {
+    window.history.replaceState(null, '', '/board?card=external_card');
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          card: {
+            ...readyCard,
+            card_id: 'external_card',
+            patient_name: '患者 外部',
+          },
+        }),
+      ),
+    });
+
+    render(
+      <BoardClient
+        client={apiClient}
+        initialItems={[item]}
+        initialSelectedCardId="external_card"
+      />,
+    );
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('external_card'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        document.querySelector<HTMLElement>('[data-phos-board-root="true"]'),
+      ),
+    );
+    expect(window.location.search).toBe('');
+  });
+
+  it('keeps opened card tabs and switches selected cards through Workspace tabs', async () => {
+    const secondItem = {
+      card: {
+        ...readyCard,
+        card_id: 'card_2',
+        patient_name: '患者 佐藤花子',
+      },
+      next_action: nextAction,
+    } satisfies CardBoardItemView;
+    const apiClient = client({
+      getCardDetail: vi.fn(async (cardId: string) =>
+        detailResponse({
+          card:
+            cardId === 'card_2'
+              ? {
+                  ...readyCard,
+                  card_id: 'card_2',
+                  patient_name: '患者 佐藤花子',
+                }
+              : readyCard,
+        }),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item, secondItem]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(window.location.search).toBe(''));
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 佐藤花子/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_2'));
+
+    const openedCardTabs = screen.getByRole('group', { name: 'OpenedCardTabs' });
+    expect(within(openedCardTabs).getByRole('button', { name: '患者 山田太郎' })).toBeTruthy();
+    expect(
+      within(openedCardTabs)
+        .getByRole('button', { name: '患者 佐藤花子' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    fireEvent.click(within(openedCardTabs).getByRole('button', { name: '患者 山田太郎' }));
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    expect(window.location.search).toBe('?card=card_1');
   });
 
   it('updates VisitMode through the Visit step API from the VISIT_REPORT tab', async () => {

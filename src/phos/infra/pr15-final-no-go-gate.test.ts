@@ -317,6 +317,7 @@ describe('PH-OS Final No-Go gate', () => {
       /reason_required/,
       /PHOTO_INSUFFICIENT/,
       /getAttribute\('disabled'\)/,
+      /getAttribute\('aria-disabled'\)/,
     ]);
     expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
       /sends workspace reason input for reason-required actions/,
@@ -326,6 +327,28 @@ describe('PH-OS Final No-Go gate', () => {
     expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.test.tsx', [
       /clears stale reason input when the selected card action changes/,
       /カードをキャンセルする（実行不可）/,
+    ]);
+  });
+
+  it('keeps Workspace deep links, opened card tabs, and focus return covered', () => {
+    expectEvidence('src/app/(phos)/board/page.tsx', [
+      /searchParams/,
+      /initialSelectedCardId/,
+      /<BoardClient/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /opens a deep-linked card from the server-provided initial card id/,
+      /syncs selected card state when the server-provided card query changes/,
+      /opens a deep-linked card from the current URL/,
+      /returns focus to the board root when a deep-linked source card is not in the current list/,
+      /keeps opened card tabs and switches selected cards/,
+      /returns focus to the source tile/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.test.tsx', [
+      /OpenedCardTabs/,
+      /delegates card switching/,
+      /aria-pressed/,
+      /closes on Escape/,
     ]);
   });
 });
