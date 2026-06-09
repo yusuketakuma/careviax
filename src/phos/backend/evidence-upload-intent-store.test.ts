@@ -1,4 +1,4 @@
-import { TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildDynamoEvidenceUploadIntentTransactWriteItems,
@@ -87,7 +87,8 @@ describe('Dynamo evidence upload intent store', () => {
   });
 
   it('sends TransactWriteItemsCommand through the provided DynamoDB client', async () => {
-    const send = vi.fn(async (command: TransactWriteItemsCommand) => {
+    const send = vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
+      if (command instanceof GetItemCommand) return {};
       expect(command).toBeInstanceOf(TransactWriteItemsCommand);
       return {};
     });
@@ -98,8 +99,72 @@ describe('Dynamo evidence upload intent store', () => {
 
     await store.recordUploadIntent(ctx, transaction().intent);
 
-    expect(send).toHaveBeenCalledOnce();
-    const sent = send.mock.calls[0]?.[0] as TransactWriteItemsCommand;
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(GetItemCommand);
+    const sent = send.mock.calls[1]?.[0] as TransactWriteItemsCommand;
     expect(sent.input.TransactItems).toHaveLength(2);
+  });
+
+  it('replays matching presign intent retries without writing duplicate audit events', async () => {
+    const existingIntent = buildDynamoEvidenceUploadIntentTransactWriteItems(
+      transaction(),
+      '2026-06-09T07:30:00.000Z',
+    )[0]?.Put?.Item;
+    const send = vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
+      if (command instanceof GetItemCommand) return { Item: existingIntent };
+      throw new Error('duplicate write should not happen');
+    });
+    const store = createDynamoEvidenceUploadIntentStore({ client: { send } });
+
+    await expect(store.recordUploadIntent(ctx, transaction().intent)).resolves.toBeUndefined();
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(GetItemCommand);
+  });
+
+  it('rejects idempotency key reuse with different upload metadata', async () => {
+    const existingIntent = buildDynamoEvidenceUploadIntentTransactWriteItems(
+      transaction({ intent: { ...transaction().intent, sha256: 'b'.repeat(64) } }),
+      '2026-06-09T07:30:00.000Z',
+    )[0]?.Put?.Item;
+    const store = createDynamoEvidenceUploadIntentStore({
+      client: {
+        send: vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
+          if (command instanceof GetItemCommand) return { Item: existingIntent };
+          return {};
+        }),
+      },
+    });
+
+    await expect(store.recordUploadIntent(ctx, transaction().intent)).rejects.toMatchObject({
+      status: 409,
+      error_code: 'IDEMPOTENCY_CONFLICT',
+      details: {
+        idempotency_key: 'idem_evidence_1',
+        reason: 'existing_evidence_intent_mismatch',
+      },
+    });
+  });
+
+  it('treats a concurrent matching conditional transaction race as replayable', async () => {
+    const existingIntent = buildDynamoEvidenceUploadIntentTransactWriteItems(
+      transaction(),
+      '2026-06-09T07:30:00.000Z',
+    )[0]?.Put?.Item;
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce({
+        name: 'TransactionCanceledException',
+        CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+      })
+      .mockResolvedValueOnce({ Item: existingIntent });
+    const store = createDynamoEvidenceUploadIntentStore({ client: { send } });
+
+    await expect(store.recordUploadIntent(ctx, transaction().intent)).resolves.toBeUndefined();
+
+    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(GetItemCommand);
+    expect(send.mock.calls[1]?.[0]).toBeInstanceOf(TransactWriteItemsCommand);
+    expect(send.mock.calls[2]?.[0]).toBeInstanceOf(GetItemCommand);
   });
 });

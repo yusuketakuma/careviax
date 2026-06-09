@@ -13,6 +13,7 @@ import {
   validateEvidenceUploadRequest,
 } from './s3-evidence-key';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
+import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
 import { parseIdempotencyKey } from './input-validation';
@@ -58,6 +59,16 @@ function forbiddenError(ctx: TenantContext, error: PhosAuthorizationError) {
   return toErrorLambdaResponse(403, response);
 }
 
+function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
+  const response: ErrorResponse = {
+    request_id: ctx.request_id,
+    error_code: error.error_code,
+    message_key: error.message_key,
+    ...(error.details ? { details: error.details } : {}),
+  };
+  return toErrorLambdaResponse(error.status, response);
+}
+
 function assertEvidenceWriteAccess(ctx: TenantContext) {
   assertRouteAccess(ctx, 'POST /evidence/presign-upload');
 }
@@ -101,6 +112,10 @@ function assertUploadPolicy(input: EvidenceUploadRequest, max_size_bytes: number
   if (input.size_bytes > max_size_bytes) {
     throw new TenantStorageKeyError('size_bytes exceeds max upload size');
   }
+}
+
+function sha256HexToBase64(hex: string): string {
+  return Buffer.from(hex, 'hex').toString('base64');
 }
 
 function logEvidencePresign(input: {
@@ -221,6 +236,11 @@ export function createEvidencePresignUploadHandler(
         emitEvidenceUploadFailed({ ctx, error_code: 'VALIDATION_ERROR' });
         return validationError(ctx, { reason: error.message });
       }
+      if (error instanceof PhosDomainError) {
+        logEvidencePresign({ ctx, error_code: error.error_code });
+        emitEvidenceUploadFailed({ ctx, error_code: error.error_code });
+        return domainErrorResponse(ctx, error);
+      }
       emitEvidenceUploadFailed({ ctx, error_code: 'INTERNAL_ERROR' });
       throw error;
     }
@@ -240,6 +260,7 @@ export function createS3EvidenceUploadPresigner(input: {
         Bucket: input.bucket,
         Key: request.key,
         ContentType: request.mime_type,
+        ChecksumSHA256: sha256HexToBase64(request.sha256),
         Metadata: {
           sha256: request.sha256,
           size_bytes: String(request.size_bytes),
@@ -252,6 +273,7 @@ export function createS3EvidenceUploadPresigner(input: {
         upload_url,
         headers: {
           'Content-Type': request.mime_type,
+          'x-amz-checksum-sha256': sha256HexToBase64(request.sha256),
           'x-amz-meta-sha256': request.sha256,
           'x-amz-meta-size_bytes': String(request.size_bytes),
         },

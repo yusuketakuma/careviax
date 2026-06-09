@@ -120,6 +120,22 @@ async function assertIdempotent(input: {
   return null;
 }
 
+async function replayIdempotentAfterCommitConflict(input: {
+  error: unknown;
+  store: VisitModeLifecycleStore;
+  ctx: TenantContext;
+  mutation_key: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+}): Promise<VisitModeView> {
+  if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
+    throw input.error;
+  }
+  const matched = await assertIdempotent(input);
+  if (matched) return matched;
+  throw input.error;
+}
+
 const ABSENT_FOLLOWUP_BLOCKER_CODE = 'VISIT_ABSENT_FOLLOWUP';
 const VISIT_STEP_ROUTE_KEY = 'POST /visit-packets/{packet_id}/visit-steps/{step}';
 
@@ -318,16 +334,27 @@ export function createVisitModeLifecycleRepository(
             })
           : undefined;
       const response = projectVisitStepResponse(ctx, visit, step, command, verified_evidence);
-      return store.commitVisitStep(ctx, {
-        packet_id,
-        step,
-        mutation_key,
-        command,
-        request_fingerprint,
-        previous_visit: visit,
-        response,
-        verified_evidence,
-      });
+      try {
+        return await store.commitVisitStep(ctx, {
+          packet_id,
+          step,
+          mutation_key,
+          command,
+          request_fingerprint,
+          previous_visit: visit,
+          response,
+          verified_evidence,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
   };
 }

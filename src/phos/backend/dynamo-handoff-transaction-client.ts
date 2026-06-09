@@ -39,10 +39,7 @@ function idempotencyPut(
         response_json: { S: JSON.stringify(input.response) },
         created_at: { S: committed_at },
       },
-      ConditionExpression: 'attribute_not_exists(PK) OR request_fingerprint = :request_fingerprint',
-      ExpressionAttributeValues: {
-        ':request_fingerprint': { S: input.request_fingerprint },
-      },
+      ConditionExpression: 'attribute_not_exists(PK)',
     },
   };
 }
@@ -171,16 +168,22 @@ export function buildDynamoHandoffTransitionTransactWriteItems(
       Update: {
         TableName: input.table_name,
         Key: dynamoKey(input.partition_key, input.handoff_sort_key),
-        ConditionExpression: '#server_version = :expected_server_version',
+        ConditionExpression: input.expected_assignee_user_id
+          ? '#server_version = :expected_server_version AND #assignee_user_id = :expected_assignee_user_id'
+          : '#server_version = :expected_server_version AND attribute_not_exists(#assignee_user_id)',
         UpdateExpression:
           'SET #server_version = :server_version, #status = :status, #updated_at = :updated_at, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk, handoff = :handoff',
         ExpressionAttributeNames: {
           '#server_version': 'server_version',
           '#status': 'status',
           '#updated_at': 'updated_at',
+          '#assignee_user_id': 'assignee_user_id',
         },
         ExpressionAttributeValues: {
           ':expected_server_version': { N: String(input.expected_server_version) },
+          ...(input.expected_assignee_user_id
+            ? { ':expected_assignee_user_id': { S: input.expected_assignee_user_id } }
+            : {}),
           ':server_version': { N: String(input.response.server_version) },
           ':status': { S: handoff.status },
           ':updated_at': { S: committed_at },

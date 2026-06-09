@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type {
   CreateHandoffRequest,
@@ -63,6 +63,7 @@ export type DynamoHandoffTransitionTransaction = {
   idempotency_sort_key: string;
   idempotency_key: string;
   expected_server_version: number;
+  expected_assignee_user_id?: string;
   request_fingerprint: string;
   response: HandoffMutationResponse;
   audit_event: DynamoCardAuditEvent;
@@ -113,6 +114,18 @@ function readAssignee(ctx: TenantContext, query: HandoffSearchQuery): string {
 function boundedLimit(limit: number | undefined): number {
   if (!limit) return HANDOFF_SEARCH_DEFAULT_LIMIT;
   return Math.min(Math.max(limit, 1), HANDOFF_SEARCH_MAX_LIMIT);
+}
+
+function deterministicCreateHandoffId(ctx: TenantContext, command: CreateHandoffRequest): string {
+  const digest = createHash('sha256')
+    .update(ctx.tenant_id)
+    .update('\0')
+    .update(command.card_id)
+    .update('\0')
+    .update(command.idempotency_key)
+    .digest('base64url')
+    .slice(0, 32);
+  return `handoff_${digest}`;
 }
 
 function handoffAuditSummary(handoff: HandoffView) {
@@ -242,7 +255,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
     async commitCreateHandoff(ctx, command, card_context, request_fingerprint) {
       const partition_key = tenantPk(ctx);
       assertTenantPk(ctx, partition_key);
-      const handoff_id = options.createHandoffId?.() ?? randomUUID();
+      const handoff_id = options.createHandoffId?.() ?? deterministicCreateHandoffId(ctx, command);
       const created_at = (options.now?.() ?? new Date()).toISOString();
       const response = mapper.toCreateResponse({
         ctx,
@@ -317,6 +330,9 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
         }),
         idempotency_key: input.command.idempotency_key,
         expected_server_version: input.previous_handoff.server_version,
+        ...(input.previous_handoff.assignee_user_id
+          ? { expected_assignee_user_id: input.previous_handoff.assignee_user_id }
+          : {}),
         request_fingerprint: input.request_fingerprint,
         response: input.response,
         audit_event: {

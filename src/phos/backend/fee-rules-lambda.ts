@@ -50,5 +50,11 @@ export function createFeeRuleSearchLambdaHandler(deps: FeeRulesLambdaDependencie
   });
 }
 
-export const feeRuleSearchHandler: ReturnType<typeof createFeeRuleSearchLambdaHandler> = (event) =>
-  createFeeRuleSearchLambdaHandler()(event);
+let defaultFeeRuleSearchHandler: ReturnType<typeof createFeeRuleSearchLambdaHandler> | undefined;
+
+export const feeRuleSearchHandler: ReturnType<typeof createFeeRuleSearchLambdaHandler> = (
+  event,
+) => {
+  defaultFeeRuleSearchHandler ??= createFeeRuleSearchLambdaHandler();
+  return defaultFeeRuleSearchHandler(event);
+};

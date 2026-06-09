@@ -273,6 +273,58 @@ describe('createDynamoHandoffLifecycleStore', () => {
     });
   });
 
+  it('derives production create handoff ids from the idempotency scope', async () => {
+    const fakeClient = client();
+    const store = createDynamoHandoffLifecycleStore(fakeClient, mapper, {
+      now: () => new Date('2026-06-09T00:00:00.000Z'),
+    });
+    const command = {
+      card_id: 'card_1',
+      reason_code: 'DIFF_REVIEW',
+      summary: '薬剤師確認が必要です。',
+      source_refs: [{ kind: 'PRESCRIPTION' as const, ref_id: 'rx_1', label: '処方箋 1' }],
+      urgency: HandoffUrgency.HIGH,
+      related_blocker_code: 'MISSING_EVIDENCE',
+      idempotency_key: 'idem_create',
+      client_version: 1,
+    };
+
+    const first = await store.commitCreateHandoff(
+      ctx,
+      command,
+      {
+        card_id: 'card_1',
+        patient_name: '患者 山田太郎',
+        server_version: 1,
+        pharmacist_assignee_user_id: 'user_pharmacist',
+      },
+      'fp_create',
+    );
+    const second = await store.commitCreateHandoff(
+      ctx,
+      command,
+      {
+        card_id: 'card_1',
+        patient_name: '患者 山田太郎',
+        server_version: 1,
+        pharmacist_assignee_user_id: 'user_pharmacist',
+      },
+      'fp_create',
+    );
+
+    expect(first.handoff.handoff_id).toMatch(/^handoff_[A-Za-z0-9_-]{32}$/);
+    expect(second.handoff.handoff_id).toBe(first.handoff.handoff_id);
+    expect(fakeClient.transactCreateHandoff).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        handoff_sort_key: `HANDOFF#${first.handoff.handoff_id}`,
+        response: expect.objectContaining({
+          handoff: expect.objectContaining({ handoff_id: first.handoff.handoff_id }),
+        }),
+      }),
+    );
+  });
+
   it('builds a conditional transition transaction with related blocker resolution', async () => {
     const fakeClient = client();
     const store = createDynamoHandoffLifecycleStore(fakeClient, mapper);
@@ -331,6 +383,7 @@ describe('createDynamoHandoffLifecycleStore', () => {
       idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve',
       idempotency_key: 'idem_resolve',
       expected_server_version: 1,
+      expected_assignee_user_id: 'user_pharmacist',
       request_fingerprint: 'fp_resolve',
       response,
       audit_event: expect.objectContaining({

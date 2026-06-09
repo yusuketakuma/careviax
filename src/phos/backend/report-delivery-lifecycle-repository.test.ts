@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ReportDeliveryStatus, UserRole, type ReportDeliveryView } from '@/phos/contracts/phos_contracts';
+import {
+  ReportDeliveryStatus,
+  UserRole,
+  type ReportDeliveryView,
+} from '@/phos/contracts/phos_contracts';
+import { PhosDomainError } from './cards-repository';
 import {
   createReportDeliveryLifecycleRepository,
   type IdempotentReportDeliveryLookup,
@@ -33,7 +38,9 @@ function delivery(overrides: Partial<ReportDeliveryView> = {}): ReportDeliveryVi
   };
 }
 
-function store(overrides: Partial<ReportDeliveryLifecycleStore> = {}): ReportDeliveryLifecycleStore {
+function store(
+  overrides: Partial<ReportDeliveryLifecycleStore> = {},
+): ReportDeliveryLifecycleStore {
   return {
     searchReportDeliveries: vi.fn(),
     getIdempotentMutation: vi.fn(
@@ -119,6 +126,38 @@ describe('ReportDelivery lifecycle repository', () => {
         client_version: 0,
       }),
     ).rejects.toMatchObject({ status: 409, error_code: 'STALE_VERSION' });
+  });
+
+  it('replays matching idempotent responses after commit races', async () => {
+    const saved = {
+      delivery: delivery({ status: ReportDeliveryStatus.ACTION_DONE, server_version: 2 }),
+      side_effects: [{ type: 'REPORT_ACTION_DONE' as const, delivery_id: 'delivery_1' }],
+      server_version: 2,
+    };
+    const fakeStore = store({
+      getIdempotentMutation: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response: saved }),
+      commitReportDeliveryTransition: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repo = createReportDeliveryLifecycleRepository(fakeStore);
+
+    await expect(
+      repo.registerReportReply(ctx, 'delivery_1', {
+        result_status: ReportDeliveryStatus.ACTION_DONE,
+        reply_summary: '問題ありません。',
+        idempotency_key: 'idem_reply',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(saved);
+    expect(fakeStore.getIdempotentMutation).toHaveBeenCalledTimes(2);
   });
 
   it('marks only action-required deliveries done', async () => {

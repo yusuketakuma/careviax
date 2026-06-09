@@ -19,7 +19,12 @@ export function isDynamoTransactionConflict(error: unknown): boolean {
   const name = (error as { name?: unknown }).name;
   if (name !== 'TransactionCanceledException') return false;
   const reasons = cancellationReasons(error);
-  return reasons.length === 0 || reasons.some((reason) => reason.Code === 'ConditionalCheckFailed');
+  return (
+    reasons.length === 0 ||
+    reasons.some((reason) => {
+      return reason.Code === 'ConditionalCheckFailed' || reason.Code === 'TransactionConflict';
+    })
+  );
 }
 
 export function rethrowDynamoTransactionConflict(

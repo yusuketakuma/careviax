@@ -31,6 +31,10 @@ function ctx(): TenantContext {
   };
 }
 
+function ctxWithRole(role: UserRole, user_id = 'user_pharmacist'): TenantContext {
+  return { ...ctx(), role, user_id };
+}
+
 function handoff(overrides: Partial<HandoffView> = {}): HandoffView {
   return {
     handoff_id: 'handoff_1',
@@ -43,6 +47,7 @@ function handoff(overrides: Partial<HandoffView> = {}): HandoffView {
     urgency: HandoffUrgency.HIGH,
     related_blocker_code: 'MISSING_EVIDENCE',
     created_by_user_id: 'user_clerk',
+    assignee_user_id: 'user_pharmacist',
     created_at: '2026-06-09T00:00:00.000Z',
     updated_at: '2026-06-09T00:00:00.000Z',
     server_version: 1,
@@ -136,6 +141,22 @@ function store(overrides: Partial<HandoffLifecycleStore> = {}): HandoffLifecycle
 }
 
 describe('createHandoffLifecycleRepository', () => {
+  it('rejects explicit assignee queue search for non-manager users', async () => {
+    const backingStore = store();
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.searchHandoffs(ctx(), { assignee: 'user_other', limit: 50 }),
+    ).rejects.toMatchObject({ error_code: 'FORBIDDEN' } satisfies Partial<PhosDomainError>);
+    expect(backingStore.searchHandoffs).not.toHaveBeenCalled();
+
+    await repo.searchHandoffs(ctxWithRole(UserRole.MANAGER), { assignee: 'user_other', limit: 50 });
+    expect(backingStore.searchHandoffs).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.MANAGER }),
+      expect.objectContaining({ assignee: 'user_other' }),
+    );
+  });
+
   it('resolves OPEN handoffs through review and emits BLOCKER_RESOLVED from stored relation', async () => {
     const backingStore = store();
     const repo = createHandoffLifecycleRepository(backingStore);
@@ -187,6 +208,40 @@ describe('createHandoffLifecycleRepository', () => {
         previous_handoff: expect.objectContaining({ status: HandoffStatus.OPEN }),
       }),
     );
+  });
+
+  it('rejects non-assignee pharmacist handoff transitions', async () => {
+    const backingStore = store({
+      loadHandoff: vi.fn(async () =>
+        handoff({ assignee_user_id: 'user_other', status: HandoffStatus.OPEN }),
+      ),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.openHandoff(ctx(), 'handoff_1', {
+        idempotency_key: 'idem_open',
+        client_version: 1,
+      }),
+    ).rejects.toMatchObject({ error_code: 'FORBIDDEN' } satisfies Partial<PhosDomainError>);
+    expect(backingStore.commitHandoffTransition).not.toHaveBeenCalled();
+  });
+
+  it('allows manager override for handoff transitions', async () => {
+    const backingStore = store({
+      loadHandoff: vi.fn(async () =>
+        handoff({ assignee_user_id: 'user_other', status: HandoffStatus.OPEN }),
+      ),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.openHandoff(ctxWithRole(UserRole.MANAGER), 'handoff_1', {
+        idempotency_key: 'idem_open',
+        client_version: 1,
+      }),
+    ).resolves.toMatchObject({ handoff: { status: HandoffStatus.IN_REVIEW } });
+    expect(backingStore.commitHandoffTransition).toHaveBeenCalledOnce();
   });
 
   it('checks card server version before creating handoffs', async () => {
@@ -250,6 +305,65 @@ describe('createHandoffLifecycleRepository', () => {
     ).rejects.toMatchObject({
       error_code: 'IDEMPOTENCY_CONFLICT',
     } satisfies Partial<PhosDomainError>);
+  });
+
+  it('replays matching idempotency responses after create commit races', async () => {
+    const matched = mutationResponse(handoff({ handoff_id: 'handoff_created' }));
+    const backingStore = store({
+      getIdempotentMutation: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response: matched }),
+      commitCreateHandoff: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.createHandoff(ctx(), {
+        card_id: 'card_1',
+        reason_code: 'DIFF_REVIEW',
+        summary: '薬剤師確認が必要です。',
+        source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+        urgency: HandoffUrgency.HIGH,
+        idempotency_key: 'idem_create',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(matched);
+    expect(backingStore.getIdempotentMutation).toHaveBeenCalledTimes(2);
+  });
+
+  it('replays matching idempotency responses after transition commit races', async () => {
+    const matched = mutationResponse(
+      handoff({ status: HandoffStatus.IN_REVIEW, server_version: 2 }),
+    );
+    const backingStore = store({
+      getIdempotentMutation: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response: matched }),
+      commitHandoffTransition: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.openHandoff(ctx(), 'handoff_1', {
+        idempotency_key: 'idem_open',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(matched);
+    expect(backingStore.getIdempotentMutation).toHaveBeenCalledTimes(2);
   });
 
   it('rejects stale handoff versions before committing transitions', async () => {

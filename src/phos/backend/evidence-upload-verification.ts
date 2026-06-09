@@ -38,6 +38,10 @@ function readMetadataSizeBytes(metadata: Record<string, string> | undefined): nu
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
+function sha256HexToBase64(hex: string): string {
+  return Buffer.from(hex, 'hex').toString('base64');
+}
+
 function isMissingObjectError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { name?: unknown; $metadata?: { httpStatusCode?: number } };
@@ -55,6 +59,7 @@ export function createS3EvidenceObjectVerifier(input: {
   return {
     async verifyObject(expected) {
       let result: {
+        ChecksumSHA256?: string;
         ContentLength?: number;
         ContentType?: string;
         Metadata?: Record<string, string>;
@@ -64,6 +69,7 @@ export function createS3EvidenceObjectVerifier(input: {
           new HeadObjectCommand({
             Bucket: input.bucket,
             Key: expected.key,
+            ChecksumMode: 'ENABLED',
           }),
         );
       } catch (error) {
@@ -94,6 +100,14 @@ export function createS3EvidenceObjectVerifier(input: {
         throw new EvidenceObjectVerificationError('sha256_mismatch', {
           expected: expected.sha256.toLowerCase(),
           actual: metadataSha256 ?? null,
+        });
+      }
+
+      const expectedChecksum = sha256HexToBase64(expected.sha256);
+      if (result.ChecksumSHA256 !== expectedChecksum) {
+        throw new EvidenceObjectVerificationError('checksum_sha256_mismatch', {
+          expected: expectedChecksum,
+          actual: result.ChecksumSHA256 ?? null,
         });
       }
 

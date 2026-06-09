@@ -1,4 +1,4 @@
-import { TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, TransactWriteItemsCommand } from '@aws-sdk/client-dynamodb';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EvidenceUploadPresigner } from './evidence-handlers';
@@ -63,7 +63,8 @@ describe('PH-OS evidence Lambda composition', () => {
 
   it('wires POST /evidence/presign-upload through tenant context into the presigner', async () => {
     const fakePresigner = presigner();
-    const send = vi.fn(async (command: TransactWriteItemsCommand) => {
+    const send = vi.fn(async (command: GetItemCommand | TransactWriteItemsCommand) => {
+      if (command instanceof GetItemCommand) return {};
       expect(command).toBeInstanceOf(TransactWriteItemsCommand);
       return {};
     });
@@ -83,7 +84,7 @@ describe('PH-OS evidence Lambda composition', () => {
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
     });
-    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed when the production bucket configuration is missing', () => {

@@ -111,6 +111,7 @@ function transitionTransaction(
     idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve',
     idempotency_key: 'idem_resolve',
     expected_server_version: 1,
+    expected_assignee_user_id: 'user_pharmacist',
     request_fingerprint: 'fp_resolve',
     response: response(
       handoff({
@@ -241,6 +242,7 @@ describe('Dynamo handoff transaction client', () => {
           request_fingerprint: { S: 'fp_create' },
           response_json: { S: JSON.stringify(response()) },
         },
+        ConditionExpression: 'attribute_not_exists(PK)',
       },
     });
   });
@@ -259,9 +261,11 @@ describe('Dynamo handoff transaction client', () => {
           PK: { S: 'TENANT#tenant_abc123' },
           SK: { S: 'HANDOFF#handoff_1' },
         },
-        ConditionExpression: '#server_version = :expected_server_version',
+        ConditionExpression:
+          '#server_version = :expected_server_version AND #assignee_user_id = :expected_assignee_user_id',
         ExpressionAttributeValues: {
           ':expected_server_version': { N: '1' },
+          ':expected_assignee_user_id': { S: 'user_pharmacist' },
           ':server_version': { N: '2' },
           ':status': { S: HandoffStatus.RESOLVED },
           ':gsi1sk': {
@@ -326,6 +330,7 @@ describe('Dynamo handoff transaction client', () => {
           SK: { S: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve' },
           idempotency_key: { S: 'idem_resolve' },
         },
+        ConditionExpression: 'attribute_not_exists(PK)',
       },
     });
   });

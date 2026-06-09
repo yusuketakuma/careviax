@@ -25,6 +25,7 @@ import {
   type CardActionExecutionStore,
   type IdempotentActionLookup,
 } from './card-action-executor';
+import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
 
 const ctx: TenantContext = {
@@ -189,6 +190,27 @@ describe('createCardActionExecutorRepository', () => {
     });
     expect(fakeStore.loadActionState).not.toHaveBeenCalled();
     expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
+  it('replays matching idempotent responses after commit races', async () => {
+    const replayed = actionResponse();
+    const fakeStore = store({
+      getIdempotentAction: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response: replayed }),
+      commitAction: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(ctx, 'card_1', command)).resolves.toEqual(replayed);
+    expect(fakeStore.getIdempotentAction).toHaveBeenCalledTimes(2);
   });
 
   it('rejects stale client_version with 409 before committing', async () => {

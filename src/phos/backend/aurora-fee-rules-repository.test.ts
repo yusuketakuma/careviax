@@ -100,7 +100,8 @@ describe('AuroraFeeRulesRepository', () => {
       "WHERE (fr.tenant_id = $1 OR (fr.tenant_scope = 'SYSTEM' AND fr.tenant_id = 'SYSTEM'))",
     );
     expect(sql).toContain('AND fr.fee_code = $2');
-    expect(params).toEqual(['tenant_abc123', 'M001', 2, 0]);
+    expect(sql).not.toContain('OFFSET');
+    expect(params).toEqual(['tenant_abc123', 'M001', 2]);
     expect(query).toHaveBeenLastCalledWith('COMMIT');
     expect(release).toHaveBeenCalledTimes(1);
   });
@@ -160,6 +161,36 @@ describe('AuroraFeeRulesRepository', () => {
 
     expect(response.items).toHaveLength(1);
     expect(response.next_cursor).toBeTruthy();
+    const cursor = JSON.parse(
+      Buffer.from(response.next_cursor ?? '', 'base64url').toString('utf8'),
+    ) as unknown;
+    expect(cursor).toEqual({
+      fee_code: 'M001',
+      revision_code: '2026',
+      rule_version_id: 'rv_1',
+    });
+  });
+
+  it('uses keyset cursor predicates instead of offset pagination', async () => {
+    const { pool, query } = client([]);
+    const repository = new AuroraFeeRulesRepository(pool);
+    const cursor = Buffer.from(
+      JSON.stringify({
+        fee_code: 'M001',
+        revision_code: '2026',
+        rule_version_id: 'rv_1',
+      }),
+      'utf8',
+    ).toString('base64url');
+
+    await repository.searchFeeRules(ctx, { limit: 50, cursor });
+
+    const [sql, params] = query.mock.calls[2];
+    expect(sql).toContain('fr.fee_code > $2');
+    expect(sql).toContain('rv.revision_code < $3');
+    expect(sql).toContain('rv.rule_version_id > $4');
+    expect(sql).not.toContain('OFFSET');
+    expect(params).toEqual(['tenant_abc123', 'M001', '2026', 'rv_1', 51]);
   });
 
   it('rejects malformed cursors before opening an Aurora connection', async () => {
@@ -177,9 +208,10 @@ describe('AuroraFeeRulesRepository', () => {
   });
 
   it.each([
-    ['missing offset', {}],
-    ['negative offset', { offset: -1 }],
-    ['fractional offset', { offset: 1.5 }],
+    ['missing fee_code', { revision_code: '2026', rule_version_id: 'rv_1' }],
+    ['missing revision_code', { fee_code: 'M001', rule_version_id: 'rv_1' }],
+    ['missing rule_version_id', { fee_code: 'M001', revision_code: '2026' }],
+    ['empty fee_code', { fee_code: '', revision_code: '2026', rule_version_id: 'rv_1' }],
   ])('rejects %s cursor payloads', async (_name, payload) => {
     const { pool } = client();
     const repository = new AuroraFeeRulesRepository(pool);

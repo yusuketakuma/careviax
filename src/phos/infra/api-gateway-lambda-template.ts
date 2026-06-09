@@ -216,7 +216,7 @@ export function buildPhosApiGatewayLambdaTemplate(
                 },
                 {
                   Effect: 'Allow',
-                  Action: ['s3:PutObject'],
+                  Action: ['s3:PutObject', 's3:GetObject'],
                   Resource: sub(`arn:aws:s3:::\${${evidenceBucketNameParameter}}/tenants/*`),
                 },
               ],

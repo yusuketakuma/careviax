@@ -52,6 +52,32 @@ export type CardActionExecutionStore = {
   commitAction(ctx: TenantContext, input: CardActionCommitInput): Promise<ActionResponse>;
 };
 
+async function replayIdempotentActionAfterCommitConflict(input: {
+  error: unknown;
+  store: CardActionExecutionStore;
+  ctx: TenantContext;
+  card_id: string;
+  command: CardActionCommand;
+  request_fingerprint: string;
+}): Promise<ActionResponse> {
+  if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
+    throw input.error;
+  }
+  const idempotent = await input.store.getIdempotentAction(
+    input.ctx,
+    input.card_id,
+    input.command.idempotency_key,
+    input.request_fingerprint,
+  );
+  if (idempotent.status === 'MATCH') return idempotent.response;
+  if (idempotent.status === 'CONFLICT') {
+    throw domainError(409, 'IDEMPOTENCY_CONFLICT', 'api.error.idempotency_conflict', {
+      idempotency_key: input.command.idempotency_key,
+    });
+  }
+  throw input.error;
+}
+
 export const CARD_ACTION_ROUTE_ACTION_CODES = [
   ActionCode.REGISTER_PRESCRIPTION,
   ActionCode.CONFIRM_PRESCRIPTION_DIFF,
@@ -340,13 +366,25 @@ export function createCardActionExecutorRepository(
       assertClaimCandidatesReviewed(state, command);
 
       const transition = ACTION_TRANSITION_MATRIX[command.action_code];
-      const response = await store.commitAction(ctx, {
-        card_id,
-        command,
-        request_fingerprint,
-        previous_state: state,
-        transition,
-      });
+      let response: ActionResponse;
+      try {
+        response = await store.commitAction(ctx, {
+          card_id,
+          command,
+          request_fingerprint,
+          previous_state: state,
+          transition,
+        });
+      } catch (error) {
+        response = await replayIdempotentActionAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          card_id,
+          command,
+          request_fingerprint,
+        });
+      }
 
       if (transition.kind === ActionKind.STEP_CHANGING && isCurrentStep(transition.to)) {
         const blockedOnPreviousStep =

@@ -35,6 +35,12 @@ type FeeRuleRow = QueryResultRow & {
   source_refs: unknown;
 };
 
+type FeeRuleCursor = {
+  fee_code: string;
+  revision_code: string;
+  rule_version_id: string;
+};
+
 const FEE_RULE_SELECT = `
 SELECT
   fr.rule_id,
@@ -93,22 +99,38 @@ function assertSafeTenantId(tenant_id: string): void {
   }
 }
 
-function encodeCursor(offset: number): string {
-  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
+function encodeCursor(row: FeeRuleRow): string {
+  return Buffer.from(
+    JSON.stringify({
+      fee_code: row.fee_code,
+      revision_code: row.revision_code,
+      rule_version_id: row.rule_version_id,
+    } satisfies FeeRuleCursor),
+    'utf8',
+  ).toString('base64url');
 }
 
-function decodeCursor(cursor: string | undefined): number {
-  if (!cursor) return 0;
+function decodeCursor(cursor: string | undefined): FeeRuleCursor | undefined {
+  if (!cursor) return undefined;
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error('cursor must decode to an object');
     }
-    const offset = (parsed as { offset?: unknown }).offset;
-    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) {
-      throw new Error('cursor offset must be a nonnegative safe integer');
+    const fee_code = (parsed as { fee_code?: unknown }).fee_code;
+    const revision_code = (parsed as { revision_code?: unknown }).revision_code;
+    const rule_version_id = (parsed as { rule_version_id?: unknown }).rule_version_id;
+    if (
+      typeof fee_code !== 'string' ||
+      fee_code.trim().length === 0 ||
+      typeof revision_code !== 'string' ||
+      revision_code.trim().length === 0 ||
+      typeof rule_version_id !== 'string' ||
+      rule_version_id.trim().length === 0
+    ) {
+      throw new Error('cursor must include fee_code, revision_code, and rule_version_id');
     }
-    return offset;
+    return { fee_code, revision_code, rule_version_id };
   } catch {
     throw validationError({ field: 'cursor' });
   }
@@ -255,7 +277,7 @@ export class AuroraFeeRulesRepository implements PhosFeeRulesRepository {
     query: FeeRuleSearchQuery,
   ): Promise<FeeRuleSearchResponse> {
     assertSafeTenantId(ctx.tenant_id);
-    const offset = decodeCursor(query.cursor);
+    const cursor = decodeCursor(query.cursor);
     const connection = await this.client.connect();
     const params: unknown[] = [ctx.tenant_id];
     let sql = FEE_RULE_SELECT;
@@ -265,24 +287,37 @@ export class AuroraFeeRulesRepository implements PhosFeeRulesRepository {
       sql += ` AND fr.fee_code = $${params.length}`;
     }
 
-    params.push(query.limit + 1, offset);
+    if (cursor) {
+      params.push(cursor.fee_code, cursor.revision_code, cursor.rule_version_id);
+      sql += ` AND (
+  fr.fee_code > $${params.length - 2}
+  OR (fr.fee_code = $${params.length - 2} AND rv.revision_code < $${params.length - 1})
+  OR (
+    fr.fee_code = $${params.length - 2}
+    AND rv.revision_code = $${params.length - 1}
+    AND rv.rule_version_id > $${params.length}
+  )
+)`;
+    }
+
+    params.push(query.limit + 1);
     sql += `
 ORDER BY fr.fee_code ASC, rv.revision_code DESC, rv.rule_version_id ASC
-LIMIT $${params.length - 1}
-OFFSET $${params.length}
+LIMIT $${params.length}
 `;
 
     try {
       await connection.query('BEGIN');
       await connection.query("SELECT set_config('app.tenant_id', $1, true)", [ctx.tenant_id]);
       const result = await connection.query(sql, params);
-      const rows = result.rows.slice(0, query.limit).map((row) => mapFeeRule(row as FeeRuleRow));
+      const visibleRows = result.rows.slice(0, query.limit) as FeeRuleRow[];
+      const rows = visibleRows.map((row) => mapFeeRule(row));
       await connection.query('COMMIT');
 
       return {
         items: rows,
         ...(result.rows.length > query.limit
-          ? { next_cursor: encodeCursor(offset + query.limit) }
+          ? { next_cursor: encodeCursor(visibleRows[visibleRows.length - 1]) }
           : {}),
         server_time: this.now().toISOString(),
       };

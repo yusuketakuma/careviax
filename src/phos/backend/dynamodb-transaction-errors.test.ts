@@ -20,6 +20,26 @@ describe('DynamoDB transaction error mapping', () => {
     );
   });
 
+  it('maps DynamoDB transaction conflict cancellations to deterministic stale-version conflicts', () => {
+    const error = {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'None' }, { Code: 'TransactionConflict', Message: 'hot key' }],
+    };
+
+    expect(() =>
+      rethrowDynamoTransactionConflict(error, { resource: 'handoff_create' }),
+    ).toThrowError(
+      expect.objectContaining({
+        status: 409,
+        error_code: 'STALE_VERSION',
+        details: {
+          reason: 'dynamo_transaction_conflict',
+          resource: 'handoff_create',
+        },
+      }),
+    );
+  });
+
   it('rethrows non-transaction errors unchanged', () => {
     const error = new Error('network unavailable');
 

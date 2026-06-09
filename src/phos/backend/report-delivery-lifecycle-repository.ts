@@ -103,6 +103,22 @@ async function assertIdempotent(input: {
   return null;
 }
 
+async function replayIdempotentAfterCommitConflict(input: {
+  error: unknown;
+  store: ReportDeliveryLifecycleStore;
+  ctx: TenantContext;
+  mutation_key: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+}): Promise<ReportDeliveryMutationResponse> {
+  if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
+    throw input.error;
+  }
+  const matched = await assertIdempotent(input);
+  if (matched) return matched;
+  throw input.error;
+}
+
 function mergeSourceRefs(existing: SourceRef[], next: SourceRef[] | undefined): SourceRef[] {
   const merged = [...existing];
   for (const source of next ?? []) {
@@ -230,14 +246,25 @@ export function createReportDeliveryLifecycleRepository(
       assertFreshVersion(delivery, command.client_version);
       assertReplyCanBeRegistered(delivery);
       const response = responseForRegisteredReply({ delivery, command, now: now() });
-      return store.commitReportDeliveryTransition(ctx, {
-        delivery_id,
-        mutation_key: key,
-        command,
-        request_fingerprint,
-        previous_delivery: delivery,
-        response,
-      });
+      try {
+        return await store.commitReportDeliveryTransition(ctx, {
+          delivery_id,
+          mutation_key: key,
+          command,
+          request_fingerprint,
+          previous_delivery: delivery,
+          response,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: key,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
     async markReportActionDone(ctx, delivery_id, command) {
       const request_fingerprint = stableStringify(command);
@@ -260,14 +287,25 @@ export function createReportDeliveryLifecycleRepository(
       assertFreshVersion(delivery, command.client_version);
       assertActionCanBeCompleted(delivery);
       const response = responseForActionDone({ delivery, command, ctx, now: now() });
-      return store.commitReportDeliveryTransition(ctx, {
-        delivery_id,
-        mutation_key: key,
-        command,
-        request_fingerprint,
-        previous_delivery: delivery,
-        response,
-      });
+      try {
+        return await store.commitReportDeliveryTransition(ctx, {
+          delivery_id,
+          mutation_key: key,
+          command,
+          request_fingerprint,
+          previous_delivery: delivery,
+          response,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: key,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
   };
 }

@@ -11,12 +11,14 @@ const expected = {
   sha256: 'a'.repeat(64),
   size_bytes: 1024,
 };
+const expectedChecksum = Buffer.from(expected.sha256, 'hex').toString('base64');
 
 describe('S3 evidence object verifier', () => {
   it('heads the generated S3 key and accepts matching metadata', async () => {
     const send = vi.fn(async (command: HeadObjectCommand) => {
       expect(command).toBeInstanceOf(HeadObjectCommand);
       return {
+        ChecksumSHA256: expectedChecksum,
         ContentLength: 1024,
         ContentType: 'image/jpeg',
         Metadata: {
@@ -35,6 +37,7 @@ describe('S3 evidence object verifier', () => {
     expect((send.mock.calls[0]?.[0] as HeadObjectCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
       Key: expected.key,
+      ChecksumMode: 'ENABLED',
     });
   });
 
@@ -60,6 +63,7 @@ describe('S3 evidence object verifier', () => {
     const verifier = createS3EvidenceObjectVerifier({
       client: {
         send: vi.fn(async () => ({
+          ChecksumSHA256: Buffer.from('b'.repeat(64), 'hex').toString('base64'),
           ContentLength: 2048,
           ContentType: 'image/png',
           Metadata: {
@@ -76,6 +80,27 @@ describe('S3 evidence object verifier', () => {
     );
     await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
       reason: 'content_type_mismatch',
+    });
+  });
+
+  it('rejects objects whose S3 checksum does not match the claimed sha256', async () => {
+    const verifier = createS3EvidenceObjectVerifier({
+      client: {
+        send: vi.fn(async () => ({
+          ChecksumSHA256: Buffer.from('b'.repeat(64), 'hex').toString('base64'),
+          ContentLength: 1024,
+          ContentType: 'image/jpeg',
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '1024',
+          },
+        })),
+      },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+      reason: 'checksum_sha256_mismatch',
     });
   });
 });

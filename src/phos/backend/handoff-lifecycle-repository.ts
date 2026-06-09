@@ -7,7 +7,7 @@ import type {
   ResolveHandoffRequest,
   ReturnHandoffRequest,
 } from '@/phos/contracts/phos_contracts';
-import { HandoffStatus as HandoffStatusValue } from '@/phos/contracts/phos_contracts';
+import { HandoffStatus as HandoffStatusValue, UserRole } from '@/phos/contracts/phos_contracts';
 import {
   openHandoffForReview,
   resolveHandoff,
@@ -97,6 +97,35 @@ function mutationKey(scope: string, id: string): string {
   return `${scope}:${id}`;
 }
 
+function canOverrideHandoffAssignee(ctx: TenantContext): boolean {
+  return ctx.role === UserRole.MANAGER || ctx.role === UserRole.ADMIN;
+}
+
+function assertCanSearchAssignee(ctx: TenantContext, assignee: string | undefined) {
+  if (
+    !assignee ||
+    assignee === 'ME' ||
+    assignee === ctx.user_id ||
+    canOverrideHandoffAssignee(ctx)
+  ) {
+    return;
+  }
+  throw domainError(403, 'FORBIDDEN', 'api.error.forbidden', {
+    reason: 'handoff_assignee_search_forbidden',
+    assignee_user_id: assignee,
+  });
+}
+
+function assertCanTransitionHandoff(ctx: TenantContext, handoff: HandoffView) {
+  if (canOverrideHandoffAssignee(ctx)) return;
+  if (handoff.assignee_user_id === ctx.user_id) return;
+  throw domainError(403, 'FORBIDDEN', 'api.error.forbidden', {
+    reason: 'handoff_assignee_transition_forbidden',
+    handoff_id: handoff.handoff_id,
+    assignee_user_id: handoff.assignee_user_id ?? null,
+  });
+}
+
 function assertFreshVersion(handoff: HandoffView, client_version: number) {
   assertFreshServerVersion({
     entity_id: handoff.handoff_id,
@@ -152,6 +181,22 @@ async function assertIdempotent(input: {
     });
   }
   return null;
+}
+
+async function replayIdempotentAfterCommitConflict(input: {
+  error: unknown;
+  store: HandoffLifecycleStore;
+  ctx: TenantContext;
+  mutation_key: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+}): Promise<HandoffMutationResponse> {
+  if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
+    throw input.error;
+  }
+  const matched = await assertIdempotent(input);
+  if (matched) return matched;
+  throw input.error;
 }
 
 function responseFromTransition(
@@ -222,7 +267,10 @@ export function createHandoffLifecycleRepository(
   const now = options.now ?? (() => new Date());
 
   return {
-    searchHandoffs: store.searchHandoffs,
+    async searchHandoffs(ctx, query) {
+      assertCanSearchAssignee(ctx, query.assignee);
+      return store.searchHandoffs(ctx, query);
+    },
     async createHandoff(ctx, command) {
       const request_fingerprint = stableStringify(command);
       const matched = await assertIdempotent({
@@ -247,7 +295,18 @@ export function createHandoffLifecycleRepository(
         client_version: command.client_version,
       });
 
-      return store.commitCreateHandoff(ctx, command, cardContext, request_fingerprint);
+      try {
+        return await store.commitCreateHandoff(ctx, command, cardContext, request_fingerprint);
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: mutationKey('CREATE_HANDOFF', command.card_id),
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
     async openHandoff(ctx, handoff_id, command: OpenHandoffRequest) {
       const request_fingerprint = stableStringify(command);
@@ -264,17 +323,30 @@ export function createHandoffLifecycleRepository(
       if (!handoff) {
         throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
       }
+      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const result = openHandoffForReview(handoff);
       const response = responseFromTransition(handoff, result, now);
-      return store.commitHandoffTransition(ctx, {
-        handoff_id,
-        mutation_key: mutationKey('OPEN_HANDOFF', handoff_id),
-        command,
-        request_fingerprint,
-        previous_handoff: handoff,
-        response,
-      });
+      const transitionMutationKey = mutationKey('OPEN_HANDOFF', handoff_id);
+      try {
+        return await store.commitHandoffTransition(ctx, {
+          handoff_id,
+          mutation_key: transitionMutationKey,
+          command,
+          request_fingerprint,
+          previous_handoff: handoff,
+          response,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: transitionMutationKey,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
     async resolveHandoff(ctx, handoff_id, command) {
       const request_fingerprint = stableStringify(command);
@@ -291,6 +363,7 @@ export function createHandoffLifecycleRepository(
       if (!handoff) {
         throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
       }
+      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const reviewHandoff = reviewReadyHandoff(handoff);
       const response = responseFromTransition(
@@ -308,15 +381,27 @@ export function createHandoffLifecycleRepository(
         handoff,
         response,
       });
-      return store.commitHandoffTransition(ctx, {
-        handoff_id,
-        mutation_key: mutationKey('RESOLVE_HANDOFF', handoff_id),
-        command,
-        request_fingerprint,
-        previous_handoff: handoff,
-        response,
-        card_aggregate_update,
-      });
+      const transitionMutationKey = mutationKey('RESOLVE_HANDOFF', handoff_id);
+      try {
+        return await store.commitHandoffTransition(ctx, {
+          handoff_id,
+          mutation_key: transitionMutationKey,
+          command,
+          request_fingerprint,
+          previous_handoff: handoff,
+          response,
+          card_aggregate_update,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: transitionMutationKey,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
     async returnHandoff(ctx, handoff_id, command) {
       const request_fingerprint = stableStringify(command);
@@ -333,6 +418,7 @@ export function createHandoffLifecycleRepository(
       if (!handoff) {
         throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
       }
+      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const reviewHandoff = reviewReadyHandoff(handoff);
       const response = responseFromTransition(
@@ -344,14 +430,26 @@ export function createHandoffLifecycleRepository(
         }),
         now,
       );
-      return store.commitHandoffTransition(ctx, {
-        handoff_id,
-        mutation_key: mutationKey('RETURN_HANDOFF', handoff_id),
-        command,
-        request_fingerprint,
-        previous_handoff: handoff,
-        response,
-      });
+      const transitionMutationKey = mutationKey('RETURN_HANDOFF', handoff_id);
+      try {
+        return await store.commitHandoffTransition(ctx, {
+          handoff_id,
+          mutation_key: transitionMutationKey,
+          command,
+          request_fingerprint,
+          previous_handoff: handoff,
+          response,
+        });
+      } catch (error) {
+        return replayIdempotentAfterCommitConflict({
+          error,
+          store,
+          ctx,
+          mutation_key: transitionMutationKey,
+          idempotency_key: command.idempotency_key,
+          request_fingerprint,
+        });
+      }
     },
   };
 }

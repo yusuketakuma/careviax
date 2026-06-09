@@ -152,7 +152,9 @@ describe('PH-OS Final No-Go gate', () => {
                 expect.objectContaining({
                   Action: expect.arrayContaining(['dynamodb:TransactWriteItems']),
                 }),
-                expect.objectContaining({ Action: ['s3:PutObject'] }),
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['s3:PutObject', 's3:GetObject']),
+                }),
               ]),
             },
           },

@@ -180,7 +180,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
                   ]),
                 }),
                 expect.objectContaining({
-                  Action: ['s3:PutObject'],
+                  Action: expect.arrayContaining(['s3:PutObject', 's3:GetObject']),
                   Resource: {
                     'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*',
                   },

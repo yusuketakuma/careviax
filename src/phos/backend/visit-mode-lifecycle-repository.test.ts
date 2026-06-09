@@ -7,6 +7,7 @@ import {
   type VisitModeView,
 } from '@/phos/contracts/phos_contracts';
 import type { TenantContext } from './tenant-context';
+import { PhosDomainError } from './cards-repository';
 import {
   createVisitModeLifecycleRepository,
   type IdempotentVisitStepLookup,
@@ -109,6 +110,32 @@ describe('createVisitModeLifecycleRepository', () => {
       details: { client_version: 3, server_version: 4 },
     });
     expect(fakeStore.commitVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('replays matching idempotent responses after commit races', async () => {
+    const response = visit({ server_version: 4 });
+    const fakeStore = store({
+      getIdempotentVisitStep: vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'MISS' as const })
+        .mockResolvedValueOnce({ status: 'MATCH' as const, response }),
+      commitVisitStep: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repository = createVisitModeLifecycleRepository(fakeStore);
+
+    await expect(
+      repository.updateVisitStep(ctx, 'packet_1', VisitStep.COMPLETE_CHECK, {
+        idempotency_key: 'idem_complete',
+        client_version: 3,
+      }),
+    ).resolves.toEqual(response);
+    expect(fakeStore.getIdempotentVisitStep).toHaveBeenCalledTimes(2);
   });
 
   it('verifies evidence upload before completing the evidence step', async () => {
