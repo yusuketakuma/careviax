@@ -43,6 +43,37 @@ function detail(overrides: Partial<CardDetailResponse> = {}): CardDetailResponse
       can_user_handle: true,
     },
     blockers: [],
+    pharmacist_brief: {
+      clinical_signals: [],
+      decisions_required: [],
+      communication_recommendations: [
+        {
+          intent: 'ASK_PRESCRIBER',
+          target_type: 'DOCTOR',
+          rationale: '処方医へ共有します。',
+          draft_seed_key: 'doctor_seed_1',
+        },
+      ],
+      claim_warnings: [],
+      source_refs: [],
+    },
+    support_brief: {
+      support_tasks: [],
+      missing_contacts: [],
+      delivery_targets: [
+        {
+          target_id: 'doctor_1',
+          target_type: 'DOCTOR',
+          label: '青空クリニック',
+          delivery_method: 'FAX',
+          ready: true,
+        },
+      ],
+      schedule_candidates: [],
+      missing_evidences: [],
+      waiting_replies: [],
+      pharmacist_review_reasons: [],
+    },
     source_refs: [
       {
         kind: 'PRESCRIPTION',
@@ -89,5 +120,20 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs detail={detail({ visible_tabs: [] })} />);
 
     expect(screen.getByText('表示可能なタブはありません。')).toBeTruthy();
+  });
+
+  it('renders Report Composer only on the server-visible visit report tab', () => {
+    render(<WorkspaceTabs detail={detail({ visible_tabs: ['OVERVIEW', 'VISIT_REPORT'] })} />);
+
+    expect(screen.queryByRole('heading', { name: '報告書作成' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+
+    expect(screen.getByRole('heading', { name: '報告書作成' })).toBeTruthy();
+    expect(screen.getByRole('tablist', { name: '宛先タブ' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '医師確認' })).toBeTruthy();
+    expect(
+      screen.getByText((_, element) => element?.textContent === '医師 / 青空クリニック'),
+    ).toBeTruthy();
   });
 });

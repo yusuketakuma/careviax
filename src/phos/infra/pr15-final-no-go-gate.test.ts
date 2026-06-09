@@ -575,4 +575,30 @@ describe('PH-OS Final No-Go gate', () => {
       /送付する/,
     ]);
   });
+
+  it('keeps Report Composer as a structured recipient, template, source, and approval surface', () => {
+    expectEvidence('src/phos/ui/report/ReportComposer.tsx', [
+      /PhosReportComposerCopy/,
+      /PhosReportComposerTemplateLabel/,
+      /role="tablist"/,
+      /textarea/,
+      /SourceRefList/,
+      /APPROVAL_REQUIRED/,
+      /data-enabled/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceTabs.tsx', [
+      /ReportComposer/,
+      /buildReportComposerView/,
+      /detail\.support_brief\?\.delivery_targets/,
+      /detail\.pharmacist_brief\?\.communication_recommendations/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportComposer.test.tsx', [
+      /送付先準備済み/,
+      /送付先未設定/,
+      /薬剤師承認/,
+      /送付前に薬剤師承認が必要です/,
+      /queryByText\('PREVIOUS_VISIT'\)/,
+      /getAttribute\('disabled'\)/,
+    ]);
+  });
 });

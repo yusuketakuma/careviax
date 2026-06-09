@@ -11,11 +11,13 @@ import {
   type ActionPhase,
   type CardDetailResponse,
   type EvidencePendingView,
+  type ReportComposerView,
   type SourceRef,
   type TabKey,
   type VisitArrivalOutcome,
   type VisitStep,
 } from '@/phos/contracts/phos_contracts';
+import { ReportComposer } from '@/phos/ui/report/ReportComposer';
 import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 import { VisitMode } from '@/phos/ui/visit/VisitMode';
 
@@ -63,6 +65,18 @@ function selectSources(detail: CardDetailResponse, tab: TabKey): SourceRef[] {
   const sourceKinds = SOURCE_KIND_BY_TAB[tab];
   if (!sourceKinds) return detail.source_refs;
   return detail.source_refs.filter((source) => sourceKinds.has(source.kind));
+}
+
+function buildReportComposerView(detail: CardDetailResponse): ReportComposerView {
+  return {
+    card_id: detail.card.card_id,
+    patient_name: detail.card.patient_name,
+    delivery_targets: detail.support_brief?.delivery_targets ?? [],
+    communication_recommendations: detail.pharmacist_brief?.communication_recommendations ?? [],
+    template_sections: [],
+    body: '',
+    source_refs: detail.source_refs,
+  };
 }
 
 export function WorkspaceTabs({
@@ -167,6 +181,10 @@ export function WorkspaceTabs({
           </h4>
           <SourceRefList sources={activeSources} />
         </div>
+
+        {effectiveActiveTab === 'VISIT_REPORT' ? (
+          <ReportComposer composer={buildReportComposerView(detail)} />
+        ) : null}
       </div>
     </section>
   );

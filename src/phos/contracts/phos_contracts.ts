@@ -359,6 +359,22 @@ export type DeliveryTargetView = {
   ready: boolean;
 };
 
+export type ReportComposerSectionView = {
+  section_key: string;
+  label: string;
+  body: string;
+};
+
+export type ReportComposerView = {
+  card_id: string;
+  patient_name: string;
+  delivery_targets: DeliveryTargetView[];
+  communication_recommendations: CommunicationRecommendation[];
+  template_sections: ReportComposerSectionView[];
+  body: string;
+  source_refs: SourceRef[];
+};
+
 export type ScheduleCandidateView = {
   candidate_id: string;
   date: string;

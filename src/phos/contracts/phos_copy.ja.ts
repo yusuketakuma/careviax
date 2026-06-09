@@ -261,6 +261,58 @@ export const PhosSupportBriefCopy = {
   RETURNED_DETAIL_PREFIX: '追加すること',
 } as const;
 
+export const PhosReportComposerCopy = {
+  TITLE: '報告書作成',
+  TARGET_TABS_LABEL: '宛先タブ',
+  DELIVERY_METHOD: '送付方法',
+  TARGET_READY: '送付先準備済み',
+  TARGET_NOT_READY: '送付先未設定',
+  BODY_LABEL: '報告本文',
+  TEMPLATE_SECTIONS: 'テンプレート',
+  SOURCE_CHIPS: '根拠',
+  APPROVAL_PANEL: '薬剤師承認',
+  APPROVAL_REQUIRED: '送付前に薬剤師承認が必要です',
+  MISSING_TARGET_PANEL: '送付先確認',
+  DELIVERY_HISTORY: '送付履歴',
+  NO_DELIVERY_HISTORY: '送付履歴はありません',
+  EMPTY_TARGETS: '送付先がありません',
+  EMPTY_SOURCES: '根拠はありません',
+} as const;
+
+export const PhosReportComposerTemplateLabel = {
+  DOCTOR: {
+    ASSESSMENT: '薬学的評価',
+    ADVERSE_EVENT: '副作用疑い',
+    PROPOSAL: '処方提案',
+    RESIDUAL: '残薬',
+    URGENCY: '緊急性',
+  },
+  CARE_MANAGER: {
+    SUPPORT: '服薬支援方法',
+    REQUEST: '家族・ヘルパー依頼',
+    LIFE: '生活課題',
+    NEXT: '次回確認',
+  },
+  VISITING_NURSE: {
+    OBSERVATION: '観察依頼',
+    CHANGE: '症状変化',
+    ADHERENCE: '服薬状況',
+    VOICE: '声かけポイント',
+  },
+  FACILITY: {
+    SET_CHANGE: 'セット変更',
+    MANAGEMENT: '管理方法',
+    ROOM: '部屋番号',
+    LOCATION: '設置場所',
+    HANDOFF: '申し送り',
+  },
+  FAMILY: {
+    HOW_TO_TAKE: '服薬方法',
+    WARNING: '注意症状',
+    NEXT_CHECK: '次回までの確認事項',
+  },
+} as const satisfies Record<CommunicationRecommendation['target_type'], Record<string, string>>;
+
 export const PhosToast = {
   REPORT_SENT_OK: '報告書を送付しました。',
   HANDOFF_CREATED_OK: '薬剤師への確認依頼を作成しました。',

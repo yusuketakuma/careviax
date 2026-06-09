@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-140140
+
+- current task: implement UI-PR7B Report Composer recipient/editor surface for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceTabs.test.tsx`, `src/phos/ui/source/SourceRefList.tsx`, `src/phos/ui/report/ReportDeliveryQueue.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/report/ReportComposer.tsx`, `src/phos/ui/report/ReportComposer.test.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/WorkspaceTabs.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: the `VISIT_REPORT` Workspace tab exposed VisitMode and source refs, but there was no UI-PR7 Report Composer surface for recipient tabs, delivery method/readiness, report body editing, recipient-specific template sections, source chips, pharmacist approval context, missing target context, or delivery history context. Report Composer data also lacked a dedicated UI contract.
+- security risks found: no auth, authorization, tenant boundary, report-send mutation, external delivery, persistence, route handler, database, S3, or logging behavior changed. The Composer does not execute `SEND_REPORT`, keeps the existing explicit confirmation/action path separate, displays server-provided delivery targets and recommendations only, uses copy maps instead of raw enum display, renders source refs through the shared safe `SourceRefList`, and uses `data-enabled` rather than native `disabled`.
+- performance issues found: the Composer is local render/edit state over already-loaded card detail data. It adds no fetch, polling, route handler, Server Action, database call, scan, external send, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched contract/report/workspace/gate files; focused `pnpm exec vitest run src/phos/ui/report/ReportComposer.test.tsx src/phos/ui/workspace/WorkspaceTabs.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: Prettier completed; focused suite passed with 4 files / 44 tests; TypeScript passed after aligning the WorkspaceTabs test fixture to the current `SupportBrief` contract; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 90 files / 500 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: this adds the Report Composer surface and keeps `SEND_REPORT` confirmation from the prior slice, but UI-PR7 can still grow once the API supplies persisted draft body/section metadata and real delivery history inside card detail. UIUX v1.1 still needs UI-PR9 accessibility/E2E hardening and any remaining gaps found by the next audit.
+- next action: commit this Report Composer slice, then continue with UI-PR9 accessibility/E2E hardening or the next highest-value UIUX audit finding.
+
 ### 20260609-135233
 
 - current task: implement UI-PR7A SEND_REPORT explicit confirmation before report-send action execution
