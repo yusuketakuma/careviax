@@ -380,4 +380,37 @@ describe('PH-OS Final No-Go gate', () => {
       /queryByText\('rx_1'\)/,
     ]);
   });
+
+  it('keeps PharmacistBrief rendering copy-driven, source-backed, and action-safe', () => {
+    expectEvidence('src/phos/ui/workspace/PharmacistBriefPanel.tsx', [
+      /PhosPharmacistBriefCopy/,
+      /PhosClinicalSignalCodeLabel/,
+      /PhosDecisionReasonLabel/,
+      /PhosCommunicationIntentLabel/,
+      /PhosCommunicationTargetTypeLabel/,
+      /PhosClaimCandidateStatusLabel/,
+      /SourceRefList/,
+      /fieldset/,
+      /data-enabled/,
+      /unavailableAriaField/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.tsx', [
+      /PharmacistBriefPanel/,
+      /detail\.pharmacist_brief/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/PharmacistBriefPanel.test.tsx', [
+      /without raw enum display/,
+      /queryByText\('DOSE_INCREASE'\)/,
+      /queryByText\('RESIDUAL_ADJUSTMENT'\)/,
+      /queryByText\('ASK_PRESCRIBER'\)/,
+      /queryByText\('MISSING_EVIDENCE'\)/,
+      /hasAttribute\('disabled'\)/,
+      /toHaveBeenCalledWith\('card_1', ActionCode\.CREATE_REPORT_DRAFT\)/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.test.tsx', [
+      /pharmacist brief details/,
+      /getByRole\('heading', \{ name: '薬剤師判断' \}\)/,
+      /queryByText\('ADR_SUSPECT'\)/,
+    ]);
+  });
 });

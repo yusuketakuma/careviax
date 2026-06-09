@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-125720
+
+- current task: implement UI-PR4B PharmacistBrief right-pane rendering for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/SourceRefList.tsx`, `src/phos/ui/workspace/NextActionPanel.tsx`, `src/phos/ui/workspace/BlockerPanel.tsx`, related tests, and read-only UI-PR4B reviewer subagent `019eaa81-603b-71f0-937a-f8c4921e1770`
+- files changed: `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/workspace/PharmacistBriefPanel.tsx`, `src/phos/ui/workspace/PharmacistBriefPanel.test.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: `CardDetailResponse.pharmacist_brief` and the underlying ClinicalSignal / DecisionRequired / CommunicationRecommendation / ClaimWarning contracts existed, but Workspace right pane did not render them. PharmacistBrief enum-style fields had no production copy-driven consumer, so raw values like `DOSE_INCREASE`, `RESIDUAL_ADJUSTMENT`, `ASK_PRESCRIBER`, and `MISSING_EVIDENCE` could have leaked into future UI without a gate.
+- security risks found: no auth, tenant boundary, API route, backend mutation, evidence upload, report send, or persistence behavior changed. PharmacistBrief now displays server-provided data only, uses copy maps rather than raw enum values, reuses `SourceRefList` for source refs and its URI guard, and avoids native `disabled` while click-guarding note-required decision options with `data-enabled` and `aria-disabled`.
+- performance issues found: the new panel renders already-loaded `pharmacist_brief` data in the right pane. It adds no fetch, Server Action, Route Handler, database call, scan, polling loop, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched PH-OS copy/workspace/gate files; focused `pnpm exec vitest run src/phos/ui/workspace/PharmacistBriefPanel.test.tsx src/phos/ui/workspace/WorkspaceOverlay.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; no-go grep for native `disabled`; raw enum display grep for PharmacistBrief workspace files; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 4 files / 40 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; raw enum display grep found only copy constant names, not displayed enum values; full PH-OS Vitest passed with 86 files / 464 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UI-PR4 is now stronger for PharmacistBrief and SourceDrawer, but broader source-label cleanup remains for non-workspace queues such as report/handoff queue surfaces. UIUX v1.1 still has Clerk Support Workbench/Handoff expansion, VisitMode completion details, Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E hardening.
+- next action: commit this UI-PR4B PharmacistBrief slice, then continue to the next highest-value UIUX gap, likely Clerk/Handoff or report/handoff source-label cleanup.
+
 ### 20260609-124930
 
 - current task: implement UI-PR4A Source Drawer sheet and shared SourceRef presentation for PH-OS UIUX v1.1

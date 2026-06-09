@@ -3,8 +3,14 @@ import {
   PhosActionLabel,
   PhosBoardDensityLabel,
   PhosButtonStateCopy,
+  PhosClaimCandidateStatusLabel,
+  PhosClinicalSignalCodeLabel,
+  PhosCommunicationIntentLabel,
+  PhosCommunicationTargetTypeLabel,
+  PhosDecisionReasonLabel,
   PhosDisabledReason,
   PhosEmptyState,
+  PhosPharmacistBriefCopy,
   PhosRejectReasonLabel,
   PhosSourceDrawerCopy,
   PhosSourceRefKindLabel,
@@ -57,14 +63,29 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosSourceDrawerCopy.WORKSPACE_SECTION_HEADING).toBe('参照情報');
   });
 
+  it('contains PharmacistBrief display copy without raw enum labels', () => {
+    expect(PhosPharmacistBriefCopy.TITLE).toBe('薬剤師判断');
+    expect(PhosClinicalSignalCodeLabel.DOSE_INCREASE).toBe('増量');
+    expect(PhosDecisionReasonLabel.RESIDUAL_ADJUSTMENT).toBe('残薬調整');
+    expect(PhosCommunicationIntentLabel.ASK_PRESCRIBER).toBe('医師確認');
+    expect(PhosCommunicationTargetTypeLabel.DOCTOR).toBe('医師');
+    expect(PhosClaimCandidateStatusLabel.MISSING_EVIDENCE).toBe('証跡不足');
+  });
+
   it('contains reason labels and no prohibited double-L cancellation copy', () => {
     const prohibitedCanceledSpelling = ['CANCEL', 'LED'].join('');
     const allCopy = [
       ...Object.values(PhosActionLabel),
       ...Object.values(PhosBoardDensityLabel),
       ...Object.values(PhosButtonStateCopy),
+      ...Object.values(PhosClaimCandidateStatusLabel),
+      ...Object.values(PhosClinicalSignalCodeLabel),
+      ...Object.values(PhosCommunicationIntentLabel),
+      ...Object.values(PhosCommunicationTargetTypeLabel),
+      ...Object.values(PhosDecisionReasonLabel),
       ...Object.values(PhosDisabledReason),
       ...Object.values(PhosEmptyState),
+      ...Object.values(PhosPharmacistBriefCopy),
       ...Object.values(PhosRejectReasonLabel),
       ...Object.values(PhosSourceDrawerCopy),
       ...Object.values(PhosSourceRefKindLabel),

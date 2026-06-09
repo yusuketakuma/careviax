@@ -14,6 +14,7 @@ import { BlockerPanel } from './BlockerPanel';
 import type { HandoffCreateInput } from './HandoffPanel';
 import { HandoffPanel } from './HandoffPanel';
 import { NextActionPanel } from './NextActionPanel';
+import { PharmacistBriefPanel } from './PharmacistBriefPanel';
 import { SourceDrawerTrigger } from './SourceDrawerTrigger';
 import { WorkspaceTabs } from './WorkspaceTabs';
 
@@ -115,6 +116,12 @@ export function WorkspaceOverlay({
                   onExecute={onExecute}
                 />
                 <BlockerPanel blockers={detail.blockers} />
+                <PharmacistBriefPanel
+                  cardId={detail.card.card_id}
+                  brief={detail.pharmacist_brief}
+                  actionPhase={actionPhase}
+                  onExecute={onExecute}
+                />
                 <HandoffPanel
                   handoffs={detail.handoffs ?? []}
                   createSources={detail.source_refs}

@@ -17,8 +17,8 @@ import {
 import type { CardDetailResponse } from '@/phos/contracts/phos_contracts';
 import { WorkspaceOverlay } from './WorkspaceOverlay';
 
-function detail(): CardDetailResponse {
-  return {
+function detail(overrides: Partial<CardDetailResponse> = {}): CardDetailResponse {
+  const base: CardDetailResponse = {
     card: {
       card_id: 'card_1',
       card_type: CardType.PRESCRIPTION,
@@ -83,6 +83,7 @@ function detail(): CardDetailResponse {
     ],
     server_version: 1,
   };
+  return { ...base, ...overrides };
 }
 
 describe('WorkspaceOverlay', () => {
@@ -116,6 +117,40 @@ describe('WorkspaceOverlay', () => {
     expect(screen.getByRole('heading', { name: '不足・確認事項' })).toBeTruthy();
     expect(screen.getByText('証跡が不足しています。')).toBeTruthy();
     expect(screen.getByText('必要操作: 証跡を添付する')).toBeTruthy();
+  });
+
+  it('renders pharmacist brief details in the right pane from server-provided detail', () => {
+    render(
+      <WorkspaceOverlay
+        detail={detail({
+          pharmacist_brief: {
+            clinical_signals: [
+              {
+                code: 'ADR_SUSPECT',
+                severity: BlockerSeverity.WARNING,
+                title: '眠気の確認が必要です',
+                detail: '前回訪問でふらつきがありました。',
+                source_refs: [{ kind: 'PREVIOUS_VISIT', ref_id: 'visit_1', label: '前回訪問' }],
+              },
+            ],
+            decisions_required: [],
+            communication_recommendations: [],
+            claim_warnings: [],
+            source_refs: [],
+          },
+        })}
+        open
+        onOpenChange={vi.fn()}
+        onExecute={vi.fn()}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '薬剤師判断' })).toBeTruthy();
+    expect(screen.getByText('眠気の確認が必要です')).toBeTruthy();
+    expect(screen.getByText('副作用疑い')).toBeTruthy();
+    expect(screen.queryByText('ADR_SUSPECT')).toBeNull();
+    expect(screen.queryByText('visit_1')).toBeNull();
   });
 
   it('renders opened card tabs and delegates card switching', () => {

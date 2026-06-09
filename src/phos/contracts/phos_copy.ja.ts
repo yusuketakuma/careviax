@@ -15,6 +15,12 @@ import {
   VisitArrivalOutcome,
   VisitStep,
 } from './phos_contracts';
+import type {
+  ClaimWarning,
+  ClinicalSignal,
+  CommunicationRecommendation,
+  PharmacistDecisionRequired,
+} from './phos_contracts';
 
 export const PhosActionLabel = {
   [ActionCode.REGISTER_PRESCRIPTION]: '処方を登録する',
@@ -101,6 +107,69 @@ export const PhosSourceDrawerCopy = {
   COUNT_SUFFIX: '件',
   ORIGINAL: '原文',
   WORKSPACE_SECTION_HEADING: '参照情報',
+} as const;
+
+export const PhosClinicalSignalCodeLabel = {
+  DOSE_INCREASE: '増量',
+  NEW_HIGH_RISK: '高リスク薬',
+  DISCONTINUATION: '中止',
+  INTERACTION_SUSPECT: '相互作用疑い',
+  ADHERENCE_DROP: '服薬状況低下',
+  ADR_SUSPECT: '副作用疑い',
+  RESIDUAL_EXCESS: '残薬過多',
+  RENAL_HEPATIC_WATCH: '腎肝機能注意',
+} as const satisfies Record<ClinicalSignal['code'], string>;
+
+export const PhosDecisionReasonLabel = {
+  DIFF_REVIEW: '処方差分',
+  RESIDUAL_ADJUSTMENT: '残薬調整',
+  ADVERSE_EVENT: '副作用確認',
+  CLAIM_JUDGE: '算定判断',
+  VISIT_SAFETY: '訪問安全',
+} as const satisfies Record<PharmacistDecisionRequired['reason_code'], string>;
+
+export const PhosCommunicationIntentLabel = {
+  ASK_PRESCRIBER: '医師確認',
+  SHARE_CARE_TEAM: '他職種共有',
+  REPORT_DELIVERY: '報告送付',
+  REPLY_FOLLOWUP: '返信対応',
+  FAMILY_CONFIRMATION: '家族確認',
+} as const satisfies Record<CommunicationRecommendation['intent'], string>;
+
+export const PhosCommunicationTargetTypeLabel = {
+  DOCTOR: '医師',
+  CARE_MANAGER: 'ケアマネ',
+  VISITING_NURSE: '訪問看護',
+  FACILITY: '施設',
+  FAMILY: '家族',
+} as const satisfies Record<CommunicationRecommendation['target_type'], string>;
+
+export const PhosClaimCandidateStatusLabel = {
+  CANDIDATE: '候補',
+  MISSING_EVIDENCE: '証跡不足',
+  READY: '確認可能',
+  EXCLUDED: '除外',
+  APPROVED: '確認済み',
+} as const satisfies Record<ClaimWarning['status'], string>;
+
+export const PhosPharmacistBriefCopy = {
+  TITLE: '薬剤師判断',
+  EMPTY: '薬剤師判断に必要な追加情報はありません。',
+  DECISIONS_HEADING: '判断してください',
+  CLINICAL_SIGNALS_HEADING: '臨床シグナル',
+  COMMUNICATION_HEADING: '発信候補',
+  CLAIM_WARNINGS_HEADING: '算定・証跡警告',
+  SOURCE_REFS_HEADING: '根拠',
+  WHY_PREFIX: '理由',
+  RECOMMENDED_ACTION_PREFIX: '推奨操作',
+  TARGET_PREFIX: '宛先',
+  RATIONALE_PREFIX: '根拠',
+  MISSING_EVIDENCE_PREFIX: '不足証跡',
+  MISSING_EVIDENCE_SUFFIX: '件',
+  NOTE_LABEL: '補足',
+  NOTE_PLACEHOLDER: '必要な補足を入力してください',
+  OPTION_NOT_ACTIONABLE: 'この選択は記録のみです',
+  ACTION_REQUIRED: '実行する操作があります',
 } as const;
 
 export const PhosToast = {
