@@ -820,7 +820,7 @@ export function buildPhosApiGatewayLambdaTemplate(
         AccessLogSetting: {
           DestinationArn: getAtt('PhosApiAccessLogGroup', 'Arn'),
           Format:
-            '{"requestId":"$context.requestId","routeKey":"$context.httpMethod $context.resourcePath","status":"$context.status","integrationError":"$context.integrationErrorMessage"}',
+            '{"requestId":"$context.requestId","tenant_id":"$context.authorizer.claims.tenant_id","user_id":"$context.authorizer.claims.sub","routeKey":"$context.httpMethod $context.resourcePath","status":"$context.status","integrationError":"$context.integrationErrorMessage"}',
         },
         MethodSettings: [
           {
@@ -968,7 +968,11 @@ export function buildPhosApiGatewayLambdaTemplate(
         AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
         Description: 'HTTPS origin allowed to PUT PH-OS evidence objects through presigned URLs.',
       }),
-      [securityEventTableNameParameter]: parameter('String'),
+      [securityEventTableNameParameter]: parameter('String', {
+        Default: 'phos_security_events',
+        AllowedPattern: '^phos_security_events$',
+        Description: 'Dedicated PH-OS security event table name. Must not be the PH-OS core table.',
+      }),
       [auroraDatabaseSecretArnParameter]: parameter('String', {
         Description: 'Secrets Manager ARN containing the PH-OS Aurora PostgreSQL connection URL.',
       }),

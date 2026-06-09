@@ -12,6 +12,7 @@ import {
   fromDynamoAttributeValue,
   toDynamoAttributeValue,
 } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { evidenceSk, tenantPk } from './dynamodb-keys';
 import { phosCoreTableName } from './dynamo-cards-repository';
 import { PhosDomainError } from './cards-repository';
@@ -142,6 +143,10 @@ export function buildDynamoEvidenceUploadIntentTransactWriteItems(
         Item: {
           ...dynamoKey(input.partition_key, input.evidence_sort_key),
           entity_type: { S: 'EVIDENCE' },
+          ...dynamoEntityMetadata({
+            partition_key: input.partition_key,
+            created_at: committed_at,
+          }),
           evidence_id: { S: input.intent.evidence_id },
           idempotency_key: { S: input.intent.idempotency_key },
           card_id: { S: input.intent.card_id },
@@ -156,8 +161,6 @@ export function buildDynamoEvidenceUploadIntentTransactWriteItems(
           upload_status: { S: 'PRESIGNED' },
           evidence: toDynamoAttributeValue(evidenceAuditSummary(input.intent)),
           created_by_user_id: { S: input.actor_user_id },
-          created_at: { S: committed_at },
-          updated_at: { S: committed_at },
         },
         ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
       },

@@ -6,6 +6,7 @@ import {
 import type { DynamoReportDeliveryTransitionTransaction } from './dynamo-report-delivery-lifecycle-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 function idempotencyPut(
@@ -18,11 +19,14 @@ function idempotencyPut(
       Item: {
         ...dynamoKey(input.partition_key, input.idempotency_sort_key),
         entity_type: { S: 'REPORT_DELIVERY_IDEMPOTENCY' },
+        ...dynamoEntityMetadata({
+          partition_key: input.partition_key,
+          created_at: committed_at,
+        }),
         delivery_id: { S: input.response.delivery.delivery_id },
         idempotency_key: { S: input.idempotency_key },
         request_fingerprint: { S: input.request_fingerprint },
         response_json: { S: JSON.stringify(input.response) },
-        created_at: { S: committed_at },
       },
       ConditionExpression: 'attribute_not_exists(PK) OR request_fingerprint = :request_fingerprint',
       ExpressionAttributeValues: {

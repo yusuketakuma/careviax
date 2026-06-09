@@ -10,6 +10,7 @@ import {
 } from './dynamo-handoff-lifecycle-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { cardBlockerSk, handoffAssigneeGsiSk } from './dynamodb-keys';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
@@ -33,11 +34,14 @@ function idempotencyPut(
       Item: {
         ...dynamoKey(input.partition_key, input.idempotency_sort_key),
         entity_type: { S: 'HANDOFF_IDEMPOTENCY' },
+        ...dynamoEntityMetadata({
+          partition_key: input.partition_key,
+          created_at: committed_at,
+        }),
         handoff_id: { S: input.response.handoff.handoff_id },
         idempotency_key: { S: input.idempotency_key },
         request_fingerprint: { S: input.request_fingerprint },
         response_json: { S: JSON.stringify(input.response) },
-        created_at: { S: committed_at },
       },
       ConditionExpression: 'attribute_not_exists(PK)',
     },
@@ -69,6 +73,12 @@ export function buildDynamoHandoffCreateTransactWriteItems(
         Item: {
           ...dynamoKey(input.partition_key, input.handoff_sort_key),
           entity_type: { S: 'HANDOFF' },
+          ...dynamoEntityMetadata({
+            partition_key: input.partition_key,
+            created_at: handoff.created_at,
+            updated_at: committed_at,
+            server_version: handoff.server_version,
+          }),
           GSI5PK: { S: input.queue_gsi_pk },
           GSI5SK: { S: queueSortKey(input) },
           handoff_id: { S: handoff.handoff_id },
@@ -76,13 +86,10 @@ export function buildDynamoHandoffCreateTransactWriteItems(
           status: { S: handoff.status },
           urgency: { S: handoff.urgency },
           urgency_rank: { N: String(handoffUrgencyQueueRank(handoff.urgency)) },
-          server_version: { N: String(handoff.server_version) },
           created_by_user_id: { S: handoff.created_by_user_id },
           ...(handoff.assignee_user_id
             ? { assignee_user_id: { S: handoff.assignee_user_id } }
             : {}),
-          created_at: { S: handoff.created_at },
-          updated_at: { S: committed_at },
           handoff: toDynamoAttributeValue(handoff),
         },
         ConditionExpression: 'attribute_not_exists(PK)',

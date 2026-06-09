@@ -147,6 +147,21 @@ describe('PH-OS Final No-Go gate', () => {
         ],
       },
     });
+    const accessLogFormat = template.Resources.PhosRestApiStage.Properties.AccessLogSetting as {
+      Format: string;
+    };
+    expect(accessLogFormat.Format).toContain('$context.authorizer.claims.tenant_id');
+    expect(accessLogFormat.Format).toContain('$context.authorizer.claims.sub');
+    expect(accessLogFormat.Format).not.toMatch(
+      /patient|patient_name|drug|medication|report_body|photo|sha256|file_name/i,
+    );
+    expect(template.Parameters.PhosSecurityEventTableName).toMatchObject({
+      Default: 'phos_security_events',
+      AllowedPattern: '^phos_security_events$',
+    });
+    expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
+      template.Parameters.PhosDynamoDbTableName.Default,
+    );
     expect(template.Resources).not.toHaveProperty('PhosHttpApi');
     expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
     expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');

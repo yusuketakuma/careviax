@@ -7,6 +7,7 @@ import {
 import { sanitizeLogDetails } from './structured-logger';
 import type { PhosSecurityEvent } from './observability';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { tenantPk } from './dynamodb-keys';
 import { phosCoreTableName } from './dynamo-cards-repository';
 
@@ -32,15 +33,17 @@ export function buildDynamoSecurityEventPutInput(input: {
   const details = input.event.details
     ? (sanitizeLogDetails(input.event.details) as Record<string, unknown>)
     : undefined;
+  const partition_key = securityEventPartitionKey(input.event);
 
   return {
     TableName: input.table_name ?? phosCoreTableName(),
     Item: {
-      ...dynamoKey(
-        securityEventPartitionKey(input.event),
-        securityEventSk({ created_at: input.created_at, event_id }),
-      ),
+      ...dynamoKey(partition_key, securityEventSk({ created_at: input.created_at, event_id })),
       entity_type: { S: 'SECURITY_EVENT' },
+      ...dynamoEntityMetadata({
+        partition_key,
+        created_at: input.created_at,
+      }),
       event_id: { S: event_id },
       event_type: { S: input.event.event_type },
       severity: { S: input.event.severity },

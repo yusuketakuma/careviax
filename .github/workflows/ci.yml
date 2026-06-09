@@ -134,6 +134,51 @@ jobs:
         run: pnpm --config.verify-deps-before-run=false db:verify-ph-os-audit-migration
 
   # ─────────────────────────────────────────────────────────────
+  # PH-OS backend RLS gate: prove tenant isolation on a real PostgreSQL engine
+  # ─────────────────────────────────────────────────────────────
+  phos-aurora-rls-gate:
+    name: PH-OS Aurora RLS Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: ci
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ph_os
+          POSTGRES_PASSWORD: ph_os
+          POSTGRES_DB: ph_os_rls
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U ph_os -d ph_os_rls"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PHOS_AURORA_RLS_TEST_DATABASE_URL: postgresql://ph_os:ph_os@localhost:5435/ph_os_rls
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify PH-OS FeeRule RLS
+        run: pnpm exec vitest run src/phos/infra/aurora-fee-rules-rls.integration.test.ts --reporter=dot
+
+  # ─────────────────────────────────────────────────────────────
   # Medical UI/UX gate: production build + local E2E DB + Playwright/axe
   # ─────────────────────────────────────────────────────────────
   medical-ui-e2e-gate:

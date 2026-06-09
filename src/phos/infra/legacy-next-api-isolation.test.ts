@@ -36,6 +36,14 @@ function toNextApiPath(routeFile: string): string {
   return `/${segments.join('/')}`;
 }
 
+function toNextPublicApiPath(routeFile: string): string {
+  return `/api${toNextApiPath(routeFile)}`;
+}
+
+function phosPublicApiPath(path: string): string {
+  return `/api/phos${path}`;
+}
+
 function pathToRegExp(path: string): RegExp {
   const pattern = path
     .split('/')
@@ -50,20 +58,34 @@ function pathToRegExp(path: string): RegExp {
 
 describe('PH-OS legacy Next API isolation', () => {
   it('does not expose canonical PH-OS API Gateway routes as Next.js Route Handlers', () => {
-    const nextApiPaths = new Set(listRouteFiles(nextApiRoot).map(toNextApiPath));
-    const phosPaths = PHOS_API_ROUTES.map((route) => route.path);
+    const routeFiles = listRouteFiles(nextApiRoot);
+    const nextApiPaths = new Set(routeFiles.map(toNextApiPath));
+    const nextPublicApiPaths = new Set(routeFiles.map(toNextPublicApiPath));
+    const phosPaths = PHOS_API_ROUTES.flatMap((route) => [
+      route.path,
+      `/phos${route.path}`,
+      phosPublicApiPath(route.path),
+    ]);
 
     for (const path of phosPaths) {
       expect(nextApiPaths.has(path), path).toBe(false);
+      expect(nextPublicApiPaths.has(path), path).toBe(false);
     }
   });
 
   it('does not let Next.js API route subtrees shadow canonical PH-OS API Gateway paths', () => {
-    const nextApiPaths = listRouteFiles(nextApiRoot).map(toNextApiPath);
+    const routeFiles = listRouteFiles(nextApiRoot);
+    const nextApiPaths = [...routeFiles.map(toNextApiPath), ...routeFiles.map(toNextPublicApiPath)];
 
     for (const route of PHOS_API_ROUTES) {
-      const matcher = pathToRegExp(route.path);
-      const shadowingPaths = nextApiPaths.filter((path) => matcher.test(path));
+      const matchers = [
+        pathToRegExp(route.path),
+        pathToRegExp(`/phos${route.path}`),
+        pathToRegExp(phosPublicApiPath(route.path)),
+      ];
+      const shadowingPaths = nextApiPaths.filter((path) =>
+        matchers.some((matcher) => matcher.test(path)),
+      );
       expect(shadowingPaths, route.path).toEqual([]);
     }
   });

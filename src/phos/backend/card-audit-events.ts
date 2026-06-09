@@ -1,5 +1,6 @@
 import type { TransactWriteItem } from '@aws-sdk/client-dynamodb';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { cardEventSk } from './dynamodb-keys';
 
 export type DynamoCardAuditEvent = {
@@ -34,6 +35,10 @@ export function buildDynamoCardAuditEventPut(input: {
           }),
         ),
         entity_type: { S: 'CARD_EVENT' },
+        ...dynamoEntityMetadata({
+          partition_key: input.partition_key,
+          created_at: input.committed_at,
+        }),
         event_type: { S: input.event.event_type },
         event_id: { S: input.event.event_id },
         card_id: { S: input.event.card_id },
@@ -46,7 +51,6 @@ export function buildDynamoCardAuditEventPut(input: {
         ...(input.event.subject_json !== undefined
           ? { subject_json: toDynamoAttributeValue(input.event.subject_json) }
           : {}),
-        created_at: { S: input.committed_at },
       },
       ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
     },

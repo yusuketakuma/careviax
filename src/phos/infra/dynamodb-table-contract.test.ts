@@ -200,4 +200,21 @@ describe('PH-OS DynamoDB table contract', () => {
       'PHOS_CLAIM_CANDIDATE_CARD_GSI',
     );
   });
+
+  it('requires tenant and lifecycle metadata helper on every PH-OS entity put builder', () => {
+    const entityPutBuilderSources = [
+      'src/phos/backend/card-audit-events.ts',
+      'src/phos/backend/dynamo-card-action-transaction-client.ts',
+      'src/phos/backend/dynamo-handoff-transaction-client.ts',
+      'src/phos/backend/dynamo-report-delivery-transaction-client.ts',
+      'src/phos/backend/evidence-upload-intent-store.ts',
+      'src/phos/backend/security-events.ts',
+    ];
+
+    for (const relativePath of entityPutBuilderSources) {
+      const source = readBackendSource(relativePath);
+      expect(source, relativePath).toContain('entity_type: { S:');
+      expect(source, relativePath).toContain('dynamoEntityMetadata');
+    }
+  });
 });

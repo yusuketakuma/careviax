@@ -6,6 +6,7 @@ import {
 import type { DynamoActionCommitTransaction } from './dynamo-card-action-store';
 import { buildDynamoCardAuditEventPut } from './card-audit-events';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 
 export function buildDynamoActionCommitTransactWriteItems(
@@ -61,11 +62,14 @@ export function buildDynamoActionCommitTransactWriteItems(
           Item: {
             ...dynamoKey(input.partition_key, blocker.sort_key),
             entity_type: { S: 'CARD_BLOCKER' },
+            ...dynamoEntityMetadata({
+              partition_key: input.partition_key,
+              created_at: committed_at,
+            }),
             card_id: { S: input.projected_response.card.card_id },
             blocker_code: { S: blocker.blocker.blocker_code },
             active: { BOOL: blocker.blocker.active },
             blocker: toDynamoAttributeValue(blocker.blocker),
-            updated_at: { S: committed_at },
           },
           ConditionExpression: 'attribute_not_exists(PK) OR blocker_code = :blocker_code',
           ExpressionAttributeValues: {
@@ -97,17 +101,19 @@ export function buildDynamoActionCommitTransactWriteItems(
           Item: {
             ...dynamoKey(input.partition_key, put.sort_key),
             entity_type: { S: 'REPORT_DELIVERY' },
+            ...dynamoEntityMetadata({
+              partition_key: input.partition_key,
+              created_at: committed_at,
+              server_version: put.delivery.server_version,
+            }),
             card_id: { S: put.delivery.card_id },
             report_id: { S: put.delivery.report_id },
             delivery_id: { S: put.delivery.delivery_id },
             status: { S: put.delivery.status },
             sent_at: { S: put.delivery.sent_at },
-            server_version: { N: String(put.delivery.server_version) },
             GSI6PK: { S: put.status_gsi_pk },
             GSI6SK: { S: put.status_gsi_sk },
             report_delivery: toDynamoAttributeValue(put.delivery),
-            created_at: { S: committed_at },
-            updated_at: { S: committed_at },
           },
           ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
         },
@@ -135,12 +141,15 @@ export function buildDynamoActionCommitTransactWriteItems(
         Item: {
           ...dynamoKey(input.partition_key, input.idempotency_sort_key),
           entity_type: { S: 'CARD_ACTION_IDEMPOTENCY' },
+          ...dynamoEntityMetadata({
+            partition_key: input.partition_key,
+            created_at: committed_at,
+          }),
           card_id: { S: input.projected_response.card.card_id },
           idempotency_key: { S: input.command.idempotency_key },
           request_fingerprint: { S: input.request_fingerprint },
           response_json: { S: JSON.stringify(input.projected_response) },
           action_code: { S: input.command.action_code },
-          created_at: { S: committed_at },
         },
         ConditionExpression:
           'attribute_not_exists(PK) OR request_fingerprint = :request_fingerprint',

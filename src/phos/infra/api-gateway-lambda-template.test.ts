@@ -234,6 +234,16 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         ],
       },
     });
+    const accessLogFormat = template.Resources.PhosRestApiStage.Properties.AccessLogSetting as {
+      Format: string;
+    };
+    expect(accessLogFormat.Format).toContain('$context.requestId');
+    expect(accessLogFormat.Format).toContain('$context.authorizer.claims.tenant_id');
+    expect(accessLogFormat.Format).toContain('$context.authorizer.claims.sub');
+    expect(accessLogFormat.Format).toContain('$context.httpMethod $context.resourcePath');
+    expect(accessLogFormat.Format).not.toMatch(
+      /patient|patient_name|drug|medication|report_body|photo|sha256|file_name/i,
+    );
     expect(template.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
       Ref: singleResourceByType('AWS::ApiGateway::Deployment')[0],
     });
@@ -252,6 +262,14 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(template.Parameters.CognitoUserPoolArn).toMatchObject({
       Type: 'String',
     });
+    expect(template.Parameters.PhosSecurityEventTableName).toMatchObject({
+      Type: 'String',
+      Default: 'phos_security_events',
+      AllowedPattern: '^phos_security_events$',
+    });
+    expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
+      template.Parameters.PhosDynamoDbTableName.Default,
+    );
     expect(template.Resources).not.toHaveProperty('PhosHttpApi');
     expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
     expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');

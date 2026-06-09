@@ -71,7 +71,12 @@ describe('PH-OS security events', () => {
     });
 
     expect(input.Item?.PK).toEqual({ S: PHOS_UNKNOWN_SECURITY_EVENT_PARTITION });
-    expect(input.Item).not.toHaveProperty('tenant_id');
+    expect(input.Item).toMatchObject({
+      tenant_id: { S: 'UNKNOWN' },
+      server_version: { N: '1' },
+      created_at: { S: '2026-06-09T06:31:00.000Z' },
+      updated_at: { S: '2026-06-09T06:31:00.000Z' },
+    });
     expect(input.Item).not.toHaveProperty('user_id');
   });
 

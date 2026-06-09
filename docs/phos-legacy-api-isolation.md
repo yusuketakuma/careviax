@@ -2,7 +2,9 @@
 
 PH-OS v1.1 business APIs are owned by the API Gateway + Lambda manifest in
 `src/phos/infra/api-gateway-routes.ts`. They are intentionally not implemented
-as Next.js Route Handlers under `src/app/api`.
+as Next.js Route Handlers under `src/app/api`. Frontend-facing examples may use
+the `/api/phos/*` prefix, but that prefix is an API Gateway/custom-domain base
+path, not a Next.js API subtree.
 
 ## Canonical PH-OS API Gateway Surface
 
@@ -67,7 +69,8 @@ PH-OS v1.1 API boundary and must not be called from `src/phos` UI/app code.
 ## No-Go Rule
 
 Do not add `src/app/api` routes whose App Router path equals or shadows any
-canonical PH-OS manifest path. If a legacy dashboard route is migrated into
-PH-OS, add the Lambda route to `PHOS_API_ROUTES`, remove the obsolete Next route
-or keep it only as an explicitly documented non-PH-OS compatibility endpoint,
-and update the PR-15 no-go gate.
+canonical PH-OS manifest path, `/phos/*` path, or public `/api/phos/*` path. If
+a legacy dashboard route is migrated into PH-OS, add the Lambda route to
+`PHOS_API_ROUTES`, remove the obsolete Next route or keep it only as an
+explicitly documented non-PH-OS compatibility endpoint, and update the PR-15
+no-go gate.

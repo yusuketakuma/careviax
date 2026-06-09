@@ -257,6 +257,32 @@ describe('withTenantContext', () => {
     );
   });
 
+  it('rejects tenant_id in REST multi-value query parameters before handler execution', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let called = false;
+    const handler = withTenantContext(async () => {
+      called = true;
+      return {};
+    });
+
+    const response = await handler({
+      ...validEvent,
+      queryStringParameters: null,
+      multiValueQueryStringParameters: {
+        tenant_id: ['tenant_other'],
+      },
+    });
+
+    expect(called).toBe(false);
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      request_id: 'req_1',
+      error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+      message_key: 'api.error.tenant_id_in_payload_forbidden',
+      details: { source: 'query' },
+    });
+  });
+
   it('flushes boundary observability before returning tenant boundary errors', async () => {
     const calls: string[] = [];
     const observability = {

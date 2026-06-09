@@ -23,6 +23,7 @@ export type PhosHttpEvent = {
   headers?: Record<string, string | undefined>;
   pathParameters?: Record<string, string | undefined> | null;
   queryStringParameters?: Record<string, string | undefined> | null;
+  multiValueQueryStringParameters?: Record<string, string[] | undefined> | null;
   body?: string | null;
   requestContext?: {
     requestId?: string;
@@ -325,7 +326,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
       assertTenantIdNotInExternalInput({
         request_id,
         body,
-        query: event.queryStringParameters,
+        query: [event.queryStringParameters, event.multiValueQueryStringParameters],
         path: event.pathParameters,
       });
 
