@@ -2,7 +2,11 @@
 
 import { CheckCircle2, Circle, CloudOff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { PhosVisitArrivalOutcomeLabel, PhosVisitStepLabel } from '@/phos/contracts/phos_copy.ja';
+import {
+  PhosVisitArrivalOutcomeLabel,
+  PhosVisitStepLabel,
+  PhosVisitStepStateLabel,
+} from '@/phos/contracts/phos_copy.ja';
 import { ActionPhase, VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
 import type { EvidencePendingView, VisitModeView } from '@/phos/contracts/phos_contracts';
 import { canCompleteVisit } from '@/phos/domain/visit/resolveVisitMode';
@@ -26,6 +30,17 @@ const ARRIVAL_OUTCOMES = [
 
 function canOpenStep(visit: VisitModeView, step: VisitStep): boolean {
   return visit.applicable_steps.includes(step);
+}
+
+function stepStateLabel(input: {
+  completed: boolean;
+  required: boolean;
+  current: boolean;
+}): string {
+  if (input.completed) return PhosVisitStepStateLabel.COMPLETED;
+  if (!input.required) return PhosVisitStepStateLabel.OPTIONAL;
+  if (input.current) return PhosVisitStepStateLabel.IN_PROGRESS;
+  return PhosVisitStepStateLabel.NOT_STARTED;
 }
 
 export function VisitMode({
@@ -160,13 +175,14 @@ export function VisitMode({
         {visit.applicable_steps.map((step) => {
           const completed = visit.step_completed[step] === true;
           const required = visit.required_steps.includes(step);
+          const current = visit.last_opened_step === step;
           const Icon = completed ? CheckCircle2 : Circle;
           return (
             <li key={step}>
               <button
                 type="button"
                 className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-border/70 bg-background px-3 text-left text-sm text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
-                data-current={visit.last_opened_step === step ? 'true' : 'false'}
+                data-current={current ? 'true' : 'false'}
                 onClick={() => {
                   if (!canOpenStep(visit, step)) return;
                   onOpenStep(step);
@@ -177,7 +193,7 @@ export function VisitMode({
                   <span className="font-medium">{PhosVisitStepLabel[step]}</span>
                 </span>
                 <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {completed ? '完了' : required ? '必須' : '任意'}
+                  {stepStateLabel({ completed, required, current })}
                 </span>
               </button>
             </li>

@@ -357,6 +357,13 @@ export const PhosVisitArrivalOutcomeLabel = {
   [VisitArrivalOutcome.CANCELED]: 'キャンセル',
 } as const satisfies Record<VisitArrivalOutcome, string>;
 
+export const PhosVisitStepStateLabel = {
+  NOT_STARTED: '未入力',
+  IN_PROGRESS: '入力中',
+  COMPLETED: '完了',
+  OPTIONAL: '任意',
+} as const;
+
 export const PhosHandoffStatusLabel = {
   [HandoffStatus.OPEN]: '未着手',
   [HandoffStatus.IN_REVIEW]: '確認中',

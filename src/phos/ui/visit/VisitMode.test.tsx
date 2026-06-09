@@ -60,6 +60,39 @@ describe('VisitMode', () => {
     expect(screen.queryByText('証跡添付')).toBeNull();
   });
 
+  it('renders required step states as not-started, in-progress, completed, or optional', () => {
+    render(
+      <VisitMode
+        visit={visit({
+          applicable_steps: [
+            VisitStep.ARRIVAL_CONFIRM,
+            VisitStep.RESIDUAL_CHECK,
+            VisitStep.EVIDENCE_UPLOAD,
+            VisitStep.NEXT_SCHEDULE,
+          ],
+          required_steps: [
+            VisitStep.ARRIVAL_CONFIRM,
+            VisitStep.RESIDUAL_CHECK,
+            VisitStep.EVIDENCE_UPLOAD,
+          ],
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+          },
+          last_opened_step: VisitStep.RESIDUAL_CHECK,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('完了')).toBeTruthy();
+    expect(screen.getByText('入力中')).toBeTruthy();
+    expect(screen.getByText('未入力')).toBeTruthy();
+    expect(screen.getByText('任意')).toBeTruthy();
+  });
+
   it('handles non-cancel arrival branches and holds CANCELED for reason flow', () => {
     const onArrivalOutcome = vi.fn();
     render(

@@ -501,4 +501,20 @@ describe('PH-OS Final No-Go gate', () => {
       /client_version: 2/,
     ]);
   });
+
+  it('keeps VisitMode stepper state labels explicit for field use', () => {
+    expectEvidence('src/phos/ui/visit/VisitMode.tsx', [
+      /PhosVisitStepStateLabel/,
+      /stepStateLabel/,
+      /last_opened_step/,
+      /NOT_STARTED/,
+      /IN_PROGRESS/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitMode.test.tsx', [
+      /not-started, in-progress, completed, or optional/,
+      /入力中/,
+      /未入力/,
+      /任意/,
+    ]);
+  });
 });

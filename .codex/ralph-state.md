@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-133015
+
+- current task: implement UI-PR6A explicit VisitMode stepper state labels for PH-OS UIUX v1.1
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/domain/visit/resolveVisitMode.ts`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and memory registry hits for the active careviax goal. A read-only subagent review could not be spawned because the agent thread limit was reached.
+- files changed: `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: VisitMode stepper showed `必須` for every required incomplete step, so field users could not distinguish the current in-progress required step from a required step that had not been started. UIUX v1.1 requires explicit `未入力` / `入力中` / `完了` / `任意` step states.
+- security risks found: no auth, authorization, tenant boundary, backend mutation, evidence upload, report send, VisitMode completion policy, persistence, or logging behavior changed. The label calculation uses only server-provided VisitMode fields (`step_completed`, `required_steps`, `last_opened_step`) and does not introduce native `disabled`.
+- performance issues found: the change is a small local render helper over the already-rendered applicable steps. It adds no fetch, Server Action, Route Handler, database call, polling, scan, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched VisitMode/copy/gate files; focused `pnpm exec vitest run src/phos/ui/visit/VisitMode.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: Prettier completed; focused suite passed with 3 files / 43 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 87 files / 480 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: VisitMode still needs richer UI-PR6 completion work, including sticky footer actions (`前へ` / `一時保存` / `次へ`), fuller autosave/evidence capture behavior, and broader VisitMode E2E coverage. UIUX v1.1 also still has Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E hardening.
+- next action: commit this VisitMode stepper label slice, then continue to the next highest-value UIUX gap, likely VisitMode sticky footer/action hardening or Report Composer.
+
 ### 20260609-132920
 
 - current task: implement UI-PR5C standalone Handoff Queue review/resolve/return lifecycle controls for PH-OS UIUX v1.1

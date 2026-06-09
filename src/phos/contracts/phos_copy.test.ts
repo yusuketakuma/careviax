@@ -20,6 +20,7 @@ import {
   PhosHandoffReturnReasonLabel,
   PhosSupportBriefCopy,
   PhosSupportTaskCodeLabel,
+  PhosVisitStepStateLabel,
   PhosToast,
   PhosToastMessageByKey,
 } from './phos_copy.ja';
@@ -114,9 +115,11 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosSupportTaskCodeLabel),
       ...Object.values(PhosToast),
       ...Object.values(PhosToastMessageByKey),
+      ...Object.values(PhosVisitStepStateLabel),
     ].join('\n');
 
     expect(PhosRejectReasonLabel.OTHER).toBe('その他');
+    expect(PhosVisitStepStateLabel.IN_PROGRESS).toBe('入力中');
     expect(allCopy).not.toContain(prohibitedCanceledSpelling);
   });
 });
