@@ -65,6 +65,9 @@ jobs:
           NEXT_PUBLIC_COGNITO_USER_POOL_ID: 'ap-northeast-1_test'
           NEXT_PUBLIC_COGNITO_CLIENT_ID: 'test-client-id'
 
+      - name: PH-OS deploy artifact proof
+        run: pnpm phos:deploy-template:validate:artifact
+
       - name: Build
         run: pnpm build
         env:

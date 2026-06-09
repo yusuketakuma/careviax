@@ -223,6 +223,9 @@ importers:
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
+      esbuild:
+        specifier: 0.27.4
+        version: 0.27.4
       eslint:
         specifier: ^9.39.4
         version: 9.39.4(jiti@2.6.1)
