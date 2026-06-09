@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-085631
+
+- current task: fix the PH-OS VisitMode evidence commit ordering so an S3 evidence object is not tagged `VERIFIED` before the DynamoDB visit/evidence transaction commits.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/dynamo-visit-mode-repository.ts`, `src/phos/backend/dynamo-visit-mode-repository.test.ts`, `src/phos/backend/visit-mode-lifecycle-repository.ts`, and focused VisitMode lifecycle/lambda test references.
+- files changed: `src/phos/backend/dynamo-visit-mode-repository.ts`, `src/phos/backend/dynamo-visit-mode-repository.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: `commitVisitStep` wrote the S3 evidence `VERIFIED` tag before calling `transactCommitVisitStep`, so an S3 object could be advanced to verified even if the DynamoDB transaction later failed.
+- security risks found: the S3 verified tag now becomes a post-commit side effect instead of a pre-commit authority signal. A failed visit/evidence transaction no longer leaves an object tagged `VERIFIED` without the corresponding DynamoDB evidence status/idempotency transaction.
+- performance issues found: no extra network calls or hot-path loops were added. The same S3 tag update still runs once for verified evidence, but after the DynamoDB transaction succeeds.
+- validation commands: `pnpm exec prettier --write src/phos/backend/dynamo-visit-mode-repository.ts src/phos/backend/dynamo-visit-mode-repository.test.ts`; focused `pnpm exec vitest run src/phos/backend/dynamo-visit-mode-repository.test.ts src/phos/backend/visit-mode-lifecycle-repository.test.ts src/phos/backend/visit-mode-lambda.test.ts --reporter=dot`; focused ESLint for the touched repository files; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`.
+- validation results: Prettier was unchanged. Focused VisitMode repository/lifecycle/lambda suite passed with 3 files / 27 tests. Focused ESLint passed. Standalone TypeScript passed. Full PH-OS Vitest passed with 102 files passed / 1 skipped and 749 tests passed / 1 skipped.
+- remaining work: external live AWS/JWT/API proof still needs target environment inputs. Additional locally actionable lower-priority findings remain for backend-readiness fetch exception reporting, `PHOS_LAMBDA_ARTIFACT_ROOT` path restrictions, warm Lambda handler caching in `evidence-lambda.ts`, and making live DDB rate-limit verification explicitly opt-in.
+- next action: commit this evidence ordering slice, then continue with the next locally actionable backend readiness/stability gap.
+
 ### 20260610-085313
 
 - current task: close the locally actionable PH-OS CloudFormation lint gap found after strict deploy validation reported missing `cfn-lint`.

@@ -391,13 +391,6 @@ export function createDynamoVisitModeRepository(
     async commitVisitStep(ctx: TenantContext, input: VisitStepCommitInput) {
       const partition_key = tenantPk(ctx);
       assertTenantPk(ctx, partition_key);
-      if (input.verified_evidence) {
-        await markVerifiedEvidenceObject({
-          ctx,
-          verifier: options.evidence_object_verifier,
-          evidence: input.verified_evidence,
-        });
-      }
       await client.transactCommitVisitStep({
         table_name: phosCoreTableName(),
         partition_key,
@@ -418,6 +411,13 @@ export function createDynamoVisitModeRepository(
         response: input.response,
         committed_at: (options.now?.() ?? new Date()).toISOString(),
       });
+      if (input.verified_evidence) {
+        await markVerifiedEvidenceObject({
+          ctx,
+          verifier: options.evidence_object_verifier,
+          evidence: input.verified_evidence,
+        });
+      }
       return input.response;
     },
 

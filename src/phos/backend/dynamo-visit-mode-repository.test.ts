@@ -313,12 +313,52 @@ describe('createDynamoVisitModeRepository', () => {
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
-    expect(verifier.markObjectVerified.mock.invocationCallOrder[0]).toBeLessThan(
-      transactCommitVisitStep.mock.invocationCallOrder[0]!,
+    expect(transactCommitVisitStep.mock.invocationCallOrder[0]).toBeLessThan(
+      verifier.markObjectVerified.mock.invocationCallOrder[0]!,
     );
   });
 
-  it('does not commit VisitMode evidence when the S3 verified tag cannot be written', async () => {
+  it('does not mark S3 evidence verified when the visit commit transaction fails', async () => {
+    const transactCommitVisitStep = vi.fn(async () => {
+      throw new Error('transaction failed');
+    });
+    const fakeClient = client({ transactCommitVisitStep });
+    const verifier = {
+      verifyObject: vi.fn(async () => undefined),
+      markObjectVerified: vi.fn(async () => undefined),
+    };
+    const store = createDynamoVisitModeRepository(fakeClient, {
+      now: () => new Date('2026-06-09T00:00:00.000Z'),
+      evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
+    });
+
+    await expect(
+      store.commitVisitStep(ctx, {
+        packet_id: 'packet_1',
+        step: VisitStep.EVIDENCE_UPLOAD,
+        mutation_key: 'VISIT_STEP:packet_1:EVIDENCE_UPLOAD',
+        command: {
+          idempotency_key: 'idem_1',
+          client_version: 3,
+          payload: { evidence_key: 'evidence_1' },
+        },
+        request_fingerprint: 'fingerprint_1',
+        previous_visit: visit(),
+        response: visit({ server_version: 4 }),
+        verified_evidence: {
+          evidence_id: 'evidence_1',
+          card_id: 'card_1',
+          s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        },
+      }),
+    ).rejects.toThrow('transaction failed');
+
+    expect(transactCommitVisitStep).toHaveBeenCalled();
+    expect(verifier.markObjectVerified).not.toHaveBeenCalled();
+  });
+
+  it('surfaces S3 verified tag failures only after the visit commit transaction succeeds', async () => {
     const transactCommitVisitStep = vi.fn(async () => undefined);
     const fakeClient = client({ transactCommitVisitStep });
     const verifier = {
@@ -354,7 +394,10 @@ describe('createDynamoVisitModeRepository', () => {
       }),
     ).rejects.toThrow('tagging failed');
 
-    expect(transactCommitVisitStep).not.toHaveBeenCalled();
+    expect(transactCommitVisitStep).toHaveBeenCalled();
+    expect(transactCommitVisitStep.mock.invocationCallOrder[0]).toBeLessThan(
+      verifier.markObjectVerified.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('marks already committed evidence objects verified during idempotency replay', async () => {
