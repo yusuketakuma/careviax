@@ -1,3 +1,5 @@
+-- Keep migration-built databases aligned with the PH-OS Aurora FeeRule RLS SSOT.
+
 CREATE TABLE IF NOT EXISTS phos_fee_rule_master (
   tenant_id text NOT NULL,
   rule_id text NOT NULL,

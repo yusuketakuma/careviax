@@ -3,6 +3,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const sql = readFileSync(join(process.cwd(), 'src/phos/infra/aurora-fee-rules-rls.sql'), 'utf8');
+const migrationSql = readFileSync(
+  join(process.cwd(), 'prisma/migrations/20260609173000_add_phos_fee_rule_rls/migration.sql'),
+  'utf8',
+);
 
 describe('PH-OS Aurora FeeRule RLS contract', () => {
   it('defines the required FeeRule tables with tenant_id on every table', () => {
@@ -21,8 +25,14 @@ describe('PH-OS Aurora FeeRule RLS contract', () => {
 
   it('enables RLS and uses app.tenant_id policies with explicit SYSTEM rule handling', () => {
     expect(sql).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(sql).toContain('FORCE ROW LEVEL SECURITY');
+    expect(sql).toContain('DROP POLICY IF EXISTS');
     expect(sql).toContain("current_setting('app.tenant_id', true)");
     expect(sql).toContain("tenant_scope = 'SYSTEM' AND tenant_id = 'SYSTEM'");
     expect(sql).not.toContain('app.current_org_id');
+  });
+
+  it('is present in the Prisma migration path used to build Aurora databases', () => {
+    expect(migrationSql).toContain(sql.trim());
   });
 });
