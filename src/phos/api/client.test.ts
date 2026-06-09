@@ -20,12 +20,15 @@ import type {
   ActionRequest,
   ActionResponse,
   CapacityResponse,
+  CardDetailResponse,
   CardSearchResponse,
   CardSummaryView,
   ClaimCandidateMutationResponse,
   ClaimCandidateSearchResponse,
   ErrorResponse,
+  EvidencePresignUploadResponse,
   FeeRuleSearchResponse,
+  HandoffSearchResponse,
   HandoffMutationResponse,
   NextActionView,
   ReportDeliveryMutationResponse,
@@ -88,6 +91,18 @@ function actionResponse(): ActionResponse {
     blockers: [],
     side_effects: [],
     server_version: 2,
+  };
+}
+
+function cardDetailResponse(): CardDetailResponse {
+  return {
+    card: readyCard,
+    visible_tabs: ['OVERVIEW', 'PRESCRIPTION'],
+    permissions: { can_read: true, can_write: true, allowed_actions: [nextAction.code] },
+    next_action: nextAction,
+    blockers: [],
+    source_refs: [],
+    server_version: 1,
   };
 }
 
@@ -175,6 +190,22 @@ function feeRuleSearchResponse(): FeeRuleSearchResponse {
   };
 }
 
+function evidencePresignUploadResponse(): EvidencePresignUploadResponse {
+  return {
+    request_id: 'req_evidence',
+    evidence_id: 'evidence_1',
+    s3_key: 'tenant_abc123/evidence/evidence_1',
+    upload_url: 'https://s3.example.com/upload',
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'x-amz-checksum-sha256': 'a'.repeat(64),
+    },
+    expires_in_seconds: 900,
+    max_size_bytes: 10_485_760,
+  };
+}
+
 function visitModeResponse(): VisitModeView {
   return {
     packet_id: 'packet_1',
@@ -214,6 +245,13 @@ function handoffResponse(): HandoffMutationResponse {
     },
     side_effects: [{ type: 'BLOCKER_RESOLVED', blocker_code: 'MISSING_EVIDENCE' }],
     server_version: 2,
+  };
+}
+
+function handoffSearchResponse(): HandoffSearchResponse {
+  return {
+    items: [handoffResponse().handoff],
+    server_time: '2026-06-09T00:00:00.000Z',
   };
 }
 
@@ -264,7 +302,7 @@ function reportDeliveryMutationResponse(): ReportDeliveryMutationResponse {
 
 describe('createPhosApiClient', () => {
   it('keeps the frontend API client operation surface aligned with the route manifest', async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    const fetchImpl = vi.fn<typeof fetch>();
     const client = createPhosApiClient({
       baseUrl: 'https://api.example.com/prod',
       fetchImpl,
@@ -273,33 +311,42 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'GET /cards',
         path: '/prod/cards',
+        response: {
+          items: [{ card: readyCard, next_action: nextAction }],
+          server_time: '2026-06-09T00:00:00.000Z',
+        } satisfies CardSearchResponse,
         invoke: (api: PhosApiClient) =>
           api.getCards({ filter: BoardQuickFilter.TODAY, sort: BoardSortKey.UPDATED }),
       },
       {
         route_key: 'GET /cards/{card_id}',
         path: '/prod/cards/card_1',
+        response: cardDetailResponse(),
         invoke: (api: PhosApiClient) => api.getCardDetail('card_1'),
       },
       {
         route_key: 'POST /cards/{card_id}/actions',
         path: '/prod/cards/card_1/actions',
+        response: actionResponse(),
         invoke: (api: PhosApiClient) => api.executeCardAction('card_1', actionRequest()),
       },
       {
         route_key: 'GET /capacity',
         path: '/prod/capacity',
+        response: capacityResponse(),
         invoke: (api: PhosApiClient) =>
           api.getCapacity({ date: '2026-06-09', scope: CapacityScope.PHARMACY }),
       },
       {
         route_key: 'GET /claim-candidates',
         path: '/prod/claim-candidates',
+        response: claimCandidateSearchResponse(),
         invoke: (api: PhosApiClient) => api.getClaimCandidates({ limit: 25 }),
       },
       {
         route_key: 'POST /claim-candidates/{candidate_id}/exclude',
         path: '/prod/claim-candidates/claim_1/exclude',
+        response: claimCandidateMutationResponse(),
         invoke: (api: PhosApiClient) =>
           api.excludeClaimCandidate('claim_1', {
             reason_code: 'NOT_ELIGIBLE',
@@ -310,16 +357,19 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'GET /fee-rules',
         path: '/prod/fee-rules',
+        response: feeRuleSearchResponse(),
         invoke: (api: PhosApiClient) => api.getFeeRules({ fee_code: 'M001' }),
       },
       {
         route_key: 'GET /visit-packets/{packet_id}/visit-mode',
         path: '/prod/visit-packets/packet_1/visit-mode',
+        response: visitModeResponse(),
         invoke: (api: PhosApiClient) => api.getVisitMode('packet_1'),
       },
       {
         route_key: 'POST /visit-packets/{packet_id}/visit-steps/{step}',
         path: '/prod/visit-packets/packet_1/visit-steps/COMPLETE_CHECK',
+        response: visitModeResponse(),
         invoke: (api: PhosApiClient) =>
           api.updateVisitStep('packet_1', VisitStep.COMPLETE_CHECK, {
             idempotency_key: 'idem_visit',
@@ -329,6 +379,7 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'POST /evidence/presign-upload',
         path: '/prod/evidence/presign-upload',
+        response: evidencePresignUploadResponse(),
         invoke: (api: PhosApiClient) =>
           api.presignEvidenceUpload({
             idempotency_key: 'idem_evidence',
@@ -343,11 +394,13 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'GET /handoffs',
         path: '/prod/handoffs',
+        response: handoffSearchResponse(),
         invoke: (api: PhosApiClient) => api.getHandoffs({ status: HandoffStatus.OPEN }),
       },
       {
         route_key: 'POST /handoffs',
         path: '/prod/handoffs',
+        response: handoffResponse(),
         invoke: (api: PhosApiClient) =>
           api.createHandoff({
             card_id: 'card_1',
@@ -363,6 +416,7 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'POST /handoffs/{handoff_id}/resolve',
         path: '/prod/handoffs/handoff_1/resolve',
+        response: handoffResponse(),
         invoke: (api: PhosApiClient) =>
           api.resolveHandoff('handoff_1', {
             resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
@@ -373,12 +427,14 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'POST /handoffs/{handoff_id}/open',
         path: '/prod/handoffs/handoff_1/open',
+        response: handoffResponse(),
         invoke: (api: PhosApiClient) =>
           api.openHandoff('handoff_1', { idempotency_key: 'idem_open', client_version: 1 }),
       },
       {
         route_key: 'POST /handoffs/{handoff_id}/return',
         path: '/prod/handoffs/handoff_1/return',
+        response: handoffResponse(),
         invoke: (api: PhosApiClient) =>
           api.returnHandoff('handoff_1', {
             return_reason_code: 'NEED_MORE_INFO',
@@ -390,12 +446,14 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'GET /report-deliveries',
         path: '/prod/report-deliveries',
+        response: reportDeliverySearchResponse(),
         invoke: (api: PhosApiClient) =>
           api.getReportDeliveries({ status: ReportDeliveryStatus.WAITING_REPLY }),
       },
       {
         route_key: 'POST /report-deliveries/{delivery_id}/reply',
         path: '/prod/report-deliveries/delivery_1/reply',
+        response: reportDeliveryMutationResponse(),
         invoke: (api: PhosApiClient) =>
           api.registerReportReply('delivery_1', {
             result_status: ReportDeliveryStatus.ACTION_DONE,
@@ -407,6 +465,7 @@ describe('createPhosApiClient', () => {
       {
         route_key: 'POST /report-deliveries/{delivery_id}/action-done',
         path: '/prod/report-deliveries/delivery_1/action-done',
+        response: reportDeliveryMutationResponse(),
         invoke: (api: PhosApiClient) =>
           api.markReportActionDone('delivery_1', {
             action_note: '対応済み。',
@@ -421,6 +480,7 @@ describe('createPhosApiClient', () => {
     );
 
     for (const operation of operations) {
+      fetchImpl.mockResolvedValueOnce(jsonResponse(operation.response));
       await operation.invoke(client);
     }
 
@@ -735,6 +795,349 @@ describe('createPhosApiClient', () => {
         }),
       }),
     );
+  });
+
+  it('rejects malformed successful responses for every manifest response contract', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+    const operations = [
+      {
+        route_key: 'GET /cards',
+        invoke: (api: PhosApiClient) => api.getCards(),
+      },
+      {
+        route_key: 'GET /cards/{card_id}',
+        invoke: (api: PhosApiClient) => api.getCardDetail('card_1'),
+      },
+      {
+        route_key: 'POST /cards/{card_id}/actions',
+        invoke: (api: PhosApiClient) => api.executeCardAction('card_1', actionRequest()),
+      },
+      {
+        route_key: 'GET /capacity',
+        invoke: (api: PhosApiClient) =>
+          api.getCapacity({ date: '2026-06-09', scope: CapacityScope.PHARMACY }),
+      },
+      {
+        route_key: 'GET /claim-candidates',
+        invoke: (api: PhosApiClient) => api.getClaimCandidates(),
+      },
+      {
+        route_key: 'POST /claim-candidates/{candidate_id}/exclude',
+        invoke: (api: PhosApiClient) =>
+          api.excludeClaimCandidate('claim_1', {
+            reason_code: 'NOT_ELIGIBLE',
+            idempotency_key: 'idem_claim',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'GET /fee-rules',
+        invoke: (api: PhosApiClient) => api.getFeeRules(),
+      },
+      {
+        route_key: 'GET /visit-packets/{packet_id}/visit-mode',
+        invoke: (api: PhosApiClient) => api.getVisitMode('packet_1'),
+      },
+      {
+        route_key: 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+        invoke: (api: PhosApiClient) =>
+          api.updateVisitStep('packet_1', VisitStep.COMPLETE_CHECK, {
+            idempotency_key: 'idem_visit',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /evidence/presign-upload',
+        invoke: (api: PhosApiClient) =>
+          api.presignEvidenceUpload({
+            idempotency_key: 'idem_evidence',
+            card_id: 'card_1',
+            evidence_type: 'VISIT_PHOTO',
+            file_name: 'visit.jpg',
+            mime_type: 'image/jpeg',
+            sha256: 'a'.repeat(64),
+            size_bytes: 1024,
+          }),
+      },
+      {
+        route_key: 'GET /handoffs',
+        invoke: (api: PhosApiClient) => api.getHandoffs(),
+      },
+      {
+        route_key: 'POST /handoffs',
+        invoke: (api: PhosApiClient) =>
+          api.createHandoff({
+            card_id: 'card_1',
+            reason_code: 'DIFF_REVIEW',
+            summary: '薬剤師確認が必要です。',
+            source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+            urgency: HandoffUrgency.HIGH,
+            idempotency_key: 'idem_create_handoff',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/resolve',
+        invoke: (api: PhosApiClient) =>
+          api.resolveHandoff('handoff_1', {
+            resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+            idempotency_key: 'idem_resolve',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/open',
+        invoke: (api: PhosApiClient) =>
+          api.openHandoff('handoff_1', { idempotency_key: 'idem_open', client_version: 1 }),
+      },
+      {
+        route_key: 'POST /handoffs/{handoff_id}/return',
+        invoke: (api: PhosApiClient) =>
+          api.returnHandoff('handoff_1', {
+            return_reason_code: 'NEED_MORE_INFO',
+            return_note: '確認してください。',
+            idempotency_key: 'idem_return',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'GET /report-deliveries',
+        invoke: (api: PhosApiClient) => api.getReportDeliveries(),
+      },
+      {
+        route_key: 'POST /report-deliveries/{delivery_id}/reply',
+        invoke: (api: PhosApiClient) =>
+          api.registerReportReply('delivery_1', {
+            result_status: ReportDeliveryStatus.ACTION_DONE,
+            reply_summary: '問題ありません。',
+            idempotency_key: 'idem_reply',
+            client_version: 1,
+          }),
+      },
+      {
+        route_key: 'POST /report-deliveries/{delivery_id}/action-done',
+        invoke: (api: PhosApiClient) =>
+          api.markReportActionDone('delivery_1', {
+            action_note: '対応済み。',
+            idempotency_key: 'idem_done',
+            client_version: 1,
+          }),
+      },
+    ] as const;
+
+    expect(operations.map((operation) => operation.route_key).sort()).toEqual(
+      PHOS_API_ROUTES.map((route) => route.route_key).sort(),
+    );
+
+    for (const operation of operations) {
+      const responseContract = PHOS_API_ROUTES.find(
+        (route) => route.route_key === operation.route_key,
+      )?.response_contract;
+
+      await expect(operation.invoke(client)).rejects.toMatchObject({
+        status: 200,
+        response: {
+          request_id: '',
+          error_code: 'INTERNAL_ERROR',
+          message_key: 'api.error.invalid_response',
+          details: {
+            status: 200,
+            content_type: 'application/json',
+            response_contract: responseContract,
+          },
+        },
+      } satisfies Partial<PhosApiError>);
+    }
+  });
+
+  it('preserves opaque pagination cursors with list filters on second-page requests', async () => {
+    const cursor = 'opaque/cursor+2';
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ ...claimCandidateSearchResponse(), next_cursor: cursor }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ ...feeRuleSearchResponse(), next_cursor: cursor }))
+      .mockResolvedValueOnce(jsonResponse({ ...handoffSearchResponse(), next_cursor: cursor }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...reportDeliverySearchResponse(), next_cursor: cursor }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ card: readyCard, next_action: nextAction }],
+          next_cursor: cursor,
+          server_time: '2026-06-09T00:00:00.000Z',
+        } satisfies CardSearchResponse),
+      );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await client.getClaimCandidates({
+      status: 'MISSING_EVIDENCE',
+      limit: 25,
+      cursor,
+    });
+    await client.getFeeRules({ fee_code: 'M001', limit: 25, cursor });
+    await client.getHandoffs({ status: HandoffStatus.OPEN, assignee: 'ME', limit: 25, cursor });
+    await client.getReportDeliveries({
+      status: ReportDeliveryStatus.WAITING_REPLY,
+      limit: 25,
+      cursor,
+    });
+    await client.getCards({
+      filter: BoardQuickFilter.MY_ASSIGNED,
+      sort: BoardSortKey.STALE_TIME,
+      limit: 25,
+      cursor,
+    });
+
+    const urls = fetchImpl.mock.calls.map(([url]) => new URL(String(url)));
+    expect(urls.map((url) => url.pathname)).toEqual([
+      '/prod/claim-candidates',
+      '/prod/fee-rules',
+      '/prod/handoffs',
+      '/prod/report-deliveries',
+      '/prod/cards',
+    ]);
+    expect(urls[0].searchParams.get('status')).toBe('MISSING_EVIDENCE');
+    expect(urls[1].searchParams.get('fee_code')).toBe('M001');
+    expect(urls[2].searchParams.get('status')).toBe(HandoffStatus.OPEN);
+    expect(urls[2].searchParams.get('assignee')).toBe('ME');
+    expect(urls[3].searchParams.get('status')).toBe(ReportDeliveryStatus.WAITING_REPLY);
+    expect(urls[4].searchParams.get('filter')).toBe(BoardQuickFilter.MY_ASSIGNED);
+    expect(urls[4].searchParams.get('sort')).toBe(BoardSortKey.STALE_TIME);
+    for (const url of urls) {
+      expect(url.searchParams.get('cursor')).toBe(cursor);
+      expect(url.searchParams.get('limit')).toBe('25');
+    }
+  });
+
+  it('rejects empty successful responses as invalid PH-OS API responses', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 200,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          status: 200,
+          content_type: null,
+          response_contract: 'CardSearchResponse',
+        },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it('rejects malformed pagination cursors in successful list responses', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        items: [{ card: readyCard, next_action: nextAction }],
+        next_cursor: null,
+        server_time: '2026-06-09T00:00:00.000Z',
+      }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 200,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: { response_contract: 'CardSearchResponse' },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it.each([
+    {
+      name: 'unknown action code',
+      next_action: { ...nextAction, code: 'UNKNOWN_ACTION' },
+    },
+    {
+      name: 'unknown action kind',
+      next_action: { ...nextAction, kind: 'REMOTE_ACTION' },
+    },
+    {
+      name: 'unknown button state',
+      next_action: { ...nextAction, ui_state: 'BOGUS' },
+    },
+    {
+      name: 'unknown priority',
+      next_action: { ...nextAction, priority: 'URGENT' },
+    },
+  ])(
+    'rejects malformed next_action literals in successful responses: $name',
+    async ({ next_action }) => {
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({
+          items: [{ card: readyCard, next_action }],
+          server_time: '2026-06-09T00:00:00.000Z',
+        }),
+      );
+      const client = createPhosApiClient({
+        baseUrl: 'https://api.example.com/prod',
+        fetchImpl,
+      });
+
+      await expect(client.getCards()).rejects.toMatchObject({
+        status: 200,
+        response: {
+          request_id: '',
+          error_code: 'INTERNAL_ERROR',
+          message_key: 'api.error.invalid_response',
+          details: { response_contract: 'CardSearchResponse' },
+        },
+      } satisfies Partial<PhosApiError>);
+    },
+  );
+
+  it('rejects non-string evidence upload headers in successful presign responses', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        ...evidencePresignUploadResponse(),
+        headers: { 'Content-Type': 123 },
+      }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expect(
+      client.presignEvidenceUpload({
+        idempotency_key: 'idem_evidence',
+        card_id: 'card_1',
+        evidence_type: 'VISIT_PHOTO',
+        file_name: 'visit.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        size_bytes: 1024,
+      }),
+    ).rejects.toMatchObject({
+      status: 200,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: { response_contract: 'EvidencePresignUploadResponse' },
+      },
+    } satisfies Partial<PhosApiError>);
   });
 
   it('throws PhosApiError for canonical ErrorResponse bodies', async () => {
