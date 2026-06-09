@@ -9,6 +9,7 @@ import type {
   ActionReasonInput,
   CardDetailResponse,
   EvidencePendingView,
+  OfflineOpClass,
 } from '@/phos/contracts/phos_contracts';
 import {
   SourceRefKind,
@@ -44,6 +45,11 @@ export type WorkspaceOverlayProps = {
   onOpenVisitStep?(step: VisitStep): void;
   onSaveVisitDraft?(step: VisitStep): void;
   onCompleteVisit?(): void;
+  onCaptureVisitEvidence?(input: {
+    file: File;
+    offlineOpClass: OfflineOpClass;
+    label: string;
+  }): void;
 };
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
@@ -91,6 +97,7 @@ export function WorkspaceOverlay({
   onOpenVisitStep,
   onSaveVisitDraft,
   onCompleteVisit,
+  onCaptureVisitEvidence,
 }: WorkspaceOverlayProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,6 +152,7 @@ export function WorkspaceOverlay({
                   onOpenVisitStep={onOpenVisitStep}
                   onSaveVisitDraft={onSaveVisitDraft}
                   onCompleteVisit={onCompleteVisit}
+                  onCaptureVisitEvidence={onCaptureVisitEvidence}
                 />
               </main>
 

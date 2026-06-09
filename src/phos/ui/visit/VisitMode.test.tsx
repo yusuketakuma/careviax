@@ -401,4 +401,57 @@ describe('VisitMode', () => {
     expect(onSaveDraft).toHaveBeenCalledWith(VisitStep.EVIDENCE_UPLOAD);
     expect(screen.getByRole('status').textContent).toBe('一時保存しました。同期済みです');
   });
+
+  it('captures required and optional photo evidence only on the evidence upload step', () => {
+    const onCaptureEvidence = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onCaptureEvidence={onCaptureEvidence}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    const requiredFile = new File(['required'], 'required.jpg', { type: 'image/jpeg' });
+    const optionalFile = new File(['optional'], 'optional.jpg', { type: 'image/jpeg' });
+
+    expect(screen.getByText('証跡を追加')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('必須写真ファイル'), {
+      target: { files: [requiredFile] },
+    });
+    fireEvent.change(screen.getByLabelText('任意写真ファイル'), {
+      target: { files: [optionalFile] },
+    });
+
+    expect(onCaptureEvidence).toHaveBeenCalledWith({
+      file: requiredFile,
+      offlineOpClass: 'BLOCKING',
+      label: '必須写真: required.jpg',
+    });
+    expect(onCaptureEvidence).toHaveBeenCalledWith({
+      file: optionalFile,
+      offlineOpClass: 'NON_BLOCKING',
+      label: '任意写真: optional.jpg',
+    });
+  });
+
+  it('does not show photo capture outside the evidence upload step', () => {
+    render(
+      <VisitMode
+        visit={visit({
+          last_opened_step: VisitStep.ARRIVAL_CONFIRM,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onCaptureEvidence={vi.fn()}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('証跡を追加')).toBeNull();
+  });
 });

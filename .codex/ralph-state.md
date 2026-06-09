@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-142200
+
+- current task: implement UI-PR6C VisitMode photo evidence capture into the offline evidence queue
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/types.ts`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/api/types.ts`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/ui/workspace/WorkspaceOverlay.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: VisitMode displayed pending evidence and blocked COMPLETE_VISIT for mandatory unsynced evidence, but the UI did not expose a photo capture/input path that stored evidence into the offline queue. That left the VisitMode evidence workflow dependent on external/manual queue population.
+- security risks found: no auth, authorization, tenant boundary, API route, report send, card-state transition, database, S3 policy, or logging behavior changed. Captured files are stored as Blob records through the existing IndexedDB queue, hashed with browser SHA-256 before presign retry, and never stored as text/base64. The UI still avoids native `disabled` and gates completion through pending evidence counts.
+- performance issues found: evidence capture adds one local file read/hash per selected file and reuses the existing retry/list queue path. It adds no polling, broad recomputation, route handler, Server Action, direct DB access, chart rendering, or unbounded loop.
+- validation commands: Prettier for touched PH-OS files and `.codex/ralph-state.md`; focused `pnpm exec vitest run src/phos/ui/visit/VisitMode.test.tsx src/phos/ui/board/BoardClient.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched PH-OS files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: Prettier completed; focused suite passed with 3 files / 87 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 91 files / 521 tests; full PH-OS ESLint passed with zero warnings; Next production build passed and generated 234 static pages.
+- remaining work: a later audit may still choose to implement richer VisitMode free-text/autosave fields or Cmd/Ctrl+Enter submit semantics, but the P0 evidence capture path is now wired to the offline queue and full validation is green.
+- next action: commit the VisitMode evidence capture slice, then continue the UIUX v1.1 coverage audit.
+
 ### 20260609-141430
 
 - current task: implement UI-PR9C question-mark shortcut help dialog
@@ -13240,6 +13253,7 @@ Backup directory:
 - validation results: Prettier completed; TypeScript passed before e2e. `db:e2e:prepare` passed with no pending migrations and seeded `vehicleResource: cmnhseedveh001amq9ph-os`; preflight passed with app 3012 and DB 5433 reachable plus 80 org-scoped RLS tables and 21 audit triggers; targeted DB-backed vehicle constraint Playwright passed with 3/3 tests. ESLint passed; Next production build passed. A parallel `tsc` run failed with TS6053 while `next build` was regenerating `.next/types`, then the same `tsc` command passed when rerun after build completion. Whitespace diff check passed. App and e2e DB were stopped and ports 3012/5433 were clear.
 - remaining work: broader scheduling goal still needs end-to-end proof for multi-pharmacist shift fallback, substitute pharmacist assignment when the responsible pharmacist cannot visit, and route optimization behavior using patient addresses plus urgency across multiple pharmacists and vehicles.
 - next action: implement and verify a DB-backed multi-pharmacist shift/substitute scenario that proves primary unavailability routes to an eligible backup/substitute pharmacist without violating patient preference and vehicle constraints
+
 ### 20260609-031329
 
 - current task: connect PH-OS PR-16 Handoff lifecycle beyond placeholder UI and remove no-op Handoff controls

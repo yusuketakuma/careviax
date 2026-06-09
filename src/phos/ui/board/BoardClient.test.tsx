@@ -1080,6 +1080,7 @@ describe('BoardClient', () => {
       ),
     });
     const offlineEvidenceQueue: PhosOfflineEvidenceQueue = {
+      enqueueEvidence: vi.fn(async () => ({ queue_id: 1 })),
       listPendingEvidence: vi.fn(async () => [
         {
           evidence_key: 'mandatory_photo',
@@ -1115,6 +1116,89 @@ describe('BoardClient', () => {
 
     expect(complete.getAttribute('data-enabled')).toBe('false');
     expect(apiClient.updateVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('queues captured VisitMode photo evidence as Blob records and refreshes pending guards', async () => {
+    const hashBytes = new Uint8Array(32);
+    hashBytes.fill(10);
+    vi.stubGlobal('crypto', {
+      randomUUID: () => 'uuid_1',
+      subtle: {
+        digest: vi.fn(async () => hashBytes.buffer),
+      },
+    });
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          visible_tabs: ['VISIT_REPORT'],
+          visit_mode: visitMode({
+            applicable_steps: [
+              VisitStep.ARRIVAL_CONFIRM,
+              VisitStep.EVIDENCE_UPLOAD,
+              VisitStep.COMPLETE_CHECK,
+            ],
+            required_steps: [
+              VisitStep.ARRIVAL_CONFIRM,
+              VisitStep.EVIDENCE_UPLOAD,
+              VisitStep.COMPLETE_CHECK,
+            ],
+            step_completed: Object.fromEntries(
+              Object.values(VisitStep).map((step) => [step, true]),
+            ) as Record<VisitStep, boolean>,
+            last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+          }),
+        }),
+      ),
+    });
+    const offlineEvidenceQueue: PhosOfflineEvidenceQueue = {
+      enqueueEvidence: vi.fn(async () => ({ queue_id: 7 })),
+      listPendingEvidence: vi.fn(async () => [
+        {
+          evidence_key: 'required_visit_photo_1',
+          label: '必須写真: required.jpg',
+          offline_op_class: 'BLOCKING' as const,
+          created_at: '2026-06-09T00:00:00.000Z',
+          retry_count: 0,
+        },
+      ]),
+      retryUploads: vi.fn(async () => ({ synced: 0, failed: 1 })),
+    };
+
+    render(
+      <BoardClient
+        client={apiClient}
+        initialItems={[item]}
+        offlineEvidenceQueue={offlineEvidenceQueue}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+
+    const requiredFile = new File(['required'], 'required.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByLabelText('必須写真ファイル'), {
+      target: { files: [requiredFile] },
+    });
+
+    await waitFor(() =>
+      expect(offlineEvidenceQueue.enqueueEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          card_id: 'card_1',
+          packet_id: 'packet_1',
+          label: '必須写真: required.jpg',
+          evidence_type: 'VISIT_PHOTO',
+          file_name: 'required.jpg',
+          mime_type: 'image/jpeg',
+          sha256: '0a'.repeat(32),
+          offline_op_class: 'BLOCKING',
+          file: requiredFile,
+        }),
+      ),
+    );
+    expect(offlineEvidenceQueue.retryUploads).toHaveBeenCalledWith({ client: apiClient });
+    await waitFor(() => expect(screen.getByText('必須写真: required.jpg')).toBeTruthy());
+    expect(screen.getByText('必須未同期 1件')).toBeTruthy();
   });
 
   it('filters board items through quick filters and triage lanes', async () => {

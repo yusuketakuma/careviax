@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircle2, Circle, CloudOff, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
 import {
   PhosVisitFooterCopy,
   PhosVisitArrivalOutcomeLabel,
@@ -9,7 +9,11 @@ import {
   PhosVisitStepStateLabel,
 } from '@/phos/contracts/phos_copy.ja';
 import { ActionPhase, VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
-import type { EvidencePendingView, VisitModeView } from '@/phos/contracts/phos_contracts';
+import type {
+  EvidencePendingView,
+  OfflineOpClass,
+  VisitModeView,
+} from '@/phos/contracts/phos_contracts';
 import { canCompleteVisit } from '@/phos/domain/visit/resolveVisitMode';
 import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 
@@ -20,6 +24,7 @@ export type VisitModeProps = {
   onArrivalOutcome(outcome: VisitArrivalOutcome, reason?: string): void;
   onOpenStep(step: VisitStep): void;
   onSaveDraft?(step: VisitStep): void;
+  onCaptureEvidence?(input: { file: File; offlineOpClass: OfflineOpClass; label: string }): void;
   onCompleteVisit(): void;
 };
 
@@ -57,8 +62,11 @@ export function VisitMode({
   onArrivalOutcome,
   onOpenStep,
   onSaveDraft,
+  onCaptureEvidence,
   onCompleteVisit,
 }: VisitModeProps) {
+  const requiredEvidenceInputRef = useRef<HTMLInputElement>(null);
+  const optionalEvidenceInputRef = useRef<HTMLInputElement>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelReasonError, setCancelReasonError] = useState<string | undefined>();
@@ -95,6 +103,21 @@ export function VisitMode({
   const canMovePrevious = !!previousStep && !isSubmitting;
   const canMoveNext = !!nextStep && !isSubmitting;
   const canSyncDraft = activeStepCompleted && activeStep !== VisitStep.ARRIVAL_CONFIRM;
+  const evidenceCaptureAvailable = activeStep === VisitStep.EVIDENCE_UPLOAD && !!onCaptureEvidence;
+
+  function captureEvidence(event: ChangeEvent<HTMLInputElement>, offlineOpClass: OfflineOpClass) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || !onCaptureEvidence) return;
+    onCaptureEvidence({
+      file,
+      offlineOpClass,
+      label:
+        offlineOpClass === 'BLOCKING'
+          ? `必須写真: ${file.name || '訪問証跡'}`
+          : `任意写真: ${file.name || '訪問証跡'}`,
+    });
+  }
 
   return (
     <section
@@ -230,6 +253,57 @@ export function VisitMode({
           <CloudOff className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>オフライン中です。証跡は未同期として保持されます。</span>
         </div>
+      ) : null}
+
+      {evidenceCaptureAvailable ? (
+        <section
+          aria-labelledby="phos-visit-evidence-capture-title"
+          className="rounded-md border border-border/70 bg-background p-3"
+        >
+          <h3
+            id="phos-visit-evidence-capture-title"
+            className="text-sm font-semibold text-foreground"
+          >
+            証跡を追加
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            写真は端末に一時保存し、通信できるときに同期します。
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <input
+              ref={requiredEvidenceInputRef}
+              aria-label="必須写真ファイル"
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => captureEvidence(event, 'BLOCKING')}
+            />
+            <button
+              type="button"
+              className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
+              onClick={() => requiredEvidenceInputRef.current?.click()}
+            >
+              必須写真を追加
+            </button>
+            <input
+              ref={optionalEvidenceInputRef}
+              aria-label="任意写真ファイル"
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => captureEvidence(event, 'NON_BLOCKING')}
+            />
+            <button
+              type="button"
+              className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
+              onClick={() => optionalEvidenceInputRef.current?.click()}
+            >
+              任意写真を追加
+            </button>
+          </div>
+        </section>
       ) : null}
 
       {pendingEvidence.length > 0 ? (

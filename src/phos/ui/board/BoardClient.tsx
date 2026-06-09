@@ -14,6 +14,7 @@ import {
   UserRole,
   VisitArrivalOutcome,
   VisitStep,
+  type OfflineOpClass,
 } from '@/phos/contracts/phos_contracts';
 import type {
   ActionCode,
@@ -29,6 +30,7 @@ import type {
 } from '@/phos/contracts/phos_contracts';
 import { createPhosApiClient } from '@/phos/api/client';
 import {
+  enqueuePhosOfflineEvidence,
   listPhosPendingEvidence,
   retryPhosOfflineEvidenceUploads,
 } from '@/phos/api/offlineEvidenceQueue';
@@ -251,9 +253,20 @@ function syncCardIdToUrl(cardId: string | undefined): void {
 }
 
 const defaultOfflineEvidenceQueue: PhosOfflineEvidenceQueue = {
+  enqueueEvidence: enqueuePhosOfflineEvidence,
   listPendingEvidence: listPhosPendingEvidence,
   retryUploads: retryPhosOfflineEvidenceUploads,
 };
+
+async function sha256Hex(file: Blob): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new Error('PH-OS evidence hashing is not available in this browser.');
+  }
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 export function BoardClient({
   apiBaseUrl,
@@ -799,6 +812,48 @@ export function BoardClient({
     await handleOpenVisitStep(VisitStep.COMPLETE_CHECK);
   }, [handleOpenVisitStep]);
 
+  const handleCaptureVisitEvidence = useCallback(
+    async (input: { file: File; offlineOpClass: OfflineOpClass; label: string }) => {
+      const detail = selectedDetail;
+      const visit = detail?.visit_mode;
+      if (!detail || !visit || action.phase === ActionPhase.SUBMITTING) return;
+
+      setActionError(undefined);
+      try {
+        const now = Date.now();
+        const evidenceKey = `${
+          input.offlineOpClass === 'BLOCKING' ? 'required' : 'optional'
+        }_visit_photo_${now}`;
+        await offlineEvidenceQueue.enqueueEvidence({
+          card_id: detail.card.card_id,
+          packet_id: visit.packet_id,
+          evidence_key: evidenceKey,
+          label: input.label,
+          evidence_type: 'VISIT_PHOTO',
+          file_name: input.file.name || `${evidenceKey}.jpg`,
+          mime_type: input.file.type || 'application/octet-stream',
+          sha256: await sha256Hex(input.file),
+          offline_op_class: input.offlineOpClass,
+          file: input.file,
+        });
+        if (visit.online && apiClient) {
+          await offlineEvidenceQueue.retryUploads({ client: apiClient });
+        }
+        const pendingEvidence = await offlineEvidenceQueue.listPendingEvidence(visit.packet_id);
+        setPendingEvidenceByPacket((current) => ({
+          ...current,
+          [visit.packet_id]: pendingEvidence,
+        }));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : '証跡を一時保存できません。再試行してください。';
+        setActionError(message);
+        enqueueToast(errorToast(message));
+      }
+    },
+    [action.phase, apiClient, enqueueToast, offlineEvidenceQueue, selectedDetail],
+  );
+
   const handleRegisterReportReply = useCallback(
     async (delivery: ReportDeliveryView, input: ReportDeliveryReplyInput) => {
       if (!apiClient || submittingReportDeliveryId) return;
@@ -1030,6 +1085,7 @@ export function BoardClient({
         onOpenVisitStep={handleOpenVisitStep}
         onSaveVisitDraft={handleSaveVisitDraft}
         onCompleteVisit={handleCompleteVisit}
+        onCaptureVisitEvidence={handleCaptureVisitEvidence}
       />
     </div>
   );

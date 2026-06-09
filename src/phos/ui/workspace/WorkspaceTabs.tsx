@@ -12,6 +12,7 @@ import {
   type ActionPhase,
   type CardDetailResponse,
   type EvidencePendingView,
+  type OfflineOpClass,
   type ReportComposerView,
   type SourceRef,
   type TabKey,
@@ -30,6 +31,11 @@ export type WorkspaceTabsProps = {
   onOpenVisitStep?(step: VisitStep): void;
   onSaveVisitDraft?(step: VisitStep): void;
   onCompleteVisit?(): void;
+  onCaptureVisitEvidence?(input: {
+    file: File;
+    offlineOpClass: OfflineOpClass;
+    label: string;
+  }): void;
 };
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
@@ -94,6 +100,7 @@ export function WorkspaceTabs({
   onOpenVisitStep,
   onSaveVisitDraft,
   onCompleteVisit,
+  onCaptureVisitEvidence,
 }: WorkspaceTabsProps) {
   const visibleTabs = detail.visible_tabs;
   const [activeTab, setActiveTab] = useState<TabKey | undefined>(visibleTabs[0]);
@@ -165,6 +172,7 @@ export function WorkspaceTabs({
             })
           }
           onSaveDraft={onSaveVisitDraft}
+          onCaptureEvidence={onCaptureVisitEvidence}
           onCompleteVisit={
             onCompleteVisit ??
             (() => {

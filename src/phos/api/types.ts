@@ -31,6 +31,7 @@ import type {
   VisitStepMutationRequest,
   OfflineOpClass,
 } from '@/phos/contracts/phos_contracts';
+import type { PhosOfflineEvidenceInput } from './offlineEvidenceQueue';
 
 export type PhosCardsQuery = {
   query?: string;
@@ -122,6 +123,7 @@ export type PhosOfflineEvidenceRetryResult = {
 };
 
 export type PhosOfflineEvidenceQueue = {
+  enqueueEvidence(input: PhosOfflineEvidenceInput): Promise<{ queue_id: string | number }>;
   listPendingEvidence(packet_id: string): Promise<EvidencePendingView[]>;
   retryUploads(input: {
     client: Pick<PhosApiClient, 'presignEvidenceUpload'>;

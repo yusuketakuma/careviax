@@ -672,4 +672,28 @@ describe('PH-OS Final No-Go gate', () => {
       /delegates close through the dialog primitive/,
     ]);
   });
+
+  it('keeps VisitMode photo evidence capture connected to the offline queue', () => {
+    expectEvidence('src/phos/ui/visit/VisitMode.tsx', [
+      /accept="image\/\*"/,
+      /capture="environment"/,
+      /offlineOpClass === 'BLOCKING'/,
+      /onCaptureEvidence/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.tsx', [
+      /enqueueEvidence/,
+      /sha256Hex/,
+      /retryUploads\(\{ client: apiClient \}\)/,
+      /setPendingEvidenceByPacket/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /queues captured VisitMode photo evidence/,
+      /file: requiredFile/,
+      /必須未同期 1件/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitMode.test.tsx', [
+      /captures required and optional photo evidence/,
+      /does not show photo capture outside the evidence upload step/,
+    ]);
+  });
 });
