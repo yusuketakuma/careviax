@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-024910
+
+- current task: add a PH-OS Lambda artifact/handler export resolution gate for API Gateway route bindings.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/api-gateway-routes.ts`, `src/phos/backend/*-lambda.ts`, and prior read-only test-architect finding from subagent `019ead62-38b9-75c0-88e8-5ac09d52b905`.
+- files changed: `src/phos/infra/api-gateway-lambda-template.test.ts`, `.codex/ralph-state.md`.
+- bugs found: the API Gateway template tests verified handler strings were Lambda module-shaped, but did not prove that each generated CloudFormation handler points at a real `src/phos/backend/*-lambda.ts` artifact export. A typo in a route manifest export could pass template shape tests and fail only after deployment/runtime packaging.
+- security risks found: no production code, auth, authorization, tenant boundary, database, S3, or logging behavior changed. The new gate reduces deployment drift by failing locally when a business API route points to a nonexistent Lambda artifact or missing exported handler.
+- performance issues found: no runtime path changed. The gate reads backend Lambda source files only during Vitest.
+- validation commands: Prettier for touched infra test; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-template.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused infra suite passed with 1 file / 21 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 713 tests. Next production build passed and generated 235 static pages.
+- remaining work: live Lambda artifact packaging/deploy proof remains external and unverified locally. Remaining local follow-ups include REST API proxy success matrix, API Gateway logging-role least privilege, Aurora FeeRule RLS real DB harness, and `NextActionView.target_endpoint` parity gate.
+- next action: commit this handler resolution gate, then continue with REST API proxy success matrix or API Gateway logging-role least privilege.
+
 ### 20260610-024705
 
 - current task: require durable S3 `VERIFIED` evidence tagging before committing VisitMode evidence completion.

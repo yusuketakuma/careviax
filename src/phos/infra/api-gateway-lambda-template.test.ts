@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PHOS_API_ROUTES } from './api-gateway-routes';
 import {
@@ -169,6 +171,23 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       );
       expect(binding.cloudformation_handler).not.toContain('#');
       expect(binding.route.lambda_handler).not.toContain('route.ts');
+    }
+  });
+
+  it('keeps every CloudFormation Lambda handler pointed at an existing artifact export', () => {
+    for (const binding of buildPhosApiRouteDeploymentBindings()) {
+      const filePath = join(process.cwd(), `${binding.lambda_handler_file}.ts`);
+      expect(existsSync(filePath), binding.route.route_key).toBe(true);
+
+      const source = readFileSync(filePath, 'utf8');
+      expect(source, binding.route.route_key).toMatch(
+        new RegExp(
+          `export\\s+(?:const|function|async\\s+function)\\s+${binding.lambda_handler_export}\\b`,
+        ),
+      );
+      expect(binding.cloudformation_handler, binding.route.route_key).toBe(
+        `${binding.lambda_handler_file}.${binding.lambda_handler_export}`,
+      );
     }
   });
 
