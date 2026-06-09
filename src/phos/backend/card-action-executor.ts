@@ -24,7 +24,7 @@ export type CardActionExecutionState = {
   next_action: NextActionView;
   blockers: BlockerView[];
   visit_mode?: VisitModeView;
-  unresolved_claim_candidate_count: number;
+  unresolved_claim_candidate_count?: number;
   allowed_actions?: readonly ActionCode[];
 };
 
@@ -195,7 +195,11 @@ function assertClaimCandidatesReviewed(
 ) {
   if (command.action_code !== ActionCode.REVIEW_CLAIM_CANDIDATES) return;
   const unresolvedCount = state.unresolved_claim_candidate_count;
-  if (!Number.isSafeInteger(unresolvedCount) || unresolvedCount < 0) {
+  if (
+    unresolvedCount === undefined ||
+    !Number.isSafeInteger(unresolvedCount) ||
+    unresolvedCount < 0
+  ) {
     throw actionGuardFailed({
       action_code: command.action_code,
       reason: 'invalid_unresolved_claim_candidate_count',

@@ -38,6 +38,9 @@ export type PhosMetric = {
   unit: PhosMetricUnit;
   route_key: string;
   tenant_id?: string;
+  user_id?: string;
+  request_id?: string;
+  correlation_id?: string;
   error_code?: string;
   action_code?: ActionCode;
 };
@@ -48,6 +51,10 @@ export type PhosTraceAnnotation = {
   action_code?: ActionCode;
   current_step?: CurrentStep;
   error_code?: string;
+};
+
+export type PhosTraceAnnotationSink = {
+  annotateTrace(annotation: PhosTraceAnnotation): void;
 };
 
 export type PhosSecurityEvent = {
@@ -98,16 +105,25 @@ export function buildCloudWatchEmbeddedMetric(metric: PhosMetric) {
       ],
     },
     ...dimensions,
+    tenant_id: metric.tenant_id ?? 'UNKNOWN',
+    user_id: metric.user_id ?? 'UNKNOWN',
+    request_id: metric.request_id ?? 'UNKNOWN',
+    correlation_id: metric.correlation_id ?? 'UNKNOWN',
     [metric.name]: metric.value,
   };
 }
 
-export function createConsoleObservabilitySink(): PhosObservabilitySink {
+export function createConsoleObservabilitySink(
+  options: {
+    trace_annotation_sink?: PhosTraceAnnotationSink;
+  } = {},
+): PhosObservabilitySink {
   return {
     emitMetric(metric) {
       console.log(JSON.stringify(buildCloudWatchEmbeddedMetric(metric)));
     },
     annotateTrace(annotation) {
+      options.trace_annotation_sink?.annotateTrace(annotation);
       console.log(
         JSON.stringify({
           type: 'PHOS_TRACE_ANNOTATION',

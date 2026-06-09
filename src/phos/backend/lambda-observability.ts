@@ -1,8 +1,11 @@
 import { DynamoDBClient, type DynamoDBClient as AwsDynamoDBClient } from '@aws-sdk/client-dynamodb';
+import * as xray from 'aws-xray-sdk-core';
 import {
   createConsoleObservabilitySink,
   type PhosObservabilitySink,
   type PhosSecurityEvent,
+  type PhosTraceAnnotation,
+  type PhosTraceAnnotationSink,
 } from './observability';
 import { recordDynamoSecurityEvent } from './security-events';
 
@@ -10,6 +13,7 @@ export type PhosLambdaRuntimeDependencies = {
   observability?: PhosObservabilitySink;
   security_event_client?: Pick<AwsDynamoDBClient, 'send'>;
   security_event_table_name?: string;
+  trace_annotation_sink?: PhosTraceAnnotationSink;
   now?: () => Date;
 };
 
@@ -21,7 +25,9 @@ export function createLambdaObservabilitySink(
   deps: PhosLambdaRuntimeDependencies = {},
 ): PhosObservabilitySink {
   if (deps.observability) return deps.observability;
-  const consoleSink = createConsoleObservabilitySink();
+  const consoleSink = createConsoleObservabilitySink({
+    trace_annotation_sink: deps.trace_annotation_sink ?? createXRayTraceAnnotationSink(),
+  });
   const securityEventClient =
     deps.security_event_client ?? (shouldPersistSecurityEvents() ? new DynamoDBClient({}) : null);
 
@@ -50,6 +56,26 @@ export function createLambdaObservabilitySink(
           }),
         );
       });
+    },
+  };
+}
+
+export function createXRayTraceAnnotationSink(
+  getSegment: () =>
+    | {
+        addAnnotation(key: string, value: string | number | boolean): void;
+      }
+    | undefined = xray.getSegment,
+): PhosTraceAnnotationSink {
+  xray.setContextMissingStrategy('IGNORE_ERROR');
+  return {
+    annotateTrace(annotation: PhosTraceAnnotation) {
+      const segment = getSegment();
+      if (!segment) return;
+      for (const [key, value] of Object.entries(annotation)) {
+        if (value === undefined) continue;
+        segment.addAnnotation(key, value);
+      }
     },
   };
 }

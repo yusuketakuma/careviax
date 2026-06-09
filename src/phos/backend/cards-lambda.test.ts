@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  GetItemCommand,
+  TransactWriteItemsCommand,
+  type AttributeValue,
+} from '@aws-sdk/client-dynamodb';
+import {
   ActionCode,
   ActionKind,
   ButtonState,
   CardType,
   CurrentStep,
   DisplayStatus,
+  UserRole,
 } from '@/phos/contracts/phos_contracts';
 import type { PhosCardsRepository } from './cards-repository';
 import type {
@@ -20,6 +26,7 @@ import {
 } from './cards-lambda';
 import type { PhosHttpEvent } from './lambda-handler';
 import { createInMemoryObservabilitySink } from './observability';
+import { toDynamoAttributeValue } from './dynamodb-attribute-values';
 
 const card: CardSummaryView = {
   card_id: 'card_1',
@@ -169,5 +176,68 @@ describe('PH-OS cards Lambda composition', () => {
         action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
       }),
     );
+  });
+
+  it('fails claim review with ACTION_GUARD_FAILED when the Dynamo aggregate is missing', async () => {
+    const claimReviewCard: CardSummaryView = {
+      ...card,
+      current_step: CurrentStep.CLAIM_REVIEW,
+      server_version: 3,
+    };
+    const claimReviewAction: NextActionView = {
+      code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+      kind: ActionKind.STEP_CHANGING,
+      label_key: 'action.review_claim_candidates',
+      enabled: true,
+      offline_allowed: false,
+      priority: 'PRIMARY',
+      required_role: [UserRole.PHARMACIST],
+      target_endpoint: '/cards/card_1/actions',
+      ui_state: ButtonState.ACTIONABLE,
+      can_user_handle: true,
+    };
+    const stateItem: Record<string, AttributeValue> = {
+      card: toDynamoAttributeValue(claimReviewCard),
+      next_action: toDynamoAttributeValue(claimReviewAction),
+      blockers: toDynamoAttributeValue([]),
+      allowed_actions: toDynamoAttributeValue([ActionCode.REVIEW_CLAIM_CANDIDATES]),
+      server_version: { N: '3' },
+    };
+    const send = vi
+      .fn()
+      .mockImplementationOnce(async (command: GetItemCommand) => {
+        expect(command).toBeInstanceOf(GetItemCommand);
+        return {};
+      })
+      .mockImplementationOnce(async (command: GetItemCommand) => {
+        expect(command).toBeInstanceOf(GetItemCommand);
+        return { Item: stateItem };
+      })
+      .mockImplementationOnce(async (command: TransactWriteItemsCommand) => {
+        throw new Error(`Unexpected commit: ${command.constructor.name}`);
+      });
+    const handler = createExecuteCardActionLambdaHandler({ dynamo_client: { send } });
+
+    const response = await handler(
+      event({
+        routeKey: 'POST /cards/{card_id}/actions',
+        pathParameters: { card_id: 'card_1' },
+        body: JSON.stringify({
+          action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+          idempotency_key: 'idem_claim_review',
+          client_version: 3,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(422);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'ACTION_GUARD_FAILED',
+      details: {
+        action_code: ActionCode.REVIEW_CLAIM_CANDIDATES,
+        reason: 'invalid_unresolved_claim_candidate_count',
+      },
+    });
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });

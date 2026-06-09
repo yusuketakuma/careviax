@@ -116,6 +116,9 @@ function emitEvidenceUploadFailed(input: {
     unit: 'Count',
     route_key: 'POST /evidence/presign-upload',
     tenant_id: input.ctx.tenant_id,
+    user_id: input.ctx.user_id,
+    request_id: input.ctx.request_id,
+    correlation_id: input.ctx.correlation_id,
     error_code: input.error_code,
   });
   if (input.error_code === 'FORBIDDEN') {

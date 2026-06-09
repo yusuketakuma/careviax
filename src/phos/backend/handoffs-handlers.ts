@@ -266,6 +266,9 @@ function emitHandoffReturnedMetric(input: { ctx: TenantContext; route_key: strin
     unit: 'Count',
     route_key: input.route_key,
     tenant_id: input.ctx.tenant_id,
+    user_id: input.ctx.user_id,
+    request_id: input.ctx.request_id,
+    correlation_id: input.ctx.correlation_id,
   });
   input.ctx.observability?.annotateTrace({
     route_key: input.route_key,

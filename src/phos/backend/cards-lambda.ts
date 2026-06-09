@@ -176,6 +176,7 @@ function createDefaultActionMapper(
 ): DynamoCardActionStoreMapper<DynamoItem, DynamoItem> {
   return {
     toActionState(item) {
+      const unresolvedClaimCandidateCount = numberAttr(item, 'unresolved_claim_candidate_count');
       const stored = optionalObjectAttr<CardActionExecutionState>(item, 'action_state') ?? {
         card: objectAttr<CardSummaryView>(item, 'card'),
         next_action: objectAttr<NextActionView>(item, 'next_action'),
@@ -190,7 +191,11 @@ function createDefaultActionMapper(
               >(item, 'visit_mode'),
             }
           : {}),
-        unresolved_claim_candidate_count: numberAttr(item, 'unresolved_claim_candidate_count') ?? 0,
+        ...(unresolvedClaimCandidateCount !== undefined
+          ? {
+              unresolved_claim_candidate_count: unresolvedClaimCandidateCount,
+            }
+          : {}),
         ...(attr(item, 'allowed_actions')
           ? {
               allowed_actions: attr(

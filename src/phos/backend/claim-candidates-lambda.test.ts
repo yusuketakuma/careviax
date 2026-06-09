@@ -131,9 +131,9 @@ describe('claim-candidates Lambda Dynamo client', () => {
           SK: { S: 'CARD#card_1' },
         },
         UpdateExpression:
-          'SET unresolved_claim_candidate_count = if_not_exists(unresolved_claim_candidate_count, :one) - :one, updated_at = :updated_at',
+          'SET unresolved_claim_candidate_count = unresolved_claim_candidate_count - :one, updated_at = :updated_at',
         ConditionExpression:
-          'attribute_not_exists(unresolved_claim_candidate_count) OR unresolved_claim_candidate_count > :zero',
+          'attribute_exists(unresolved_claim_candidate_count) AND unresolved_claim_candidate_count > :zero',
       },
     });
     expect(transaction?.input.TransactItems?.[2]).toMatchObject({

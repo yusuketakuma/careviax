@@ -214,6 +214,9 @@ function projectVisitStepResponse(
       unit: 'Count',
       route_key: VISIT_STEP_ROUTE_KEY,
       tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      request_id: ctx.request_id,
+      correlation_id: ctx.correlation_id,
       error_code: 'ACTION_GUARD_FAILED',
     });
     ctx.observability?.annotateTrace({

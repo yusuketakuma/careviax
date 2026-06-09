@@ -170,6 +170,9 @@ function emitActionObservability(input: {
     unit: 'Milliseconds',
     route_key: input.route_key,
     tenant_id: input.ctx.tenant_id,
+    user_id: input.ctx.user_id,
+    request_id: input.ctx.request_id,
+    correlation_id: input.ctx.correlation_id,
     action_code: input.action_code,
     ...(input.error_code ? { error_code: input.error_code } : {}),
   });
@@ -195,6 +198,9 @@ function emitActionFailureMetrics(input: {
       unit: 'Count',
       route_key: input.route_key,
       tenant_id: input.ctx.tenant_id,
+      user_id: input.ctx.user_id,
+      request_id: input.ctx.request_id,
+      correlation_id: input.ctx.correlation_id,
       action_code: input.action_code,
       error_code: input.error_code,
     });
@@ -206,6 +212,9 @@ function emitActionFailureMetrics(input: {
       unit: 'Count',
       route_key: input.route_key,
       tenant_id: input.ctx.tenant_id,
+      user_id: input.ctx.user_id,
+      request_id: input.ctx.request_id,
+      correlation_id: input.ctx.correlation_id,
       action_code: input.action_code,
       error_code: input.error_code,
     });

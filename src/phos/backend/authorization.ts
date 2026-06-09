@@ -45,6 +45,9 @@ function recordAuthorizationDenied(
     unit: 'Count',
     route_key,
     tenant_id: ctx.tenant_id,
+    user_id: ctx.user_id,
+    request_id: ctx.request_id,
+    correlation_id: ctx.correlation_id,
     error_code: 'FORBIDDEN',
   });
   ctx.observability?.recordSecurityEvent({

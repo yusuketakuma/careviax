@@ -98,6 +98,14 @@ function emitBoundaryObservability(input: {
       value: 1,
       unit: 'Count',
       route_key,
+      ...(input.ctx
+        ? {
+            tenant_id: input.ctx.tenant_id,
+            user_id: input.ctx.user_id,
+          }
+        : {}),
+      request_id: input.request_id,
+      correlation_id: input.correlation_id,
       error_code: input.error_code,
     });
     input.observability.emitMetric({
@@ -105,6 +113,14 @@ function emitBoundaryObservability(input: {
       value: 1,
       unit: 'Count',
       route_key,
+      ...(input.ctx
+        ? {
+            tenant_id: input.ctx.tenant_id,
+            user_id: input.ctx.user_id,
+          }
+        : {}),
+      request_id: input.request_id,
+      correlation_id: input.correlation_id,
       error_code: input.error_code,
     });
     input.observability.recordSecurityEvent({
@@ -124,7 +140,14 @@ function emitBoundaryObservability(input: {
       value: 1,
       unit: 'Count',
       route_key,
-      ...(input.ctx ? { tenant_id: input.ctx.tenant_id } : {}),
+      ...(input.ctx
+        ? {
+            tenant_id: input.ctx.tenant_id,
+            user_id: input.ctx.user_id,
+          }
+        : {}),
+      request_id: input.request_id,
+      correlation_id: input.correlation_id,
       error_code: input.error_code,
     });
   }
@@ -148,6 +171,9 @@ function emitSuccessObservability(input: {
     unit: 'Milliseconds',
     route_key,
     tenant_id: input.ctx.tenant_id,
+    user_id: input.ctx.user_id,
+    request_id: input.ctx.request_id,
+    correlation_id: input.ctx.correlation_id,
   });
   input.observability.annotateTrace({
     route_key,

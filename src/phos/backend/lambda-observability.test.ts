@@ -1,7 +1,10 @@
 import { PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryObservabilitySink } from './observability';
-import { createLambdaObservabilitySink } from './lambda-observability';
+import {
+  createLambdaObservabilitySink,
+  createXRayTraceAnnotationSink,
+} from './lambda-observability';
 
 describe('createLambdaObservabilitySink', () => {
   afterEach(() => {
@@ -39,5 +42,40 @@ describe('createLambdaObservabilitySink', () => {
       details: { missing_scopes: ['phos/cards.read'] },
     });
     await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+  });
+
+  it('writes trace annotations through the injected Lambda trace sink', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const traceSink = { annotateTrace: vi.fn() };
+    const sink = createLambdaObservabilitySink({ trace_annotation_sink: traceSink });
+
+    sink.annotateTrace({
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id_hash: 'tenant_hash_1234',
+      action_code: 'COMPLETE_VISIT',
+    });
+
+    expect(traceSink.annotateTrace).toHaveBeenCalledWith({
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id_hash: 'tenant_hash_1234',
+      action_code: 'COMPLETE_VISIT',
+    });
+  });
+
+  it('adds X-Ray annotations to the current segment when one exists', () => {
+    const addAnnotation = vi.fn();
+    const sink = createXRayTraceAnnotationSink(() => ({ addAnnotation }));
+
+    sink.annotateTrace({
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id_hash: 'tenant_hash_1234',
+      action_code: 'COMPLETE_VISIT',
+      error_code: 'ACTION_GUARD_FAILED',
+    });
+
+    expect(addAnnotation).toHaveBeenCalledWith('route_key', 'POST /cards/{card_id}/actions');
+    expect(addAnnotation).toHaveBeenCalledWith('tenant_id_hash', 'tenant_hash_1234');
+    expect(addAnnotation).toHaveBeenCalledWith('action_code', 'COMPLETE_VISIT');
+    expect(addAnnotation).toHaveBeenCalledWith('error_code', 'ACTION_GUARD_FAILED');
   });
 });

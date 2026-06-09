@@ -159,9 +159,9 @@ export function createDynamoClaimCandidatesClient(input: {
                 TableName: command.table_name,
                 Key: dynamoKey(command.partition_key, `CARD#${response.candidate.card_id}`),
                 UpdateExpression:
-                  'SET unresolved_claim_candidate_count = if_not_exists(unresolved_claim_candidate_count, :one) - :one, updated_at = :updated_at',
+                  'SET unresolved_claim_candidate_count = unresolved_claim_candidate_count - :one, updated_at = :updated_at',
                 ConditionExpression:
-                  'attribute_not_exists(unresolved_claim_candidate_count) OR unresolved_claim_candidate_count > :zero',
+                  'attribute_exists(unresolved_claim_candidate_count) AND unresolved_claim_candidate_count > :zero',
                 ExpressionAttributeValues: {
                   ':one': { N: '1' },
                   ':zero': { N: '0' },

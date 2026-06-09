@@ -20,10 +20,18 @@ type CloudFormationResource = {
   Properties: Record<string, CloudFormationValue>;
 };
 
+type CloudFormationParameter = {
+  Type: string;
+  Default?: string;
+  Description?: string;
+  AllowedPattern?: string;
+  MinLength?: number;
+};
+
 export type PhosApiGatewayLambdaTemplate = {
   AWSTemplateFormatVersion: '2010-09-09';
   Description: string;
-  Parameters: Record<string, CloudFormationResource>;
+  Parameters: Record<string, CloudFormationParameter>;
   Resources: Record<string, CloudFormationResource>;
 };
 
@@ -125,11 +133,8 @@ function sub(value: string): CloudFormationSub {
   return { 'Fn::Sub': value };
 }
 
-function parameter(type: string, properties: Record<string, CloudFormationValue> = {}) {
-  return {
-    Type: type,
-    Properties: properties,
-  };
+function parameter(type: string, properties: Omit<CloudFormationParameter, 'Type'> = {}) {
+  return { Type: type, ...properties };
 }
 
 export function buildPhosApiGatewayLambdaTemplate(
@@ -151,6 +156,71 @@ export function buildPhosApiGatewayLambdaTemplate(
   const bindings = buildPhosApiRouteDeploymentBindings();
 
   const resources: Record<string, CloudFormationResource> = {
+    PhosLambdaExecutionRole: {
+      Type: 'AWS::IAM::Role',
+      Properties: {
+        AssumeRolePolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: {
+                Service: 'lambda.amazonaws.com',
+              },
+              Action: 'sts:AssumeRole',
+            },
+          ],
+        },
+        Policies: [
+          {
+            PolicyName: 'ph-os-business-api-runtime',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+                  Resource: sub(
+                    'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*',
+                  ),
+                },
+                {
+                  Effect: 'Allow',
+                  Action: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
+                  Resource: '*',
+                },
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'dynamodb:GetItem',
+                    'dynamodb:PutItem',
+                    'dynamodb:UpdateItem',
+                    'dynamodb:Query',
+                    'dynamodb:TransactWriteItems',
+                  ],
+                  Resource: [
+                    sub(
+                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${dynamodbTableNameParameter}}`,
+                    ),
+                    sub(
+                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${dynamodbTableNameParameter}}/index/*`,
+                    ),
+                    sub(
+                      `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${securityEventTableNameParameter}}`,
+                    ),
+                  ],
+                },
+                {
+                  Effect: 'Allow',
+                  Action: ['s3:PutObject'],
+                  Resource: sub(`arn:aws:s3:::\${${evidenceBucketNameParameter}}/tenants/*`),
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
     PhosHttpApi: {
       Type: 'AWS::ApiGatewayV2::Api',
       Properties: {
@@ -202,6 +272,7 @@ export function buildPhosApiGatewayLambdaTemplate(
       Properties: {
         Runtime: runtime,
         Handler: binding.cloudformation_handler,
+        Role: getAtt('PhosLambdaExecutionRole', 'Arn'),
         Code: {
           S3Bucket: ref(lambdaArtifactBucketParameter),
           S3Key: ref(lambdaArtifactKeyParameter),
@@ -264,7 +335,7 @@ export function buildPhosApiGatewayLambdaTemplate(
     AWSTemplateFormatVersion: '2010-09-09',
     Description: 'PH-OS business HTTP API. Next.js does not host PH-OS business API handlers.',
     Parameters: {
-      [stageNameParameter]: parameter('String', { Default: 'prod' }),
+      [stageNameParameter]: parameter('String', { Default: 'prod', MinLength: 1 }),
       [lambdaArtifactBucketParameter]: parameter('String'),
       [lambdaArtifactKeyParameter]: parameter('String'),
       [cognitoIssuerParameter]: parameter('String'),

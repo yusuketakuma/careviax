@@ -316,7 +316,7 @@ describe('Dynamo card action transaction client', () => {
     expect(items[0]).toMatchObject({
       Update: {
         ConditionExpression:
-          '#server_version = :expected_server_version AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count',
+          '#server_version = :expected_server_version AND attribute_exists(#unresolved_claim_candidate_count) AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count',
         ExpressionAttributeNames: {
           '#unresolved_claim_candidate_count': 'unresolved_claim_candidate_count',
         },

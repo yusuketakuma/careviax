@@ -3,8 +3,15 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ActionCode } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
-import { P0_REQUIRED_METRIC_NAMES } from '@/phos/backend/observability';
+import {
+  buildCloudWatchEmbeddedMetric,
+  P0_REQUIRED_METRIC_NAMES,
+} from '@/phos/backend/observability';
 import { PHOS_API_ROUTES } from './api-gateway-routes';
+import {
+  bindPhosApiRouteForDeployment,
+  buildPhosApiGatewayLambdaTemplate,
+} from './api-gateway-lambda-template';
 
 const repoRoot = process.cwd();
 const canonicalRoot = join(repoRoot, 'src/phos');
@@ -68,6 +75,45 @@ describe('PH-OS Final No-Go gate', () => {
     }
   });
 
+  it('keeps the API Gateway to Lambda template deployable with parameters and execution roles', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    for (const parameter of Object.values(template.Parameters)) {
+      expect(parameter).not.toHaveProperty('Properties');
+      expect(parameter.Type).toBe('String');
+    }
+    for (const route of PHOS_API_ROUTES) {
+      const binding = bindPhosApiRouteForDeployment(route);
+      expect(template.Resources[binding.function_logical_id]).toMatchObject({
+        Type: 'AWS::Lambda::Function',
+        Properties: {
+          Role: { 'Fn::GetAtt': ['PhosLambdaExecutionRole', 'Arn'] },
+        },
+      });
+    }
+    expect(template.Resources.PhosLambdaExecutionRole).toMatchObject({
+      Type: 'AWS::IAM::Role',
+      Properties: {
+        Policies: [
+          {
+            PolicyDocument: {
+              Statement: expect.arrayContaining([
+                expect.objectContaining({ Action: expect.arrayContaining(['logs:PutLogEvents']) }),
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['xray:PutTraceSegments']),
+                }),
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['dynamodb:TransactWriteItems']),
+                }),
+                expect.objectContaining({ Action: ['s3:PutObject'] }),
+              ]),
+            },
+          },
+        ],
+      },
+    });
+  });
+
   it('keeps every P0 CloudWatch metric from the final spec in the observability contract', () => {
     expect([...P0_REQUIRED_METRIC_NAMES].sort()).toEqual(
       [
@@ -82,6 +128,35 @@ describe('PH-OS Final No-Go gate', () => {
         'ReportSendFailedCount',
       ].sort(),
     );
+  });
+
+  it('keeps CloudWatch metric logs correlated and X-Ray annotation adapter wired', () => {
+    const metric = buildCloudWatchEmbeddedMetric({
+      name: 'ActionGuardFailedCount',
+      value: 1,
+      unit: 'Count',
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      action_code: ActionCode.COMPLETE_VISIT,
+      error_code: 'ACTION_GUARD_FAILED',
+    });
+    const lambdaObservability = readRelative('src/phos/backend/lambda-observability.ts');
+
+    expect(metric).toMatchObject({
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+    });
+    expect(metric._aws.CloudWatchMetrics[0].Dimensions.flat()).not.toEqual(
+      expect.arrayContaining(['tenant_id', 'user_id', 'request_id', 'correlation_id']),
+    );
+    expect(lambdaObservability).toContain('aws-xray-sdk-core');
+    expect(lambdaObservability).toContain('createXRayTraceAnnotationSink');
+    expect(lambdaObservability).toContain('addAnnotation');
   });
 
   it('does not keep obsolete PH-OS deployment/status concepts after the Lambda route manifest change', () => {

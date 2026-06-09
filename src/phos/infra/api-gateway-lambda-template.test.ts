@@ -12,6 +12,19 @@ function resourcesByType(type: string) {
 }
 
 describe('PH-OS API Gateway/Lambda deployment template', () => {
+  it('emits CloudFormation parameters and resources with deployable top-level shapes', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    for (const parameter of Object.values(template.Parameters)) {
+      expect(parameter.Type).toBe('String');
+      expect(parameter).not.toHaveProperty('Properties');
+    }
+    for (const resource of Object.values(template.Resources)) {
+      expect(resource.Type).toMatch(/^AWS::/);
+      expect(resource.Properties).toBeDefined();
+    }
+  });
+
   it('derives one deployment binding from every implemented route manifest entry', () => {
     const bindings = buildPhosApiRouteDeploymentBindings();
 
@@ -96,6 +109,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         Properties: {
           Runtime: 'nodejs24.x',
           Handler: binding.cloudformation_handler,
+          Role: { 'Fn::GetAtt': ['PhosLambdaExecutionRole', 'Arn'] },
           Architectures: ['arm64'],
           TracingConfig: {
             Mode: 'Active',
@@ -112,6 +126,58 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         },
       });
     }
+  });
+
+  it('creates a Lambda execution role with PH-OS runtime permissions', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+
+    expect(template.Resources.PhosLambdaExecutionRole).toMatchObject({
+      Type: 'AWS::IAM::Role',
+      Properties: {
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'lambda.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            },
+          ],
+        },
+        Policies: [
+          {
+            PolicyDocument: {
+              Statement: expect.arrayContaining([
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['logs:PutLogEvents']),
+                }),
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['xray:PutTraceSegments']),
+                }),
+                expect.objectContaining({
+                  Action: expect.arrayContaining(['dynamodb:TransactWriteItems']),
+                  Resource: expect.arrayContaining([
+                    {
+                      'Fn::Sub':
+                        'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}',
+                    },
+                    {
+                      'Fn::Sub':
+                        'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}/index/*',
+                    },
+                  ]),
+                }),
+                expect.objectContaining({
+                  Action: ['s3:PutObject'],
+                  Resource: {
+                    'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*',
+                  },
+                }),
+              ]),
+            },
+          },
+        ],
+      },
+    });
   });
 
   it('uses API Gateway proxy integrations and scoped Lambda invoke permissions for every route', () => {

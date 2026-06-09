@@ -35,6 +35,10 @@ describe('PH-OS observability', () => {
       value: 1,
       unit: 'Count',
       route_key: 'POST /cards/{card_id}/actions',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
       error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
     });
 
@@ -44,8 +48,73 @@ describe('PH-OS observability', () => {
     });
     expect(metric).toMatchObject({
       route_key: 'POST /cards/{card_id}/actions',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
       error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
       TenantBoundaryRejectedCount: 1,
+    });
+  });
+
+  it('keeps correlation fields on CloudWatch EMF log events without using them as dimensions', () => {
+    const metric = buildCloudWatchEmbeddedMetric({
+      name: 'RequestLatencyMs',
+      value: 12,
+      unit: 'Milliseconds',
+      route_key: 'GET /cards',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+    });
+
+    expect(metric).toMatchObject({
+      route_key: 'GET /cards',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      RequestLatencyMs: 12,
+    });
+    expect(metric._aws.CloudWatchMetrics[0].Dimensions).toEqual([['route_key']]);
+  });
+
+  it('uses explicit UNKNOWN correlation fields for pre-context metric logs', () => {
+    const metric = buildCloudWatchEmbeddedMetric({
+      name: 'TenantBoundaryRejectedCount',
+      value: 1,
+      unit: 'Count',
+      route_key: 'UNKNOWN_ROUTE',
+    });
+
+    expect(metric).toMatchObject({
+      tenant_id: 'UNKNOWN',
+      user_id: 'UNKNOWN',
+      request_id: 'UNKNOWN',
+      correlation_id: 'UNKNOWN',
+    });
+  });
+
+  it('calls the trace annotation sink before writing the console trace log', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const traceSink = { annotateTrace: vi.fn() };
+    const sink = createConsoleObservabilitySink({ trace_annotation_sink: traceSink });
+
+    sink.annotateTrace({
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      error_code: 'ACTION_GUARD_FAILED',
+    });
+
+    expect(traceSink.annotateTrace).toHaveBeenCalledWith({
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      error_code: 'ACTION_GUARD_FAILED',
+    });
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      type: 'PHOS_TRACE_ANNOTATION',
+      route_key: 'POST /cards/{card_id}/actions',
     });
   });
 

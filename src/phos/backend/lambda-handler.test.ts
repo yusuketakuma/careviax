@@ -57,6 +57,70 @@ describe('withTenantContext', () => {
     });
   });
 
+  it('emits success EMF logs with tenant, user, request, and correlation fields', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const handler = withTenantContext(async () => ({ ok: true }), {
+      now: vi
+        .fn()
+        .mockReturnValueOnce(new Date('2026-06-09T00:00:00.000Z'))
+        .mockReturnValueOnce(new Date('2026-06-09T00:00:00.017Z')),
+    });
+
+    const response = await handler({
+      ...validEvent,
+      headers: { 'x-correlation-id': 'corr_1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const metric = logSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.RequestLatencyMs === 17);
+    expect(metric).toMatchObject({
+      route_key: 'GET /cards',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      RequestLatencyMs: 17,
+    });
+  });
+
+  it('emits pre-context EMF logs with UNKNOWN tenant/user and request correlation', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const handler = withTenantContext(async () => ({}));
+
+    const response = await handler({
+      ...validEvent,
+      headers: { 'x-correlation-id': 'corr_1' },
+      body: JSON.stringify({ tenant_id: 'tenant_other' }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    const metrics = logSpy.mock.calls.map(
+      (call) => JSON.parse(String(call[0])) as Record<string, unknown>,
+    );
+    expect(metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenant_id: 'UNKNOWN',
+          user_id: 'UNKNOWN',
+          request_id: 'req_1',
+          correlation_id: 'corr_1',
+          TenantBoundaryRejectedCount: 1,
+        }),
+        expect.objectContaining({
+          tenant_id: 'UNKNOWN',
+          user_id: 'UNKNOWN',
+          request_id: 'req_1',
+          correlation_id: 'corr_1',
+          CrossTenantAttemptCount: 1,
+        }),
+      ]),
+    );
+  });
+
   it('rejects tenant_id in body before handler execution', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const observability = createInMemoryObservabilitySink();

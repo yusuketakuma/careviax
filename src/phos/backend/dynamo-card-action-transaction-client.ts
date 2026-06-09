@@ -25,7 +25,7 @@ export function buildDynamoActionCommitTransactWriteItems(
       : {}),
   };
   const conditionExpression = input.claim_review_guard
-    ? '#server_version = :expected_server_version AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count'
+    ? '#server_version = :expected_server_version AND attribute_exists(#unresolved_claim_candidate_count) AND #unresolved_claim_candidate_count = :zero_unresolved_claim_candidate_count'
     : '#server_version = :expected_server_version';
 
   return [
