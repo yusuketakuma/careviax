@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-032940
+
+- current task: strengthen PH-OS runtime response/PHI observability gates and P0 CloudWatch alarm coverage.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, `src/phos/api/client.ts`, `src/phos/backend/observability.ts`, `src/phos/backend/observability.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `tools/infra/cloudwatch-alarms.json`, and P0 metric emission sources in PH-OS backend/API files.
+- files changed: `src/phos/api/client.ts`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, `src/phos/backend/observability.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `tools/infra/cloudwatch-alarms.json`, and `.codex/ralph-state.md`.
+- bugs found: the manifest Lambda runtime success matrix verified 200/object responses but did not assert that each response matched the route manifest `response_contract`. The same matrix used PHI-bearing fixtures but did not assert that console log/error output stayed PHI-free. P0 backend metric names existed in code, but the CloudWatch alarm baseline had no `PHOS/Backend` alarms, and no test proved each P0 metric still had an emission source.
+- security risks found: route success proof now reuses the API client response-contract validator, so Lambda fixture responses must satisfy frontend-facing runtime contracts. Runtime logs for every manifest success route are checked against patient/provider labels, fee labels, handoff notes, file names, upload URLs, and checksums. Every P0 metric now has a static emission-source gate and a CloudWatch alarm baseline entry under `PHOS/Backend`.
+- performance issues found: no production runtime path changed except exporting the existing response-contract validator. The new checks are test/ops configuration only. Alarm thresholds add operational visibility without adding request-time work.
+- validation commands: Prettier for touched API/infra/observability/alarm files; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-runtime.test.ts src/phos/api/client.test.ts --reporter=dot`; focused `pnpm exec vitest run src/phos/backend/observability.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm typecheck`; `pnpm build`.
+- validation results: Prettier completed. Runtime/API focused suite passed with 2 files / 45 tests. Observability/PR15 focused suite passed with 2 files / 48 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 100 files passed / 1 skipped and 723 tests passed / 1 skipped. Repo `pnpm typecheck` passed after `next typegen`. Next production build passed and generated 235 static pages.
+- remaining work: the API Gateway product contract remains unresolved at the spec level: current repo gates REST API + Cognito User Pools authorizer, while the v1.1 spec says HTTP API + JWT Authorizer. Live AWS/API Gateway/Lambda/Cognito/Dynamo/S3/CloudWatch/X-Ray proof remains external and unverified locally. The local RLS integration harness still skips outside CI unless `PHOS_AURORA_RLS_TEST_DATABASE_URL` is provided.
+- next action: commit this runtime/observability gate slice, then make an explicit decision on the API Gateway REST-vs-HTTP/JWT contract before claiming full spec completion.
+
 ### 20260610-032330
 
 - current task: close locally actionable PH-OS backend gate gaps from parallel spec/security/test review.

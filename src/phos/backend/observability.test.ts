@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCloudWatchEmbeddedMetric,
@@ -7,6 +9,10 @@ import {
   P0_REQUIRED_METRIC_NAMES,
   PHOS_METRICS_NAMESPACE,
 } from './observability';
+
+function readSource(relativePath: string): string {
+  return readFileSync(join(process.cwd(), relativePath), 'utf8');
+}
 
 describe('PH-OS observability', () => {
   afterEach(() => {
@@ -27,6 +33,26 @@ describe('PH-OS observability', () => {
         'ReportSendFailedCount',
       ].sort(),
     );
+  });
+
+  it('keeps every P0 metric wired to at least one emission source', () => {
+    const emissionSources = {
+      ActionLatencyMs: ['src/phos/backend/cards-handlers.ts'],
+      ActionGuardFailedCount: ['src/phos/backend/cards-handlers.ts'],
+      TenantBoundaryRejectedCount: ['src/phos/backend/lambda-handler.ts'],
+      CrossTenantAttemptCount: ['src/phos/backend/lambda-handler.ts'],
+      VisitCompleteGuardBlockedCount: ['src/phos/backend/visit-mode-lifecycle-repository.ts'],
+      EvidenceUploadFailedCount: ['src/phos/backend/evidence-handlers.ts'],
+      OfflineSyncConflictCount: ['src/phos/api/offlineActionQueue.ts'],
+      HandoffReturnedCount: ['src/phos/backend/handoffs-handlers.ts'],
+      ReportSendFailedCount: ['src/phos/backend/cards-handlers.ts'],
+    } satisfies Record<(typeof P0_REQUIRED_METRIC_NAMES)[number], string[]>;
+
+    expect(Object.keys(emissionSources).sort()).toEqual([...P0_REQUIRED_METRIC_NAMES].sort());
+    for (const metricName of P0_REQUIRED_METRIC_NAMES) {
+      const source = emissionSources[metricName].map(readSource).join('\n');
+      expect(source, metricName).toContain(`name: '${metricName}'`);
+    }
   });
 
   it('builds CloudWatch embedded metrics in the PHOS backend namespace', () => {

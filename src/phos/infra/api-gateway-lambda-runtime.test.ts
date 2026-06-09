@@ -3,6 +3,7 @@ import {
   ActionCode,
   ActionKind,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CapacityScope,
   CapacityStatus,
   CardType,
@@ -31,6 +32,7 @@ import {
   type ReportDeliveryView,
   type VisitModeView,
 } from '@/phos/contracts/phos_contracts';
+import { isValidResponseContract } from '@/phos/api/client';
 import {
   createCardDetailLambdaHandler,
   createCardSearchLambdaHandler,
@@ -80,7 +82,7 @@ const nextAction: NextActionView = {
   offline_allowed: false,
   priority: 'PRIMARY',
   required_role: [],
-  target_endpoint: '/cards/card_1/actions',
+  target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
   ui_state: ButtonState.ACTIONABLE,
   can_user_handle: true,
 };
@@ -568,6 +570,24 @@ function clearConsoleSpies() {
   vi.mocked(console.error).mockClear();
 }
 
+const phiLogForbiddenFragments = [
+  '患者 山田太郎',
+  '山田医師',
+  '在宅患者訪問薬剤管理指導料',
+  '薬剤師確認が必要です。',
+  '施設連絡先を確認してください。',
+  'photo.jpg',
+  'https://s3.example/upload',
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+];
+
+function expectNoPhiInRuntimeLogs(routeKey: string) {
+  const logPayload = JSON.stringify([...parsedConsoleLogEntries(), ...parsedConsoleErrorEntries()]);
+  for (const fragment of phiLogForbiddenFragments) {
+    expect(logPayload, `${routeKey} leaked ${fragment}`).not.toContain(fragment);
+  }
+}
+
 describe('PH-OS API Gateway/Lambda runtime proof', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -594,7 +614,9 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
       expect(response.headers['X-Request-Id'], route.route_key).toBe(
         `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
       );
-      expect(parseBody(response), route.route_key).toEqual(expect.any(Object));
+      const body = parseBody(response);
+      expect(body, route.route_key).toEqual(expect.any(Object));
+      expect(isValidResponseContract(body, route.response_contract), route.route_key).toBe(true);
       expect(parsedConsoleErrorEntries(), route.route_key).toEqual([]);
       expect(parsedConsoleLogEntries(), route.route_key).toEqual(
         expect.arrayContaining([
@@ -615,6 +637,7 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
           }),
         ]),
       );
+      expectNoPhiInRuntimeLogs(route.route_key);
     }
   });
 

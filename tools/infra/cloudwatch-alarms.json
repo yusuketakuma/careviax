@@ -27,6 +27,105 @@
       "alarmDescription": "Triggered when ALB returns repeated 5xx responses."
     },
     {
+      "name": "ph-os-action-latency-high",
+      "metric": "ActionLatencyMs",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanThreshold",
+      "threshold": 5000,
+      "evaluationPeriods": 3,
+      "periodSeconds": 60,
+      "statistic": "Average",
+      "alarmDescription": "PH-OS backend action latency exceeded the P0 baseline."
+    },
+    {
+      "name": "ph-os-action-guard-failed",
+      "metric": "ActionGuardFailedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS action guard failures occurred."
+    },
+    {
+      "name": "ph-os-tenant-boundary-rejected",
+      "metric": "TenantBoundaryRejectedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS rejected tenant_id in external request input."
+    },
+    {
+      "name": "ph-os-cross-tenant-attempt",
+      "metric": "CrossTenantAttemptCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS detected a cross-tenant access attempt."
+    },
+    {
+      "name": "ph-os-visit-complete-guard-blocked",
+      "metric": "VisitCompleteGuardBlockedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS blocked visit completion because required guard conditions were not met."
+    },
+    {
+      "name": "ph-os-evidence-upload-failed",
+      "metric": "EvidenceUploadFailedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS evidence upload verification or persistence failed."
+    },
+    {
+      "name": "ph-os-offline-sync-conflict",
+      "metric": "OfflineSyncConflictCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS offline sync conflict occurred."
+    },
+    {
+      "name": "ph-os-handoff-returned",
+      "metric": "HandoffReturnedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS pharmacist handoff was returned to the clerk queue."
+    },
+    {
+      "name": "ph-os-report-send-failed",
+      "metric": "ReportSendFailedCount",
+      "namespace": "PHOS/Backend",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "PH-OS report send failed."
+    },
+    {
       "name": "ph-os-rate-limit-unavailable",
       "metric": "RateLimitUnavailable",
       "namespace": "PH-OS/Application",

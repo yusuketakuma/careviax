@@ -447,6 +447,26 @@ describe('PH-OS Final No-Go gate', () => {
     );
   });
 
+  it('keeps every P0 backend metric represented in the CloudWatch alarm baseline', () => {
+    const alarmsConfig = JSON.parse(
+      readFileSync(join(repoRoot, 'tools/infra/cloudwatch-alarms.json'), 'utf8'),
+    ) as {
+      alarms: Array<{ metric: string; namespace: string; threshold: number }>;
+    };
+    const backendAlarmMetrics = new Set(
+      alarmsConfig.alarms
+        .filter((alarm) => alarm.namespace === 'PHOS/Backend')
+        .map((alarm) => alarm.metric),
+    );
+
+    for (const metricName of P0_REQUIRED_METRIC_NAMES) {
+      expect(backendAlarmMetrics.has(metricName), metricName).toBe(true);
+    }
+    for (const alarm of alarmsConfig.alarms.filter((entry) => entry.namespace === 'PHOS/Backend')) {
+      expect(alarm.threshold, alarm.metric).toBeGreaterThan(0);
+    }
+  });
+
   it('keeps CloudWatch metric logs correlated and X-Ray annotation adapter wired', () => {
     const metric = buildCloudWatchEmbeddedMetric({
       name: 'ActionGuardFailedCount',

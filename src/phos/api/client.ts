@@ -499,7 +499,7 @@ function isMutationResponse(value: unknown, rootKey: string): boolean {
   );
 }
 
-function isValidResponseContract(value: unknown, contract: ResponseContract): boolean {
+export function isValidResponseContract(value: unknown, contract: ResponseContract): boolean {
   switch (contract) {
     case 'CardSearchResponse':
       return isListResponse(value, isCardBoardItem);
