@@ -46,10 +46,10 @@ function expectMissingFiles(paths: readonly string[]) {
 }
 
 describe('PH-OS PR-15 E2E evidence gate', () => {
-  it('keeps E2E-01 through E2E-10 in one executable final workflow spec', () => {
+  it('keeps E2E-01 through E2E-11 in one executable final workflow spec', () => {
     const spec = readRelative('src/phos/infra/phos-final-e2e.test.tsx');
 
-    for (let index = 1; index <= 10; index++) {
+    for (let index = 1; index <= 11; index++) {
       const id = `E2E-${String(index).padStart(2, '0')}`;
       expect(spec, id).toContain(`it('${id}`);
     }
@@ -812,6 +812,19 @@ describe('PH-OS Final No-Go gate', () => {
       /updates arrival outcomes/,
       /queues photo evidence only when/,
       /hides photo capture/,
+    ]);
+  });
+
+  it('keeps browser-level Board to Workspace accessibility flow covered in the final E2E spec', () => {
+    expectEvidence('src/phos/infra/phos-final-e2e.test.tsx', [
+      /E2E-11 preserves the browser UI flow/,
+      /Board to Workspace, SourceDrawer, focus return, and Space primary action/,
+      /fireEvent\.click\(sourceCard\)/,
+      /getByRole\('dialog', \{ name: \/患者 山田太郎\/ \}\)/,
+      /getByRole\('dialog', \{ name: '参照情報' \}\)/,
+      /document\.activeElement/,
+      /fireEvent\.keyDown\(sourceCard, \{ key: ' ' \}\)/,
+      /executeCardAction/,
     ]);
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
@@ -762,5 +762,41 @@ describe('PH-OS final review executable E2E coverage', () => {
 
     expect(clerkClient.getCapacity).not.toHaveBeenCalled();
     expect(screen.queryByRole('heading', { name: 'Capacity' })).toBeNull();
+  });
+
+  it('E2E-11 preserves the browser UI flow from Board to Workspace, SourceDrawer, focus return, and Space primary action', async () => {
+    const apiClient = boardClient();
+
+    render(<BoardClient client={apiClient} initialItems={[boardItem()]} />);
+
+    const sourceCard = screen.getByRole('button', { name: /患者 山田太郎/ });
+    fireEvent.click(sourceCard);
+
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+    expect(screen.getByRole('dialog', { name: /患者 山田太郎/ })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: '算定' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '参照情報を開く' }));
+    const drawer = screen.getByRole('dialog', { name: '参照情報' });
+    expect(within(drawer).getByText('参照情報はありません。')).toBeTruthy();
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '参照情報を開く' })),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(document.activeElement).toBe(sourceCard));
+
+    fireEvent.keyDown(sourceCard, { key: ' ' });
+    await waitFor(() => expect(apiClient.executeCardAction).toHaveBeenCalledTimes(1));
+    expect(apiClient.executeCardAction).toHaveBeenCalledWith(
+      'card_1',
+      expect.objectContaining({
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        client_version: 1,
+      }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
