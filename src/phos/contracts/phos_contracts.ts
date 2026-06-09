@@ -477,7 +477,14 @@ export type SupportBrief = {
 };
 
 export type ToastTone = 'SUCCESS' | 'INFO' | 'WARNING' | 'ERROR';
-export type TabKey = 'OVERVIEW' | 'PRESCRIPTION' | 'SET' | 'VISIT_REPORT' | 'CLAIM_HISTORY';
+export const TabKey = {
+  OVERVIEW: 'OVERVIEW',
+  PRESCRIPTION: 'PRESCRIPTION',
+  SET: 'SET',
+  VISIT_REPORT: 'VISIT_REPORT',
+  CLAIM_HISTORY: 'CLAIM_HISTORY',
+} as const;
+export type TabKey = (typeof TabKey)[keyof typeof TabKey];
 
 export type CardSummaryView = {
   card_id: string;

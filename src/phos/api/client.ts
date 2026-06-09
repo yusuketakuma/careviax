@@ -1,12 +1,10 @@
 import type {
   ActionRequest,
-  CapacityScope,
   CreateHandoffRequest,
   ErrorResponse,
   ExcludeClaimCandidateRequest,
   EvidenceUploadRequest,
   OpenHandoffRequest,
-  ReportDeliveryStatus,
   ResolveHandoffRequest,
   ReturnHandoffRequest,
   MarkReportActionDoneRequest,
@@ -14,7 +12,29 @@ import type {
   VisitStep,
   VisitStepMutationRequest,
 } from '@/phos/contracts/phos_contracts';
-import { ActionCode, ActionKind, ButtonState } from '@/phos/contracts/phos_contracts';
+import {
+  ActionCode,
+  ActionKind,
+  BlockerSeverity,
+  BoardQuickFilter,
+  ButtonState,
+  CapacityScope,
+  CapacityStatus,
+  CardType,
+  ClaimCandidateStatus,
+  CurrentStep,
+  DisplayStatus,
+  HandoffStatus,
+  HandoffUrgency,
+  ReportDeliveryStatus,
+  SourceRefKind,
+  Tag,
+  TabKey,
+  TriageLane,
+  UserRole,
+  VisitStatus,
+  VisitStep as VisitStepValue,
+} from '@/phos/contracts/phos_contracts';
 import { findPhosRoute, type PhosApiRoute } from '@/phos/infra/api-gateway-routes';
 import type {
   PhosApiClient,
@@ -160,12 +180,24 @@ function hasOptionalString(record: Record<string, unknown>, key: string): boolea
   return record[key] === undefined || isString(record[key]);
 }
 
+function hasOptionalNonEmptyString(record: Record<string, unknown>, key: string): boolean {
+  return record[key] === undefined || (isString(record[key]) && record[key].length > 0);
+}
+
 function hasOptionalNumber(record: Record<string, unknown>, key: string): boolean {
   return record[key] === undefined || isNumber(record[key]);
 }
 
+function hasOptionalBoolean(record: Record<string, unknown>, key: string): boolean {
+  return record[key] === undefined || typeof record[key] === 'boolean';
+}
+
 function isOneOf(values: readonly string[], value: unknown): boolean {
   return isString(value) && values.includes(value);
+}
+
+function isOptionalOneOf(values: readonly string[], value: unknown): boolean {
+  return value === undefined || isOneOf(values, value);
 }
 
 function isStringRecord(value: unknown): boolean {
@@ -180,16 +212,167 @@ function everyArrayItem(
   return hasArray(record, key) && (record[key] as unknown[]).every(predicate);
 }
 
+function optionalArrayEvery(
+  record: Record<string, unknown>,
+  key: string,
+  predicate: (item: unknown) => boolean,
+): boolean {
+  return record[key] === undefined || everyArrayItem(record, key, predicate);
+}
+
+function isSourceRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isOneOf(Object.values(SourceRefKind), value.kind) &&
+    hasString(value, 'ref_id') &&
+    hasString(value, 'label') &&
+    hasOptionalString(value, 'uri') &&
+    hasOptionalString(value, 'captured_at')
+  );
+}
+
+function isEvidenceRequirement(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasString(value, 'evidence_key') &&
+    hasString(value, 'label') &&
+    typeof value.required === 'boolean' &&
+    isOneOf(Object.values(SourceRefKind), value.source_kind)
+  );
+}
+
+function isTag(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isOneOf(Object.values(Tag), value.code) &&
+    hasString(value, 'label') &&
+    isOneOf(Object.values(BlockerSeverity), value.severity) &&
+    hasString(value, 'icon') &&
+    typeof value.safety_critical === 'boolean'
+  );
+}
+
+function isBlocker(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasString(value, 'blocker_code') &&
+    isOneOf(Object.values(BlockerSeverity), value.severity) &&
+    isOneOf(Object.values(UserRole), value.owner_role) &&
+    hasString(value, 'message_key') &&
+    (value.message_params === undefined || isStringRecord(value.message_params)) &&
+    isOptionalOneOf(Object.values(ActionCode), value.required_action_code) &&
+    typeof value.active === 'boolean'
+  );
+}
+
+function isPermissions(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.can_read === 'boolean' &&
+    typeof value.can_write === 'boolean' &&
+    everyArrayItem(value, 'allowed_actions', (item) => isOneOf(Object.values(ActionCode), item))
+  );
+}
+
+function isTabKey(value: unknown): boolean {
+  return isOneOf(Object.values(TabKey), value);
+}
+
+function isSideEffect(value: unknown): boolean {
+  if (!isRecord(value) || !isString(value.type)) return false;
+  switch (value.type) {
+    case 'TASK_COMPLETED':
+      return hasString(value, 'task_id');
+    case 'BLOCKER_RESOLVED':
+      return hasString(value, 'blocker_code');
+    case 'BLOCKER_CREATED':
+      return (
+        hasString(value, 'blocker_code') && isOneOf(Object.values(BlockerSeverity), value.severity)
+      );
+    case 'READY_CHECK_RECALCULATED':
+      return hasString(value, 'visit_packet_id');
+    case 'CLAIM_RECALCULATED':
+      return hasString(value, 'card_id');
+    case 'HANDOFF_CREATED':
+      return hasString(value, 'handoff_id');
+    case 'REPORT_QUEUED':
+    case 'REPORT_ACTION_DONE':
+      return hasString(value, 'delivery_id');
+    case 'REPORT_REPLY_REGISTERED':
+      return (
+        hasString(value, 'delivery_id') &&
+        isOneOf(Object.values(ReportDeliveryStatus), value.status)
+      );
+    case 'CARD_GENERATED':
+      return hasString(value, 'card_id') && isOneOf(Object.values(CardType), value.card_type);
+    default:
+      return false;
+  }
+}
+
+function isCapacityWorkBucket(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isOneOf(
+      ['INTAKE', 'DISPENSING', 'AUDIT', 'VISIT', 'REPORT', 'CLAIM', 'OTHER'],
+      value.bucket_code,
+    ) &&
+    hasString(value, 'label') &&
+    hasNumber(value, 'planned_minutes') &&
+    hasNumber(value, 'available_minutes') &&
+    hasNumber(value, 'utilization_percent')
+  );
+}
+
+function isCapacityStaffLoad(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasString(value, 'user_id') &&
+    hasString(value, 'display_name') &&
+    isOneOf(Object.values(UserRole), value.role) &&
+    hasNumber(value, 'planned_minutes') &&
+    hasNumber(value, 'available_minutes') &&
+    hasNumber(value, 'utilization_percent') &&
+    hasNumber(value, 'active_card_count')
+  );
+}
+
+function isCapacityBottleneck(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasString(value, 'bottleneck_code') &&
+    hasString(value, 'label') &&
+    isOneOf(Object.values(BlockerSeverity), value.severity) &&
+    hasNumber(value, 'affected_count') &&
+    hasOptionalNumber(value, 'over_minutes')
+  );
+}
+
 function isCardSummary(value: unknown): boolean {
   return (
     isRecord(value) &&
     hasString(value, 'card_id') &&
-    hasString(value, 'card_type') &&
+    isOneOf(Object.values(CardType), value.card_type) &&
     hasString(value, 'patient_name') &&
-    hasString(value, 'current_step') &&
-    hasString(value, 'display_status') &&
+    hasOptionalString(value, 'facility_name') &&
+    hasOptionalString(value, 'room') &&
+    hasOptionalString(value, 'visit_time') &&
+    hasOptionalString(value, 'visit_date') &&
+    hasOptionalString(value, 'service_date') &&
+    hasOptionalString(value, 'due_at') &&
+    hasOptionalString(value, 'updated_at') &&
+    hasOptionalNumber(value, 'stale_minutes') &&
+    hasOptionalNumber(value, 'urgency_rank') &&
+    isOneOf(Object.values(CurrentStep), value.current_step) &&
+    isOneOf(Object.values(DisplayStatus), value.display_status) &&
+    hasOptionalString(value, 'assigned_user') &&
     hasNumber(value, 'server_version') &&
-    hasArray(value, 'tags')
+    everyArrayItem(value, 'tags', isTag) &&
+    optionalArrayEvery(value, 'quick_filter_keys', (item) =>
+      isOneOf(Object.values(BoardQuickFilter), item),
+    ) &&
+    optionalArrayEvery(value, 'triage_lanes', (item) => isOneOf(Object.values(TriageLane), item)) &&
+    optionalArrayEvery(value, 'search_texts', isString)
   );
 }
 
@@ -199,13 +382,15 @@ function isNextAction(value: unknown): boolean {
     isOneOf(Object.values(ActionCode), value.code) &&
     isOneOf(Object.values(ActionKind), value.kind) &&
     hasString(value, 'label_key') &&
+    hasOptionalString(value, 'disabled_reason_key') &&
     typeof value.enabled === 'boolean' &&
     typeof value.offline_allowed === 'boolean' &&
     isOneOf(['PRIMARY', 'SECONDARY', 'DANGER', 'INFO'], value.priority) &&
-    hasArray(value, 'required_role') &&
+    everyArrayItem(value, 'required_role', (item) => isOneOf(Object.values(UserRole), item)) &&
     hasString(value, 'target_endpoint') &&
     isOneOf(Object.values(ButtonState), value.ui_state) &&
-    typeof value.can_user_handle === 'boolean'
+    typeof value.can_user_handle === 'boolean' &&
+    hasOptionalBoolean(value, 'reason_required')
   );
 }
 
@@ -222,13 +407,15 @@ function isClaimCandidate(value: unknown): boolean {
     hasString(value, 'fee_code') &&
     hasString(value, 'fee_label') &&
     hasString(value, 'billing_month') &&
-    hasString(value, 'status') &&
+    isOneOf(Object.values(ClaimCandidateStatus), value.status) &&
     hasString(value, 'status_label') &&
-    hasArray(value, 'missing_evidence_keys') &&
-    hasArray(value, 'evidence_requirements') &&
+    everyArrayItem(value, 'missing_evidence_keys', isString) &&
+    everyArrayItem(value, 'evidence_requirements', isEvidenceRequirement) &&
     hasString(value, 'rule_version_id') &&
     hasNumber(value, 'priority_rank') &&
-    hasArray(value, 'source_refs') &&
+    everyArrayItem(value, 'source_refs', isSourceRef) &&
+    hasString(value, 'created_at') &&
+    hasString(value, 'updated_at') &&
     hasNumber(value, 'server_version')
   );
 }
@@ -240,12 +427,13 @@ function isFeeRule(value: unknown): boolean {
     hasString(value, 'rule_version_id') &&
     hasString(value, 'fee_code') &&
     hasString(value, 'fee_label') &&
-    hasString(value, 'tenant_scope') &&
+    isOneOf(['SYSTEM', 'TENANT'], value.tenant_scope) &&
     hasString(value, 'revision_code') &&
     hasString(value, 'active_from') &&
+    hasOptionalString(value, 'active_to') &&
     hasObject(value, 'condition') &&
-    hasArray(value, 'evidence_requirements') &&
-    hasArray(value, 'source_refs')
+    everyArrayItem(value, 'evidence_requirements', isEvidenceRequirement) &&
+    everyArrayItem(value, 'source_refs', isSourceRef)
   );
 }
 
@@ -254,17 +442,23 @@ function isHandoff(value: unknown): boolean {
     isRecord(value) &&
     hasString(value, 'handoff_id') &&
     hasString(value, 'card_id') &&
-    hasString(value, 'status') &&
+    isOneOf(Object.values(HandoffStatus), value.status) &&
     hasString(value, 'reason_code') &&
     hasString(value, 'summary') &&
-    hasArray(value, 'source_refs') &&
-    hasString(value, 'urgency') &&
+    everyArrayItem(value, 'source_refs', isSourceRef) &&
+    isOptionalOneOf(Object.values(ActionCode), value.requested_action) &&
+    isOneOf(Object.values(HandoffUrgency), value.urgency) &&
+    hasOptionalString(value, 'related_blocker_code') &&
     hasString(value, 'created_by_user_id') &&
+    hasOptionalString(value, 'assignee_user_id') &&
     hasString(value, 'created_at') &&
     hasString(value, 'updated_at') &&
     hasNumber(value, 'server_version') &&
     hasString(value, 'patient_name') &&
-    hasNumber(value, 'age_minutes')
+    hasNumber(value, 'age_minutes') &&
+    hasOptionalString(value, 'return_reason_code') &&
+    hasOptionalString(value, 'return_note') &&
+    isOptionalOneOf(Object.values(ActionCode), value.resolved_action_code)
   );
 }
 
@@ -276,12 +470,12 @@ function isReportDelivery(value: unknown): boolean {
     hasString(value, 'report_id') &&
     hasString(value, 'patient_name') &&
     hasString(value, 'target_label') &&
-    hasString(value, 'status') &&
+    isOneOf(Object.values(ReportDeliveryStatus), value.status) &&
     hasString(value, 'delivery_method') &&
     hasString(value, 'sent_at') &&
     hasNumber(value, 'stale_minutes') &&
     hasNumber(value, 'server_version') &&
-    hasArray(value, 'source_refs')
+    everyArrayItem(value, 'source_refs', isSourceRef)
   );
 }
 
@@ -290,7 +484,7 @@ function isListResponse(value: unknown, itemPredicate?: (item: unknown) => boole
     isRecord(value) &&
     everyArrayItem(value, 'items', itemPredicate ?? (() => true)) &&
     hasString(value, 'server_time') &&
-    hasOptionalString(value, 'next_cursor') &&
+    hasOptionalNonEmptyString(value, 'next_cursor') &&
     hasOptionalNumber(value, 'total_estimate')
   );
 }
@@ -299,7 +493,7 @@ function isMutationResponse(value: unknown, rootKey: string): boolean {
   return (
     isRecord(value) &&
     hasObject(value, rootKey) &&
-    hasArray(value, 'side_effects') &&
+    everyArrayItem(value, 'side_effects', isSideEffect) &&
     hasNumber(value, 'server_version')
   );
 }
@@ -321,34 +515,35 @@ function isValidResponseContract(value: unknown, contract: ResponseContract): bo
         isRecord(value) &&
         isCardSummary(value.card) &&
         isNextAction(value.next_action) &&
-        hasString(value, 'display_status') &&
-        hasArray(value, 'blockers') &&
-        hasArray(value, 'side_effects') &&
+        isOneOf(Object.values(DisplayStatus), value.display_status) &&
+        everyArrayItem(value, 'blockers', isBlocker) &&
+        optionalArrayEvery(value, 'visible_tabs', isTabKey) &&
+        everyArrayItem(value, 'side_effects', isSideEffect) &&
         hasNumber(value, 'server_version')
       );
     case 'CardDetailResponse':
       return (
         isRecord(value) &&
         isCardSummary(value.card) &&
-        hasArray(value, 'visible_tabs') &&
-        hasObject(value, 'permissions') &&
+        everyArrayItem(value, 'visible_tabs', isTabKey) &&
+        isPermissions(value.permissions) &&
         isNextAction(value.next_action) &&
-        hasArray(value, 'blockers') &&
-        hasArray(value, 'source_refs') &&
+        everyArrayItem(value, 'blockers', isBlocker) &&
+        everyArrayItem(value, 'source_refs', isSourceRef) &&
         hasNumber(value, 'server_version')
       );
     case 'CapacityResponse':
       return (
         isRecord(value) &&
         hasString(value, 'date') &&
-        hasString(value, 'scope') &&
-        hasString(value, 'status') &&
+        isOneOf(Object.values(CapacityScope), value.scope) &&
+        isOneOf(Object.values(CapacityStatus), value.status) &&
         hasNumber(value, 'total_planned_minutes') &&
         hasNumber(value, 'total_available_minutes') &&
         hasNumber(value, 'utilization_percent') &&
-        hasArray(value, 'work_buckets') &&
-        hasArray(value, 'staff_loads') &&
-        hasArray(value, 'bottlenecks') &&
+        everyArrayItem(value, 'work_buckets', isCapacityWorkBucket) &&
+        everyArrayItem(value, 'staff_loads', isCapacityStaffLoad) &&
+        everyArrayItem(value, 'bottlenecks', isCapacityBottleneck) &&
         hasString(value, 'server_time')
       );
     case 'ClaimCandidateMutationResponse':
@@ -381,14 +576,27 @@ function isValidResponseContract(value: unknown, contract: ResponseContract): bo
         hasString(value, 'packet_id') &&
         hasNumber(value, 'server_version') &&
         hasString(value, 'patient_name') &&
-        hasString(value, 'visit_status') &&
-        hasArray(value, 'applicable_steps') &&
-        hasArray(value, 'required_steps') &&
+        hasOptionalString(value, 'card_id') &&
+        hasOptionalString(value, 'assignee_user_id') &&
+        optionalArrayEvery(value, 'support_user_ids', isString) &&
+        hasOptionalString(value, 'facility') &&
+        hasOptionalString(value, 'room') &&
+        isOneOf(Object.values(VisitStatus), value.visit_status) &&
+        everyArrayItem(value, 'applicable_steps', (item) =>
+          isOneOf(Object.values(VisitStepValue), item),
+        ) &&
+        everyArrayItem(value, 'required_steps', (item) =>
+          isOneOf(Object.values(VisitStepValue), item),
+        ) &&
         hasObject(value, 'step_completed') &&
-        hasString(value, 'last_opened_step') &&
+        Object.values(value.step_completed as Record<string, unknown>).every(
+          (stepComplete) => typeof stepComplete === 'boolean',
+        ) &&
+        isOneOf(Object.values(VisitStepValue), value.last_opened_step) &&
         hasObject(value, 'evidence_sync') &&
         isNumber((value.evidence_sync as Record<string, unknown>).blocking_unsynced_count) &&
         isNumber((value.evidence_sync as Record<string, unknown>).non_blocking_unsynced_count) &&
+        optionalArrayEvery(value, 'blockers', isBlocker) &&
         typeof value.online === 'boolean'
       );
   }

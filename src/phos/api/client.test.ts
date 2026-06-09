@@ -79,6 +79,21 @@ function actionRequest(): ActionRequest {
   };
 }
 
+function expectInvalidResponse(
+  promise: Promise<unknown>,
+  responseContract: string,
+): Promise<unknown> {
+  return expect(promise).rejects.toMatchObject({
+    status: 200,
+    response: {
+      request_id: '',
+      error_code: 'INTERNAL_ERROR',
+      message_key: 'api.error.invalid_response',
+      details: { response_contract: responseContract },
+    },
+  } satisfies Partial<PhosApiError>);
+}
+
 function actionResponse(): ActionResponse {
   return {
     card: {
@@ -1040,12 +1055,142 @@ describe('createPhosApiClient', () => {
     } satisfies Partial<PhosApiError>);
   });
 
-  it('rejects malformed pagination cursors in successful list responses', async () => {
+  it.each([
+    { name: 'null', next_cursor: null },
+    { name: 'empty string', next_cursor: '' },
+  ])(
+    'rejects malformed $name pagination cursors in successful list responses',
+    async (testCase) => {
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({
+          items: [{ card: readyCard, next_action: nextAction }],
+          next_cursor: testCase.next_cursor,
+          server_time: '2026-06-09T00:00:00.000Z',
+        }),
+      );
+      const client = createPhosApiClient({
+        baseUrl: 'https://api.example.com/prod',
+        fetchImpl,
+      });
+
+      await expectInvalidResponse(client.getCards(), 'CardSearchResponse');
+    },
+  );
+
+  it.each([
+    {
+      name: 'board card',
+      response_contract: 'CardSearchResponse',
+      response: {
+        items: [
+          {
+            card: {
+              ...readyCard,
+              card_type: 'BOGUS',
+              current_step: 'REMOTE',
+              display_status: 'UNKNOWN',
+              tags: [{ code: 'BOGUS' }],
+            },
+            next_action: nextAction,
+          },
+        ],
+        server_time: '2026-06-09T00:00:00.000Z',
+      },
+      invoke: (api: PhosApiClient) => api.getCards(),
+    },
+    {
+      name: 'card detail',
+      response_contract: 'CardDetailResponse',
+      response: { ...cardDetailResponse(), card: { ...readyCard, card_type: 'BOGUS' } },
+      invoke: (api: PhosApiClient) => api.getCardDetail('card_1'),
+    },
+    {
+      name: 'action response card',
+      response_contract: 'ActionResponse',
+      response: { ...actionResponse(), card: { ...readyCard, display_status: 'UNKNOWN' } },
+      invoke: (api: PhosApiClient) => api.executeCardAction('card_1', actionRequest()),
+    },
+  ])('rejects malformed card summary literals in successful $name responses', async (testCase) => {
+    const fetchImpl = vi.fn(async () => jsonResponse(testCase.response));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expectInvalidResponse(testCase.invoke(client), testCase.response_contract);
+  });
+
+  it.each([
+    {
+      name: 'card detail',
+      response_contract: 'CardDetailResponse',
+      response: {
+        ...cardDetailResponse(),
+        source_refs: [{ kind: 'SCRIPT', ref_id: 123, label: 'bad' }],
+      },
+      invoke: (api: PhosApiClient) => api.getCardDetail('card_1'),
+    },
+    {
+      name: 'fee rule',
+      response_contract: 'FeeRuleSearchResponse',
+      response: {
+        ...feeRuleSearchResponse(),
+        items: [
+          {
+            ...feeRuleSearchResponse().items[0],
+            source_refs: [{ kind: 'SCRIPT', ref_id: 'rule_doc_1', label: 'bad' }],
+          },
+        ],
+      },
+      invoke: (api: PhosApiClient) => api.getFeeRules({ fee_code: 'M001' }),
+    },
+    {
+      name: 'handoff mutation',
+      response_contract: 'HandoffMutationResponse',
+      response: {
+        ...handoffResponse(),
+        handoff: {
+          ...handoffResponse().handoff,
+          source_refs: [{ kind: 'SCRIPT', ref_id: 'rx_1', label: 'bad' }],
+        },
+      },
+      invoke: (api: PhosApiClient) =>
+        api.openHandoff('handoff_1', { idempotency_key: 'idem_open', client_version: 1 }),
+    },
+    {
+      name: 'report delivery',
+      response_contract: 'ReportDeliverySearchResponse',
+      response: {
+        ...reportDeliverySearchResponse(),
+        items: [
+          {
+            ...reportDeliverySearchResponse().items[0],
+            source_refs: [{ kind: 'SCRIPT', ref_id: 'report_1', label: 'bad' }],
+          },
+        ],
+      },
+      invoke: (api: PhosApiClient) => api.getReportDeliveries(),
+    },
+  ])('rejects malformed source_refs in successful $name responses', async (testCase) => {
+    const fetchImpl = vi.fn(async () => jsonResponse(testCase.response));
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expectInvalidResponse(testCase.invoke(client), testCase.response_contract);
+  });
+
+  it('rejects malformed card detail visible tabs and permissions', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
-        items: [{ card: readyCard, next_action: nextAction }],
-        next_cursor: null,
-        server_time: '2026-06-09T00:00:00.000Z',
+        ...cardDetailResponse(),
+        visible_tabs: ['ADMIN_PANEL'],
+        permissions: {
+          can_read: 'yes',
+          can_write: true,
+          allowed_actions: ['DELETE_PATIENT'],
+        },
       }),
     );
     const client = createPhosApiClient({
@@ -1053,15 +1198,56 @@ describe('createPhosApiClient', () => {
       fetchImpl,
     });
 
-    await expect(client.getCards()).rejects.toMatchObject({
-      status: 200,
-      response: {
-        request_id: '',
-        error_code: 'INTERNAL_ERROR',
-        message_key: 'api.error.invalid_response',
-        details: { response_contract: 'CardSearchResponse' },
-      },
-    } satisfies Partial<PhosApiError>);
+    await expectInvalidResponse(client.getCardDetail('card_1'), 'CardDetailResponse');
+  });
+
+  it('rejects malformed blockers and action visible tabs in successful action responses', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        ...actionResponse(),
+        visible_tabs: ['ADMIN_PANEL'],
+        blockers: [
+          {
+            blocker_code: 'MISSING_EVIDENCE',
+            severity: 'BANANA',
+            owner_role: 'PHARMACIST',
+            message_key: 'blocker.missing_evidence',
+            active: true,
+          },
+        ],
+      }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expectInvalidResponse(
+      client.executeCardAction('card_1', actionRequest()),
+      'ActionResponse',
+    );
+  });
+
+  it('rejects malformed mutation side effects in successful responses', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        ...claimCandidateMutationResponse(),
+        side_effects: [{ type: 'CLAIM_RECALCULATED' }],
+      }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+    });
+
+    await expectInvalidResponse(
+      client.excludeClaimCandidate('claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+      'ClaimCandidateMutationResponse',
+    );
   });
 
   it.each([

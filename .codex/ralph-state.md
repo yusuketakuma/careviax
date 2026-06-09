@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-011420
+
+- current task: harden PH-OS API client success-response runtime validation for frontend contract preparation.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, `src/phos/api/types.ts`, `src/phos/contracts/phos_contracts.ts`, `src/phos/contracts/phos_static_contract.test.ts`, `src/phos/infra/api-gateway-routes.ts`, and read-only subagent report `019ead22-cf4a-7b33-ab4e-a681f2b54529`.
+- files changed: `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, `src/phos/contracts/phos_contracts.ts`, `.codex/ralph-state.md`.
+- bugs found: API Gateway success payload validation was still shallow for several frontend-critical fields. Invalid card enums/tags, source refs, card detail tabs/permissions, blocker severity/owner role, mutation side-effect payloads, and empty `next_cursor` strings could pass to frontend code as successful PH-OS responses. Adding tab validation initially duplicated `SourceRefKind` string literals in `client.ts`, tripping the static contract centralization gate.
+- security risks found: frontend API client now rejects malformed successful payloads before UI state uses route visibility, permissions, action availability, source references, blockers, side effects, and pagination cursors. `TabKey` runtime values are centralized in `phos_contracts.ts` so source-ref/status literal centralization remains enforced by the static gate.
+- performance issues found: no network or rendering path was expanded. Validation is in-memory and proportional to returned list item counts already being parsed by the client; no polling, retry loop, direct database access, or extra API call was added.
+- validation commands: Prettier for touched API/contract files; focused `pnpm exec vitest run src/phos/api/client.test.ts --reporter=dot`; focused `pnpm exec vitest run src/phos/api/client.test.ts src/phos/contracts/phos_static_contract.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: focused API client test passed with 1 file / 38 tests. Focused API/static contract suite passed with 2 files / 47 tests after centralizing `TabKey`. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 98 files / 675 tests. Next production build passed and generated 235 static pages.
+- remaining work: live API Gateway/Lambda/Cognito/AWS proof remains external and unverified locally. Further frontend-prep/backend follow-ups include broader generated schema reuse if contract growth continues, deployed resource proof, and any product-specific frontend flow updates that consume these stricter contracts.
+- next action: commit this API response contract validation slice, then continue the broader backend-only goal from live proof or the next backend/frontend-prep contract gap.
+
 ### 20260610-010720
 
 - current task: clean invalid PH-OS evidence uploads after S3 verification mismatch while preserving stable VisitMode guard reasons and route-scoped S3 IAM.
