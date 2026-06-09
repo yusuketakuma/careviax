@@ -362,6 +362,66 @@ describe('PH-OS cards Lambda handlers', () => {
     });
   });
 
+  it('normalizes action reason fields and omits empty payload before repository mutation', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createExecuteCardActionHandler(repo));
+
+    const response = await handler(
+      event({
+        routeKey: 'POST /cards/{card_id}/actions',
+        pathParameters: { card_id: 'card_1' },
+        body: JSON.stringify({
+          action_code: ActionCode.REJECT_SET_AUDIT,
+          idempotency_key: ' idem_4 ',
+          client_version: 1,
+          payload: {},
+          reason_code: ' PHOTO_INSUFFICIENT ',
+          reason_note: ' 写真が不鮮明です。 ',
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(repo.executeCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: 'tenant_abc123' }),
+      'card_1',
+      {
+        action_code: ActionCode.REJECT_SET_AUDIT,
+        idempotency_key: 'idem_4',
+        client_version: 1,
+        reason_code: 'PHOTO_INSUFFICIENT',
+        reason_note: '写真が不鮮明です。',
+      },
+    );
+  });
+
+  it('rejects non-object action payloads before repository mutation', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createExecuteCardActionHandler(repo));
+
+    const response = await handler(
+      event({
+        routeKey: 'POST /cards/{card_id}/actions',
+        pathParameters: { card_id: 'card_1' },
+        body: JSON.stringify({
+          action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_5',
+          client_version: 1,
+          payload: [],
+        }),
+      }),
+    );
+
+    expect(repo.executeCardAction).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      request_id: 'req_1',
+      error_code: 'VALIDATION_ERROR',
+      message_key: 'api.error.validation.generic',
+      details: { field: 'payload' },
+    });
+  });
+
   it('maps repository stale version errors to 409 ErrorResponse', async () => {
     const observability = createInMemoryObservabilitySink();
     const repo = repository({

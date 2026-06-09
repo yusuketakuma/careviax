@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-163130
+
+- current task: harden PH-OS card action request boundary normalization for primary card mutations
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/cards-handlers.ts`, `src/phos/backend/cards-handlers.test.ts`, `src/phos/backend/input-validation.ts`, `src/phos/contracts/phos_contracts.ts`, and `src/phos/backend/card-action-executor.ts`
+- files changed: `src/phos/backend/cards-handlers.ts`, `src/phos/backend/cards-handlers.test.ts`, `.codex/ralph-state.md`
+- bugs found: the card action handler accepted non-object `payload` values by silently dropping them, forwarded empty object payloads into the action fingerprint, and forwarded untrimmed `reason_note` values. That made invalid client input less deterministic and allowed idempotency fingerprints to differ for semantically empty action metadata.
+- security risks found: no auth, authorization, tenant boundary, route manifest, Lambda composition, repository transaction policy, frontend, S3, or database adapter changed. The main PH-OS card mutation boundary now rejects non-object action payloads before repository access, trims idempotency/reason fields through shared helpers, omits empty optional reason fields, and omits empty payload objects without changing action transition guards.
+- performance issues found: no runtime performance path was broadened. The change is constant-time request normalization before existing repository execution and removes duplicated handler validation code; no fetch, polling, direct database access, scan, route handler, or Server Action was introduced.
+- validation commands: Prettier for touched card handler/backend validation files; focused `pnpm exec vitest run src/phos/backend/cards-handlers.test.ts src/phos/backend/card-action-executor.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; targeted ESLint for touched card handler/backend validation files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed unchanged; focused card action suite passed with 2 files / 29 tests; TypeScript passed; targeted ESLint passed with zero warnings; whitespace diff check passed; full PH-OS Vitest passed with 94 files / 556 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. Further audit should continue across detached mutation routes such as claim candidates, handoff lifecycle edge cases, fee-rule/capacity query validation reuse, repository adapter edge cases, and live API Gateway/runtime proof where available.
+- next action: commit this card action boundary slice, then continue backend audit from the next highest-risk detached PH-OS mutation boundary.
+
 ### 20260609-162634
 
 - current task: harden PH-OS VisitMode mutation payload validation and reuse shared backend mutation parsers

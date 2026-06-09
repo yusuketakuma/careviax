@@ -9,6 +9,7 @@ import type { CardSearchQuery, PhosCardsRepository } from './cards-repository';
 import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
 import { toErrorLambdaResponse } from './error-response';
+import { parseIdempotencyKey, parsePositiveVersion, validationError } from './input-validation';
 
 export const CARD_SEARCH_DEFAULT_LIMIT = 50;
 export const CARD_SEARCH_MAX_LIMIT = 50;
@@ -27,20 +28,11 @@ function readCardId(event: PhosHttpEvent): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function validationError(ctx: TenantContext, details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
-}
-
-function parseSearchQuery(ctx: TenantContext, event: PhosHttpEvent): CardSearchQuery {
+function parseSearchQuery(event: PhosHttpEvent): CardSearchQuery {
   const rawLimit = readQueryParam(event, 'limit');
   const limit = rawLimit ? Number.parseInt(rawLimit, 10) : CARD_SEARCH_DEFAULT_LIMIT;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > CARD_SEARCH_MAX_LIMIT) {
-    throw validationError(ctx, {
+    throw validationError({
       field: 'limit',
       max: CARD_SEARCH_MAX_LIMIT,
     });
@@ -55,33 +47,34 @@ function parseSearchQuery(ctx: TenantContext, event: PhosHttpEvent): CardSearchQ
   };
 }
 
-function parseActionRequest(ctx: TenantContext, body: unknown): ParsedCardAction {
+function parseActionPayload(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw validationError({ field: 'payload' });
+  }
+  const payload = value as Record<string, unknown>;
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
+function parseActionRequest(body: unknown): ParsedCardAction {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw validationError(ctx, { field: 'body' });
+    throw validationError({ field: 'body' });
   }
 
   const input = body as Partial<ActionRequest>;
   const actionCode = input.action_code;
-  const idempotencyKey = input.idempotency_key;
-  const clientVersion = input.client_version;
 
   if (!Object.values(ActionCode).includes(actionCode as ActionCode)) {
-    throw validationError(ctx, { field: 'action_code' });
-  }
-  if (typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) {
-    throw validationError(ctx, { field: 'idempotency_key' });
-  }
-  if (!Number.isSafeInteger(clientVersion) || Number(clientVersion) < 1) {
-    throw validationError(ctx, { field: 'client_version' });
+    throw validationError({ field: 'action_code' });
   }
 
   const transition = ACTION_TRANSITION_MATRIX[actionCode as ActionCode];
+  const reasonCode = typeof input.reason_code === 'string' ? input.reason_code.trim() : undefined;
+  const reasonNote = typeof input.reason_note === 'string' ? input.reason_note.trim() : undefined;
+  const payload = parseActionPayload(input.payload);
   const reasonRequired = 'reason_required' in transition && transition.reason_required === true;
-  if (
-    reasonRequired &&
-    (typeof input.reason_code !== 'string' || input.reason_code.trim().length === 0)
-  ) {
-    throw validationError(ctx, {
+  if (reasonRequired && !reasonCode) {
+    throw validationError({
       field: 'reason_code',
       action_code: actionCode,
       reason_required: true,
@@ -90,13 +83,11 @@ function parseActionRequest(ctx: TenantContext, body: unknown): ParsedCardAction
 
   return {
     action_code: actionCode as ActionCode,
-    idempotency_key: idempotencyKey.trim(),
-    client_version: Number(clientVersion),
-    ...(input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
-      ? { payload: input.payload }
-      : {}),
-    ...(typeof input.reason_code === 'string' ? { reason_code: input.reason_code.trim() } : {}),
-    ...(typeof input.reason_note === 'string' ? { reason_note: input.reason_note } : {}),
+    idempotency_key: parseIdempotencyKey(input.idempotency_key),
+    client_version: parsePositiveVersion(input.client_version),
+    ...(payload ? { payload } : {}),
+    ...(reasonCode ? { reason_code: reasonCode } : {}),
+    ...(reasonNote ? { reason_note: reasonNote } : {}),
   };
 }
 
@@ -226,7 +217,7 @@ export function createCardSearchHandler(repository: PhosCardsRepository): PhosHa
     const route_key = event.routeKey ?? 'GET /cards';
     try {
       assertRouteAccess(ctx, route_key);
-      const query = parseSearchQuery(ctx, event);
+      const query = parseSearchQuery(event);
       const response = await repository.searchCards(ctx, query);
       logHandlerSuccess({ ctx, route_key });
       return response;
@@ -262,7 +253,7 @@ export function createCardDetailHandler(repository: PhosCardsRepository): PhosHa
       assertRouteAccess(ctx, route_key);
       const card_id = readCardId(event);
       if (!card_id) {
-        throw validationError(ctx, { field: 'card_id' });
+        throw validationError({ field: 'card_id' });
       }
 
       const detail = await repository.getCardDetail(ctx, card_id);
@@ -306,14 +297,14 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
     const route_key = event.routeKey ?? 'POST /cards/{card_id}/actions';
     const card_id = readCardId(event);
     if (!card_id) {
-      return domainErrorResponse(ctx, validationError(ctx, { field: 'card_id' }));
+      return domainErrorResponse(ctx, validationError({ field: 'card_id' }));
     }
 
     let action_code: ActionCode | undefined;
     let started_at_ms = 0;
     try {
       assertRouteAccess(ctx, route_key);
-      const request = parseActionRequest(ctx, body);
+      const request = parseActionRequest(body);
       action_code = request.action_code;
       started_at_ms = Date.now();
       const response = await repository.executeCardAction(ctx, card_id, request);
