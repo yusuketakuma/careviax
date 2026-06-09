@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ActionCode,
   ButtonState,
+  BoardDensity,
   CapacityScope,
   CapacityStatus,
   CardType,
@@ -31,6 +32,8 @@ describe('PH-OS canonical contracts', () => {
     expect(CardType.PRESCRIPTION).toBe('PRESCRIPTION');
     expect(CurrentStep.VISIT_IN_PROGRESS).toBe('VISIT_IN_PROGRESS');
     expect(ButtonState.RESOLVABLE_BLOCK).toBe('RESOLVABLE_BLOCK');
+    expect(BoardDensity.COMFORTABLE).toBe('COMFORTABLE');
+    expect(BoardDensity.COMPACT).toBe('COMPACT');
     expect(VisitStep.ARRIVAL_CONFIRM).toBe('ARRIVAL_CONFIRM');
     expect(VisitArrivalOutcome.CANCELED).toBe('CANCELED');
     expect(VisitStatus.IN_PROGRESS).toBe('IN_PROGRESS');

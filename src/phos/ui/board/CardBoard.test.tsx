@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
   ActionKind,
+  BoardDensity,
   BoardSortKey,
   BoardQuickFilter,
   ButtonState,
@@ -51,12 +52,14 @@ const item = {
 describe('CardBoard', () => {
   const baseProps = {
     totalItemCount: 1,
+    density: BoardDensity.COMFORTABLE,
     searchQuery: '',
     sortKey: BoardSortKey.VISIT_TIME,
     quickFilter: BoardQuickFilter.ALL,
     counts: countBoardFilters([item]),
     onSearchQueryChange: vi.fn(),
     onSortChange: vi.fn(),
+    onDensityChange: vi.fn(),
     onQuickFilterChange: vi.fn(),
     onTriageLaneChange: vi.fn(),
     onResetFilters: vi.fn(),
@@ -79,12 +82,14 @@ describe('CardBoard', () => {
       <CardBoard
         items={[]}
         totalItemCount={0}
+        density={BoardDensity.COMFORTABLE}
         searchQuery=""
         sortKey={BoardSortKey.VISIT_TIME}
         quickFilter={BoardQuickFilter.ALL}
         counts={countBoardFilters([])}
         onSearchQueryChange={vi.fn()}
         onSortChange={vi.fn()}
+        onDensityChange={vi.fn()}
         onQuickFilterChange={vi.fn()}
         onTriageLaneChange={vi.fn()}
         onResetFilters={vi.fn()}
@@ -103,12 +108,14 @@ describe('CardBoard', () => {
       <CardBoard
         items={[]}
         totalItemCount={1}
+        density={BoardDensity.COMFORTABLE}
         searchQuery="山田"
         sortKey={BoardSortKey.VISIT_TIME}
         quickFilter={BoardQuickFilter.MISSING_EVIDENCE}
         counts={countBoardFilters([item])}
         onSearchQueryChange={vi.fn()}
         onSortChange={vi.fn()}
+        onDensityChange={vi.fn()}
         onQuickFilterChange={vi.fn()}
         onTriageLaneChange={vi.fn()}
         onResetFilters={onResetFilters}
@@ -129,12 +136,14 @@ describe('CardBoard', () => {
         items={[]}
         totalItemCount={0}
         phase="LOADING"
+        density={BoardDensity.COMFORTABLE}
         searchQuery=""
         sortKey={BoardSortKey.VISIT_TIME}
         quickFilter={BoardQuickFilter.ALL}
         counts={countBoardFilters([])}
         onSearchQueryChange={vi.fn()}
         onSortChange={vi.fn()}
+        onDensityChange={vi.fn()}
         onQuickFilterChange={vi.fn()}
         onTriageLaneChange={vi.fn()}
         onResetFilters={vi.fn()}
@@ -145,5 +154,22 @@ describe('CardBoard', () => {
 
     expect(screen.getByLabelText('カード読み込み中')).toBeTruthy();
     expect(screen.queryByText('本日対応予定のカードはありません。')).toBeNull();
+  });
+
+  it('requests density changes from the controlled density toggle', () => {
+    const onDensityChange = vi.fn();
+    render(
+      <CardBoard
+        items={[item]}
+        onOpen={vi.fn()}
+        {...baseProps}
+        onDensityChange={onDensityChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'コンパクト' }));
+
+    expect(screen.getByRole('button', { name: '標準' }).getAttribute('aria-pressed')).toBe('true');
+    expect(onDensityChange).toHaveBeenCalledWith(BoardDensity.COMPACT);
   });
 });

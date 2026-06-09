@@ -830,6 +830,12 @@ export const BoardSortKey = {
 } as const;
 export type BoardSortKey = (typeof BoardSortKey)[keyof typeof BoardSortKey];
 
+export const BoardDensity = {
+  COMFORTABLE: 'COMFORTABLE',
+  COMPACT: 'COMPACT',
+} as const;
+export type BoardDensity = (typeof BoardDensity)[keyof typeof BoardDensity];
+
 export type CardSearchResponse = {
   items: CardBoardItemView[];
   next_cursor?: string;

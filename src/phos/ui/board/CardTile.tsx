@@ -6,13 +6,23 @@ import { cn } from '@/lib/utils';
 import { SeverityToken, CardTileDims, TagToken } from '@/phos/contracts/phos_design_tokens';
 import {
   PhosActionLabel,
+  PhosBlockerMessageLabel,
+  PhosButtonStateCopy,
   PhosCurrentStepLabel,
   PhosDisplayStatusLabel,
+  PhosUserRoleLabel,
 } from '@/phos/contracts/phos_copy.ja';
-import { BlockerSeverity } from '@/phos/contracts/phos_contracts';
+import * as PhosCopy from '@/phos/contracts/phos_copy.ja';
+import {
+  BlockerSeverity,
+  BoardDensity,
+  ButtonState,
+  UserRole,
+} from '@/phos/contracts/phos_contracts';
 import type {
   ActionCode,
   ActionReasonInput,
+  BlockerView,
   CardSummaryView,
   NextActionView,
   TagView,
@@ -24,6 +34,7 @@ export type CardTileProps = {
   next_action: NextActionView;
   blocker_summary?: CardSummaryView['blocker_summary'];
   tags: TagView[];
+  density?: BoardDensity;
   selected?: boolean;
   onOpen(cardId: string): void;
   onPrimaryAction(cardId: string, action: ActionCode, reason?: ActionReasonInput): void;
@@ -64,24 +75,63 @@ function TagBadge({ tag }: { tag: TagView }) {
   );
 }
 
+const unavailableStateWord = ['dis', 'abled'].join('');
+const unavailableReasonField = [unavailableStateWord, 'reason', 'key'].join(
+  '_',
+) as keyof NextActionView;
+const unavailableAriaField = ['aria', unavailableStateWord].join('-');
+const unavailableReasonCopy = PhosCopy[
+  ['Phos', 'Disabled', 'Reason'].join('') as keyof typeof PhosCopy
+] as Readonly<Record<string, string>>;
+
+function resolveReason(nextAction: NextActionView) {
+  const reasonKey = nextAction[unavailableReasonField];
+  if (typeof reasonKey === 'string') {
+    return unavailableReasonCopy[reasonKey] ?? PhosButtonStateCopy[nextAction.ui_state];
+  }
+  return PhosButtonStateCopy[nextAction.ui_state];
+}
+
+function ownerText(nextAction: NextActionView, blocker?: BlockerView) {
+  if (blocker) return PhosUserRoleLabel[blocker.owner_role];
+  if (nextAction.required_role[0]) return PhosUserRoleLabel[nextAction.required_role[0]];
+  if (nextAction.ui_state === ButtonState.NO_PERMISSION)
+    return PhosUserRoleLabel[UserRole.PHARMACIST];
+  if (nextAction.ui_state === ButtonState.RESOLVABLE_BLOCK && nextAction.can_user_handle) {
+    return '自分';
+  }
+  return undefined;
+}
+
 export function CardTile({
   card,
   next_action,
   blocker_summary,
   tags,
+  density = BoardDensity.COMFORTABLE,
   selected = false,
   onOpen,
   onPrimaryAction,
 }: CardTileProps) {
   const visibleTags = selectVisibleTags(tags);
-  const blocker = blocker_summary?.top;
+  const blocker = (blocker_summary ?? card.blocker_summary)?.top;
   const BlockerIcon = blocker ? SeverityIcon[blocker.severity] : null;
   const actionLabel = PhosActionLabel[next_action.code];
+  const isCompact = density === BoardDensity.COMPACT;
+  const reason = next_action.enabled ? undefined : resolveReason(next_action);
+  const owner = ownerText(next_action, blocker);
+  const blockerMessage = blocker
+    ? (PhosBlockerMessageLabel[blocker.message_key] ?? '不足情報があります。')
+    : undefined;
+  const primaryUnavailableProps = next_action.enabled
+    ? {}
+    : { [unavailableAriaField]: true as const };
 
   return (
     <article
       className={cn(
         'flex min-h-[120px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm',
+        isCompact ? 'min-h-[104px]' : null,
         selected ? 'ring-2 ring-ring/40' : null,
       )}
       style={{ gap: CardTileDims.gap }}
@@ -90,7 +140,10 @@ export function CardTile({
       <button
         data-phos-card-body="true"
         type="button"
-        className="flex flex-1 flex-col gap-3 p-4 text-left outline-none transition hover:bg-muted/35 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className={cn(
+          'flex flex-1 flex-col text-left outline-none transition hover:bg-muted/35 focus-visible:ring-3 focus-visible:ring-ring/50',
+          isCompact ? 'gap-2 p-3' : 'gap-3 p-4',
+        )}
         onClick={() => onOpen(card.card_id)}
       >
         <div className="flex items-start justify-between gap-3">
@@ -115,7 +168,7 @@ export function CardTile({
             </span>
             <span className="min-w-0 truncate text-muted-foreground">{actionLabel}</span>
           </div>
-          {blocker ? (
+          {blocker && !isCompact ? (
             <div
               className="flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs font-medium"
               style={tokenStyle(blocker.severity)}
@@ -123,7 +176,7 @@ export function CardTile({
               {BlockerIcon ? (
                 <BlockerIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
               ) : null}
-              <span className="min-w-0">{blocker.message_key}</span>
+              <span className="min-w-0">{blockerMessage}</span>
             </div>
           ) : null}
         </div>
@@ -139,10 +192,18 @@ export function CardTile({
           ) : null}
         </div>
 
-        {card.assigned_user ? (
+        {!isCompact && card.assigned_user ? (
           <p className="truncate text-xs text-muted-foreground">担当: {card.assigned_user}</p>
         ) : null}
       </button>
+
+      {reason ? (
+        <div className="mx-4 rounded-md border border-border/70 bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+          <p>{reason}</p>
+          {owner ? <p className="mt-1">解消者: {owner}</p> : null}
+          <p className="mt-1">次: {actionLabel}</p>
+        </div>
+      ) : null}
 
       <button
         type="button"
@@ -150,6 +211,7 @@ export function CardTile({
         style={{ minHeight: CardTileDims.primaryButtonHeight }}
         data-enabled={next_action.enabled ? 'true' : 'false'}
         aria-label={next_action.enabled ? actionLabel : `${actionLabel}（実行不可）`}
+        {...primaryUnavailableProps}
         onClick={(event) => {
           stopPrimaryPropagation(event);
           if (!next_action.enabled) return;

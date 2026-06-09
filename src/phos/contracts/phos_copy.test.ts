@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   PhosActionLabel,
+  PhosBoardDensityLabel,
+  PhosButtonStateCopy,
   PhosDisabledReason,
   PhosEmptyState,
   PhosRejectReasonLabel,
   PhosToast,
   PhosToastMessageByKey,
 } from './phos_copy.ja';
+import { BoardDensity, ButtonState } from './phos_contracts';
 
 describe('PH-OS Japanese copy contract', () => {
   it('contains required toast keys', () => {
@@ -35,10 +38,19 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosEmptyState.EMPTY_WAITING_REPLY).toBe('返信待ちはありません。');
   });
 
+  it('contains Board density and ButtonState display copy', () => {
+    expect(Object.keys(PhosBoardDensityLabel).sort()).toEqual(Object.values(BoardDensity).sort());
+    expect(Object.keys(PhosButtonStateCopy).sort()).toEqual(Object.values(ButtonState).sort());
+    expect(PhosBoardDensityLabel.COMPACT).toBe('コンパクト');
+    expect(PhosButtonStateCopy.NO_PERMISSION).toBe('この操作は薬剤師確認が必要です。');
+  });
+
   it('contains reason labels and no prohibited double-L cancellation copy', () => {
     const prohibitedCanceledSpelling = ['CANCEL', 'LED'].join('');
     const allCopy = [
       ...Object.values(PhosActionLabel),
+      ...Object.values(PhosBoardDensityLabel),
+      ...Object.values(PhosButtonStateCopy),
       ...Object.values(PhosDisabledReason),
       ...Object.values(PhosEmptyState),
       ...Object.values(PhosRejectReasonLabel),

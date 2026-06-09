@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   ActionPhase,
+  BoardDensity,
   BoardSortKey,
   BoardQuickFilter,
   CapacityScope,
@@ -241,6 +242,7 @@ export function BoardClient({
   const [items, setItems] = useState<CardBoardItemView[]>(initialItems);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<BoardSortKey>(BoardSortKey.VISIT_TIME);
+  const [density, setDensity] = useState<BoardDensity>(BoardDensity.COMFORTABLE);
   const [quickFilter, setQuickFilter] = useState<BoardQuickFilter>(BoardQuickFilter.ALL);
   const [triageLane, setTriageLane] = useState<TriageLane | undefined>();
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
@@ -879,6 +881,7 @@ export function BoardClient({
             totalItemCount={items.length}
             phase={displayPhase === 'LOADING' ? 'LOADING' : 'READY'}
             selectedCardId={selectedCardId}
+            density={density}
             searchQuery={searchQuery}
             sortKey={sortKey}
             quickFilter={quickFilter}
@@ -889,6 +892,7 @@ export function BoardClient({
             capacityError={capacityError}
             onSearchQueryChange={setSearchQuery}
             onSortChange={setSortKey}
+            onDensityChange={setDensity}
             onQuickFilterChange={setQuickFilter}
             onTriageLaneChange={setTriageLane}
             onResetFilters={resetFilters}

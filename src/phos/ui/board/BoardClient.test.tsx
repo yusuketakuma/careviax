@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
   ActionKind,
+  BlockerSeverity,
   ButtonState,
   CapacityScope,
   CapacityStatus,
@@ -840,6 +841,48 @@ describe('BoardClient', () => {
     expect(screen.getByText('患者 山田太郎')).toBeTruthy();
     expect(screen.getByText('患者 安全')).toBeTruthy();
     expect(screen.getByText('患者 返信')).toBeTruthy();
+  });
+
+  it('applies compact density through BoardClient state', async () => {
+    const blockedItem = {
+      card: {
+        ...readyCard,
+        assigned_user: '薬剤師A',
+        blocker_summary: {
+          top: {
+            blocker_code: 'NEED_PHARMACIST',
+            severity: BlockerSeverity.WARNING,
+            owner_role: UserRole.PHARMACIST,
+            message_key: 'blocker.need_pharmacist',
+            active: true,
+          },
+          blocking_count: 1,
+          total_count: 1,
+        },
+      },
+      next_action: {
+        ...nextAction,
+        enabled: false,
+        ui_state: ButtonState.FOREIGN_BLOCK,
+        can_user_handle: false,
+      },
+    } satisfies CardBoardItemView;
+    const apiClient = client();
+
+    render(<BoardClient client={apiClient} initialItems={[blockedItem]} />);
+
+    await waitFor(() => expect(apiClient.getHandoffs).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('薬剤師の判断が必要です。')).toBeTruthy();
+    expect(screen.getByText('担当: 薬剤師A')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'コンパクト' }));
+
+    expect(screen.queryByText('薬剤師の判断が必要です。')).toBeNull();
+    expect(screen.queryByText('担当: 薬剤師A')).toBeNull();
+    expect(screen.getByText('他の担当者による確認が必要です。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'コンパクト' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
   });
 
   it('uses selected detail server_version for workspace actions', async () => {

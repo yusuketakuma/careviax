@@ -6,11 +6,13 @@ import {
   ActionCode,
   ActionKind,
   BlockerSeverity,
+  BoardDensity,
   ButtonState,
   CardType,
   CurrentStep,
   DisplayStatus,
   Tag,
+  UserRole,
 } from '@/phos/contracts/phos_contracts';
 import type { CardSummaryView, NextActionView, TagView } from '@/phos/contracts/phos_contracts';
 import { CardTile } from './CardTile';
@@ -133,5 +135,131 @@ describe('CardTile', () => {
     fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（実行不可）' }));
 
     expect(onPrimaryAction).not.toHaveBeenCalled();
+    expect(screen.getByText('この操作は薬剤師確認が必要です。')).toBeTruthy();
+    expect(screen.getByText('次: 処方差分を確認する')).toBeTruthy();
+    const primaryButton = screen.getByRole('button', { name: '処方差分を確認する（実行不可）' });
+    expect(primaryButton.hasAttribute('disabled')).toBe(false);
+    expect(primaryButton.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('shows a fallback resolver for no-permission actions without a top blocker', () => {
+    renderTile({
+      enabled: false,
+      ui_state: ButtonState.NO_PERMISSION,
+      can_user_handle: false,
+      required_role: [],
+    });
+
+    expect(screen.getByText('解消者: 薬剤師')).toBeTruthy();
+  });
+
+  it('shows owner and next-step context for foreign blockers', () => {
+    render(
+      <CardTile
+        card={{
+          ...card,
+          blocker_summary: {
+            top: {
+              blocker_code: 'NEED_PHARMACIST',
+              severity: BlockerSeverity.WARNING,
+              owner_role: UserRole.PHARMACIST,
+              message_key: 'blocker.need_pharmacist',
+              active: true,
+            },
+            blocking_count: 1,
+            total_count: 1,
+          },
+        }}
+        next_action={{
+          ...nextAction,
+          enabled: false,
+          ui_state: ButtonState.FOREIGN_BLOCK,
+          can_user_handle: false,
+        }}
+        tags={card.tags}
+        onOpen={vi.fn()}
+        onPrimaryAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('薬剤師の判断が必要です。')).toBeTruthy();
+    expect(screen.getByText('他の担当者による確認が必要です。')).toBeTruthy();
+    expect(screen.getByText('解消者: 薬剤師')).toBeTruthy();
+  });
+
+  it('does not leak unknown blocker message keys to operators', () => {
+    render(
+      <CardTile
+        card={{
+          ...card,
+          blocker_summary: {
+            top: {
+              blocker_code: 'UNKNOWN_BLOCKER',
+              severity: BlockerSeverity.ERROR,
+              owner_role: UserRole.PHARMACY_CLERK,
+              message_key: 'blocker.internal_unknown',
+              active: true,
+            },
+            blocking_count: 1,
+            total_count: 1,
+          },
+        }}
+        next_action={{
+          ...nextAction,
+          enabled: false,
+          ui_state: ButtonState.RESOLVABLE_BLOCK,
+          can_user_handle: true,
+        }}
+        tags={card.tags}
+        onOpen={vi.fn()}
+        onPrimaryAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('不足情報があります。')).toBeTruthy();
+    expect(screen.queryByText('blocker.internal_unknown')).toBeNull();
+  });
+
+  it.each([
+    [ButtonState.RESOLVABLE_BLOCK, '自分が解消できる不足があります。'],
+    [ButtonState.OFFLINE_BLOCKED, '同期後に再試行してください。'],
+    [ButtonState.READONLY_CLOSED, 'クローズまたはキャンセル済みです。'],
+  ])('shows reason copy for %s without executing the action', (uiState, copy) => {
+    const { onPrimaryAction } = renderTile({
+      enabled: false,
+      ui_state: uiState,
+      can_user_handle: uiState === ButtonState.RESOLVABLE_BLOCK,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '処方差分を確認する（実行不可）' }));
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.getByText('次: 処方差分を確認する')).toBeTruthy();
+    expect(onPrimaryAction).not.toHaveBeenCalled();
+  });
+
+  it('prefers server disabled reason copy when provided', () => {
+    renderTile({
+      enabled: false,
+      ui_state: ButtonState.OFFLINE_BLOCKED,
+      disabled_reason_key: 'OFFLINE_NOT_ALLOWED',
+    });
+
+    expect(screen.getByText('オフライン中はこの操作を実行できません。')).toBeTruthy();
+  });
+
+  it('hides secondary comfortable-only fields in compact density', () => {
+    render(
+      <CardTile
+        card={card}
+        next_action={nextAction}
+        tags={card.tags}
+        density={BoardDensity.COMPACT}
+        onOpen={vi.fn()}
+        onPrimaryAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('担当: 薬剤師A')).toBeNull();
   });
 });

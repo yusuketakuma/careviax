@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ActionPhase,
+  BoardDensity,
   ButtonState,
   SAFETY_CRITICAL_TAGS,
   Tag,
@@ -39,6 +40,10 @@ describe('PH-OS UIUX v1.1 entrypoints', () => {
       NET_ERROR: 'NET_ERROR',
     });
     expect(VisitStep.COMPLETE_CHECK).toBe('COMPLETE_CHECK');
+    expect(BoardDensity).toMatchObject({
+      COMFORTABLE: 'COMFORTABLE',
+      COMPACT: 'COMPACT',
+    });
     expect(SAFETY_CRITICAL_TAGS).toEqual([
       Tag.NARCOTIC,
       Tag.OPIOID,

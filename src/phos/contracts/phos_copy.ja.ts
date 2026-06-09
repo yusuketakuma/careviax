@@ -1,13 +1,16 @@
 import {
   ActionCode,
+  BoardDensity,
   BoardSortKey,
   BoardQuickFilter,
+  ButtonState,
   CurrentStep,
   DisplayStatus,
   HandoffStatus,
   HandoffUrgency,
   RejectReason,
   TriageLane,
+  UserRole,
   VisitArrivalOutcome,
   VisitStep,
 } from './phos_contracts';
@@ -54,6 +57,23 @@ export const PhosDisabledReason = {
   GUARD_FAILED: '必要な情報が不足しています。',
 } as const;
 
+export const PhosButtonStateCopy = {
+  [ButtonState.ACTIONABLE]: '実行できます。',
+  [ButtonState.RESOLVABLE_BLOCK]: '自分が解消できる不足があります。',
+  [ButtonState.FOREIGN_BLOCK]: '他の担当者による確認が必要です。',
+  [ButtonState.NO_PERMISSION]: 'この操作は薬剤師確認が必要です。',
+  [ButtonState.READONLY_CLOSED]: 'クローズまたはキャンセル済みです。',
+  [ButtonState.OFFLINE_BLOCKED]: '同期後に再試行してください。',
+} as const satisfies Record<ButtonState, string>;
+
+export const PhosUserRoleLabel = {
+  [UserRole.PHARMACIST]: '薬剤師',
+  [UserRole.PHARMACY_CLERK]: '薬局事務員',
+  [UserRole.DISPENSE_ASSISTANT]: '調剤補助',
+  [UserRole.MANAGER]: '管理薬剤師',
+  [UserRole.ADMIN]: '管理者',
+} as const satisfies Record<UserRole, string>;
+
 export const PhosBlockerMessageLabel: Readonly<Record<string, string>> = {
   'blocker.missing_evidence': '証跡が不足しています。',
   'blocker.need_pharmacist': '薬剤師の判断が必要です。',
@@ -94,8 +114,14 @@ export const PhosBoardCopy = {
   SEARCH_PLACEHOLDER: '患者名・施設名・薬剤名・担当者で検索',
   SEARCH_LABEL: 'Board検索',
   SORT_LABEL: '並び順',
+  DENSITY_LABEL: '表示密度',
   RESET_FILTERS: '検索条件を解除',
 } as const;
+
+export const PhosBoardDensityLabel = {
+  [BoardDensity.COMFORTABLE]: '標準',
+  [BoardDensity.COMPACT]: 'コンパクト',
+} as const satisfies Record<BoardDensity, string>;
 
 export const PhosBoardQuickFilterLabel = {
   [BoardQuickFilter.ALL]: 'すべて',

@@ -3,13 +3,19 @@
 import type {
   ActionCode,
   ActionReasonInput,
-  BoardSortKey,
   BoardQuickFilter,
+  BoardSortKey,
   CapacityResponse,
   CardBoardItemView,
   TriageLane,
 } from '@/phos/contracts/phos_contracts';
-import { PhosBoardCopy, PhosEmptyState } from '@/phos/contracts/phos_copy.ja';
+import { BoardDensity } from '@/phos/contracts/phos_contracts';
+import { cn } from '@/lib/utils';
+import {
+  PhosBoardCopy,
+  PhosBoardDensityLabel,
+  PhosEmptyState,
+} from '@/phos/contracts/phos_copy.ja';
 import type { BoardFilterCounts } from '@/phos/domain/board/boardFilters';
 import { CardTile } from './CardTile';
 import { CapacityBar } from './CapacityBar';
@@ -23,6 +29,7 @@ export type CardBoardProps = {
   totalItemCount: number;
   phase?: 'LOADING' | 'READY';
   selectedCardId?: string;
+  density: BoardDensity;
   searchQuery: string;
   sortKey: BoardSortKey;
   quickFilter: BoardQuickFilter;
@@ -33,6 +40,7 @@ export type CardBoardProps = {
   capacityError?: string;
   onSearchQueryChange(query: string): void;
   onSortChange(sortKey: BoardSortKey): void;
+  onDensityChange(density: BoardDensity): void;
   onQuickFilterChange(filter: BoardQuickFilter): void;
   onTriageLaneChange(lane?: TriageLane): void;
   onResetFilters(): void;
@@ -45,6 +53,7 @@ export function CardBoard({
   totalItemCount,
   phase = 'READY',
   selectedCardId,
+  density,
   searchQuery,
   sortKey,
   quickFilter,
@@ -55,6 +64,7 @@ export function CardBoard({
   capacityError,
   onSearchQueryChange,
   onSortChange,
+  onDensityChange,
   onQuickFilterChange,
   onTriageLaneChange,
   onResetFilters,
@@ -64,6 +74,7 @@ export function CardBoard({
   const hasFilterResult = items.length > 0;
   const hasAnyItems = totalItemCount > 0;
   const isLoading = phase === 'LOADING';
+  const isCompact = density === BoardDensity.COMPACT;
 
   return (
     <section
@@ -88,6 +99,22 @@ export function CardBoard({
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
             <SearchBox query={searchQuery} onQueryChange={onSearchQueryChange} />
             <SortSelect sortKey={sortKey} onSortChange={onSortChange} />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">
+              {PhosBoardCopy.DENSITY_LABEL}
+            </span>
+            {Object.values(BoardDensity).map((nextDensity) => (
+              <button
+                key={nextDensity}
+                type="button"
+                className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+                aria-pressed={density === nextDensity}
+                onClick={() => onDensityChange(nextDensity)}
+              >
+                {PhosBoardDensityLabel[nextDensity]}
+              </button>
+            ))}
           </div>
           <div className="mt-3">
             <QuickFilterBar
@@ -146,7 +173,12 @@ export function CardBoard({
                 </button>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+              <div
+                className={cn(
+                  'grid gap-3 sm:grid-cols-2',
+                  isCompact ? 'xl:grid-cols-5 2xl:grid-cols-6' : 'xl:grid-cols-4 2xl:grid-cols-5',
+                )}
+              >
                 {items.map((item) => (
                   <CardTile
                     key={item.card.card_id}
@@ -154,6 +186,7 @@ export function CardBoard({
                     next_action={item.next_action}
                     blocker_summary={item.card.blocker_summary}
                     tags={item.card.tags}
+                    density={density}
                     selected={item.card.card_id === selectedCardId}
                     onOpen={onOpen}
                     onPrimaryAction={onPrimaryAction}
