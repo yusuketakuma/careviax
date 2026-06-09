@@ -398,6 +398,16 @@ function buildLambdaPolicyStatements(input: {
       Effect: 'Allow',
       Action: kmsActions,
       Resource: ref(input.evidenceKmsKeyArnParameter),
+      Condition: {
+        StringEquals: {
+          'kms:ViaService': sub('s3.${AWS::Region}.amazonaws.com'),
+        },
+        ArnLike: {
+          'kms:EncryptionContext:aws:s3:arn': sub(
+            `arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/tenants/*/evidence/*`,
+          ),
+        },
+      },
     });
   }
 
@@ -773,6 +783,30 @@ function buildPhosEvidenceBucketPolicy(input: {
                 's3:x-amz-server-side-encryption-aws-kms-key-id': ref(
                   input.evidenceKmsKeyArnParameter,
                 ),
+              },
+            },
+          },
+          {
+            Sid: 'DenyEvidenceUploadsWithoutEvidenceObjectClassTag',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:PutObject',
+            Resource: evidenceObjectArn,
+            Condition: {
+              StringNotEquals: {
+                's3:RequestObjectTag/phos-object-class': 'evidence',
+              },
+            },
+          },
+          {
+            Sid: 'DenyEvidenceUploadsWithoutPresignedStatusTag',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:PutObject',
+            Resource: evidenceObjectArn,
+            Condition: {
+              StringNotEquals: {
+                's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
               },
             },
           },

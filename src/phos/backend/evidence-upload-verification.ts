@@ -23,7 +23,7 @@ export type EvidenceObjectVerificationInput = {
   mime_type: string;
   sha256: string;
   size_bytes: number;
-  kms_key_arn?: string;
+  kms_key_arn: string;
   allowed_key_prefix?: string;
   tenant_id?: string;
   user_id?: string;
@@ -160,19 +160,17 @@ function findVerificationMismatch(
     });
   }
 
-  if (expected.kms_key_arn) {
-    if (result.ServerSideEncryption !== 'aws:kms') {
-      return new EvidenceObjectVerificationError('server_side_encryption_mismatch', {
-        expected: 'aws:kms',
-        actual: result.ServerSideEncryption ?? null,
-      });
-    }
-    if (result.SSEKMSKeyId !== expected.kms_key_arn) {
-      return new EvidenceObjectVerificationError('kms_key_mismatch', {
-        expected: expected.kms_key_arn,
-        actual: result.SSEKMSKeyId ?? null,
-      });
-    }
+  if (result.ServerSideEncryption !== 'aws:kms') {
+    return new EvidenceObjectVerificationError('server_side_encryption_mismatch', {
+      expected: 'aws:kms',
+      actual: result.ServerSideEncryption ?? null,
+    });
+  }
+  if (result.SSEKMSKeyId !== expected.kms_key_arn) {
+    return new EvidenceObjectVerificationError('kms_key_mismatch', {
+      expected: expected.kms_key_arn,
+      actual: result.SSEKMSKeyId ?? null,
+    });
   }
 
   return undefined;

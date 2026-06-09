@@ -9,7 +9,6 @@ import type { PhosSecurityEvent } from './observability';
 import { dynamoKey, toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { dynamoEntityMetadata } from './dynamodb-entity-metadata';
 import { tenantPk } from './dynamodb-keys';
-import { phosCoreTableName } from './dynamo-cards-repository';
 
 export const PHOS_UNKNOWN_SECURITY_EVENT_PARTITION = 'SECURITY#UNKNOWN';
 
@@ -24,7 +23,7 @@ export function securityEventPartitionKey(event: Pick<PhosSecurityEvent, 'tenant
 }
 
 export function buildDynamoSecurityEventPutInput(input: {
-  table_name?: string;
+  table_name: string;
   event: PhosSecurityEvent;
   event_id?: string;
   created_at: string;
@@ -36,7 +35,7 @@ export function buildDynamoSecurityEventPutInput(input: {
   const partition_key = securityEventPartitionKey(input.event);
 
   return {
-    TableName: input.table_name ?? phosCoreTableName(),
+    TableName: input.table_name,
     Item: {
       ...dynamoKey(partition_key, securityEventSk({ created_at: input.created_at, event_id })),
       entity_type: { S: 'SECURITY_EVENT' },
@@ -67,10 +66,14 @@ export async function recordDynamoSecurityEvent(input: {
   event_id?: string;
   now?: () => Date;
 }) {
+  const table_name = input.table_name?.trim();
+  if (!table_name) {
+    throw new Error('PH-OS security event table name is not configured');
+  }
   await input.client.send(
     new PutItemCommand(
       buildDynamoSecurityEventPutInput({
-        table_name: input.table_name,
+        table_name,
         event: input.event,
         event_id: input.event_id,
         created_at: (input.now?.() ?? new Date()).toISOString(),

@@ -19,6 +19,8 @@ const ctx: TenantContext = {
   correlation_id: 'corr_1',
   scopes: ['phos/visit-mode.write'],
 };
+const evidence_kms_key_arn =
+  'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555';
 
 function visit(overrides: Partial<VisitModeView> = {}): VisitModeView {
   return {
@@ -137,6 +139,7 @@ describe('createDynamoVisitModeRepository', () => {
     };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
       now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
@@ -163,6 +166,7 @@ describe('createDynamoVisitModeRepository', () => {
       mime_type: 'image/jpeg',
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
+      kms_key_arn: evidence_kms_key_arn,
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       tenant_id: 'tenant_abc123',
       user_id: 'user_1',
@@ -176,6 +180,7 @@ describe('createDynamoVisitModeRepository', () => {
     const verifier = { verifyObject: vi.fn(async () => undefined) };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
       now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
@@ -198,6 +203,7 @@ describe('createDynamoVisitModeRepository', () => {
     const fakeClient = client();
     const store = createDynamoVisitModeRepository(fakeClient, {
       now: () => new Date('2026-06-09T07:30:00.000Z'),
+      evidence_kms_key_arn,
       evidence_object_verifier: {
         verifyObject: vi.fn(async () => {
           throw new EvidenceObjectVerificationError('object_missing', {
@@ -236,6 +242,7 @@ describe('createDynamoVisitModeRepository', () => {
     const verifier = { verifyObject: vi.fn(async () => undefined) };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
       now: () => new Date('2026-06-09T07:30:00.000Z'),
     });
 
@@ -264,6 +271,7 @@ describe('createDynamoVisitModeRepository', () => {
     const store = createDynamoVisitModeRepository(fakeClient, {
       now: () => new Date('2026-06-09T00:00:00.000Z'),
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
     });
     const response = visit({ server_version: 4 });
 
@@ -317,6 +325,7 @@ describe('createDynamoVisitModeRepository', () => {
     const store = createDynamoVisitModeRepository(fakeClient, {
       now: () => new Date('2026-06-09T00:00:00.000Z'),
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
     });
 
     await expect(
@@ -353,6 +362,7 @@ describe('createDynamoVisitModeRepository', () => {
     };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
+      evidence_kms_key_arn,
     });
 
     await expect(store.markVerifiedEvidenceUpload?.(ctx, ' evidence_1 ')).resolves.toBeUndefined();

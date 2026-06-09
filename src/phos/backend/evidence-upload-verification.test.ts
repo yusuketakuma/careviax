@@ -81,18 +81,20 @@ describe('S3 evidence object verifier', () => {
         ChecksumSHA256: expectedChecksum,
         ContentLength: 1024,
         ContentType: 'image/jpeg',
-        Metadata: {
-          sha256: 'a'.repeat(64),
-          size_bytes: '1024',
-        },
-      };
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '1024',
+          },
+          ServerSideEncryption: 'aws:kms',
+          SSEKMSKeyId: kms_key_arn,
+        };
     });
     const verifier = createS3EvidenceObjectVerifier({
       client: { send },
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject(expected)).resolves.toBeUndefined();
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledOnce();
     expect((send.mock.calls[0]?.[0] as HeadObjectCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
@@ -113,7 +115,7 @@ describe('S3 evidence object verifier', () => {
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
       reason: 'object_missing',
       details: { key: expected.key },
     });
@@ -142,7 +144,7 @@ describe('S3 evidence object verifier', () => {
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
       reason: 'content_type_mismatch',
     });
     expect(send).toHaveBeenCalledTimes(2);
@@ -164,6 +166,7 @@ describe('S3 evidence object verifier', () => {
     await expect(
       verifier.verifyObject({
         ...expected,
+        kms_key_arn,
         key: 'tenants/tenant_abc123/reports/report_1.pdf',
         allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       }),
@@ -243,7 +246,7 @@ describe('S3 evidence object verifier', () => {
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
       reason: 'checksum_sha256_mismatch',
     });
   });
@@ -272,7 +275,7 @@ describe('S3 evidence object verifier', () => {
       on_cleanup_failure: onCleanupFailure,
     });
 
-    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
       reason: 'content_length_mismatch',
     });
     expect(onCleanupFailure).toHaveBeenCalledWith({
@@ -307,6 +310,7 @@ describe('S3 evidence object verifier', () => {
     await expect(
       verifier.verifyObject({
         ...expected,
+        kms_key_arn,
         tenant_id: 'tenant_abc123',
         user_id: 'user_1',
         request_id: 'req_1',

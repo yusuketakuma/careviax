@@ -1,0 +1,311 @@
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
+import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
+import { verifyCognitoPreTokenGenerationLiveProof } from './verify-phos-cognito-token-trigger';
+
+type CheckStatus = 'passed' | 'failed' | 'missing' | 'skipped';
+
+type ReadinessCheck = {
+  name: string;
+  status: CheckStatus;
+  detail: string;
+};
+
+export type PhosBackendLiveReadinessReport = {
+  ok: boolean;
+  generated_at: string;
+  strict: boolean;
+  checks: ReadinessCheck[];
+  missing_inputs: string[];
+  next_actions: string[];
+};
+
+type Env = Record<string, string | undefined>;
+type FetchLike = typeof fetch;
+
+const REQUIRED_COGNITO_ENV = [
+  'AWS_REGION',
+  'PHOS_COGNITO_USER_POOL_ID',
+  'PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN',
+] as const;
+
+function readEnv(env: Env, name: string): string | null {
+  const value = env[name]?.trim();
+  return value ? value : null;
+}
+
+function getMissingEnv(env: Env, names: readonly string[]) {
+  return names.filter((name) => !readEnv(env, name));
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const [, payload] = token.split('.');
+  if (!payload) {
+    throw new Error('token is not a JWT');
+  }
+  const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = `${normalized}${'='.repeat((4 - (normalized.length % 4)) % 4)}`;
+  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>;
+}
+
+function hasScope(payload: Record<string, unknown>) {
+  const scope = payload.scope;
+  const scp = payload.scp;
+  if (typeof scope === 'string' && scope.trim()) {
+    return true;
+  }
+  if (Array.isArray(scp) && scp.some((value) => typeof value === 'string' && value.trim())) {
+    return true;
+  }
+  if (typeof scp === 'string' && scp.trim()) {
+    return true;
+  }
+  return false;
+}
+
+function hasAudience(payload: Record<string, unknown>, expected: string): boolean {
+  const aud = payload.aud;
+  const clientId = payload.client_id;
+  if (typeof aud === 'string' && aud === expected) return true;
+  if (Array.isArray(aud) && aud.includes(expected)) return true;
+  return typeof clientId === 'string' && clientId === expected;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readNested(value: unknown, keys: string[]): unknown {
+  return keys.reduce<unknown>((current, key) => {
+    if (Array.isArray(current)) {
+      const index = Number(key);
+      return Number.isInteger(index) ? current[index] : undefined;
+    }
+    return asRecord(current)[key];
+  }, value);
+}
+
+export function evaluateAccessTokenReadiness(
+  token: string,
+  expected: { now?: Date; issuer?: string; audience?: string } = {},
+): ReadinessCheck {
+  try {
+    const payload = decodeJwtPayload(token);
+    const missing = ['tenant_id', 'role', 'sub'].filter((claim) => {
+      const value = payload[claim];
+      return typeof value !== 'string' || !value.trim();
+    });
+    if (!hasScope(payload)) {
+      missing.push('scope|scp');
+    }
+    if (payload.token_use !== 'access') {
+      missing.push('token_use=access');
+    }
+    if (expected.issuer && payload.iss !== expected.issuer) {
+      missing.push('iss');
+    }
+    if (expected.audience && !hasAudience(payload, expected.audience)) {
+      missing.push('aud|client_id');
+    }
+    const nowSeconds = Math.floor((expected.now ?? new Date()).getTime() / 1000);
+    if (typeof payload.exp !== 'number' || payload.exp <= nowSeconds) {
+      missing.push('valid exp');
+    }
+    if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds) {
+      missing.push('valid nbf');
+    }
+    if (typeof payload.iat === 'number' && payload.iat > nowSeconds + 300) {
+      missing.push('valid iat');
+    }
+    if (missing.length > 0) {
+      return {
+        name: 'access_token_claims',
+        status: 'failed',
+        detail: `JWT does not satisfy required PH-OS access-token proof: ${missing.join(', ')}`,
+      };
+    }
+    return {
+      name: 'access_token_claims',
+      status: 'passed',
+      detail: 'JWT includes tenant_id, role, sub, and scope/scp claims.',
+    };
+  } catch (error) {
+    return {
+      name: 'access_token_claims',
+      status: 'failed',
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function evaluateLocalTemplateReadiness(): ReadinessCheck {
+  const template = buildPhosApiGatewayLambdaTemplate();
+  const resources = template.Resources;
+  const failures: string[] = [];
+
+  if (resources.PhosHttpApi?.Type !== 'AWS::ApiGatewayV2::Api') {
+    failures.push('PhosHttpApi HTTP API resource');
+  }
+  if (resources.PhosJwtAuthorizer?.Type !== 'AWS::ApiGatewayV2::Authorizer') {
+    failures.push('PhosJwtAuthorizer JWT authorizer resource');
+  }
+  if (!resources.PhosCognitoPreTokenGenerationFunction) {
+    failures.push('Cognito Pre Token Generation Lambda');
+  }
+  if (!template.Outputs?.PhosCognitoPreTokenGenerationFunctionArn) {
+    failures.push('Cognito trigger function ARN output');
+  }
+  if (
+    readNested(resources.PhosCoreDynamoDbTable?.Properties, ['SSESpecification', 'SSEType']) !==
+      'KMS' ||
+    readNested(resources.PhosSecurityEventTable?.Properties, ['SSESpecification', 'SSEType']) !==
+      'KMS'
+  ) {
+    failures.push('DynamoDB SSE-KMS tables');
+  }
+  if (
+    readNested(resources.PhosEvidenceBucket?.Properties, [
+      'BucketEncryption',
+      'ServerSideEncryptionConfiguration',
+      '0',
+      'ServerSideEncryptionByDefault',
+      'SSEAlgorithm',
+    ]) !== 'aws:kms'
+  ) {
+    failures.push('evidence bucket SSE-KMS default');
+  }
+  if (resources.PhosApiAccessLogGroup?.Properties?.RetentionInDays !== 365) {
+    failures.push('HTTP API access log 365 day retention');
+  }
+
+  return failures.length > 0
+    ? {
+        name: 'local_template_contract',
+        status: 'failed',
+        detail: `Missing or invalid local deployment contract: ${failures.join(', ')}`,
+      }
+    : {
+        name: 'local_template_contract',
+        status: 'passed',
+        detail:
+          'Template emits HTTP API/JWT authorizer, Cognito trigger output, Dynamo/S3 SSE-KMS, and 365 day access-log retention.',
+      };
+}
+
+export async function buildPhosBackendLiveReadinessReport(input: {
+  env?: Env;
+  strict?: boolean;
+  now?: Date;
+  fetch?: FetchLike;
+} = {}): Promise<PhosBackendLiveReadinessReport> {
+  const env = input.env ?? process.env;
+  const checks: ReadinessCheck[] = [evaluateLocalTemplateReadiness()];
+  const missingInputs = new Set<string>();
+  const missingCognitoEnv = getMissingEnv(env, REQUIRED_COGNITO_ENV);
+
+  for (const name of missingCognitoEnv) {
+    missingInputs.add(name);
+  }
+  const jwtIssuer = readEnv(env, 'PHOS_JWT_ISSUER');
+  const jwtAudience = readEnv(env, 'PHOS_JWT_AUDIENCE');
+  if (!jwtIssuer) missingInputs.add('PHOS_JWT_ISSUER');
+  if (!jwtAudience) missingInputs.add('PHOS_JWT_AUDIENCE');
+
+  if (missingCognitoEnv.length > 0) {
+    checks.push({
+      name: 'cognito_trigger_live_attachment',
+      status: 'missing',
+      detail: `Set ${missingCognitoEnv.join(', ')} to verify the deployed Cognito User Pool trigger attachment.`,
+    });
+  } else {
+    try {
+      const proof = await verifyCognitoPreTokenGenerationLiveProof({
+        user_pool_id: readEnv(env, 'PHOS_COGNITO_USER_POOL_ID') ?? '',
+        expected_lambda_arn: readEnv(env, 'PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN') ?? '',
+        client: new CognitoIdentityProviderClient({ region: readEnv(env, 'AWS_REGION') ?? undefined }),
+      });
+      checks.push({
+        name: 'cognito_trigger_live_attachment',
+        status: 'passed',
+        detail: `User Pool ${proof.user_pool_id} uses ${proof.lambda_version} trigger ${proof.pre_token_generation_lambda_arn}.`,
+      });
+    } catch (error) {
+      checks.push({
+        name: 'cognito_trigger_live_attachment',
+        status: 'failed',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const accessToken = readEnv(env, 'PHOS_COGNITO_ACCESS_TOKEN');
+  if (accessToken) {
+    checks.push(
+      evaluateAccessTokenReadiness(accessToken, {
+        now: input.now,
+        issuer: jwtIssuer ?? undefined,
+        audience: jwtAudience ?? undefined,
+      }),
+    );
+  } else {
+    missingInputs.add('PHOS_COGNITO_ACCESS_TOKEN');
+    checks.push({
+      name: 'access_token_claims',
+      status: 'missing',
+      detail: 'Set PHOS_COGNITO_ACCESS_TOKEN to prove tenant_id, role, sub, and scope/scp are in the access token.',
+    });
+  }
+
+  const apiBaseUrl = readEnv(env, 'PHOS_API_BASE_URL');
+  if (!apiBaseUrl || !accessToken) {
+    if (!apiBaseUrl) {
+      missingInputs.add('PHOS_API_BASE_URL');
+    }
+    checks.push({
+      name: 'api_gateway_lambda_smoke',
+      status: 'missing',
+      detail: 'Set PHOS_API_BASE_URL and PHOS_COGNITO_ACCESS_TOKEN to run a read-only GET /cards smoke request.',
+    });
+  } else {
+    const response = await (input.fetch ?? fetch)(new URL('/cards', apiBaseUrl), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    checks.push({
+      name: 'api_gateway_lambda_smoke',
+      status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
+      detail: `GET /cards returned HTTP ${response.status}.`,
+    });
+  }
+
+  const strict = input.strict ?? false;
+  const ok = checks.every((check) => check.status === 'passed' || (!strict && check.status === 'missing'));
+  const nextActions = Array.from(missingInputs).map((name) => `Set ${name} for live PH-OS backend proof.`);
+
+  return {
+    ok,
+    generated_at: (input.now ?? new Date()).toISOString(),
+    strict,
+    checks,
+    missing_inputs: Array.from(missingInputs).sort(),
+    next_actions: nextActions.sort(),
+  };
+}
+
+async function main() {
+  const strict = process.argv.includes('--strict');
+  const report = await buildPhosBackendLiveReadinessReport({ strict });
+  console.log(JSON.stringify(report, null, 2));
+  if (!report.ok) {
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

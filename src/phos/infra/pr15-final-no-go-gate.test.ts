@@ -440,6 +440,24 @@ describe('PH-OS Final No-Go gate', () => {
                   },
                 },
               }),
+              expect.objectContaining({
+                Sid: 'DenyEvidenceUploadsWithoutEvidenceObjectClassTag',
+                Action: 's3:PutObject',
+                Condition: {
+                  StringNotEquals: {
+                    's3:RequestObjectTag/phos-object-class': 'evidence',
+                  },
+                },
+              }),
+              expect.objectContaining({
+                Sid: 'DenyEvidenceUploadsWithoutPresignedStatusTag',
+                Action: 's3:PutObject',
+                Condition: {
+                  StringNotEquals: {
+                    's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
+                  },
+                },
+              }),
             ]),
           },
       },
@@ -479,6 +497,12 @@ describe('PH-OS Final No-Go gate', () => {
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
       's3:PutObjectTagging',
     );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
+      'kms:ViaService',
+    );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
+      'kms:EncryptionContext:aws:s3:arn',
+    );
     expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).not.toContain(
       's3:DeleteObject',
     );
@@ -496,6 +520,12 @@ describe('PH-OS Final No-Go gate', () => {
     );
     expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
       's3:PutObjectTagging',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      'kms:ViaService',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      'kms:EncryptionContext:aws:s3:arn',
     );
   });
 

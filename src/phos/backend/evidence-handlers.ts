@@ -269,9 +269,13 @@ export function createEvidencePresignUploadHandler(
 export function createS3EvidenceUploadPresigner(input: {
   client: S3Client;
   bucket: string;
-  kms_key_arn?: string;
+  kms_key_arn: string;
   expires_in_seconds?: number;
 }): EvidenceUploadPresigner {
+  const kms_key_arn = input.kms_key_arn.trim();
+  if (!kms_key_arn) {
+    throw new Error('PH-OS evidence KMS key ARN is not configured');
+  }
   return {
     async presignPut(request: EvidenceUploadPresignInput) {
       const expires_in_seconds =
@@ -282,12 +286,8 @@ export function createS3EvidenceUploadPresigner(input: {
         ContentType: request.mime_type,
         ChecksumSHA256: sha256HexToBase64(request.sha256),
         Tagging: evidenceObjectTaggingHeader('PRESIGNED'),
-        ...(input.kms_key_arn
-          ? {
-              ServerSideEncryption: 'aws:kms',
-              SSEKMSKeyId: input.kms_key_arn,
-            }
-          : {}),
+        ServerSideEncryption: 'aws:kms',
+        SSEKMSKeyId: kms_key_arn,
         Metadata: {
           sha256: request.sha256,
           size_bytes: String(request.size_bytes),
@@ -304,12 +304,8 @@ export function createS3EvidenceUploadPresigner(input: {
           'x-amz-meta-sha256': request.sha256,
           'x-amz-meta-size_bytes': String(request.size_bytes),
           'x-amz-tagging': evidenceObjectTaggingHeader('PRESIGNED'),
-          ...(input.kms_key_arn
-            ? {
-                'x-amz-server-side-encryption': 'aws:kms',
-                'x-amz-server-side-encryption-aws-kms-key-id': input.kms_key_arn,
-              }
-            : {}),
+          'x-amz-server-side-encryption': 'aws:kms',
+          'x-amz-server-side-encryption-aws-kms-key-id': kms_key_arn,
         },
         expires_in_seconds,
       };

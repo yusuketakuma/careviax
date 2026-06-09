@@ -99,9 +99,14 @@ function routeKey(event: PhosHttpEvent): string {
 }
 
 function authorizerClaims(event: PhosHttpEvent): JwtClaims {
-  return (
-    event.requestContext?.authorizer?.jwt?.claims ?? event.requestContext?.authorizer?.claims ?? {}
-  );
+  return event.requestContext?.authorizer?.jwt?.claims ?? {};
+}
+
+function sanitizeCorrelationId(input: string | undefined, fallback: string): string {
+  const value = input?.trim();
+  if (!value) return fallback;
+  if (value.length > 128) return fallback;
+  return /^[A-Za-z0-9._:-]+$/.test(value) ? value : fallback;
 }
 
 function emitBoundaryObservability(input: {
@@ -311,7 +316,10 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
     const observability = options.observability ?? createConsoleObservabilitySink();
     const start = options.now?.() ?? new Date();
     const request_id = event.requestContext?.requestId ?? randomUUID();
-    const correlation_id = readHeader(event.headers, 'x-correlation-id') ?? request_id;
+    const correlation_id = sanitizeCorrelationId(
+      readHeader(event.headers, 'x-correlation-id'),
+      request_id,
+    );
     let ctx: TenantContext | undefined;
 
     try {

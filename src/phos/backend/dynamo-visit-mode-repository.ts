@@ -85,6 +85,14 @@ function evidenceGuardFailed(details: Record<string, unknown>): PhosDomainError 
   });
 }
 
+function resolveEvidenceKmsKeyArn(configured: string | undefined): string {
+  const kms_key_arn = configured?.trim() || process.env.PHOS_EVIDENCE_KMS_KEY_ARN?.trim();
+  if (!kms_key_arn) {
+    throw evidenceGuardFailed({ reason: 'evidence_kms_key_unconfigured' });
+  }
+  return kms_key_arn;
+}
+
 function assertEvidenceIdShape(evidence_id: string): void {
   if (
     evidence_id.trim().length === 0 ||
@@ -184,6 +192,7 @@ function parseEvidenceObjectTagTarget(item: DynamoItem | null, evidence_id: stri
 async function verifyEvidenceUploadIntent(input: {
   ctx: TenantContext;
   verifier?: EvidenceObjectVerifier;
+  evidence_kms_key_arn?: string;
   verification: EvidenceUploadVerificationInput;
   item: DynamoItem | null;
   now: Date;
@@ -238,14 +247,14 @@ async function verifyEvidenceUploadIntent(input: {
     });
   }
   try {
-      await input.verifier.verifyObject({
-        key: intent.s3_key,
-        mime_type: intent.mime_type,
-        sha256: intent.sha256,
-        size_bytes,
-        kms_key_arn: process.env.PHOS_EVIDENCE_KMS_KEY_ARN?.trim() || undefined,
-        allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
-        tenant_id: input.ctx.tenant_id,
+    await input.verifier.verifyObject({
+      key: intent.s3_key,
+      mime_type: intent.mime_type,
+      sha256: intent.sha256,
+      size_bytes,
+      kms_key_arn: resolveEvidenceKmsKeyArn(input.evidence_kms_key_arn),
+      allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
+      tenant_id: input.ctx.tenant_id,
       user_id: input.ctx.user_id,
       request_id: input.ctx.request_id,
       correlation_id: input.ctx.correlation_id,
@@ -318,7 +327,11 @@ function toIdempotentLookup(
 
 export function createDynamoVisitModeRepository(
   client: DynamoVisitModeClient,
-  options: { now?: () => Date; evidence_object_verifier?: EvidenceObjectVerifier } = {},
+  options: {
+    now?: () => Date;
+    evidence_object_verifier?: EvidenceObjectVerifier;
+    evidence_kms_key_arn?: string;
+  } = {},
 ): VisitModeLifecycleStore {
   return {
     async getIdempotentVisitStep(ctx, mutation_key, idempotency_key, request_fingerprint) {
@@ -360,6 +373,7 @@ export function createDynamoVisitModeRepository(
       return verifyEvidenceUploadIntent({
         ctx,
         verifier: options.evidence_object_verifier,
+        evidence_kms_key_arn: options.evidence_kms_key_arn,
         verification,
         item,
         now: options.now?.() ?? new Date(),

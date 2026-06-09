@@ -27,7 +27,7 @@ describe('createLambdaObservabilitySink', () => {
     });
     const sink = createLambdaObservabilitySink({
       security_event_client: { send },
-      security_event_table_name: 'phos_core',
+      security_event_table_name: 'phos_security_events',
       now: () => new Date('2026-06-09T07:00:00.000Z'),
     });
 

@@ -32,6 +32,8 @@
     "pilot:dossier": "tsx tools/scripts/pilot-dossier.ts",
     "uat:summary": "tsx tools/scripts/uat-feedback-summary.ts",
     "backup:drill:check": "tsx tools/scripts/backup-recovery-check.ts",
+    "phos:backend-live:readiness": "tsx tools/scripts/verify-phos-backend-live-readiness.ts --strict",
+    "phos:backend-live:readiness:report": "tsx tools/scripts/verify-phos-backend-live-readiness.ts",
     "phos:cognito-trigger:verify": "tsx tools/scripts/verify-phos-cognito-token-trigger.ts",
     "rate-limit:ddb:verify": "tsx tools/scripts/verify-rate-limit-dynamodb.ts",
     "pmda:onboarding:check": "tsx tools/scripts/pmda-onboarding-check.ts",

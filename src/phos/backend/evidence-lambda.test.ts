@@ -141,11 +141,45 @@ describe('PH-OS evidence Lambda composition', () => {
     }
   });
 
-  it('accepts the deployment template evidence bucket environment variable name', () => {
+  it('fails closed when the production KMS key configuration is missing', () => {
     const previous = process.env.PHOS_EVIDENCE_BUCKET;
     const previousName = process.env.PHOS_EVIDENCE_BUCKET_NAME;
+    const previousKms = process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
     delete process.env.PHOS_EVIDENCE_BUCKET;
     process.env.PHOS_EVIDENCE_BUCKET_NAME = 'phos-evidence-prod';
+    delete process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
+
+    try {
+      expect(() => createEvidenceUploadPresigner({ s3_client: {} as S3Client })).toThrow(
+        'PH-OS evidence KMS key ARN is not configured',
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET = previous;
+      }
+      if (previousName === undefined) {
+        delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
+      } else {
+        process.env.PHOS_EVIDENCE_BUCKET_NAME = previousName;
+      }
+      if (previousKms === undefined) {
+        delete process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
+      } else {
+        process.env.PHOS_EVIDENCE_KMS_KEY_ARN = previousKms;
+      }
+    }
+  });
+
+  it('accepts the deployment template evidence bucket and KMS environment variable names', () => {
+    const previous = process.env.PHOS_EVIDENCE_BUCKET;
+    const previousName = process.env.PHOS_EVIDENCE_BUCKET_NAME;
+    const previousKms = process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
+    delete process.env.PHOS_EVIDENCE_BUCKET;
+    process.env.PHOS_EVIDENCE_BUCKET_NAME = 'phos-evidence-prod';
+    process.env.PHOS_EVIDENCE_KMS_KEY_ARN =
+      'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555';
 
     try {
       expect(() => createEvidenceUploadPresigner({ s3_client: {} as S3Client })).not.toThrow();
@@ -159,6 +193,11 @@ describe('PH-OS evidence Lambda composition', () => {
         delete process.env.PHOS_EVIDENCE_BUCKET_NAME;
       } else {
         process.env.PHOS_EVIDENCE_BUCKET_NAME = previousName;
+      }
+      if (previousKms === undefined) {
+        delete process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
+      } else {
+        process.env.PHOS_EVIDENCE_KMS_KEY_ARN = previousKms;
       }
     }
   });

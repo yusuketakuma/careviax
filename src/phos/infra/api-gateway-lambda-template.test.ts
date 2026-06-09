@@ -732,6 +732,24 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
                 },
               },
             }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutEvidenceObjectClassTag',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:RequestObjectTag/phos-object-class': 'evidence',
+                },
+              },
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutPresignedStatusTag',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotEquals: {
+                  's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
+                },
+              },
+            }),
           ]),
         },
       },
@@ -893,6 +911,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
       'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
     );
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
+      'kms:ViaService',
+    );
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
+      's3.${AWS::Region}.amazonaws.com',
+    );
+    expect(JSON.stringify(template.Resources[evidence.role_logical_id])).toContain(
+      'kms:EncryptionContext:aws:s3:arn',
+    );
     expect(JSON.stringify(template.Resources[evidence.role_logical_id])).not.toContain(
       's3:GetObject',
     );
@@ -914,6 +941,12 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
       'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      'kms:ViaService',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      'kms:EncryptionContext:aws:s3:arn',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).not.toContain(
       '"s3:PutObject"',

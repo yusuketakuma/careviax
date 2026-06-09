@@ -49,10 +49,14 @@ export function createEvidenceUploadPresigner(
   if (!bucket) {
     throw new Error('PH-OS evidence S3 bucket is not configured');
   }
+  const kms_key_arn = deps.kms_key_arn ?? process.env.PHOS_EVIDENCE_KMS_KEY_ARN;
+  if (!kms_key_arn?.trim()) {
+    throw new Error('PH-OS evidence KMS key ARN is not configured');
+  }
   return createS3EvidenceUploadPresigner({
     client: deps.s3_client ?? new S3Client({}),
     bucket,
-    kms_key_arn: deps.kms_key_arn ?? process.env.PHOS_EVIDENCE_KMS_KEY_ARN,
+    kms_key_arn,
     expires_in_seconds: deps.expires_in_seconds,
   });
 }

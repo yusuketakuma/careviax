@@ -25,14 +25,14 @@ const event: PhosSecurityEvent = {
 describe('PH-OS security events', () => {
   it('builds tenant-scoped DynamoDB security event puts with redacted details', () => {
     const input = buildDynamoSecurityEventPutInput({
-      table_name: 'phos_core',
+      table_name: 'phos_security_events',
       event,
       event_id: 'sec_evt_1',
       created_at: '2026-06-09T06:30:00.000Z',
     });
 
     expect(input).toMatchObject({
-      TableName: 'phos_core',
+      TableName: 'phos_security_events',
       Item: {
         PK: { S: 'TENANT#tenant_abc123' },
         SK: { S: 'SECURITY_EVENT#2026-06-09T06:30:00.000Z#sec_evt_1' },
@@ -57,6 +57,7 @@ describe('PH-OS security events', () => {
 
   it('uses a bounded unknown partition for pre-context boundary events', () => {
     const input = buildDynamoSecurityEventPutInput({
+      table_name: 'phos_security_events',
       event: {
         event_type: 'TENANT_BOUNDARY_REJECTED',
         severity: 'ERROR',
@@ -88,12 +89,26 @@ describe('PH-OS security events', () => {
 
     await recordDynamoSecurityEvent({
       client: { send },
-      table_name: 'phos_core',
+      table_name: 'phos_security_events',
       event,
       event_id: 'sec_evt_3',
       now: () => new Date('2026-06-09T06:32:00.000Z'),
     });
 
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('does not fall back to the core table when persistence is enabled without a security table name', async () => {
+    const send = vi.fn(async () => ({}));
+
+    await expect(
+      recordDynamoSecurityEvent({
+        client: { send },
+        event,
+        event_id: 'sec_evt_4',
+        now: () => new Date('2026-06-09T06:33:00.000Z'),
+      }),
+    ).rejects.toThrow('PH-OS security event table name is not configured');
+    expect(send).not.toHaveBeenCalled();
   });
 });

@@ -62,9 +62,8 @@ describe('withTenantContext', () => {
     );
   });
 
-  it('keeps backwards-compatible REST proxy authorizer claims and resource route metadata', async () => {
+  it('rejects legacy REST proxy authorizer claims outside the HTTP API JWT authorizer shape', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const handler = withTenantContext(async ({ ctx }) => ({
       request_id: ctx.request_id,
       tenant_id: ctx.tenant_id,
@@ -88,21 +87,10 @@ describe('withTenantContext', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(401);
     expect(JSON.parse(response.body)).toMatchObject({
       request_id: 'req_rest_1',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
-    });
-    expect(
-      logSpy.mock.calls
-        .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
-        .find((entry) => entry.message === 'PH-OS lambda request completed'),
-    ).toMatchObject({
-      route_key: 'GET /cards/{card_id}',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
-      request_id: 'req_rest_1',
+      error_code: 'TENANT_CONTEXT_MISSING',
     });
   });
 
@@ -149,6 +137,34 @@ describe('withTenantContext', () => {
       route_key: 'GET /cards',
       latency_ms: 17,
     });
+  });
+
+  it('replaces unsafe correlation header values before logs and EMF are emitted', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const handler = withTenantContext(async ({ ctx }) => ({
+      request_id: ctx.request_id,
+      correlation_id: ctx.correlation_id,
+    }));
+
+    const response = await handler({
+      ...validEvent,
+      headers: { 'x-correlation-id': 'patient=山田 drug=secret' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+    });
+    const completed = logSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.message === 'PH-OS lambda request completed');
+    expect(completed).toMatchObject({
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+    });
+    expect(JSON.stringify(completed)).not.toContain('山田');
   });
 
   it('emits tenant-attributed EMF logs for valid-JWT tenant boundary rejections', async () => {
