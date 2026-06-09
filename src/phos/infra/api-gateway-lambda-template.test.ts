@@ -12,6 +12,50 @@ function resourcesByType(type: string) {
   return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
 }
 
+function policyStatementsForRoute(routeKey: string) {
+  const template = buildPhosApiGatewayLambdaTemplate();
+  const binding = bindPhosApiRouteForDeployment(
+    PHOS_API_ROUTES.find((route) => route.route_key === routeKey)!,
+  );
+  const policies = template.Resources[binding.role_logical_id].Properties.Policies as Array<{
+    PolicyDocument: { Statement: Array<{ Action: string[]; Resource: unknown }> };
+  }>;
+  return policies[0].PolicyDocument.Statement;
+}
+
+function resourceSubValues(resource: unknown): string[] {
+  if (Array.isArray(resource)) return resource.flatMap(resourceSubValues);
+  if (
+    resource &&
+    typeof resource === 'object' &&
+    'Fn::Sub' in resource &&
+    typeof resource['Fn::Sub'] === 'string'
+  ) {
+    return [resource['Fn::Sub']];
+  }
+  return [];
+}
+
+function coreDynamoStatementsForRoute(routeKey: string) {
+  return policyStatementsForRoute(routeKey).filter((statement) =>
+    resourceSubValues(statement.Resource).some((resource) =>
+      resource.includes('${PhosDynamoDbTableName}'),
+    ),
+  );
+}
+
+function coreActionsForRoute(routeKey: string): string[] {
+  return coreDynamoStatementsForRoute(routeKey).flatMap((statement) => statement.Action);
+}
+
+function allActionsForRoute(routeKey: string): string[] {
+  return policyStatementsForRoute(routeKey).flatMap((statement) => statement.Action);
+}
+
+function statementWithAction(routeKey: string, action: string) {
+  return policyStatementsForRoute(routeKey).find((statement) => statement.Action.includes(action));
+}
+
 describe('PH-OS API Gateway/Lambda deployment template', () => {
   it('emits CloudFormation parameters and resources with deployable top-level shapes', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
@@ -271,6 +315,9 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       'dynamodb:TransactWriteItems',
     );
     expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
+      'dynamodb:Query',
+    );
+    expect(JSON.stringify(template.Resources[capacity.role_logical_id])).not.toContain(
       's3:PutObject',
     );
 
@@ -300,6 +347,108 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).not.toContain(
       's3:PutObject',
     );
+  });
+
+  it('grants route-specific DynamoDB core actions without broad write or index permissions', () => {
+    const expected = new Map<string, readonly string[]>([
+      ['GET /cards', ['dynamodb:Query']],
+      ['GET /cards/{card_id}', ['dynamodb:GetItem']],
+      ['POST /cards/{card_id}/actions', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['GET /capacity', ['dynamodb:GetItem']],
+      ['GET /claim-candidates', ['dynamodb:Query']],
+      [
+        'POST /claim-candidates/{candidate_id}/exclude',
+        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+      ],
+      ['GET /visit-packets/{packet_id}/visit-mode', ['dynamodb:GetItem']],
+      [
+        'POST /visit-packets/{packet_id}/visit-steps/{step}',
+        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+      ],
+      ['POST /evidence/presign-upload', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['GET /handoffs', ['dynamodb:Query']],
+      ['POST /handoffs', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /handoffs/{handoff_id}/resolve', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /handoffs/{handoff_id}/open', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['POST /handoffs/{handoff_id}/return', ['dynamodb:GetItem', 'dynamodb:TransactWriteItems']],
+      ['GET /report-deliveries', ['dynamodb:Query']],
+      [
+        'POST /report-deliveries/{delivery_id}/reply',
+        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+      ],
+      [
+        'POST /report-deliveries/{delivery_id}/action-done',
+        ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+      ],
+    ]);
+
+    for (const route of PHOS_API_ROUTES) {
+      const routeActions = allActionsForRoute(route.route_key);
+      const coreActions = coreActionsForRoute(route.route_key);
+      const expectedCoreActions = expected.get(route.route_key) ?? [];
+
+      expect(coreActions.sort(), route.route_key).toEqual([...expectedCoreActions].sort());
+      expect(coreActions, route.route_key).not.toContain('dynamodb:PutItem');
+      expect(coreActions, route.route_key).not.toContain('dynamodb:UpdateItem');
+      expect(coreActions, route.route_key).not.toContain('dynamodb:DeleteItem');
+      expect(coreActions, route.route_key).not.toContain('dynamodb:BatchWriteItem');
+      expect(coreActions, route.route_key).not.toContain('dynamodb:Scan');
+      expect(routeActions, route.route_key).toContain('dynamodb:PutItem');
+      expect(
+        policyStatementsForRoute(route.route_key).filter(
+          (statement) =>
+            statement.Action.includes('dynamodb:PutItem') &&
+            resourceSubValues(statement.Resource).includes(
+              'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosSecurityEventTableName}',
+            ),
+        ),
+        route.route_key,
+      ).toHaveLength(1);
+      if (route.route_key !== 'GET /fee-rules') {
+        expect(coreDynamoStatementsForRoute(route.route_key), route.route_key).not.toHaveLength(0);
+      }
+    }
+  });
+
+  it('scopes DynamoDB Query routes to index resources and mutation routes to table resources', () => {
+    const expectedQueryIndexes = new Map<string, readonly string[]>([
+      ['GET /cards', ['GSI1']],
+      ['GET /claim-candidates', ['GSI7', 'GSI8']],
+      ['GET /handoffs', ['GSI5']],
+      ['GET /report-deliveries', ['GSI6']],
+    ]);
+
+    for (const [routeKey, indexNames] of expectedQueryIndexes) {
+      expect(statementWithAction(routeKey, 'dynamodb:Query')).toMatchObject({
+        Resource: indexNames.map((indexName) => ({
+          'Fn::Sub': `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${PhosDynamoDbTableName}/index/${indexName}`,
+        })),
+      });
+      expect(JSON.stringify(statementWithAction(routeKey, 'dynamodb:Query'))).not.toContain(
+        '/index/*',
+      );
+      expect(coreActionsForRoute(routeKey)).not.toContain('dynamodb:GetItem');
+      expect(coreActionsForRoute(routeKey)).not.toContain('dynamodb:TransactWriteItems');
+    }
+
+    for (const routeKey of [
+      'POST /cards/{card_id}/actions',
+      'POST /claim-candidates/{candidate_id}/exclude',
+      'POST /visit-packets/{packet_id}/visit-steps/{step}',
+      'POST /evidence/presign-upload',
+      'POST /handoffs',
+      'POST /report-deliveries/{delivery_id}/reply',
+    ]) {
+      expect(statementWithAction(routeKey, 'dynamodb:TransactWriteItems')).toMatchObject({
+        Resource: {
+          'Fn::Sub':
+            'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PhosDynamoDbTableName}',
+        },
+      });
+      expect(coreActionsForRoute(routeKey)).not.toContain('dynamodb:Query');
+    }
+
+    expect(JSON.stringify(buildPhosApiGatewayLambdaTemplate())).not.toContain('/index/*');
   });
 
   it('uses API Gateway proxy integrations and scoped Lambda invoke permissions for every route', () => {

@@ -161,9 +161,13 @@ describe('PH-OS DynamoDB table contract', () => {
         },
       },
     });
-    expect(JSON.stringify(template)).toContain(
-      `table/\${${PHOS_DYNAMODB_TABLE_NAME_PARAMETER}}/index/*`,
-    );
+    const templateJson = JSON.stringify(template);
+    expect(templateJson).not.toContain(`table/\${${PHOS_DYNAMODB_TABLE_NAME_PARAMETER}}/index/*`);
+    for (const indexName of ['GSI1', 'GSI5', 'GSI6', 'GSI7', 'GSI8']) {
+      expect(templateJson).toContain(
+        `table/\${${PHOS_DYNAMODB_TABLE_NAME_PARAMETER}}/index/${indexName}`,
+      );
+    }
   });
 
   it('keeps runtime queue projections off canonical card GSIs and forbids DynamoDB Scan', () => {

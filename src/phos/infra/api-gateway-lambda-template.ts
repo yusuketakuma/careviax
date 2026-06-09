@@ -63,6 +63,12 @@ type RouteDeploymentBinding = {
   cloudformation_handler: string;
 };
 
+type DynamoRouteAccess = {
+  table_actions: readonly string[];
+  index_actions: readonly string[];
+  index_names: readonly string[];
+};
+
 function toLogicalId(input: string): string {
   const words = input
     .replace(/^@\/phos\/backend\//, '')
@@ -142,8 +148,107 @@ function parameter(type: string, properties: Omit<CloudFormationParameter, 'Type
   return { Type: type, ...properties };
 }
 
+const PHOS_ROUTE_DYNAMODB_ACCESS = {
+  'GET /cards': {
+    table_actions: [],
+    index_actions: ['dynamodb:Query'],
+    index_names: ['GSI1'],
+  },
+  'GET /cards/{card_id}': {
+    table_actions: ['dynamodb:GetItem'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /cards/{card_id}/actions': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'GET /capacity': {
+    table_actions: ['dynamodb:GetItem'],
+    index_actions: [],
+    index_names: [],
+  },
+  'GET /claim-candidates': {
+    table_actions: [],
+    index_actions: ['dynamodb:Query'],
+    index_names: ['GSI7', 'GSI8'],
+  },
+  'POST /claim-candidates/{candidate_id}/exclude': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'GET /visit-packets/{packet_id}/visit-mode': {
+    table_actions: ['dynamodb:GetItem'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /visit-packets/{packet_id}/visit-steps/{step}': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /evidence/presign-upload': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'GET /handoffs': {
+    table_actions: [],
+    index_actions: ['dynamodb:Query'],
+    index_names: ['GSI5'],
+  },
+  'POST /handoffs': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /handoffs/{handoff_id}/resolve': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /handoffs/{handoff_id}/open': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /handoffs/{handoff_id}/return': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'GET /report-deliveries': {
+    table_actions: [],
+    index_actions: ['dynamodb:Query'],
+    index_names: ['GSI6'],
+  },
+  'POST /report-deliveries/{delivery_id}/reply': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+  'POST /report-deliveries/{delivery_id}/action-done': {
+    table_actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+    index_actions: [],
+    index_names: [],
+  },
+} as const satisfies Record<string, DynamoRouteAccess>;
+
+function routeDynamoCoreAccess(route: PhosApiRoute): DynamoRouteAccess | undefined {
+  if (route.response_contract === 'FeeRuleSearchResponse') return undefined;
+  const access = (PHOS_ROUTE_DYNAMODB_ACCESS as Record<string, DynamoRouteAccess | undefined>)[
+    route.route_key
+  ];
+  if (!access) {
+    throw new Error(`Missing PH-OS DynamoDB IAM route access contract: ${route.route_key}`);
+  }
+  return access;
+}
+
 function routeUsesDynamoCore(route: PhosApiRoute): boolean {
-  return route.response_contract !== 'FeeRuleSearchResponse';
+  return routeDynamoCoreAccess(route) !== undefined;
 }
 
 function routeUsesAurora(route: PhosApiRoute): boolean {
@@ -210,28 +315,25 @@ function buildLambdaPolicyStatements(input: {
     },
   ];
 
-  if (routeUsesDynamoCore(input.route)) {
-    const actions =
-      input.route.method === 'GET'
-        ? ['dynamodb:GetItem', 'dynamodb:Query']
-        : [
-            'dynamodb:GetItem',
-            'dynamodb:PutItem',
-            'dynamodb:UpdateItem',
-            'dynamodb:Query',
-            'dynamodb:TransactWriteItems',
-          ];
+  const dynamoAccess = routeDynamoCoreAccess(input.route);
+  if (dynamoAccess?.table_actions.length) {
     statements.push({
       Effect: 'Allow',
-      Action: actions,
-      Resource: [
+      Action: [...dynamoAccess.table_actions],
+      Resource: sub(
+        `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}`,
+      ),
+    });
+  }
+  if (dynamoAccess?.index_actions.length) {
+    statements.push({
+      Effect: 'Allow',
+      Action: [...dynamoAccess.index_actions],
+      Resource: dynamoAccess.index_names.map((indexName) =>
         sub(
-          `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}`,
+          `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}/index/${indexName}`,
         ),
-        sub(
-          `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}/index/*`,
-        ),
-      ],
+      ),
     });
   }
 
