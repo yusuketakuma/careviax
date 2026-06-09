@@ -50,6 +50,9 @@ describe('HandoffQueue', () => {
     const summaries = screen.getAllByText(/確認$/).map((node) => node.textContent);
     expect(summaries[0]).toBe('至急確認');
     expect(screen.getAllByText('処方箋 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('処方原文').length).toBeGreaterThan(0);
+    expect(screen.queryByText('PRESCRIPTION')).toBeNull();
+    expect(screen.queryByText('rx_1')).toBeNull();
   });
 
   it('opens the source card instead of mutating handoff status in the browser', () => {

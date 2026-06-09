@@ -358,7 +358,7 @@ describe('PH-OS Final No-Go gate', () => {
       /side="right"/,
       /triggerRef\.current\?\.focus/,
     ]);
-    expectEvidence('src/phos/ui/workspace/SourceRefList.tsx', [
+    expectEvidence('src/phos/ui/source/SourceRefList.tsx', [
       /PhosSourceRefKindLabel/,
       /safeSourceHref/,
       /!normalized\.startsWith\('\/\/'\)/,
@@ -411,6 +411,21 @@ describe('PH-OS Final No-Go gate', () => {
       /pharmacist brief details/,
       /getByRole\('heading', \{ name: '薬剤師判断' \}\)/,
       /queryByText\('ADR_SUSPECT'\)/,
+    ]);
+  });
+
+  it('keeps queue source ref displays on the shared safe source component', () => {
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.tsx', [/SourceRefList/]);
+    expectEvidence('src/phos/ui/report/ReportDeliveryQueue.tsx', [/SourceRefList/]);
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.test.tsx', [
+      /getAllByText\('処方原文'\)/,
+      /queryByText\('PRESCRIPTION'\)/,
+      /queryByText\('rx_1'\)/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportDeliveryQueue.test.tsx', [
+      /getAllByText\('写真・証跡'\)/,
+      /queryByText\('EVIDENCE_FILE'\)/,
+      /queryByText\('report_1'\)/,
     ]);
   });
 });

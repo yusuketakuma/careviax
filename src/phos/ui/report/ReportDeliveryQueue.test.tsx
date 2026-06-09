@@ -38,6 +38,9 @@ describe('ReportDeliveryQueue', () => {
     const targets = screen.getAllByText(/宛先$/).map((node) => node.textContent);
     expect(targets[0]).toBe('古い宛先');
     expect(screen.getAllByText('報告書').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('写真・証跡').length).toBeGreaterThan(0);
+    expect(screen.queryByText('EVIDENCE_FILE')).toBeNull();
+    expect(screen.queryByText('report_1')).toBeNull();
   });
 
   it('opens the related card without mutating delivery status in the browser', () => {

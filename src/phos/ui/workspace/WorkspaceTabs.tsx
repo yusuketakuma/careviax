@@ -16,8 +16,8 @@ import {
   type VisitArrivalOutcome,
   type VisitStep,
 } from '@/phos/contracts/phos_contracts';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 import { VisitMode } from '@/phos/ui/visit/VisitMode';
-import { SourceRefList } from './SourceRefList';
 
 export type WorkspaceTabsProps = {
   detail: CardDetailResponse;

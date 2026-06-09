@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { PhosSourceDrawerCopy } from '@/phos/contracts/phos_copy.ja';
 import type { SourceRef } from '@/phos/contracts/phos_contracts';
-import { SourceRefList } from './SourceRefList';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
 export type SourceDrawerTriggerProps = {
   sources: SourceRef[];

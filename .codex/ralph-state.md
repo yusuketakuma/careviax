@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-130350
+
+- current task: remove remaining raw SourceRef display leakage from Handoff and Report queues after UI-PR4 SourceDrawer work
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/phos/ui/workspace/SourceRefList.tsx`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/report/ReportDeliveryQueue.tsx`, their tests, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and memory registry hits for the active careviax goal. A read-only subagent review could not be spawned because the agent thread limit was reached.
+- files changed: `src/phos/ui/source/SourceRefList.tsx`, `src/phos/ui/workspace/SourceRefList.tsx`, `src/phos/ui/workspace/WorkspaceTabs.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, `src/phos/ui/workspace/PharmacistBriefPanel.tsx`, `src/phos/ui/workspace/SourceDrawerTrigger.tsx`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, `src/phos/ui/report/ReportDeliveryQueue.tsx`, `src/phos/ui/report/ReportDeliveryQueue.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: `HandoffQueue` and `ReportDeliveryQueue` still rendered source refs with raw `source.kind`, while Workspace panels had already moved to copy-driven `SourceRefList`. That left operator-facing queue surfaces showing enum literals such as `PRESCRIPTION` and `EVIDENCE_FILE`.
+- security risks found: source ref rendering is now consolidated through the shared safe `SourceRefList`, preserving the protocol-relative and non-http(s) URI guard across Workspace, Handoff Queue, and Report Delivery Queue. No auth, tenant, mutation, report send, evidence upload, or backend behavior changed.
+- performance issues found: the change reuses a small render helper for already-loaded `source_refs`; it adds no fetch, route handler, DB work, polling, scan, or broad recomputation.
+- validation commands: Prettier for touched PH-OS source/workspace/handoff/report/gate files; focused `pnpm exec vitest run src/phos/ui/handoff/HandoffQueue.test.tsx src/phos/ui/report/ReportDeliveryQueue.test.tsx src/phos/ui/workspace/SourceDrawerTrigger.test.tsx src/phos/ui/workspace/WorkspaceTabs.test.tsx src/phos/ui/workspace/HandoffPanel.test.tsx src/phos/ui/workspace/PharmacistBriefPanel.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; Handoff/Report raw source display grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 7 files / 44 tests; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; Handoff/Report production raw source grep returned no hits; full PH-OS Vitest passed with 86 files / 465 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UIUX v1.1 still has larger remaining surfaces: Clerk Support Workbench expansion, Handoff RETURNED details beyond the existing queue, VisitMode completion details, Report Composer, Capacity Dashboard, and UI-PR9 accessibility/E2E hardening.
+- next action: commit this source-ref queue cleanup, then continue to the next highest-value UIUX gap, likely Clerk Support Workbench / Handoff UI expansion.
+
 ### 20260609-125720
 
 - current task: implement UI-PR4B PharmacistBrief right-pane rendering for PH-OS UIUX v1.1

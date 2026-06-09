@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ReportDeliveryStatus, type ReportDeliveryView } from '@/phos/contracts/phos_contracts';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
 export type ReportDeliveryReplyInput = {
   result_status:
@@ -46,9 +47,7 @@ export function ReportDeliveryQueue({
   onMarkActionDone,
   submittingDeliveryId,
 }: ReportDeliveryQueueProps) {
-  const [replyDrafts, setReplyDrafts] = useState<
-    Record<string, ReportDeliveryReplyInput>
-  >({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, ReportDeliveryReplyInput>>({});
   const [actionDrafts, setActionDrafts] = useState<Record<string, ReportDeliveryActionDoneInput>>(
     {},
   );
@@ -57,9 +56,7 @@ export function ReportDeliveryQueue({
     .sort((a, b) => b.stale_minutes - a.stale_minutes || a.sent_at.localeCompare(b.sent_at));
   const actionRequired = deliveries
     .filter((delivery) => delivery.status === ReportDeliveryStatus.ACTION_REQUIRED)
-    .sort(
-    (a, b) => b.stale_minutes - a.stale_minutes || a.sent_at.localeCompare(b.sent_at),
-  );
+    .sort((a, b) => b.stale_minutes - a.stale_minutes || a.sent_at.localeCompare(b.sent_at));
 
   function replyDraft(delivery: ReportDeliveryView): ReportDeliveryReplyInput {
     return (
@@ -104,25 +101,19 @@ export function ReportDeliveryQueue({
                   カードを開く
                 </button>
               </div>
-              <ul className="mt-2 space-y-1 border-t border-border/70 pt-2">
-                {(delivery.source_refs ?? []).map((source) => (
-                  <li
-                    key={`${delivery.delivery_id}:${source.kind}:${source.ref_id}`}
-                    className="text-xs text-muted-foreground"
-                  >
-                    <span className="font-medium text-foreground">{source.label}</span>
-                    <span> / {source.kind}</span>
-                  </li>
-                ))}
-              </ul>
+              {(delivery.source_refs ?? []).length > 0 ? (
+                <div className="mt-2 border-t border-border/70 pt-2">
+                  <SourceRefList sources={delivery.source_refs ?? []} />
+                </div>
+              ) : null}
               {onRegisterReply ? (
                 <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
                   <select
                     className="min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm"
                     value={replyDraft(delivery).result_status}
                     onChange={(event) => {
-                      const nextStatus =
-                        event.target.value as ReportDeliveryReplyInput['result_status'];
+                      const nextStatus = event.target
+                        .value as ReportDeliveryReplyInput['result_status'];
                       setReplyDrafts((current) => ({
                         ...current,
                         [delivery.delivery_id]: {
@@ -174,7 +165,8 @@ export function ReportDeliveryQueue({
                     className="min-h-11 rounded-md border border-border/70 bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:opacity-55"
                     data-enabled={
                       replyDraft(delivery).reply_summary.trim().length > 0 &&
-                      (replyDraft(delivery).result_status !== ReportDeliveryStatus.ACTION_REQUIRED ||
+                      (replyDraft(delivery).result_status !==
+                        ReportDeliveryStatus.ACTION_REQUIRED ||
                         Boolean(replyDraft(delivery).action_required_note?.trim())) &&
                       submittingDeliveryId !== delivery.delivery_id
                     }

@@ -4,6 +4,7 @@ import { PhosHandoffUrgencyLabel } from '@/phos/contracts/phos_copy.ja';
 import { HandoffStatus } from '@/phos/contracts/phos_contracts';
 import type { HandoffView } from '@/phos/contracts/phos_contracts';
 import { sortHandoffQueue } from '@/phos/domain/handoff/handoffLifecycle';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
 export type HandoffQueueProps = {
   handoffs: HandoffView[];
@@ -55,18 +56,11 @@ export function HandoffQueue({ handoffs, onOpenCard, onOpenReview }: HandoffQueu
                   </button>
                 </div>
               </div>
-              <ul className="mt-2 space-y-1 border-t border-border/70 pt-2">
-                {handoff.source_refs.map((source) => (
-                  <li
-                    key={`${handoff.handoff_id}:${source.kind}:${source.ref_id}`}
-                    className="text-xs text-muted-foreground"
-                  >
-                    <span className="font-medium text-foreground">{source.label}</span>
-                    <span> / {source.kind}</span>
-                    {source.captured_at ? <span> / {source.captured_at}</span> : null}
-                  </li>
-                ))}
-              </ul>
+              {handoff.source_refs.length > 0 ? (
+                <div className="mt-2 border-t border-border/70 pt-2">
+                  <SourceRefList sources={handoff.source_refs} />
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

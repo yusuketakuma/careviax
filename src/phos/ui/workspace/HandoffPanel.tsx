@@ -10,7 +10,7 @@ import { HandoffStatus, HandoffUrgency } from '@/phos/contracts/phos_contracts';
 import type { ActionCode, HandoffView, SourceRef } from '@/phos/contracts/phos_contracts';
 import { sortHandoffQueue } from '@/phos/domain/handoff/handoffLifecycle';
 import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
-import { SourceRefList } from './SourceRefList';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
 export type HandoffCreateInput = {
   reason_code: string;

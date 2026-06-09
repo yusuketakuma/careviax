@@ -21,7 +21,7 @@ import type {
   PharmacistBrief,
   PharmacistDecisionRequired,
 } from '@/phos/contracts/phos_contracts';
-import { SourceRefList } from './SourceRefList';
+import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
 export type PharmacistBriefPanelProps = {
   cardId: string;
