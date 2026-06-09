@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-030944
+
+- current task: add a real-database PH-OS Aurora FeeRule RLS harness gated by an explicit test database URL.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/aurora-fee-rules-rls.sql`, and `src/phos/backend/aurora-fee-rules-repository.test.ts`.
+- files changed: `src/phos/infra/aurora-fee-rules-rls.integration.test.ts`, `.codex/ralph-state.md`.
+- bugs found: the repository had SQL-shape and mocked repository coverage for FeeRule tenant context, but no executable harness that applies the RLS DDL to a live PostgreSQL/Aurora-compatible database and directly verifies tenant/system row visibility and cross-tenant write rejection.
+- security risks found: the new harness creates a unique temporary schema, applies the FeeRule DDL/RLS policies, seeds `tenant_a`, `tenant_b`, and `SYSTEM` rows before RLS activation, then verifies `app.tenant_id=tenant_a` can see only `tenant_a` plus `SYSTEM` rows and cannot insert `tenant_b` rows. It is gated only by explicit `PHOS_AURORA_RLS_TEST_DATABASE_URL` to avoid accidental use of generic database URLs.
+- performance issues found: no production code path changed. The harness runs only when the explicit integration-test database URL is set and uses one pooled connection with temporary-schema cleanup.
+- validation commands: Prettier for the new integration test; focused `pnpm exec vitest run src/phos/infra/aurora-fee-rules-rls.integration.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused RLS integration harness was discovered and skipped because `PHOS_AURORA_RLS_TEST_DATABASE_URL` is not set in this environment. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files passed / 1 skipped and 716 tests passed / 1 skipped. Next production build passed and generated 235 static pages.
+- remaining work: the actual live Aurora RLS proof remains unexecuted until an explicit non-production PostgreSQL/Aurora-compatible `PHOS_AURORA_RLS_TEST_DATABASE_URL` is provided. Live AWS/API Gateway/Lambda/Cognito/Dynamo/S3/CloudWatch/X-Ray proof also remains external and unverified locally.
+- next action: commit this RLS harness. With local backend follow-ups closed, run the RLS harness and live AWS proof when the target non-production environment is available.
+
 ### 20260610-030437
 
 - current task: add a PH-OS `NextActionView.target_endpoint` parity gate for the card action route contract.
