@@ -63,10 +63,17 @@ export const PhosBlockerMessageLabel: Readonly<Record<string, string>> = {
 export const PhosToast = {
   REPORT_SENT_OK: '報告書を送付しました。',
   HANDOFF_CREATED_OK: '薬剤師への確認依頼を作成しました。',
+  CLAIM_CANDIDATE_EXCLUDED_OK: '算定候補を除外しました。',
   SYNC_DONE: '同期が完了しました。',
   SYNC_CONFLICT_FOUND: '更新の競合があります。',
   PHOTO_QUEUED: '写真を未同期として保存しました。',
   NET_ERROR_RETRY: '通信できません。再試行してください。',
+} as const;
+
+export const PhosToastMessageByKey: Readonly<Record<string, string>> = {
+  'toast.handoff.created': PhosToast.HANDOFF_CREATED_OK,
+  'toast.claim_candidate_excluded': PhosToast.CLAIM_CANDIDATE_EXCLUDED_OK,
+  'toast.action.error': PhosToast.NET_ERROR_RETRY,
 } as const;
 
 export const PhosEmptyState = {

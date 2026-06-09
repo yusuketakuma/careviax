@@ -1,6 +1,6 @@
 'use client';
 
-import { PhosToast } from '@/phos/contracts/phos_copy.ja';
+import { PhosToastMessageByKey } from '@/phos/contracts/phos_copy.ja';
 import { ToastToneToken } from '@/phos/contracts/phos_design_tokens';
 import type { ActionResponse } from '@/phos/contracts/phos_contracts';
 
@@ -10,12 +10,6 @@ export type PhosToastEntry = PhosToastInput & {
   id: string;
   created_at: number;
   message: string;
-};
-
-const TOAST_MESSAGE_BY_KEY: Readonly<Record<string, string>> = {
-  'toast.handoff.created': PhosToast.HANDOFF_CREATED_OK,
-  'toast.claim_candidate_excluded': '算定候補を除外しました。',
-  'toast.action.error': PhosToast.NET_ERROR_RETRY,
 };
 
 function stableParams(params: PhosToastInput['params']): string {
@@ -36,7 +30,7 @@ function toastKey(toast: PhosToastInput): string {
 
 export function resolvePhosToastMessage(toast: PhosToastInput): string {
   if (toast.params?.message) return toast.params.message;
-  return TOAST_MESSAGE_BY_KEY[toast.message_key] ?? toast.message_key;
+  return PhosToastMessageByKey[toast.message_key] ?? toast.message_key;
 }
 
 export function appendPhosToast(
