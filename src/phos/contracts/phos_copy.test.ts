@@ -10,6 +10,8 @@ import {
   PhosDecisionReasonLabel,
   PhosDisabledReason,
   PhosEmptyState,
+  PhosHandoffCreateReasonLabel,
+  PhosHandoffPanelCopy,
   PhosPharmacistBriefCopy,
   PhosRejectReasonLabel,
   PhosSourceDrawerCopy,
@@ -82,6 +84,9 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosSupportTaskCodeLabel.CONTACT_SETUP).toBe('連絡先の確認');
     expect(PhosDeliveryMethodLabel.HAND_DELIVERY).toBe('手渡し');
     expect(PhosHandoffReturnReasonLabel.NEED_MORE_INFO).toBe('情報の追加が必要です');
+    expect(PhosHandoffCreateReasonLabel.DIFF_REVIEW).toBe('処方差分');
+    expect(PhosHandoffPanelCopy.REQUESTED_ACTION_LABEL).toBe('希望対応');
+    expect(PhosHandoffPanelCopy.REQUESTED_ACTION_REVIEW_ONLY).toBe('確認のみ');
   });
 
   it('contains reason labels and no prohibited double-L cancellation copy', () => {
@@ -98,6 +103,8 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosDeliveryMethodLabel),
       ...Object.values(PhosDisabledReason),
       ...Object.values(PhosEmptyState),
+      ...Object.values(PhosHandoffCreateReasonLabel),
+      ...Object.values(PhosHandoffPanelCopy),
       ...Object.values(PhosHandoffReturnReasonLabel),
       ...Object.values(PhosPharmacistBriefCopy),
       ...Object.values(PhosRejectReasonLabel),

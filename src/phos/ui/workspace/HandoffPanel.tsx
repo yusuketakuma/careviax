@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import {
   PhosActionLabel,
+  PhosHandoffCreateReasonLabel,
+  PhosHandoffPanelCopy,
+  PhosHandoffReturnReasonLabel,
   PhosHandoffStatusLabel,
   PhosHandoffUrgencyLabel,
 } from '@/phos/contracts/phos_copy.ja';
@@ -16,11 +19,13 @@ export type HandoffCreateInput = {
   reason_code: string;
   summary: string;
   urgency: HandoffUrgency;
+  requested_action?: ActionCode;
 };
 
 export type HandoffPanelProps = {
   handoffs: HandoffView[];
   createSources?: SourceRef[];
+  createRequestedActions?: ActionCode[];
   onCreate?(input: HandoffCreateInput): void;
   onOpenReview(handoffId: string): void;
   onResolve(handoffId: string, resolvedActionCode: ActionCode): void;
@@ -30,28 +35,36 @@ export type HandoffPanelProps = {
 export function HandoffPanel({
   handoffs,
   createSources = [],
+  createRequestedActions = [],
   onCreate,
   onOpenReview,
   onResolve,
   onReturn,
 }: HandoffPanelProps) {
+  const createReasonOptions = Object.entries(PhosHandoffCreateReasonLabel);
+  const returnReasonOptions = Object.entries(PhosHandoffReturnReasonLabel);
+  const requestedActionOptions = Array.from(new Set(createRequestedActions));
   const [returningId, setReturningId] = useState<string | undefined>();
-  const [reasonCode, setReasonCode] = useState('');
+  const [reasonCode, setReasonCode] = useState(returnReasonOptions[0]?.[0] ?? '');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
-  const [createReason, setCreateReason] = useState('');
+  const [createReason, setCreateReason] = useState(createReasonOptions[0]?.[0] ?? '');
   const [createSummary, setCreateSummary] = useState('');
   const [createUrgency, setCreateUrgency] = useState<HandoffUrgency>(HandoffUrgency.NORMAL);
+  const [createRequestedAction, setCreateRequestedAction] = useState<ActionCode | ''>(
+    requestedActionOptions[0] ?? '',
+  );
   const [createError, setCreateError] = useState<string | undefined>();
   const sortedHandoffs = sortHandoffQueue(handoffs);
 
   return (
     <aside className="rounded-lg border border-border/70 bg-card p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-foreground">薬剤師確認依頼</h3>
+        <h3 className="text-base font-semibold text-foreground">{PhosHandoffPanelCopy.TITLE}</h3>
         <span className="rounded-md border border-border/70 bg-muted/35 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {handoffs.length}件
+          {handoffs.length}
+          {PhosHandoffPanelCopy.COUNT_SUFFIX}
         </span>
       </div>
       {onCreate ? (
@@ -62,16 +75,18 @@ export function HandoffPanel({
             onClick={() => {
               setCreateOpen((current) => !current);
               setCreateError(undefined);
+              setCreateReason(createReasonOptions[0]?.[0] ?? '');
+              setCreateRequestedAction(requestedActionOptions[0] ?? '');
             }}
           >
-            確認依頼を作成
+            {PhosHandoffPanelCopy.CREATE_BUTTON}
           </button>
           {createOpen ? (
             <div className="mt-3 rounded-md border border-border/70 bg-background p-3">
               <label className="text-sm font-medium text-foreground" htmlFor="handoff-reason">
-                理由コード
+                {PhosHandoffPanelCopy.CREATE_REASON_LABEL}
               </label>
-              <input
+              <select
                 id="handoff-reason"
                 className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 value={createReason}
@@ -79,12 +94,18 @@ export function HandoffPanel({
                   setCreateReason(event.target.value);
                   setCreateError(undefined);
                 }}
-              />
+              >
+                {createReasonOptions.map(([code, label]) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               <label
                 className="mt-3 block text-sm font-medium text-foreground"
                 htmlFor="handoff-summary"
               >
-                確認内容
+                {PhosHandoffPanelCopy.CREATE_SUMMARY_LABEL}
               </label>
               <textarea
                 id="handoff-summary"
@@ -99,7 +120,7 @@ export function HandoffPanel({
                 className="mt-3 block text-sm font-medium text-foreground"
                 htmlFor="handoff-urgency"
               >
-                緊急度
+                {PhosHandoffPanelCopy.URGENCY_LABEL}
               </label>
               <select
                 id="handoff-urgency"
@@ -116,6 +137,28 @@ export function HandoffPanel({
                   </option>
                 ))}
               </select>
+              <label
+                className="mt-3 block text-sm font-medium text-foreground"
+                htmlFor="handoff-requested-action"
+              >
+                {PhosHandoffPanelCopy.REQUESTED_ACTION_LABEL}
+              </label>
+              <select
+                id="handoff-requested-action"
+                className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={createRequestedAction}
+                onChange={(event) => {
+                  setCreateRequestedAction(event.target.value as ActionCode | '');
+                  setCreateError(undefined);
+                }}
+              >
+                <option value="">{PhosHandoffPanelCopy.REQUESTED_ACTION_REVIEW_ONLY}</option>
+                {requestedActionOptions.map((action) => (
+                  <option key={action} value={action}>
+                    {PhosActionLabel[action]}
+                  </option>
+                ))}
+              </select>
               <SourceRefList sources={createSources} />
               {createError ? (
                 <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
@@ -127,21 +170,22 @@ export function HandoffPanel({
                 className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
                 onClick={() => {
                   if (!createReason.trim() || !createSummary.trim()) {
-                    setCreateError('理由コードと確認内容を入力してください。');
+                    setCreateError(PhosHandoffPanelCopy.CREATE_REQUIRED_ERROR);
                     return;
                   }
                   if (createSources.length === 0) {
-                    setCreateError('確認元の参照が必要です。');
+                    setCreateError(PhosHandoffPanelCopy.SOURCE_REQUIRED_ERROR);
                     return;
                   }
                   onCreate({
                     reason_code: createReason.trim(),
                     summary: createSummary.trim(),
                     urgency: createUrgency,
+                    ...(createRequestedAction ? { requested_action: createRequestedAction } : {}),
                   });
                 }}
               >
-                作成する
+                {PhosHandoffPanelCopy.CREATE_SUBMIT}
               </button>
             </div>
           ) : null}
@@ -149,7 +193,7 @@ export function HandoffPanel({
       ) : null}
 
       {sortedHandoffs.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">確認依頼はありません。</p>
+        <p className="mt-3 text-sm text-muted-foreground">{PhosHandoffPanelCopy.EMPTY}</p>
       ) : (
         <ul className="mt-3 space-y-3">
           {sortedHandoffs.map((handoff) => {
@@ -170,7 +214,8 @@ export function HandoffPanel({
                     </p>
                   </div>
                   <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {handoff.source_refs.length}参照
+                    {handoff.source_refs.length}
+                    {PhosHandoffPanelCopy.SOURCE_COUNT_SUFFIX}
                   </span>
                 </div>
                 <SourceRefList sources={handoff.source_refs} />
@@ -182,7 +227,7 @@ export function HandoffPanel({
                       className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
                       onClick={() => onOpenReview(handoff.handoff_id)}
                     >
-                      確認を開始
+                      {PhosHandoffPanelCopy.START_REVIEW}
                     </button>
                   ) : null}
 
@@ -193,7 +238,9 @@ export function HandoffPanel({
                         className="min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:bg-muted data-[enabled=false]:text-muted-foreground"
                         data-enabled={canResolve ? 'true' : 'false'}
                         aria-label={
-                          canResolve ? '確認依頼を解決する' : '確認依頼を解決する（操作未指定）'
+                          canResolve
+                            ? PhosHandoffPanelCopy.RESOLVE_ARIA
+                            : PhosHandoffPanelCopy.RESOLVE_UNCONFIGURED_ARIA
                         }
                         onClick={() => {
                           if (!handoff.requested_action) return;
@@ -202,7 +249,7 @@ export function HandoffPanel({
                       >
                         {handoff.requested_action
                           ? PhosActionLabel[handoff.requested_action]
-                          : '解決操作なし'}
+                          : PhosHandoffPanelCopy.NO_RESOLVE_ACTION}
                       </button>
                       <button
                         type="button"
@@ -210,9 +257,10 @@ export function HandoffPanel({
                         onClick={() => {
                           setReturningId(handoff.handoff_id);
                           setError(undefined);
+                          setReasonCode(returnReasonOptions[0]?.[0] ?? '');
                         }}
                       >
-                        事務へ戻す
+                        {PhosHandoffPanelCopy.RETURN_BUTTON}
                       </button>
                     </>
                   ) : null}
@@ -221,9 +269,9 @@ export function HandoffPanel({
                 {returnOpen ? (
                   <div className="mt-3 rounded-md border border-border/70 bg-card p-3">
                     <label className="text-sm font-medium text-foreground" htmlFor="return-reason">
-                      差し戻し理由コード
+                      {PhosHandoffPanelCopy.RETURN_REASON_LABEL}
                     </label>
-                    <input
+                    <select
                       id="return-reason"
                       className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                       value={reasonCode}
@@ -231,12 +279,18 @@ export function HandoffPanel({
                         setReasonCode(event.target.value);
                         setError(undefined);
                       }}
-                    />
+                    >
+                      {returnReasonOptions.map(([code, label]) => (
+                        <option key={code} value={code}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
                     <label
                       className="mt-3 block text-sm font-medium text-foreground"
                       htmlFor="return-note"
                     >
-                      差し戻しメモ
+                      {PhosHandoffPanelCopy.RETURN_NOTE_LABEL}
                     </label>
                     <textarea
                       id="return-note"
@@ -257,13 +311,13 @@ export function HandoffPanel({
                       className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
                       onClick={() => {
                         if (!reasonCode.trim() || !note.trim()) {
-                          setError('差し戻し理由とメモを入力してください。');
+                          setError(PhosHandoffPanelCopy.RETURN_REQUIRED_ERROR);
                           return;
                         }
                         onReturn(handoff.handoff_id, reasonCode.trim(), note.trim());
                       }}
                     >
-                      差し戻す
+                      {PhosHandoffPanelCopy.RETURN_SUBMIT}
                     </button>
                   </div>
                 ) : null}

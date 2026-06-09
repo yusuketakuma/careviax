@@ -460,4 +460,26 @@ describe('PH-OS Final No-Go gate', () => {
       /queryByText\('NEED_MORE_INFO'\)/,
     ]);
   });
+
+  it('keeps Handoff composer and return UI structured instead of raw-code free text', () => {
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.tsx', [
+      /PhosHandoffCreateReasonLabel/,
+      /PhosHandoffPanelCopy/,
+      /PhosHandoffReturnReasonLabel/,
+      /createRequestedActions/,
+      /REQUESTED_ACTION_LABEL/,
+      /RETURN_REASON_LABEL/,
+      /<select/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.test.tsx', [
+      /希望対応/,
+      /確認のみ/,
+      /queryByText\('DIFF_REVIEW'\)/,
+      /queryByText\('REPORT_TEXT'\)/,
+      /queryByText\('NEED_MORE_INFO'\)/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.tsx', [
+      /requested_action: input\.requested_action/,
+    ]);
+  });
 });

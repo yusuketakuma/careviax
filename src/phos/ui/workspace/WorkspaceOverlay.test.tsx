@@ -246,9 +246,12 @@ describe('WorkspaceOverlay', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '確認依頼を作成' }));
-    fireEvent.change(screen.getByLabelText('理由コード'), { target: { value: 'DIFF_REVIEW' } });
-    fireEvent.change(screen.getByLabelText('確認内容'), {
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'DIFF_REVIEW' } });
+    fireEvent.change(screen.getByLabelText('要約'), {
       target: { value: '処方差分を確認してください。' },
+    });
+    fireEvent.change(screen.getByLabelText('希望対応'), {
+      target: { value: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
     });
     fireEvent.click(screen.getByRole('button', { name: '作成する' }));
 
@@ -257,6 +260,7 @@ describe('WorkspaceOverlay', () => {
       reason_code: 'DIFF_REVIEW',
       summary: '処方差分を確認してください。',
       urgency: HandoffUrgency.NORMAL,
+      requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
     });
   });
 

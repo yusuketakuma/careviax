@@ -127,6 +127,7 @@ export function WorkspaceOverlay({
                 <HandoffPanel
                   handoffs={detail.handoffs ?? []}
                   createSources={detail.source_refs}
+                  createRequestedActions={[detail.next_action.code]}
                   onCreate={
                     onCreateHandoff
                       ? (input) => onCreateHandoff(detail.card.card_id, input)

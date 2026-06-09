@@ -670,6 +670,50 @@ describe('BoardClient', () => {
     expect(within(toastRegion).getByText('薬剤師への確認依頼を作成しました。')).toBeTruthy();
   });
 
+  it('creates handoffs with the requested action selected in Workspace', async () => {
+    const apiClient = client({
+      getCardDetail: vi.fn(async () =>
+        detailResponse({
+          source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+        }),
+      ),
+      createHandoff: vi.fn(async () =>
+        handoffMutationResponse(
+          handoff({
+            requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          }),
+        ),
+      ),
+    });
+
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
+    await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
+
+    fireEvent.click(screen.getByRole('button', { name: '確認依頼を作成' }));
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'DIFF_REVIEW' } });
+    fireEvent.change(screen.getByLabelText('要約'), {
+      target: { value: '処方差分を確認してください。' },
+    });
+    fireEvent.change(screen.getByLabelText('希望対応'), {
+      target: { value: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '作成する' }));
+
+    await waitFor(() =>
+      expect(apiClient.createHandoff).toHaveBeenCalledWith(
+        expect.objectContaining({
+          card_id: 'card_1',
+          reason_code: 'DIFF_REVIEW',
+          summary: '処方差分を確認してください。',
+          requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          client_version: 1,
+        }),
+      ),
+    );
+  });
+
   it('keeps the board visible when selected card detail loading fails', async () => {
     const apiClient = client({
       getCardDetail: vi.fn(async () => {

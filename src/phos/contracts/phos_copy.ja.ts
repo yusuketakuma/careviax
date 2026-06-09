@@ -201,6 +201,39 @@ export const PhosHandoffReturnReasonLabel: Readonly<Record<string, string>> = {
   OTHER: '追加確認が必要です',
 } as const;
 
+export const PhosHandoffCreateReasonLabel: Readonly<Record<string, string>> = {
+  SEND_CONFIRMATION: '送付前確認',
+  DIFF_REVIEW: '処方差分',
+  RESIDUAL: '残薬',
+  REPORT_TEXT: '報告文面',
+  OTHER: 'その他',
+} as const;
+
+export const PhosHandoffPanelCopy = {
+  TITLE: '薬剤師確認依頼',
+  COUNT_SUFFIX: '件',
+  EMPTY: '確認依頼はありません。',
+  CREATE_BUTTON: '確認依頼を作成',
+  CREATE_REASON_LABEL: '理由',
+  CREATE_SUMMARY_LABEL: '要約',
+  URGENCY_LABEL: '緊急度',
+  REQUESTED_ACTION_LABEL: '希望対応',
+  REQUESTED_ACTION_REVIEW_ONLY: '確認のみ',
+  CREATE_SUBMIT: '作成する',
+  CREATE_REQUIRED_ERROR: '理由と要約を入力してください。',
+  SOURCE_REQUIRED_ERROR: '確認元の参照が必要です。',
+  START_REVIEW: '確認を開始',
+  RESOLVE_ARIA: '確認依頼を解決する',
+  RESOLVE_UNCONFIGURED_ARIA: '確認依頼を解決する（操作未指定）',
+  NO_RESOLVE_ACTION: '解決操作なし',
+  RETURN_BUTTON: '事務へ戻す',
+  RETURN_REASON_LABEL: '差し戻し理由',
+  RETURN_NOTE_LABEL: '差し戻しメモ',
+  RETURN_REQUIRED_ERROR: '差し戻し理由とメモを入力してください。',
+  RETURN_SUBMIT: '差し戻す',
+  SOURCE_COUNT_SUFFIX: '参照',
+} as const;
+
 export const PhosSupportBriefCopy = {
   TITLE: '事務サポート',
   EMPTY: 'いま事務で処理できる作業はありません。',

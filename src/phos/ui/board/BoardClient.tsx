@@ -602,7 +602,7 @@ export function BoardClient({
           summary: input.summary,
           source_refs: detail.source_refs,
           urgency: input.urgency,
-          requested_action: detail.next_action.code,
+          requested_action: input.requested_action,
           related_blocker_code: detail.blockers.find((blocker) => blocker.active)?.blocker_code,
           idempotency_key: buildHandoffIdempotencyKey(cardId, 'CREATE_HANDOFF'),
           client_version: detail.server_version,

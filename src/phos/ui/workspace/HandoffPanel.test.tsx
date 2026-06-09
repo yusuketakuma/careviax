@@ -59,6 +59,7 @@ describe('HandoffPanel', () => {
       <HandoffPanel
         handoffs={[handoff()]}
         createSources={[{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }]}
+        createRequestedActions={[ActionCode.CONFIRM_PRESCRIPTION_DIFF]}
         onCreate={onCreate}
         onOpenReview={vi.fn()}
         onResolve={vi.fn()}
@@ -67,18 +68,56 @@ describe('HandoffPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '確認依頼を作成' }));
-    fireEvent.change(screen.getByLabelText('理由コード'), { target: { value: 'DIFF_REVIEW' } });
-    fireEvent.change(screen.getByLabelText('確認内容'), {
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'DIFF_REVIEW' } });
+    fireEvent.change(screen.getByLabelText('要約'), {
       target: { value: '処方差分を確認してください。' },
     });
     fireEvent.change(screen.getByLabelText('緊急度'), { target: { value: HandoffUrgency.HIGH } });
+    fireEvent.change(screen.getByLabelText('希望対応'), {
+      target: { value: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+    });
     fireEvent.click(screen.getByRole('button', { name: '作成する' }));
 
     expect(onCreate).toHaveBeenCalledWith({
       reason_code: 'DIFF_REVIEW',
       summary: '処方差分を確認してください。',
       urgency: HandoffUrgency.HIGH,
+      requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
     });
+    expect(screen.getByText('処方差分')).toBeTruthy();
+    expect(screen.getByText('処方差分を確認する')).toBeTruthy();
+    expect(screen.queryByText('DIFF_REVIEW')).toBeNull();
+  });
+
+  it('can create review-only handoffs without a requested action', () => {
+    const onCreate = vi.fn();
+    render(
+      <HandoffPanel
+        handoffs={[]}
+        createSources={[{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }]}
+        createRequestedActions={[ActionCode.CONFIRM_PRESCRIPTION_DIFF]}
+        onCreate={onCreate}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '確認依頼を作成' }));
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'REPORT_TEXT' } });
+    fireEvent.change(screen.getByLabelText('要約'), {
+      target: { value: '報告文面だけ確認してください。' },
+    });
+    fireEvent.change(screen.getByLabelText('希望対応'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '作成する' }));
+
+    expect(onCreate).toHaveBeenCalledWith({
+      reason_code: 'REPORT_TEXT',
+      summary: '報告文面だけ確認してください。',
+      urgency: HandoffUrgency.NORMAL,
+    });
+    expect(screen.getByText('確認のみ')).toBeTruthy();
+    expect(screen.queryByText('REPORT_TEXT')).toBeNull();
   });
 
   it('opens review for OPEN handoffs through a configured callback', () => {
@@ -130,7 +169,7 @@ describe('HandoffPanel', () => {
     expect(screen.getByText('差し戻し理由とメモを入力してください。')).toBeTruthy();
     expect(onReturn).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText('差し戻し理由コード'), {
+    fireEvent.change(screen.getByLabelText('差し戻し理由'), {
       target: { value: 'NEED_MORE_INFO' },
     });
     fireEvent.change(screen.getByLabelText('差し戻しメモ'), {
@@ -143,5 +182,7 @@ describe('HandoffPanel', () => {
       'NEED_MORE_INFO',
       '施設連絡先を確認してください。',
     );
+    expect(screen.getByText('情報の追加が必要です')).toBeTruthy();
+    expect(screen.queryByText('NEED_MORE_INFO')).toBeNull();
   });
 });
