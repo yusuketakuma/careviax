@@ -31,6 +31,11 @@ function readRelative(path: string): string {
   return readFileSync(join(repoRoot, path), 'utf8');
 }
 
+function readSub(value: unknown): string {
+  expect(value).toEqual(expect.objectContaining({ 'Fn::Sub': expect.any(String) }));
+  return (value as { 'Fn::Sub': string })['Fn::Sub'];
+}
+
 function expectEvidence(path: string, patterns: readonly RegExp[]) {
   const fullPath = join(repoRoot, path);
   expect(existsSync(fullPath), path).toBe(true);
@@ -121,9 +126,18 @@ describe('PH-OS Final No-Go gate', () => {
     }
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
+      const functionName = readSub(
+        template.Resources[binding.function_logical_id].Properties.FunctionName,
+      );
+      expect(functionName).toMatch(/^phos-\$\{StageName\}-[a-z0-9]+-[a-z0-9]{6}$/);
+      expect(functionName.replace('${StageName}', 'abcdefghijklmnop').length).toBeLessThanOrEqual(
+        64,
+      );
       expect(template.Resources[binding.function_logical_id]).toMatchObject({
         Type: 'AWS::Lambda::Function',
+        DependsOn: binding.log_group_logical_id,
         Properties: {
+          FunctionName: { 'Fn::Sub': functionName },
           Role: { 'Fn::GetAtt': [binding.role_logical_id, 'Arn'] },
           Environment: {
             Variables: {
@@ -134,6 +148,12 @@ describe('PH-OS Final No-Go gate', () => {
           },
         },
       });
+      const policies = template.Resources[binding.role_logical_id].Properties.Policies as Array<{
+        PolicyDocument: { Statement: Array<{ Action: string[]; Resource: unknown }> };
+      }>;
+      const logStatements = policies[0].PolicyDocument.Statement.filter((statement) =>
+        statement.Action.some((action) => action.startsWith('logs:')),
+      );
       expect(template.Resources[binding.role_logical_id]).toMatchObject({
         Type: 'AWS::IAM::Role',
         Properties: {
@@ -142,7 +162,10 @@ describe('PH-OS Final No-Go gate', () => {
               PolicyDocument: {
                 Statement: expect.arrayContaining([
                   expect.objectContaining({
-                    Action: expect.arrayContaining(['logs:PutLogEvents']),
+                    Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                    Resource: {
+                      'Fn::Sub': `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/lambda/${functionName}:*`,
+                    },
                   }),
                   expect.objectContaining({
                     Action: expect.arrayContaining(['xray:PutTraceSegments']),
@@ -153,7 +176,36 @@ describe('PH-OS Final No-Go gate', () => {
           ],
         },
       });
+      expect(logStatements).toEqual([
+        {
+          Effect: 'Allow',
+          Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: {
+            'Fn::Sub': `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/lambda/${functionName}:*`,
+          },
+        },
+      ]);
+      expect(template.Resources[binding.log_group_logical_id]).toMatchObject({
+        Type: 'AWS::Logs::LogGroup',
+        Properties: {
+          LogGroupName: {
+            'Fn::Sub': `/aws/lambda/${functionName}`,
+          },
+          RetentionInDays: 90,
+        },
+      });
+      const roleJson = JSON.stringify(template.Resources[binding.role_logical_id]);
+      expect(roleJson).not.toContain('logs:CreateLogGroup');
+      expect(roleJson).not.toContain('/aws/lambda/*');
+      expect(roleJson).not.toContain('"logs:*"');
+      expect(logStatements[0]?.Resource).not.toBe('*');
     }
+    expect(template.Parameters.StageName).toMatchObject({
+      Default: 'prod',
+      MinLength: 1,
+      MaxLength: 16,
+      AllowedPattern: '^[A-Za-z0-9-]+$',
+    });
     expect(template.Parameters.PhosAuroraDatabaseUrl).toMatchObject({
       Type: 'String',
       NoEcho: true,

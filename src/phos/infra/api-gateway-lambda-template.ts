@@ -19,6 +19,7 @@ type CloudFormationValue =
 type CloudFormationResource = {
   Type: string;
   Properties: Record<string, CloudFormationValue>;
+  DependsOn?: string | readonly string[];
   DeletionPolicy?: 'Retain';
   UpdateReplacePolicy?: 'Retain';
 };
@@ -29,6 +30,7 @@ type CloudFormationParameter = {
   Description?: string;
   AllowedPattern?: string;
   MinLength?: number;
+  MaxLength?: number;
   NoEcho?: boolean;
 };
 
@@ -57,6 +59,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
 type RouteDeploymentBinding = {
   route: PhosApiRoute;
   function_logical_id: string;
+  log_group_logical_id: string;
   role_logical_id: string;
   integration_logical_id: string;
   route_logical_id: string;
@@ -113,6 +116,7 @@ export function bindPhosApiRouteForDeployment(route: PhosApiRoute): RouteDeploym
   return {
     route,
     function_logical_id: `Phos${routeId}Function`,
+    log_group_logical_id: `Phos${routeId}FunctionLogGroup`,
     role_logical_id: `Phos${routeId}FunctionRole`,
     integration_logical_id: `Phos${routeId}Integration`,
     route_logical_id: `Phos${routeId}Route`,
@@ -296,6 +300,7 @@ function buildLambdaEnvironment(input: {
 
 function buildLambdaPolicyStatements(input: {
   route: PhosApiRoute;
+  functionLogGroupName: string;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
   evidenceBucketNameParameter: string;
@@ -303,8 +308,10 @@ function buildLambdaPolicyStatements(input: {
   const statements: CloudFormationValue[] = [
     {
       Effect: 'Allow',
-      Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
-      Resource: sub('arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'),
+      Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+      Resource: sub(
+        `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:${input.functionLogGroupName}:*`,
+      ),
     },
     {
       Effect: 'Allow',
@@ -356,6 +363,7 @@ function buildLambdaPolicyStatements(input: {
 
 function buildLambdaExecutionRole(input: {
   route: PhosApiRoute;
+  functionLogGroupName: string;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
   evidenceBucketNameParameter: string;
@@ -386,6 +394,39 @@ function buildLambdaExecutionRole(input: {
       ],
     },
   };
+}
+
+function buildLambdaLogGroup(input: { functionLogGroupName: string }): CloudFormationResource {
+  return {
+    Type: 'AWS::Logs::LogGroup',
+    Properties: {
+      LogGroupName: sub(input.functionLogGroupName),
+      RetentionInDays: 90,
+    },
+  };
+}
+
+function stableNameHash(input: string): string {
+  let hash = 2166136261;
+  for (const character of input) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).padStart(6, '0').slice(0, 6);
+}
+
+function lambdaFunctionName(input: {
+  binding: RouteDeploymentBinding;
+  stageNameParameter: string;
+}): string {
+  const routeSlug = input.binding.function_logical_id
+    .replace(/^Phos/, '')
+    .replace(/Function$/, '')
+    .toLowerCase()
+    .slice(0, 32);
+  return `phos-\${${input.stageNameParameter}}-${routeSlug}-${stableNameHash(
+    input.binding.route.route_key,
+  )}`;
 }
 
 function buildPhosCoreDynamoDbTable(input: {
@@ -671,15 +712,23 @@ export function buildPhosApiGatewayLambdaTemplate(
   };
 
   for (const binding of bindings) {
+    const functionName = lambdaFunctionName({ binding, stageNameParameter });
+    const functionLogGroupName = `/aws/lambda/${functionName}`;
     resources[binding.role_logical_id] = buildLambdaExecutionRole({
       route: binding.route,
+      functionLogGroupName,
       dynamodbTableNameParameter,
       securityEventTableNameParameter,
       evidenceBucketNameParameter,
     });
+    resources[binding.log_group_logical_id] = buildLambdaLogGroup({
+      functionLogGroupName,
+    });
     resources[binding.function_logical_id] = {
       Type: 'AWS::Lambda::Function',
+      DependsOn: binding.log_group_logical_id,
       Properties: {
+        FunctionName: sub(functionName),
         Runtime: runtime,
         Handler: binding.cloudformation_handler,
         Role: getAtt(binding.role_logical_id, 'Arn'),
@@ -745,7 +794,12 @@ export function buildPhosApiGatewayLambdaTemplate(
     AWSTemplateFormatVersion: '2010-09-09',
     Description: 'PH-OS business HTTP API. Next.js does not host PH-OS business API handlers.',
     Parameters: {
-      [stageNameParameter]: parameter('String', { Default: 'prod', MinLength: 1 }),
+      [stageNameParameter]: parameter('String', {
+        Default: 'prod',
+        MinLength: 1,
+        MaxLength: 16,
+        AllowedPattern: '^[A-Za-z0-9-]+$',
+      }),
       [lambdaArtifactBucketParameter]: parameter('String'),
       [lambdaArtifactKeyParameter]: parameter('String'),
       [cognitoIssuerParameter]: parameter('String'),

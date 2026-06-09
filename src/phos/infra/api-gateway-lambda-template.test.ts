@@ -36,6 +36,11 @@ function resourceSubValues(resource: unknown): string[] {
   return [];
 }
 
+function readSub(value: unknown): string {
+  expect(value).toEqual(expect.objectContaining({ 'Fn::Sub': expect.any(String) }));
+  return (value as { 'Fn::Sub': string })['Fn::Sub'];
+}
+
 function coreDynamoStatementsForRoute(routeKey: string) {
   return policyStatementsForRoute(routeKey).filter((statement) =>
     resourceSubValues(statement.Resource).some((resource) =>
@@ -121,6 +126,12 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         },
       },
     });
+    expect(template.Parameters.StageName).toMatchObject({
+      Default: 'prod',
+      MinLength: 1,
+      MaxLength: 16,
+      AllowedPattern: '^[A-Za-z0-9-]+$',
+    });
   });
 
   it('creates only API Gateway JWT routes with manifest scopes', () => {
@@ -149,9 +160,18 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(functionResources).toHaveLength(PHOS_API_ROUTES.length);
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
+      const functionName = readSub(
+        template.Resources[binding.function_logical_id].Properties.FunctionName,
+      );
+      expect(functionName).toMatch(/^phos-\$\{StageName\}-[a-z0-9]+-[a-z0-9]{6}$/);
+      expect(functionName.replace('${StageName}', 'abcdefghijklmnop').length).toBeLessThanOrEqual(
+        64,
+      );
       expect(template.Resources[binding.function_logical_id]).toMatchObject({
         Type: 'AWS::Lambda::Function',
+        DependsOn: binding.log_group_logical_id,
         Properties: {
+          FunctionName: { 'Fn::Sub': functionName },
           Runtime: 'nodejs24.x',
           Handler: binding.cloudformation_handler,
           Role: { 'Fn::GetAtt': [binding.role_logical_id, 'Arn'] },
@@ -166,6 +186,34 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
               NODE_ENV: 'production',
             },
           },
+        },
+      });
+    }
+  });
+
+  it('creates managed per-route Lambda log groups with retention before runtime logging', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+    const logGroupResources = resourcesByType('AWS::Logs::LogGroup');
+
+    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 1);
+    expect(template.Resources.PhosApiAccessLogGroup).toMatchObject({
+      Type: 'AWS::Logs::LogGroup',
+      Properties: {
+        RetentionInDays: 90,
+      },
+    });
+    for (const route of PHOS_API_ROUTES) {
+      const binding = bindPhosApiRouteForDeployment(route);
+      const functionName = readSub(
+        template.Resources[binding.function_logical_id].Properties.FunctionName,
+      );
+      expect(template.Resources[binding.log_group_logical_id]).toMatchObject({
+        Type: 'AWS::Logs::LogGroup',
+        Properties: {
+          LogGroupName: {
+            'Fn::Sub': `/aws/lambda/${functionName}`,
+          },
+          RetentionInDays: 90,
         },
       });
     }
@@ -375,6 +423,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(roleResources).toHaveLength(PHOS_API_ROUTES.length);
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
+      const functionName = readSub(
+        template.Resources[binding.function_logical_id].Properties.FunctionName,
+      );
+      const policies = template.Resources[binding.role_logical_id].Properties.Policies as Array<{
+        PolicyDocument: { Statement: Array<{ Action: string[]; Resource: unknown }> };
+      }>;
+      const logStatements = policies[0].PolicyDocument.Statement.filter((statement) =>
+        statement.Action.some((action) => action.startsWith('logs:')),
+      );
       expect(template.Resources[binding.role_logical_id]).toMatchObject({
         Type: 'AWS::IAM::Role',
         Properties: {
@@ -392,7 +449,10 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
               PolicyDocument: {
                 Statement: expect.arrayContaining([
                   expect.objectContaining({
-                    Action: expect.arrayContaining(['logs:PutLogEvents']),
+                    Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                    Resource: {
+                      'Fn::Sub': `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/lambda/${functionName}:*`,
+                    },
                   }),
                   expect.objectContaining({
                     Action: expect.arrayContaining(['xray:PutTraceSegments']),
@@ -410,6 +470,20 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           ],
         },
       });
+      expect(logStatements).toEqual([
+        {
+          Effect: 'Allow',
+          Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: {
+            'Fn::Sub': `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/lambda/${functionName}:*`,
+          },
+        },
+      ]);
+      const roleJson = JSON.stringify(template.Resources[binding.role_logical_id]);
+      expect(roleJson).not.toContain('logs:CreateLogGroup');
+      expect(roleJson).not.toContain('/aws/lambda/*');
+      expect(roleJson).not.toContain('"logs:*"');
+      expect(logStatements[0]?.Resource).not.toBe('*');
     }
   });
 
