@@ -76,8 +76,11 @@ export function createDynamoVisitModeClient(input: {
                 Update: {
                   TableName: transaction.table_name,
                   Key: dynamoKey(transaction.partition_key, transaction.evidence_sort_key),
-                  UpdateExpression:
-                    'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at REMOVE ttl_epoch_seconds',
+                  UpdateExpression: `SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at${
+                    transaction.verified_evidence.s3_version_id
+                      ? ', s3_version_id = :s3_version_id'
+                      : ''
+                  } REMOVE ttl_epoch_seconds`,
                   ConditionExpression:
                     'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned AND expires_at > :updated_at',
                   ExpressionAttributeValues: {
@@ -88,6 +91,11 @@ export function createDynamoVisitModeClient(input: {
                     ':updated_at': { S: transaction.committed_at },
                     ':card_id': { S: transaction.verified_evidence.card_id },
                     ':s3_key': { S: transaction.verified_evidence.s3_key },
+                    ...(transaction.verified_evidence.s3_version_id
+                      ? {
+                          ':s3_version_id': { S: transaction.verified_evidence.s3_version_id },
+                        }
+                      : {}),
                   },
                 },
               },

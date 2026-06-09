@@ -34,10 +34,17 @@ export type EvidenceObjectVerificationInput = {
 export type EvidenceObjectTaggingInput = {
   key: string;
   allowed_key_prefix?: string;
+  version_id?: string;
+};
+
+export type EvidenceObjectVerificationResult = {
+  version_id?: string;
 };
 
 export type EvidenceObjectVerifier = {
-  verifyObject(input: EvidenceObjectVerificationInput): Promise<void>;
+  verifyObject(
+    input: EvidenceObjectVerificationInput,
+  ): Promise<EvidenceObjectVerificationResult | void>;
   markObjectVerified?(input: EvidenceObjectTaggingInput): Promise<void>;
 };
 
@@ -287,6 +294,8 @@ export function createS3EvidenceObjectVerifier(input: {
         }
         throw mismatch;
       }
+
+      return result.VersionId ? { version_id: result.VersionId } : {};
     },
 
     async markObjectVerified(expected) {
@@ -295,6 +304,7 @@ export function createS3EvidenceObjectVerifier(input: {
         new PutObjectTaggingCommand({
           Bucket: input.bucket,
           Key: expected.key,
+          ...(expected.version_id ? { VersionId: expected.version_id } : {}),
           Tagging: {
             TagSet: evidenceObjectTagSet('VERIFIED'),
           },

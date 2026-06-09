@@ -81,20 +81,23 @@ describe('S3 evidence object verifier', () => {
         ChecksumSHA256: expectedChecksum,
         ContentLength: 1024,
         ContentType: 'image/jpeg',
-          Metadata: {
-            sha256: 'a'.repeat(64),
-            size_bytes: '1024',
-          },
-          ServerSideEncryption: 'aws:kms',
-          SSEKMSKeyId: kms_key_arn,
-        };
+        Metadata: {
+          sha256: 'a'.repeat(64),
+          size_bytes: '1024',
+        },
+        ServerSideEncryption: 'aws:kms',
+        SSEKMSKeyId: kms_key_arn,
+        VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+      };
     });
     const verifier = createS3EvidenceObjectVerifier({
       client: { send },
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).resolves.toBeUndefined();
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).resolves.toEqual({
+      version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+    });
     expect(send).toHaveBeenCalledOnce();
     expect((send.mock.calls[0]?.[0] as HeadObjectCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
@@ -193,6 +196,7 @@ describe('S3 evidence object verifier', () => {
       verifier.markObjectVerified?.({
         key: expected.key,
         allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+        version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
       }),
     ).resolves.toBeUndefined();
 
@@ -200,6 +204,7 @@ describe('S3 evidence object verifier', () => {
     expect((send.mock.calls[0]?.[0] as PutObjectTaggingCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
       Key: expected.key,
+      VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
       Tagging: {
         TagSet: [
           { Key: 'phos-object-class', Value: 'evidence' },

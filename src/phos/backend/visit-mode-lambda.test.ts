@@ -53,6 +53,7 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
         evidence_id: 'evidence_1',
         card_id: 'card_1',
         s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
       },
       committed_at: '2026-06-09T00:00:00.000Z',
     });
@@ -66,7 +67,7 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
           SK: { S: 'EVIDENCE#evidence_1' },
         },
         UpdateExpression:
-          'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at REMOVE ttl_epoch_seconds',
+          'SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at, s3_version_id = :s3_version_id REMOVE ttl_epoch_seconds',
         ConditionExpression:
           'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned AND expires_at > :updated_at',
         ExpressionAttributeValues: {
@@ -74,6 +75,7 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
           ':presigned': { S: 'PRESIGNED' },
           ':card_id': { S: 'card_1' },
           ':s3_key': { S: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg' },
+          ':s3_version_id': { S: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd' },
         },
       },
     });

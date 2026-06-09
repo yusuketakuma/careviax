@@ -42,6 +42,7 @@ export type VerifiedEvidenceUpload = {
   evidence_id: string;
   card_id: string;
   s3_key: string;
+  s3_version_id?: string;
 };
 
 export type VisitModeLifecycleStore = {

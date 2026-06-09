@@ -135,7 +135,7 @@ describe('createDynamoVisitModeRepository', () => {
   it('verifies an evidence upload intent through tenant Dynamo key and S3 metadata', async () => {
     const fakeClient = client();
     const verifier = {
-      verifyObject: vi.fn(async () => undefined),
+      verifyObject: vi.fn(async () => ({ version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd' })),
     };
     const store = createDynamoVisitModeRepository(fakeClient, {
       evidence_object_verifier: verifier,
@@ -154,6 +154,7 @@ describe('createDynamoVisitModeRepository', () => {
       evidence_id: 'evidence_1',
       card_id: 'card_1',
       s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
 
     expect(fakeClient.getEvidenceIntent).toHaveBeenCalledWith({
@@ -291,6 +292,7 @@ describe('createDynamoVisitModeRepository', () => {
         evidence_id: 'evidence_1',
         card_id: 'card_1',
         s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
       },
     });
 
@@ -301,12 +303,14 @@ describe('createDynamoVisitModeRepository', () => {
           evidence_id: 'evidence_1',
           card_id: 'card_1',
           s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+          s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
         },
       }),
     );
     expect(verifier.markObjectVerified).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
     expect(verifier.markObjectVerified.mock.invocationCallOrder[0]).toBeLessThan(
       transactCommitVisitStep.mock.invocationCallOrder[0]!,
@@ -354,7 +358,12 @@ describe('createDynamoVisitModeRepository', () => {
 
   it('marks already committed evidence objects verified during idempotency replay', async () => {
     const fakeClient = client({
-      getEvidenceIntent: vi.fn(async () => evidenceIntent({ upload_status: 'VERIFIED' })),
+      getEvidenceIntent: vi.fn(async () =>
+        evidenceIntent({
+          upload_status: 'VERIFIED',
+          s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+        }),
+      ),
     });
     const verifier = {
       verifyObject: vi.fn(async () => undefined),
@@ -375,6 +384,7 @@ describe('createDynamoVisitModeRepository', () => {
     expect(verifier.markObjectVerified).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
   });
 });

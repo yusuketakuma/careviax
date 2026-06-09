@@ -124,6 +124,7 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
     size_bytes: numberAttr(item, 'size_bytes'),
     expires_at: stringAttr(item, 'expires_at'),
     upload_status: stringAttr(item, 'upload_status'),
+    s3_version_id: stringAttr(item, 's3_version_id'),
   };
   const size_bytes = intent.size_bytes;
   if (
@@ -152,6 +153,7 @@ function parseEvidenceIntent(item: DynamoItem | null, evidence_id: string) {
     sha256: intent.sha256,
     size_bytes,
     expires_at: intent.expires_at,
+    s3_version_id: intent.s3_version_id,
   };
 }
 
@@ -168,6 +170,7 @@ function parseEvidenceObjectTagTarget(item: DynamoItem | null, evidence_id: stri
     card_id: stringAttr(item, 'card_id'),
     s3_key: stringAttr(item, 's3_key'),
     upload_status: stringAttr(item, 'upload_status'),
+    s3_version_id: stringAttr(item, 's3_version_id'),
   };
   if (
     evidence.evidence_id !== evidence_id ||
@@ -186,6 +189,7 @@ function parseEvidenceObjectTagTarget(item: DynamoItem | null, evidence_id: stri
     evidence_id,
     card_id: evidence.card_id,
     s3_key: evidence.s3_key,
+    ...(evidence.s3_version_id ? { s3_version_id: evidence.s3_version_id } : {}),
   };
 }
 
@@ -246,8 +250,9 @@ async function verifyEvidenceUploadIntent(input: {
       reason: 'evidence_object_verifier_unavailable',
     });
   }
+  let verificationResult: Awaited<ReturnType<EvidenceObjectVerifier['verifyObject']>>;
   try {
-    await input.verifier.verifyObject({
+    verificationResult = await input.verifier.verifyObject({
       key: intent.s3_key,
       mime_type: intent.mime_type,
       sha256: intent.sha256,
@@ -274,6 +279,7 @@ async function verifyEvidenceUploadIntent(input: {
     evidence_id: intent.evidence_id,
     card_id: intent.card_id,
     s3_key: intent.s3_key,
+    ...(verificationResult?.version_id ? { s3_version_id: verificationResult.version_id } : {}),
   };
 }
 
@@ -304,6 +310,7 @@ async function markVerifiedEvidenceObject(input: {
   await input.verifier.markObjectVerified({
     key: input.evidence.s3_key,
     allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
+    version_id: input.evidence.s3_version_id,
   });
 }
 
