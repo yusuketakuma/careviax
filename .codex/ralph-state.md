@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-144850
+
+- current task: implement PH-OS UIUX v1.1 `Cmd/Ctrl+Enter` form save/confirm shortcuts
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/phos/ui/report/ReportDeliveryQueue.tsx`, `src/phos/ui/report/ReportDeliveryQueue.test.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, `src/phos/ui/workspace/HandoffPanel.test.tsx`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, `src/phos/ui/workspace/NextActionPanel.tsx`, `src/phos/ui/workspace/NextActionPanel.test.tsx`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`. A subagent audit was attempted but could not start because the agent thread limit was reached.
+- files changed: `src/phos/ui/report/ReportDeliveryQueue.tsx`, `src/phos/ui/report/ReportDeliveryQueue.test.tsx`, `src/phos/ui/workspace/HandoffPanel.tsx`, `src/phos/ui/workspace/HandoffPanel.test.tsx`, `src/phos/ui/handoff/HandoffQueue.tsx`, `src/phos/ui/handoff/HandoffQueue.test.tsx`, `src/phos/ui/workspace/NextActionPanel.tsx`, `src/phos/ui/workspace/NextActionPanel.test.tsx`, `src/phos/ui/visit/VisitMode.tsx`, `src/phos/ui/visit/VisitMode.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: UIUX v1.1 requires `Cmd/Ctrl+Enter` for form save/confirm, but PH-OS form surfaces still required pointer activation for report replies, report action completion, Handoff creation, Handoff return, reason-required next actions, SEND_REPORT confirmation, VisitMode draft save, and VisitMode cancellation confirmation.
+- security risks found: no backend auth, authorization, tenant boundary, persistence, report delivery mutation semantics, evidence upload, database, S3 policy, or logging behavior changed. The shortcut handlers reuse the same local gate functions as the visible buttons, keep native `disabled` out of production UI, preserve reason/note validation, and keep SEND_REPORT behind the existing explicit confirmation surface instead of executing on the first shortcut.
+- performance issues found: changes add local keydown handlers and small submit helper functions over already-rendered form state. They add no fetch, polling, route handler, Server Action, direct database access, scan, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched PH-OS shortcut/form files; focused `pnpm exec vitest run src/phos/ui/report/ReportDeliveryQueue.test.tsx src/phos/ui/workspace/HandoffPanel.test.tsx src/phos/ui/handoff/HandoffQueue.test.tsx src/phos/ui/workspace/NextActionPanel.test.tsx src/phos/ui/visit/VisitMode.test.tsx src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; `pnpm exec eslint src/phos src/app/'(phos)' --max-warnings=0`; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed; focused suite passed with 6 files / 81 tests after making Handoff create reason explicit in the test; TypeScript passed; PH-OS/app route ESLint passed with zero warnings; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 93 files / 542 tests; Next production build passed and generated 235 static pages.
+- remaining work: UIUX v1.1 still needs a route-level `/reports` integration decision because the dashboard route tree already owns `/reports`, plus broader browser-level accessibility flow proof and any richer VisitMode draft-field semantics beyond the current save/confirm shortcut.
+- next action: commit the Cmd/Ctrl+Enter shortcut slice, then continue the remaining UIUX v1.1 coverage audit.
+
 ### 20260609-143400
 
 - current task: implement PH-OS `/visit/{packet_id}` direct VisitMode route

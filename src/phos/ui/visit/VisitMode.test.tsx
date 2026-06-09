@@ -402,6 +402,60 @@ describe('VisitMode', () => {
     expect(screen.getByRole('status').textContent).toBe('一時保存しました。同期済みです');
   });
 
+  it('saves the current step with Cmd/Ctrl+Enter using the same draft gate', () => {
+    const onSaveDraft = vi.fn();
+    render(
+      <VisitMode
+        visit={visit({
+          step_completed: {
+            ...allIncomplete,
+            [VisitStep.ARRIVAL_CONFIRM]: true,
+            [VisitStep.EVIDENCE_UPLOAD]: true,
+          },
+          last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+        })}
+        onArrivalOutcome={vi.fn()}
+        onOpenStep={vi.fn()}
+        onSaveDraft={onSaveDraft}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('region', { name: '訪問モード' }), {
+      key: 'Enter',
+      metaKey: true,
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledWith(VisitStep.EVIDENCE_UPLOAD);
+    expect(screen.getByRole('status').textContent).toBe('一時保存しました。同期済みです');
+  });
+
+  it('confirms visit cancellation with Cmd/Ctrl+Enter only when a reason is present', () => {
+    const onArrivalOutcome = vi.fn();
+    render(
+      <VisitMode
+        visit={visit()}
+        onArrivalOutcome={onArrivalOutcome}
+        onOpenStep={vi.fn()}
+        onCompleteVisit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    const reason = screen.getByLabelText('キャンセル理由');
+    fireEvent.keyDown(reason, { key: 'Enter', ctrlKey: true });
+    expect(onArrivalOutcome).not.toHaveBeenCalled();
+    expect(screen.getByText('キャンセル理由を入力してください。')).toBeTruthy();
+
+    fireEvent.change(reason, { target: { value: ' 訪問予定を取り消す必要があるため ' } });
+    fireEvent.keyDown(reason, { key: 'Enter', ctrlKey: true });
+
+    expect(onArrivalOutcome).toHaveBeenCalledWith(
+      VisitArrivalOutcome.CANCELED,
+      '訪問予定を取り消す必要があるため',
+    );
+  });
+
   it('captures required and optional photo evidence only on the evidence upload step', () => {
     const onCaptureEvidence = vi.fn();
     render(

@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { CardTileDims } from '@/phos/contracts/phos_design_tokens';
 import { PhosActionLabel, PhosRejectReasonLabel } from '@/phos/contracts/phos_copy.ja';
 import { ActionCode, ActionPhase } from '@/phos/contracts/phos_contracts';
@@ -33,6 +34,10 @@ export type NextActionPanelProps = {
 const unavailableStateWord = ['dis', 'abled'].join('');
 const unavailableAriaField = ['aria', unavailableStateWord].join('-');
 
+function isConfirmShortcut(event: KeyboardEvent): boolean {
+  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+}
+
 export function NextActionPanel({
   cardId,
   nextAction,
@@ -60,8 +65,33 @@ export function NextActionPanel({
       }
     : undefined;
 
+  function executePrimary() {
+    if (!canExecute) return;
+    if (requiresSendConfirmation) {
+      setConfirmSendOpen(true);
+      return;
+    }
+    onExecute(cardId, nextAction.code, executeReason);
+  }
+
+  function confirmSend() {
+    setConfirmSendOpen(false);
+    onExecute(cardId, nextAction.code, executeReason);
+  }
+
   return (
-    <aside className="space-y-4 rounded-lg border border-border/70 bg-card p-4">
+    <aside
+      className="space-y-4 rounded-lg border border-border/70 bg-card p-4"
+      onKeyDown={(event) => {
+        if (!isConfirmShortcut(event)) return;
+        event.preventDefault();
+        if (confirmSendOpen) {
+          confirmSend();
+          return;
+        }
+        executePrimary();
+      }}
+    >
       <div>
         <h3 className="text-base font-semibold text-foreground">次の操作</h3>
         <p className="mt-1 text-sm text-muted-foreground">{actionLabel}</p>
@@ -123,14 +153,7 @@ export function NextActionPanel({
               : `${actionLabel}（実行不可）`
         }
         {...primaryUnavailableProps}
-        onClick={() => {
-          if (!canExecute) return;
-          if (requiresSendConfirmation) {
-            setConfirmSendOpen(true);
-            return;
-          }
-          onExecute(cardId, nextAction.code, executeReason);
-        }}
+        onClick={executePrimary}
       >
         <span className="inline-flex items-center justify-center gap-2">
           {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
@@ -184,10 +207,7 @@ export function NextActionPanel({
             <button
               type="button"
               className="min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
-              onClick={() => {
-                setConfirmSendOpen(false);
-                onExecute(cardId, nextAction.code, executeReason);
-              }}
+              onClick={confirmSend}
             >
               送付する
             </button>

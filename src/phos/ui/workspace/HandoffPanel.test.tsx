@@ -89,6 +89,41 @@ describe('HandoffPanel', () => {
     expect(screen.queryByText('DIFF_REVIEW')).toBeNull();
   });
 
+  it('creates handoffs with Cmd/Ctrl+Enter after required fields are filled', () => {
+    const onCreate = vi.fn();
+    render(
+      <HandoffPanel
+        handoffs={[]}
+        createSources={[{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }]}
+        createRequestedActions={[ActionCode.CONFIRM_PRESCRIPTION_DIFF]}
+        onCreate={onCreate}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '確認依頼を作成' }));
+    const summary = screen.getByLabelText('要約');
+    fireEvent.keyDown(summary, { key: 'Enter', metaKey: true });
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText('理由と要約を入力してください。')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'DIFF_REVIEW' } });
+    fireEvent.change(summary, { target: { value: ' 処方差分を確認してください。 ' } });
+    fireEvent.change(screen.getByLabelText('希望対応'), {
+      target: { value: ActionCode.CONFIRM_PRESCRIPTION_DIFF },
+    });
+    fireEvent.keyDown(summary, { key: 'Enter', metaKey: true });
+
+    expect(onCreate).toHaveBeenCalledWith({
+      reason_code: 'DIFF_REVIEW',
+      summary: '処方差分を確認してください。',
+      urgency: HandoffUrgency.NORMAL,
+      requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+    });
+  });
+
   it('can create review-only handoffs without a requested action', () => {
     const onCreate = vi.fn();
     render(
@@ -184,5 +219,32 @@ describe('HandoffPanel', () => {
     );
     expect(screen.getByText('情報の追加が必要です')).toBeTruthy();
     expect(screen.queryByText('NEED_MORE_INFO')).toBeNull();
+  });
+
+  it('returns handoffs with Cmd/Ctrl+Enter only after reason and note are filled', () => {
+    const onReturn = vi.fn();
+    render(
+      <HandoffPanel
+        handoffs={[handoff({ status: HandoffStatus.IN_REVIEW })]}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={onReturn}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '事務へ戻す' }));
+    const note = screen.getByLabelText('差し戻しメモ');
+    fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
+    expect(onReturn).not.toHaveBeenCalled();
+    expect(screen.getByText('差し戻し理由とメモを入力してください。')).toBeTruthy();
+
+    fireEvent.change(note, { target: { value: ' 施設連絡先を確認してください。 ' } });
+    fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
+
+    expect(onReturn).toHaveBeenCalledWith(
+      'handoff_1',
+      'NEED_MORE_INFO',
+      '施設連絡先を確認してください。',
+    );
   });
 });

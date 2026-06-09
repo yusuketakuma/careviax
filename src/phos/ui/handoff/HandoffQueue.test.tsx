@@ -148,4 +148,32 @@ describe('HandoffQueue', () => {
     expect(screen.getByText('情報の追加が必要です')).toBeTruthy();
     expect(screen.queryByText('NEED_MORE_INFO')).toBeNull();
   });
+
+  it('returns IN_REVIEW handoffs with Cmd/Ctrl+Enter after the note is filled', () => {
+    const onReturn = vi.fn();
+    render(
+      <HandoffQueue
+        handoffs={[handoff({ status: HandoffStatus.IN_REVIEW })]}
+        onOpenCard={vi.fn()}
+        onOpenReview={vi.fn()}
+        onResolve={vi.fn()}
+        onReturn={onReturn}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '事務へ戻す' }));
+    const note = screen.getByLabelText('差し戻しメモ');
+    fireEvent.keyDown(note, { key: 'Enter', metaKey: true });
+    expect(onReturn).not.toHaveBeenCalled();
+    expect(screen.getByText('差し戻し理由とメモを入力してください。')).toBeTruthy();
+
+    fireEvent.change(note, { target: { value: ' 施設連絡先を確認してください。 ' } });
+    fireEvent.keyDown(note, { key: 'Enter', metaKey: true });
+
+    expect(onReturn).toHaveBeenCalledWith(
+      'handoff_1',
+      'NEED_MORE_INFO',
+      '施設連絡先を確認してください。',
+    );
+  });
 });

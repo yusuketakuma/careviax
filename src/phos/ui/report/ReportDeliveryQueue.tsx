@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { ReportDeliveryStatus, type ReportDeliveryView } from '@/phos/contracts/phos_contracts';
 import { SourceRefList } from '@/phos/ui/source/SourceRefList';
 
@@ -40,6 +41,10 @@ function formatMethod(method: ReportDeliveryView['delivery_method']): string {
   }
 }
 
+function isConfirmShortcut(event: KeyboardEvent): boolean {
+  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+}
+
 export function ReportDeliveryQueue({
   deliveries,
   onOpenCard,
@@ -69,6 +74,41 @@ export function ReportDeliveryQueue({
 
   function actionDraft(delivery: ReportDeliveryView): ReportDeliveryActionDoneInput {
     return actionDrafts[delivery.delivery_id] ?? { action_note: '' };
+  }
+
+  function canRegisterReply(delivery: ReportDeliveryView): boolean {
+    const draft = replyDraft(delivery);
+    return (
+      draft.reply_summary.trim().length > 0 &&
+      (draft.result_status !== ReportDeliveryStatus.ACTION_REQUIRED ||
+        Boolean(draft.action_required_note?.trim())) &&
+      submittingDeliveryId !== delivery.delivery_id
+    );
+  }
+
+  function registerReply(delivery: ReportDeliveryView) {
+    if (!onRegisterReply || !canRegisterReply(delivery)) return;
+    const draft = replyDraft(delivery);
+    onRegisterReply(delivery, {
+      ...draft,
+      reply_summary: draft.reply_summary.trim(),
+      ...(draft.action_required_note
+        ? { action_required_note: draft.action_required_note.trim() }
+        : {}),
+    });
+  }
+
+  function canMarkActionDone(delivery: ReportDeliveryView): boolean {
+    return (
+      actionDraft(delivery).action_note.trim().length > 0 &&
+      submittingDeliveryId !== delivery.delivery_id
+    );
+  }
+
+  function markActionDone(delivery: ReportDeliveryView) {
+    if (!onMarkActionDone || !canMarkActionDone(delivery)) return;
+    const draft = actionDraft(delivery);
+    onMarkActionDone(delivery, { action_note: draft.action_note.trim() });
   }
 
   return (
@@ -107,7 +147,14 @@ export function ReportDeliveryQueue({
                 </div>
               ) : null}
               {onRegisterReply ? (
-                <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+                <div
+                  className="mt-3 space-y-2 border-t border-border/70 pt-3"
+                  onKeyDown={(event) => {
+                    if (!isConfirmShortcut(event)) return;
+                    event.preventDefault();
+                    registerReply(delivery);
+                  }}
+                >
                   <select
                     className="min-h-11 w-full rounded-md border border-border/70 bg-background px-3 text-sm"
                     value={replyDraft(delivery).result_status}
@@ -163,29 +210,8 @@ export function ReportDeliveryQueue({
                   <button
                     type="button"
                     className="min-h-11 rounded-md border border-border/70 bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:opacity-55"
-                    data-enabled={
-                      replyDraft(delivery).reply_summary.trim().length > 0 &&
-                      (replyDraft(delivery).result_status !==
-                        ReportDeliveryStatus.ACTION_REQUIRED ||
-                        Boolean(replyDraft(delivery).action_required_note?.trim())) &&
-                      submittingDeliveryId !== delivery.delivery_id
-                    }
-                    onClick={() => {
-                      const draft = replyDraft(delivery);
-                      const canSubmit =
-                        draft.reply_summary.trim().length > 0 &&
-                        (draft.result_status !== ReportDeliveryStatus.ACTION_REQUIRED ||
-                          Boolean(draft.action_required_note?.trim())) &&
-                        submittingDeliveryId !== delivery.delivery_id;
-                      if (!canSubmit) return;
-                      onRegisterReply(delivery, {
-                        ...draft,
-                        reply_summary: draft.reply_summary.trim(),
-                        ...(draft.action_required_note
-                          ? { action_required_note: draft.action_required_note.trim() }
-                          : {}),
-                      });
-                    }}
+                    data-enabled={canRegisterReply(delivery)}
+                    onClick={() => registerReply(delivery)}
                   >
                     返信を登録
                   </button>
@@ -207,7 +233,14 @@ export function ReportDeliveryQueue({
                   <p className="mt-2 text-sm text-foreground">{delivery.action_required_note}</p>
                 ) : null}
                 {onMarkActionDone ? (
-                  <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+                  <div
+                    className="mt-3 space-y-2 border-t border-border/70 pt-3"
+                    onKeyDown={(event) => {
+                      if (!isConfirmShortcut(event)) return;
+                      event.preventDefault();
+                      markActionDone(delivery);
+                    }}
+                  >
                     <textarea
                       className="min-h-20 w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
                       value={actionDraft(delivery).action_note}
@@ -223,18 +256,8 @@ export function ReportDeliveryQueue({
                     <button
                       type="button"
                       className="min-h-11 rounded-md border border-border/70 bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:opacity-55"
-                      data-enabled={
-                        actionDraft(delivery).action_note.trim().length > 0 &&
-                        submittingDeliveryId !== delivery.delivery_id
-                      }
-                      onClick={() => {
-                        const draft = actionDraft(delivery);
-                        const canSubmit =
-                          draft.action_note.trim().length > 0 &&
-                          submittingDeliveryId !== delivery.delivery_id;
-                        if (!canSubmit) return;
-                        onMarkActionDone(delivery, { action_note: draft.action_note.trim() });
-                      }}
+                      data-enabled={canMarkActionDone(delivery)}
+                      onClick={() => markActionDone(delivery)}
                     >
                       返信対応を完了
                     </button>

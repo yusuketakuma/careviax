@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Circle, CloudOff, Loader2 } from 'lucide-react';
 import { type ChangeEvent, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   PhosVisitFooterCopy,
   PhosVisitArrivalOutcomeLabel,
@@ -53,6 +54,10 @@ function stepStateLabel(input: {
 function currentStepIndex(visit: VisitModeView): number {
   const index = visit.applicable_steps.indexOf(visit.last_opened_step);
   return index >= 0 ? index : 0;
+}
+
+function isConfirmShortcut(event: KeyboardEvent): boolean {
+  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
 }
 
 export function VisitMode({
@@ -119,10 +124,36 @@ export function VisitMode({
     });
   }
 
+  function saveDraft() {
+    if (isSubmitting || !activeStep) return;
+    if (canSyncDraft) {
+      onSaveDraft?.(activeStep);
+      setSaveMessage(
+        visit.online ? PhosVisitFooterCopy.SAVED_SERVER : PhosVisitFooterCopy.SAVED_LOCAL,
+      );
+      return;
+    }
+    setSaveMessage(PhosVisitFooterCopy.SAVED_LOCAL);
+  }
+
+  function submitCancelReason() {
+    const trimmedReason = cancelReason.trim();
+    if (!trimmedReason) {
+      setCancelReasonError('キャンセル理由を入力してください。');
+      return;
+    }
+    onArrivalOutcome(VisitArrivalOutcome.CANCELED, trimmedReason);
+  }
+
   return (
     <section
       aria-labelledby="phos-visit-mode-title"
       className="space-y-4 rounded-lg border border-border/70 bg-card p-4"
+      onKeyDown={(event) => {
+        if (!isConfirmShortcut(event)) return;
+        event.preventDefault();
+        saveDraft();
+      }}
     >
       <div className="flex flex-col gap-2 border-b border-border/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -178,7 +209,15 @@ export function VisitMode({
             ))}
           </div>
           {cancelReasonOpen ? (
-            <div className="rounded-md border border-border/70 bg-background p-3">
+            <div
+              className="rounded-md border border-border/70 bg-background p-3"
+              onKeyDown={(event) => {
+                if (!isConfirmShortcut(event)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                submitCancelReason();
+              }}
+            >
               <label className="text-sm font-medium text-foreground" htmlFor="visit-cancel-reason">
                 キャンセル理由
               </label>
@@ -199,14 +238,7 @@ export function VisitMode({
               <button
                 type="button"
                 className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
-                onClick={() => {
-                  const trimmedReason = cancelReason.trim();
-                  if (!trimmedReason) {
-                    setCancelReasonError('キャンセル理由を入力してください。');
-                    return;
-                  }
-                  onArrivalOutcome(VisitArrivalOutcome.CANCELED, trimmedReason);
-                }}
+                onClick={submitCancelReason}
               >
                 理由を付けてキャンセル
               </button>
@@ -362,17 +394,7 @@ export function VisitMode({
             type="button"
             className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
             data-enabled={!isSubmitting ? 'true' : 'false'}
-            onClick={() => {
-              if (isSubmitting || !activeStep) return;
-              if (canSyncDraft) {
-                onSaveDraft?.(activeStep);
-                setSaveMessage(
-                  visit.online ? PhosVisitFooterCopy.SAVED_SERVER : PhosVisitFooterCopy.SAVED_LOCAL,
-                );
-                return;
-              }
-              setSaveMessage(PhosVisitFooterCopy.SAVED_LOCAL);
-            }}
+            onClick={saveDraft}
           >
             {PhosVisitFooterCopy.SAVE_DRAFT}
           </button>

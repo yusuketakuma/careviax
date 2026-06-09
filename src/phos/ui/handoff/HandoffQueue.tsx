@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   PhosActionLabel,
   PhosHandoffPanelCopy,
@@ -22,6 +23,10 @@ export type HandoffQueueProps = {
   onReturn(handoffId: string, reasonCode: string, note: string): void;
 };
 
+function isConfirmShortcut(event: KeyboardEvent): boolean {
+  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+}
+
 export function HandoffQueue({
   handoffs,
   onOpenCard,
@@ -40,6 +45,14 @@ export function HandoffQueue({
         handoff.status === HandoffStatus.OPEN || handoff.status === HandoffStatus.IN_REVIEW,
     ),
   );
+
+  function submitReturn(handoffId: string) {
+    if (!returnReason.trim() || !returnNote.trim()) {
+      setError(PhosHandoffPanelCopy.RETURN_REQUIRED_ERROR);
+      return;
+    }
+    onReturn(handoffId, returnReason.trim(), returnNote.trim());
+  }
 
   return (
     <section className="rounded-lg border border-border/70 bg-card px-4 py-3">
@@ -127,7 +140,14 @@ export function HandoffQueue({
                   </div>
                 ) : null}
                 {returnOpen ? (
-                  <div className="mt-3 rounded-md border border-border/70 bg-background p-3">
+                  <div
+                    className="mt-3 rounded-md border border-border/70 bg-background p-3"
+                    onKeyDown={(event) => {
+                      if (!isConfirmShortcut(event)) return;
+                      event.preventDefault();
+                      submitReturn(handoff.handoff_id);
+                    }}
+                  >
                     <label
                       className="text-sm font-medium text-foreground"
                       htmlFor="queue-return-reason"
@@ -172,13 +192,7 @@ export function HandoffQueue({
                     <button
                       type="button"
                       className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
-                      onClick={() => {
-                        if (!returnReason.trim() || !returnNote.trim()) {
-                          setError(PhosHandoffPanelCopy.RETURN_REQUIRED_ERROR);
-                          return;
-                        }
-                        onReturn(handoff.handoff_id, returnReason.trim(), returnNote.trim());
-                      }}
+                      onClick={() => submitReturn(handoff.handoff_id)}
                     >
                       {PhosHandoffPanelCopy.RETURN_SUBMIT}
                     </button>

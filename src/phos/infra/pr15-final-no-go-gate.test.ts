@@ -673,6 +673,55 @@ describe('PH-OS Final No-Go gate', () => {
     ]);
   });
 
+  it('keeps Cmd/Ctrl+Enter wired to PH-OS form save and confirmation paths', () => {
+    expectEvidence('src/phos/ui/workspace/NextActionPanel.tsx', [
+      /isConfirmShortcut/,
+      /event\.metaKey \|\| event\.ctrlKey/,
+      /executePrimary/,
+      /confirmSend/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportDeliveryQueue.tsx', [
+      /isConfirmShortcut/,
+      /registerReply\(delivery\)/,
+      /markActionDone\(delivery\)/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.tsx', [
+      /isConfirmShortcut/,
+      /submitCreate/,
+      /submitReturn\(handoff\.handoff_id\)/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.tsx', [
+      /isConfirmShortcut/,
+      /submitReturn\(handoff\.handoff_id\)/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitMode.tsx', [
+      /isConfirmShortcut/,
+      /saveDraft/,
+      /submitCancelReason/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/NextActionPanel.test.tsx', [
+      /Cmd\/Ctrl\+Enter/,
+      /without skipping confirmation/,
+    ]);
+    expectEvidence('src/phos/ui/report/ReportDeliveryQueue.test.tsx', [
+      /Cmd\/Ctrl\+Enter/,
+      /only after required fields are filled/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/HandoffPanel.test.tsx', [
+      /Cmd\/Ctrl\+Enter/,
+      /only after reason and note are filled/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/HandoffQueue.test.tsx', [
+      /Cmd\/Ctrl\+Enter/,
+      /after the note is filled/,
+    ]);
+    expectEvidence('src/phos/ui/visit/VisitMode.test.tsx', [
+      /Cmd\/Ctrl\+Enter/,
+      /same draft gate/,
+      /only when a reason is present/,
+    ]);
+  });
+
   it('keeps VisitMode photo evidence capture connected to the offline queue', () => {
     expectEvidence('src/phos/ui/visit/VisitMode.tsx', [
       /accept="image\/\*"/,

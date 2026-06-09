@@ -86,6 +86,36 @@ describe('NextActionPanel', () => {
     });
   });
 
+  it('executes reason-required actions with Cmd/Ctrl+Enter only after reason_code is selected', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={{
+          ...nextAction,
+          code: ActionCode.REJECT_SET_AUDIT,
+          label_key: 'action.reject_set_audit',
+          reason_required: true,
+        }}
+        blockers={[]}
+        onExecute={onExecute}
+      />,
+    );
+
+    const note = screen.getByLabelText('補足');
+    fireEvent.keyDown(note, { key: 'Enter', metaKey: true });
+    expect(onExecute).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: 'PHOTO_INSUFFICIENT' } });
+    fireEvent.change(note, { target: { value: ' 写真が不鮮明です。 ' } });
+    fireEvent.keyDown(note, { key: 'Enter', metaKey: true });
+
+    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.REJECT_SET_AUDIT, {
+      reason_code: 'PHOTO_INSUFFICIENT',
+      reason_note: '写真が不鮮明です。',
+    });
+  });
+
   it('does not execute server-unavailable actions', () => {
     const onExecute = vi.fn();
     render(
@@ -144,6 +174,32 @@ describe('NextActionPanel', () => {
     expect(screen.getByText('2件')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '送付する' }));
+
+    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.SEND_REPORT, undefined);
+  });
+
+  it('opens and confirms SEND_REPORT with Cmd/Ctrl+Enter without skipping confirmation', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={{
+          ...nextAction,
+          code: ActionCode.SEND_REPORT,
+          label_key: 'action.send_report',
+        }}
+        blockers={[]}
+        onExecute={onExecute}
+      />,
+    );
+
+    const panel = screen.getByRole('complementary');
+    fireEvent.keyDown(panel, { key: 'Enter', ctrlKey: true });
+
+    expect(onExecute).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: '送付前確認' })).toBeTruthy();
+
+    fireEvent.keyDown(panel, { key: 'Enter', ctrlKey: true });
 
     expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.SEND_REPORT, undefined);
   });

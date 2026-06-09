@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   PhosActionLabel,
   PhosHandoffCreateReasonLabel,
@@ -32,6 +33,10 @@ export type HandoffPanelProps = {
   onReturn(handoffId: string, reasonCode: string, note: string): void;
 };
 
+function isConfirmShortcut(event: KeyboardEvent): boolean {
+  return event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+}
+
 export function HandoffPanel({
   handoffs,
   createSources = [],
@@ -58,6 +63,32 @@ export function HandoffPanel({
   const [createError, setCreateError] = useState<string | undefined>();
   const sortedHandoffs = sortHandoffQueue(handoffs);
 
+  function submitCreate() {
+    if (!onCreate) return;
+    if (!createReason.trim() || !createSummary.trim()) {
+      setCreateError(PhosHandoffPanelCopy.CREATE_REQUIRED_ERROR);
+      return;
+    }
+    if (createSources.length === 0) {
+      setCreateError(PhosHandoffPanelCopy.SOURCE_REQUIRED_ERROR);
+      return;
+    }
+    onCreate({
+      reason_code: createReason.trim(),
+      summary: createSummary.trim(),
+      urgency: createUrgency,
+      ...(createRequestedAction ? { requested_action: createRequestedAction } : {}),
+    });
+  }
+
+  function submitReturn(handoffId: string) {
+    if (!reasonCode.trim() || !note.trim()) {
+      setError(PhosHandoffPanelCopy.RETURN_REQUIRED_ERROR);
+      return;
+    }
+    onReturn(handoffId, reasonCode.trim(), note.trim());
+  }
+
   return (
     <aside className="rounded-lg border border-border/70 bg-card p-4">
       <div className="flex items-center justify-between gap-3">
@@ -82,7 +113,14 @@ export function HandoffPanel({
             {PhosHandoffPanelCopy.CREATE_BUTTON}
           </button>
           {createOpen ? (
-            <div className="mt-3 rounded-md border border-border/70 bg-background p-3">
+            <div
+              className="mt-3 rounded-md border border-border/70 bg-background p-3"
+              onKeyDown={(event) => {
+                if (!isConfirmShortcut(event)) return;
+                event.preventDefault();
+                submitCreate();
+              }}
+            >
               <label className="text-sm font-medium text-foreground" htmlFor="handoff-reason">
                 {PhosHandoffPanelCopy.CREATE_REASON_LABEL}
               </label>
@@ -168,22 +206,7 @@ export function HandoffPanel({
               <button
                 type="button"
                 className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
-                onClick={() => {
-                  if (!createReason.trim() || !createSummary.trim()) {
-                    setCreateError(PhosHandoffPanelCopy.CREATE_REQUIRED_ERROR);
-                    return;
-                  }
-                  if (createSources.length === 0) {
-                    setCreateError(PhosHandoffPanelCopy.SOURCE_REQUIRED_ERROR);
-                    return;
-                  }
-                  onCreate({
-                    reason_code: createReason.trim(),
-                    summary: createSummary.trim(),
-                    urgency: createUrgency,
-                    ...(createRequestedAction ? { requested_action: createRequestedAction } : {}),
-                  });
-                }}
+                onClick={submitCreate}
               >
                 {PhosHandoffPanelCopy.CREATE_SUBMIT}
               </button>
@@ -267,7 +290,14 @@ export function HandoffPanel({
                 </div>
 
                 {returnOpen ? (
-                  <div className="mt-3 rounded-md border border-border/70 bg-card p-3">
+                  <div
+                    className="mt-3 rounded-md border border-border/70 bg-card p-3"
+                    onKeyDown={(event) => {
+                      if (!isConfirmShortcut(event)) return;
+                      event.preventDefault();
+                      submitReturn(handoff.handoff_id);
+                    }}
+                  >
                     <label className="text-sm font-medium text-foreground" htmlFor="return-reason">
                       {PhosHandoffPanelCopy.RETURN_REASON_LABEL}
                     </label>
@@ -309,13 +339,7 @@ export function HandoffPanel({
                     <button
                       type="button"
                       className="mt-3 min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
-                      onClick={() => {
-                        if (!reasonCode.trim() || !note.trim()) {
-                          setError(PhosHandoffPanelCopy.RETURN_REQUIRED_ERROR);
-                          return;
-                        }
-                        onReturn(handoff.handoff_id, reasonCode.trim(), note.trim());
-                      }}
+                      onClick={() => submitReturn(handoff.handoff_id)}
                     >
                       {PhosHandoffPanelCopy.RETURN_SUBMIT}
                     </button>

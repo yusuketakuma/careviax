@@ -79,6 +79,32 @@ describe('ReportDeliveryQueue', () => {
     );
   });
 
+  it('registers a reply with Cmd/Ctrl+Enter only after required fields are filled', () => {
+    const onRegisterReply = vi.fn();
+    render(
+      <ReportDeliveryQueue
+        deliveries={[delivery()]}
+        onOpenCard={vi.fn()}
+        onRegisterReply={onRegisterReply}
+      />,
+    );
+
+    const reply = screen.getByLabelText('患者 山田太郎の返信内容');
+    fireEvent.keyDown(reply, { key: 'Enter', metaKey: true });
+    expect(onRegisterReply).not.toHaveBeenCalled();
+
+    fireEvent.change(reply, { target: { value: ' 問題ありません。 ' } });
+    fireEvent.keyDown(reply, { key: 'Enter', metaKey: true });
+
+    expect(onRegisterReply).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_id: 'delivery_1' }),
+      {
+        result_status: ReportDeliveryStatus.ACTION_DONE,
+        reply_summary: '問題ありません。',
+      },
+    );
+  });
+
   it('requires an action note when reply result is action required', () => {
     const onRegisterReply = vi.fn();
     render(
@@ -136,6 +162,33 @@ describe('ReportDeliveryQueue', () => {
     });
     expect(button.getAttribute('data-enabled')).toBe('true');
     fireEvent.click(button);
+
+    expect(onMarkActionDone).toHaveBeenCalledWith(expect.any(Object), {
+      action_note: '電話で確認済み。',
+    });
+  });
+
+  it('marks action-required replies done with Cmd/Ctrl+Enter when the action note is filled', () => {
+    const onMarkActionDone = vi.fn();
+    render(
+      <ReportDeliveryQueue
+        deliveries={[
+          delivery({
+            status: ReportDeliveryStatus.ACTION_REQUIRED,
+            action_required_note: '薬剤師確認が必要です。',
+          }),
+        ]}
+        onOpenCard={vi.fn()}
+        onMarkActionDone={onMarkActionDone}
+      />,
+    );
+
+    const actionNote = screen.getByLabelText('患者 山田太郎の対応内容');
+    fireEvent.keyDown(actionNote, { key: 'Enter', ctrlKey: true });
+    expect(onMarkActionDone).not.toHaveBeenCalled();
+
+    fireEvent.change(actionNote, { target: { value: ' 電話で確認済み。 ' } });
+    fireEvent.keyDown(actionNote, { key: 'Enter', ctrlKey: true });
 
     expect(onMarkActionDone).toHaveBeenCalledWith(expect.any(Object), {
       action_note: '電話で確認済み。',
