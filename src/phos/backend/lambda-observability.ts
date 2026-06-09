@@ -2,6 +2,7 @@ import { DynamoDBClient, type DynamoDBClient as AwsDynamoDBClient } from '@aws-s
 import * as xray from 'aws-xray-sdk-core';
 import {
   createConsoleObservabilitySink,
+  lowCardinalityTraceAnnotation,
   type PhosObservabilitySink,
   type PhosSecurityEvent,
   type PhosTraceAnnotation,
@@ -58,6 +59,10 @@ export function createLambdaObservabilitySink(
               type: 'PHOS_SECURITY_EVENT_PERSIST_FAILED',
               event_type: event.event_type,
               route_key: event.route_key,
+              tenant_id: event.tenant_id ?? 'UNKNOWN',
+              user_id: event.user_id ?? 'UNKNOWN',
+              request_id: event.request_id,
+              correlation_id: event.correlation_id,
               error: error instanceof Error ? error.message : 'unknown',
             }),
           );
@@ -85,7 +90,7 @@ export function createXRayTraceAnnotationSink(
     annotateTrace(annotation: PhosTraceAnnotation) {
       const segment = getSegment();
       if (!segment) return;
-      for (const [key, value] of Object.entries(annotation)) {
+      for (const [key, value] of Object.entries(lowCardinalityTraceAnnotation(annotation))) {
         if (value === undefined) continue;
         segment.addAnnotation(key, value);
       }

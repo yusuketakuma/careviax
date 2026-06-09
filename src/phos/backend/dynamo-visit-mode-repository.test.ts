@@ -164,6 +164,10 @@ describe('createDynamoVisitModeRepository', () => {
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
     });
   });
 
@@ -203,18 +207,24 @@ describe('createDynamoVisitModeRepository', () => {
       },
     });
 
-    await expect(
-      store.verifyEvidenceUpload(ctx, {
+    let thrown: unknown;
+    await store
+      .verifyEvidenceUpload(ctx, {
         packet_id: 'packet_1',
         step: 'EVIDENCE_UPLOAD',
         visit: visit({ card_id: 'card_1' }),
         evidence_key: 'evidence_1',
-      }),
-    ).rejects.toMatchObject({
+      })
+      .catch((error: unknown) => {
+        thrown = error;
+      });
+    expect(thrown).toMatchObject({
       status: 422,
       error_code: 'ACTION_GUARD_FAILED',
       details: { reason: 'object_missing' },
     });
+    expect(JSON.stringify(thrown)).not.toContain('tenants/tenant_abc123/evidence');
+    expect(JSON.stringify(thrown)).not.toContain('evidence_1.jpg');
   });
 
   it('rejects expired evidence upload intents before S3 verification', async () => {

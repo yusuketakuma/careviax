@@ -6,6 +6,8 @@ export type PhosLogLevel = 'INFO' | 'WARNING' | 'ERROR';
 export type PhosLogEntry = {
   level: PhosLogLevel;
   message: string;
+  result?: 'SUCCESS' | 'ERROR';
+  status_code?: number;
   tenant_id: string;
   user_id: string;
   request_id: string;
@@ -21,7 +23,7 @@ export type PhosLogEntry = {
 
 const REDACTED = '[REDACTED]';
 const PHI_KEY_PATTERN =
-  /patient|name|kana|address|drug|medication|report|photo|image|body|note|summary/i;
+  /patient|name|kana|address|drug|medication|report|photo|image|body|note|summary|authorization|token|password|secret|cookie|database_url|api_key|sha256|checksum|s3_key|evidence_key|mime|content_type|content_length|size_bytes|metadata|file_name|^key$/i;
 
 export function sanitizeLogDetails(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => sanitizeLogDetails(item));
@@ -44,12 +46,16 @@ export function buildLogEntry(input: {
   card_id?: string;
   current_step?: CurrentStep;
   error_code?: string;
+  result?: 'SUCCESS' | 'ERROR';
+  status_code?: number;
   latency_ms?: number;
   details?: Record<string, unknown>;
 }): PhosLogEntry {
   return {
     level: input.level,
     message: input.message,
+    ...(input.result ? { result: input.result } : {}),
+    ...(input.status_code != null ? { status_code: input.status_code } : {}),
     tenant_id: input.ctx.tenant_id,
     user_id: input.ctx.user_id,
     request_id: input.ctx.request_id,

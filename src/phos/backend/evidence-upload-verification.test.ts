@@ -3,7 +3,7 @@ import {
   HeadObjectCommand,
   PutObjectTaggingCommand,
 } from '@aws-sdk/client-s3';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createS3EvidenceObjectVerifier } from './evidence-upload-verification';
 
 const expected = {
@@ -15,6 +15,10 @@ const expected = {
 const expectedChecksum = Buffer.from(expected.sha256, 'hex').toString('base64');
 
 describe('S3 evidence object verifier', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('heads the generated S3 key and accepts matching metadata', async () => {
     const send = vi.fn(async (command: HeadObjectCommand) => {
       expect(command).toBeInstanceOf(HeadObjectCommand);
@@ -215,6 +219,53 @@ describe('S3 evidence object verifier', () => {
       reason: 'content_length_mismatch',
     });
     expect(onCleanupFailure).toHaveBeenCalledWith({
+      mismatch_reason: 'content_length_mismatch',
+      cleanup_error: 'AccessDenied',
+    });
+  });
+
+  it('logs default cleanup failures with tenant, user, request, and correlation fields', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: expectedChecksum,
+          ContentLength: 2048,
+          ContentType: 'image/jpeg',
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '2048',
+          },
+        };
+      }
+      const error = new Error('denied');
+      error.name = 'AccessDenied';
+      throw error;
+    });
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(
+      verifier.verifyObject({
+        ...expected,
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_1',
+        request_id: 'req_1',
+        correlation_id: 'corr_1',
+      }),
+    ).rejects.toMatchObject({
+      reason: 'content_length_mismatch',
+    });
+
+    expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'WARNING',
+      message: 'phos_evidence_cleanup_failed',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
       mismatch_reason: 'content_length_mismatch',
       cleanup_error: 'AccessDenied',
     });

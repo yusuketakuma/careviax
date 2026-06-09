@@ -104,6 +104,10 @@ describe('PH-OS observability', () => {
     sink.annotateTrace({
       route_key: 'POST /cards/{card_id}/actions',
       tenant_id_hash: hashTenantId('tenant_abc123'),
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
       error_code: 'ACTION_GUARD_FAILED',
     });
 
@@ -115,6 +119,30 @@ describe('PH-OS observability', () => {
     expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
       type: 'PHOS_TRACE_ANNOTATION',
       route_key: 'POST /cards/{card_id}/actions',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+    });
+  });
+
+  it('keeps CloudWatch trace logs correlated even before tenant context exists', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const sink = createConsoleObservabilitySink();
+
+    sink.annotateTrace({
+      route_key: 'GET /cards',
+      error_code: 'TENANT_CONTEXT_MISSING',
+    });
+
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      type: 'PHOS_TRACE_ANNOTATION',
+      route_key: 'GET /cards',
+      tenant_id: 'UNKNOWN',
+      user_id: 'UNKNOWN',
+      request_id: 'UNKNOWN',
+      correlation_id: 'UNKNOWN',
+      error_code: 'TENANT_CONTEXT_MISSING',
     });
   });
 

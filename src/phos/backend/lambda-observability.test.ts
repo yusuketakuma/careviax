@@ -72,6 +72,44 @@ describe('createLambdaObservabilitySink', () => {
     expect(command?.input.TableName).toBe('phos_security_events');
   });
 
+  it('logs security event persistence failures with correlation fields', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const send = vi.fn(async () => {
+      throw new Error('ddb unavailable');
+    });
+    const sink = createLambdaObservabilitySink({
+      security_event_client: { send },
+      security_event_table_name: 'phos_security_events',
+    });
+
+    sink.recordSecurityEvent({
+      event_type: 'TENANT_BOUNDARY_REJECTED',
+      severity: 'ERROR',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      route_key: 'POST /cards/{card_id}/actions',
+      error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+    });
+    await sink.flush?.();
+
+    const logged = errorSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.type === 'PHOS_SECURITY_EVENT_PERSIST_FAILED');
+    expect(logged).toMatchObject({
+      type: 'PHOS_SECURITY_EVENT_PERSIST_FAILED',
+      event_type: 'TENANT_BOUNDARY_REJECTED',
+      route_key: 'POST /cards/{card_id}/actions',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      error: 'ddb unavailable',
+    });
+  });
+
   it('writes trace annotations through the injected Lambda trace sink', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const traceSink = { annotateTrace: vi.fn() };
@@ -97,6 +135,10 @@ describe('createLambdaObservabilitySink', () => {
     sink.annotateTrace({
       route_key: 'POST /cards/{card_id}/actions',
       tenant_id_hash: 'tenant_hash_1234',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
       action_code: 'COMPLETE_VISIT',
       error_code: 'ACTION_GUARD_FAILED',
     });
@@ -105,5 +147,9 @@ describe('createLambdaObservabilitySink', () => {
     expect(addAnnotation).toHaveBeenCalledWith('tenant_id_hash', 'tenant_hash_1234');
     expect(addAnnotation).toHaveBeenCalledWith('action_code', 'COMPLETE_VISIT');
     expect(addAnnotation).toHaveBeenCalledWith('error_code', 'ACTION_GUARD_FAILED');
+    expect(addAnnotation).not.toHaveBeenCalledWith('tenant_id', 'tenant_abc123');
+    expect(addAnnotation).not.toHaveBeenCalledWith('user_id', 'user_1');
+    expect(addAnnotation).not.toHaveBeenCalledWith('request_id', 'req_1');
+    expect(addAnnotation).not.toHaveBeenCalledWith('correlation_id', 'corr_1');
   });
 });

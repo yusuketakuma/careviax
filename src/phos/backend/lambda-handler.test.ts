@@ -51,10 +51,15 @@ describe('withTenantContext', () => {
         tenant_id: 'tenant_abc123',
       }),
     );
-    expect(observability.annotations).toContainEqual({
-      route_key: 'GET /cards',
-      tenant_id_hash: hashTenantId('tenant_abc123'),
-    });
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'GET /cards',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_001',
+        request_id: 'req_1',
+      }),
+    );
   });
 
   it('emits success EMF logs with tenant, user, request, and correlation fields', async () => {
@@ -85,9 +90,24 @@ describe('withTenantContext', () => {
       correlation_id: 'corr_1',
       RequestLatencyMs: 17,
     });
+    const completed = logSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.message === 'PH-OS lambda request completed');
+    expect(completed).toMatchObject({
+      level: 'INFO',
+      message: 'PH-OS lambda request completed',
+      result: 'SUCCESS',
+      status_code: 200,
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      route_key: 'GET /cards',
+      latency_ms: 17,
+    });
   });
 
-  it('emits pre-context EMF logs with UNKNOWN tenant/user and request correlation', async () => {
+  it('emits tenant-attributed EMF logs for valid-JWT tenant boundary rejections', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const handler = withTenantContext(async () => ({}));
@@ -105,15 +125,15 @@ describe('withTenantContext', () => {
     expect(metrics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          tenant_id: 'UNKNOWN',
-          user_id: 'UNKNOWN',
+          tenant_id: 'tenant_abc123',
+          user_id: 'user_001',
           request_id: 'req_1',
           correlation_id: 'corr_1',
           TenantBoundaryRejectedCount: 1,
         }),
         expect.objectContaining({
-          tenant_id: 'UNKNOWN',
-          user_id: 'UNKNOWN',
+          tenant_id: 'tenant_abc123',
+          user_id: 'user_001',
           request_id: 'req_1',
           correlation_id: 'corr_1',
           CrossTenantAttemptCount: 1,
@@ -150,9 +170,11 @@ describe('withTenantContext', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       JSON.stringify({
         level: 'ERROR',
-        message: 'PH-OS lambda boundary failed before tenant context',
-        tenant_id: 'UNKNOWN',
-        user_id: 'UNKNOWN',
+        message: 'PH-OS lambda boundary failed',
+        result: 'ERROR',
+        status_code: 400,
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_001',
         request_id: 'req_1',
         correlation_id: 'req_1',
         route_key: 'GET /cards',
@@ -165,11 +187,15 @@ describe('withTenantContext', () => {
         expect.objectContaining({
           name: 'TenantBoundaryRejectedCount',
           route_key: 'GET /cards',
+          tenant_id: 'tenant_abc123',
+          user_id: 'user_001',
           error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
         }),
         expect.objectContaining({
           name: 'CrossTenantAttemptCount',
           route_key: 'GET /cards',
+          tenant_id: 'tenant_abc123',
+          user_id: 'user_001',
           error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
         }),
       ]),
@@ -177,6 +203,8 @@ describe('withTenantContext', () => {
     expect(observability.security_events).toContainEqual(
       expect.objectContaining({
         event_type: 'TENANT_BOUNDARY_REJECTED',
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_001',
         request_id: 'req_1',
         route_key: 'GET /cards',
         error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
@@ -261,6 +289,71 @@ describe('withTenantContext', () => {
     expect(observability.flush).toHaveBeenCalledOnce();
   });
 
+  it('logs handler-produced error responses with result and status metadata', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const handler = withTenantContext(async ({ ctx }) => ({
+      statusCode: 403,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_id: ctx.request_id,
+        error_code: 'FORBIDDEN',
+        message_key: 'api.error.forbidden',
+      }),
+    }));
+
+    const response = await handler(validEvent);
+
+    expect(response.statusCode).toBe(403);
+    const completed = errorSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.message === 'PH-OS lambda request completed');
+    expect(completed).toMatchObject({
+      level: 'ERROR',
+      message: 'PH-OS lambda request completed',
+      result: 'ERROR',
+      status_code: 403,
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+      route_key: 'GET /cards',
+      error_code: 'FORBIDDEN',
+    });
+  });
+
+  it('logs observability flush failures with safe correlation fields', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const observability = {
+      metrics: [],
+      annotations: [],
+      security_events: [],
+      emitMetric: vi.fn(),
+      annotateTrace: vi.fn(),
+      recordSecurityEvent: vi.fn(),
+      flush: vi.fn(async () => {
+        throw new Error('flush failed');
+      }),
+    };
+    const handler = withTenantContext(async () => ({ ok: true }), { observability });
+
+    const response = await handler(validEvent);
+
+    expect(response.statusCode).toBe(200);
+    const flushFailure = errorSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.type === 'PHOS_OBSERVABILITY_FLUSH_FAILED');
+    expect(flushFailure).toMatchObject({
+      type: 'PHOS_OBSERVABILITY_FLUSH_FAILED',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+      route_key: 'GET /cards',
+      error: 'flush failed',
+    });
+  });
+
   it('returns TENANT_CONTEXT_MISSING when API Gateway claims are absent', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const handler = withTenantContext(async () => ({}));
@@ -272,9 +365,18 @@ describe('withTenantContext', () => {
       error_code: 'TENANT_CONTEXT_MISSING',
       message_key: 'api.error.access_token_required',
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"error_code":"TENANT_CONTEXT_MISSING"'),
-    );
+    expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'ERROR',
+      message: 'PH-OS lambda boundary failed before tenant context',
+      result: 'ERROR',
+      status_code: 401,
+      tenant_id: 'UNKNOWN',
+      user_id: 'UNKNOWN',
+      request_id: 'req_2',
+      correlation_id: 'req_2',
+      route_key: 'UNKNOWN_ROUTE',
+      error_code: 'TENANT_CONTEXT_MISSING',
+    });
   });
 
   it('returns VALIDATION_ERROR for malformed JSON bodies', async () => {
@@ -288,9 +390,18 @@ describe('withTenantContext', () => {
       error_code: 'VALIDATION_ERROR',
       message_key: 'api.error.invalid_json',
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"error_code":"VALIDATION_ERROR"'),
-    );
+    expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'ERROR',
+      message: 'PH-OS lambda boundary failed',
+      result: 'ERROR',
+      status_code: 400,
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+      route_key: 'GET /cards',
+      error_code: 'VALIDATION_ERROR',
+    });
   });
 
   it('logs unhandled handler failures with tenant context before returning INTERNAL_ERROR', async () => {
@@ -314,6 +425,8 @@ describe('withTenantContext', () => {
     expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
       level: 'ERROR',
       message: 'PH-OS lambda boundary failed',
+      result: 'ERROR',
+      status_code: 500,
       tenant_id: 'tenant_abc123',
       user_id: 'user_001',
       request_id: 'req_1',

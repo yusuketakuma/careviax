@@ -85,6 +85,23 @@ function parseBody(response: PhosLambdaResponse): Record<string, unknown> {
   return JSON.parse(response.body) as Record<string, unknown>;
 }
 
+function parsedConsoleLogEntries(): Record<string, unknown>[] {
+  return vi
+    .mocked(console.log)
+    .mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>);
+}
+
+function parsedConsoleErrorEntries(): Record<string, unknown>[] {
+  return vi
+    .mocked(console.error)
+    .mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>);
+}
+
+function clearConsoleSpies() {
+  vi.mocked(console.log).mockClear();
+  vi.mocked(console.error).mockClear();
+}
+
 describe('PH-OS API Gateway/Lambda runtime proof', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -95,25 +112,85 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
     vi.restoreAllMocks();
   });
 
-  it('invokes every manifest Lambda export with an API Gateway HTTP API v2 event', async () => {
+  it('invokes every manifest Lambda export and rejects external tenant_id with JWT attribution', async () => {
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       const handler = await importRouteHandler(route);
-      const response = await handler(
-        apiGatewayEventFor(route, {
-          queryStringParameters: { tenant_id: 'tenant_other' },
-        }),
-      );
-
       expect(binding.cloudformation_handler).toBe(
         `${binding.lambda_handler_file}.${binding.lambda_handler_export}`,
       );
-      expect(response.statusCode).toBe(400);
-      expect(parseBody(response)).toMatchObject({
-        error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
-        message_key: 'api.error.tenant_id_in_payload_forbidden',
-        details: { source: 'query' },
-      });
+
+      const cases: Array<{
+        source: 'query' | 'path' | 'body';
+        overrides: Partial<PhosHttpEvent>;
+      }> = [
+        {
+          source: 'query',
+          overrides: { queryStringParameters: { tenant_id: 'tenant_other' } },
+        },
+        {
+          source: 'path',
+          overrides: {
+            pathParameters: {
+              ...(pathParametersFor(route) ?? {}),
+              tenant_id: 'tenant_other',
+            },
+          },
+        },
+        ...(route.method === 'POST'
+          ? [
+              {
+                source: 'body' as const,
+                overrides: { body: JSON.stringify({ tenant_id: 'tenant_other' }) },
+              },
+            ]
+          : []),
+      ];
+
+      for (const testCase of cases) {
+        clearConsoleSpies();
+        const response = await handler(apiGatewayEventFor(route, testCase.overrides));
+
+        expect(response.statusCode).toBe(400);
+        expect(parseBody(response)).toMatchObject({
+          error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+          message_key: 'api.error.tenant_id_in_payload_forbidden',
+          details: { source: testCase.source },
+        });
+        expect(parsedConsoleErrorEntries()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              level: 'ERROR',
+              message: 'PH-OS lambda boundary failed',
+              result: 'ERROR',
+              status_code: 400,
+              tenant_id: 'tenant_abc123',
+              user_id: 'user_1',
+              request_id: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+              correlation_id: 'corr_runtime',
+              route_key: route.route_key,
+              error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
+              details: { source: testCase.source },
+            }),
+          ]),
+        );
+        expect(parsedConsoleLogEntries()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              route_key: route.route_key,
+              tenant_id: 'tenant_abc123',
+              user_id: 'user_1',
+              TenantBoundaryRejectedCount: 1,
+            }),
+            expect.objectContaining({
+              route_key: route.route_key,
+              tenant_id: 'tenant_abc123',
+              user_id: 'user_1',
+              CrossTenantAttemptCount: 1,
+            }),
+          ]),
+        );
+      }
     }
   });
 
@@ -165,6 +242,21 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
         message_key: 'api.error.forbidden',
         details: { missing_scopes: [...route.required_scopes] },
       });
+      expect(parsedConsoleErrorEntries()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: 'ERROR',
+            message: 'PH-OS lambda request completed',
+            result: 'ERROR',
+            status_code: 403,
+            tenant_id: 'tenant_abc123',
+            user_id: 'user_1',
+            route_key: route.route_key,
+            error_code: 'FORBIDDEN',
+          }),
+        ]),
+      );
+      clearConsoleSpies();
     }
   });
 
@@ -190,6 +282,21 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
           allowed_roles: [...route.allowed_roles],
         },
       });
+      expect(parsedConsoleErrorEntries()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: 'ERROR',
+            message: 'PH-OS lambda request completed',
+            result: 'ERROR',
+            status_code: 403,
+            tenant_id: 'tenant_abc123',
+            user_id: 'user_1',
+            route_key: route.route_key,
+            error_code: 'FORBIDDEN',
+          }),
+        ]),
+      );
+      clearConsoleSpies();
     }
   });
 });

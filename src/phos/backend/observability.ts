@@ -48,6 +48,10 @@ export type PhosMetric = {
 export type PhosTraceAnnotation = {
   route_key: string;
   tenant_id_hash?: string;
+  tenant_id?: string;
+  user_id?: string;
+  request_id?: string;
+  correlation_id?: string;
   action_code?: ActionCode;
   current_step?: CurrentStep;
   error_code?: string;
@@ -82,6 +86,18 @@ export type PhosObservabilitySink = {
 
 export function hashTenantId(tenant_id: string): string {
   return createHash('sha256').update(tenant_id).digest('hex').slice(0, 16);
+}
+
+export function lowCardinalityTraceAnnotation(
+  annotation: PhosTraceAnnotation,
+): PhosTraceAnnotation {
+  return {
+    route_key: annotation.route_key,
+    ...(annotation.tenant_id_hash ? { tenant_id_hash: annotation.tenant_id_hash } : {}),
+    ...(annotation.action_code ? { action_code: annotation.action_code } : {}),
+    ...(annotation.current_step ? { current_step: annotation.current_step } : {}),
+    ...(annotation.error_code ? { error_code: annotation.error_code } : {}),
+  };
 }
 
 function metricDimensions(metric: PhosMetric): Record<string, string> {
@@ -124,11 +140,15 @@ export function createConsoleObservabilitySink(
       console.log(JSON.stringify(buildCloudWatchEmbeddedMetric(metric)));
     },
     annotateTrace(annotation) {
-      options.trace_annotation_sink?.annotateTrace(annotation);
+      options.trace_annotation_sink?.annotateTrace(lowCardinalityTraceAnnotation(annotation));
       console.log(
         JSON.stringify({
           type: 'PHOS_TRACE_ANNOTATION',
-          ...annotation,
+          ...lowCardinalityTraceAnnotation(annotation),
+          tenant_id: annotation.tenant_id ?? 'UNKNOWN',
+          user_id: annotation.user_id ?? 'UNKNOWN',
+          request_id: annotation.request_id ?? 'UNKNOWN',
+          correlation_id: annotation.correlation_id ?? 'UNKNOWN',
         }),
       );
     },

@@ -27,6 +27,13 @@ describe('PH-OS structured logger', () => {
         details: {
           patient_name: '山田太郎',
           nested: { medication_name: '薬剤名' },
+          key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+          sha256: 'a'.repeat(64),
+          checksum_sha256: 'checksum',
+          mime_type: 'image/jpeg',
+          size_bytes: 1024,
+          authorization: 'Bearer secret',
+          api_key: 'secret-key',
           safe_count: 1,
         },
       }),
@@ -45,6 +52,13 @@ describe('PH-OS structured logger', () => {
       details: {
         patient_name: '[REDACTED]',
         nested: { medication_name: '[REDACTED]' },
+        key: '[REDACTED]',
+        sha256: '[REDACTED]',
+        checksum_sha256: '[REDACTED]',
+        mime_type: '[REDACTED]',
+        size_bytes: '[REDACTED]',
+        authorization: '[REDACTED]',
+        api_key: '[REDACTED]',
         safe_count: 1,
       },
     });

@@ -51,10 +51,12 @@ describe('PH-OS authorization helpers', () => {
         details: { missing_scopes: ['phos/cards.read'] },
       }),
     );
-    expect(observability.annotations).toContainEqual({
-      route_key: 'GET /cards',
-      tenant_id_hash: hashTenantId('tenant_abc123'),
-      error_code: 'FORBIDDEN',
-    });
+    expect(observability.annotations).toContainEqual(
+      expect.objectContaining({
+        route_key: 'GET /cards',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        error_code: 'FORBIDDEN',
+      }),
+    );
   });
 });

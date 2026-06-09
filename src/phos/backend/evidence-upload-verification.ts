@@ -24,6 +24,10 @@ export type EvidenceObjectVerificationInput = {
   sha256: string;
   size_bytes: number;
   allowed_key_prefix?: string;
+  tenant_id?: string;
+  user_id?: string;
+  request_id?: string;
+  correlation_id?: string;
 };
 
 export type EvidenceObjectTaggingInput = {
@@ -46,6 +50,10 @@ type EvidenceHeadObjectResult = {
 type EvidenceCleanupFailure = {
   mismatch_reason: string;
   cleanup_error: string;
+  tenant_id?: string;
+  user_id?: string;
+  request_id?: string;
+  correlation_id?: string;
 };
 
 function normalizeContentType(value: string | undefined): string {
@@ -80,6 +88,20 @@ function isMissingObjectError(error: unknown): boolean {
 function cleanupErrorName(error: unknown): string {
   if (error instanceof Error && error.name) return error.name;
   return typeof error;
+}
+
+function cleanupContextFields(
+  context: Pick<
+    EvidenceObjectVerificationInput,
+    'tenant_id' | 'user_id' | 'request_id' | 'correlation_id'
+  >,
+): Pick<EvidenceCleanupFailure, 'tenant_id' | 'user_id' | 'request_id' | 'correlation_id'> {
+  return {
+    ...(context.tenant_id ? { tenant_id: context.tenant_id } : {}),
+    ...(context.user_id ? { user_id: context.user_id } : {}),
+    ...(context.request_id ? { request_id: context.request_id } : {}),
+    ...(context.correlation_id ? { correlation_id: context.correlation_id } : {}),
+  };
 }
 
 function assertAllowedEvidenceKeyPrefix(expected: EvidenceObjectTaggingInput): void {
@@ -142,6 +164,10 @@ async function cleanupMismatchedEvidenceObject(input: {
   bucket: string;
   key: string;
   mismatch: EvidenceObjectVerificationError;
+  context: Pick<
+    EvidenceObjectVerificationInput,
+    'tenant_id' | 'user_id' | 'request_id' | 'correlation_id'
+  >;
   on_cleanup_failure: (failure: EvidenceCleanupFailure) => void;
 }): Promise<void> {
   try {
@@ -155,6 +181,7 @@ async function cleanupMismatchedEvidenceObject(input: {
     input.on_cleanup_failure({
       mismatch_reason: input.mismatch.reason,
       cleanup_error: cleanupErrorName(error),
+      ...cleanupContextFields(input.context),
     });
   }
 }
@@ -171,6 +198,10 @@ function reportCleanupFailure(
           level: 'WARNING',
           message: 'phos_evidence_cleanup_failed',
           ...event,
+          tenant_id: event.tenant_id ?? 'UNKNOWN',
+          user_id: event.user_id ?? 'UNKNOWN',
+          request_id: event.request_id ?? 'UNKNOWN',
+          correlation_id: event.correlation_id ?? 'UNKNOWN',
         }),
       );
     });
@@ -181,6 +212,10 @@ function reportCleanupFailure(
       JSON.stringify({
         level: 'WARNING',
         message: 'phos_evidence_cleanup_failure_report_failed',
+        tenant_id: failure.tenant_id ?? 'UNKNOWN',
+        user_id: failure.user_id ?? 'UNKNOWN',
+        request_id: failure.request_id ?? 'UNKNOWN',
+        correlation_id: failure.correlation_id ?? 'UNKNOWN',
         reporter_error: cleanupErrorName(error),
       }),
     );
@@ -220,6 +255,12 @@ export function createS3EvidenceObjectVerifier(input: {
             bucket: input.bucket,
             key: expected.key,
             mismatch,
+            context: {
+              tenant_id: expected.tenant_id,
+              user_id: expected.user_id,
+              request_id: expected.request_id,
+              correlation_id: expected.correlation_id,
+            },
             on_cleanup_failure: (failure) =>
               reportCleanupFailure(input.on_cleanup_failure, failure),
           });

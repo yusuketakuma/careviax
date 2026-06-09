@@ -164,17 +164,32 @@ function emitBoundaryObservability(input: {
   input.observability.annotateTrace({
     route_key,
     ...(input.ctx ? { tenant_id_hash: hashTenantId(input.ctx.tenant_id) } : {}),
+    tenant_id: input.ctx?.tenant_id,
+    user_id: input.ctx?.user_id,
+    request_id: input.request_id,
+    correlation_id: input.correlation_id,
     error_code: input.error_code,
   });
 }
 
-async function flushObservability(observability: PhosObservabilitySink): Promise<void> {
+async function flushObservability(input: {
+  observability: PhosObservabilitySink;
+  ctx?: TenantContext;
+  event: PhosHttpEvent;
+  request_id: string;
+  correlation_id: string;
+}): Promise<void> {
   try {
-    await observability.flush?.();
+    await input.observability.flush?.();
   } catch (error) {
     console.error(
       JSON.stringify({
         type: 'PHOS_OBSERVABILITY_FLUSH_FAILED',
+        tenant_id: input.ctx?.tenant_id ?? 'UNKNOWN',
+        user_id: input.ctx?.user_id ?? 'UNKNOWN',
+        request_id: input.request_id,
+        correlation_id: input.correlation_id,
+        route_key: routeKey(input.event),
         error: error instanceof Error ? error.message : 'unknown',
       }),
     );
@@ -201,7 +216,42 @@ function emitSuccessObservability(input: {
   input.observability.annotateTrace({
     route_key,
     tenant_id_hash: hashTenantId(input.ctx.tenant_id),
+    tenant_id: input.ctx.tenant_id,
+    user_id: input.ctx.user_id,
+    request_id: input.ctx.request_id,
+    correlation_id: input.ctx.correlation_id,
   });
+}
+
+function readResponseErrorCode(response: PhosLambdaResponse): string | undefined {
+  if (response.statusCode < 400) return undefined;
+  try {
+    const parsed = JSON.parse(response.body) as { error_code?: unknown };
+    return typeof parsed.error_code === 'string' ? parsed.error_code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function logRequestCompleted(input: {
+  event: PhosHttpEvent;
+  ctx: TenantContext;
+  response: PhosLambdaResponse;
+  latency_ms: number;
+}) {
+  const error_code = readResponseErrorCode(input.response);
+  logPhosEvent(
+    buildLogEntry({
+      level: input.response.statusCode >= 400 ? 'ERROR' : 'INFO',
+      message: 'PH-OS lambda request completed',
+      result: input.response.statusCode >= 400 ? 'ERROR' : 'SUCCESS',
+      status_code: input.response.statusCode,
+      ctx: input.ctx,
+      route_key: routeKey(input.event),
+      latency_ms: input.latency_ms,
+      ...(error_code ? { error_code } : {}),
+    }),
+  );
 }
 
 function logBoundaryError(input: {
@@ -210,6 +260,7 @@ function logBoundaryError(input: {
   request_id: string;
   correlation_id: string;
   error_code: string;
+  status_code: number;
   details?: Record<string, unknown>;
 }) {
   if (input.ctx) {
@@ -217,6 +268,8 @@ function logBoundaryError(input: {
       buildLogEntry({
         level: 'ERROR',
         message: 'PH-OS lambda boundary failed',
+        result: 'ERROR',
+        status_code: input.status_code,
         ctx: input.ctx,
         route_key: routeKey(input.event),
         error_code: input.error_code,
@@ -229,6 +282,8 @@ function logBoundaryError(input: {
   logPhosEvent({
     level: 'ERROR',
     message: 'PH-OS lambda boundary failed before tenant context',
+    result: 'ERROR',
+    status_code: input.status_code,
     tenant_id: 'UNKNOWN',
     user_id: 'UNKNOWN',
     request_id: input.request_id,
@@ -248,6 +303,13 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
     let ctx: TenantContext | undefined;
 
     try {
+      ctx = buildTenantContext({
+        claims: event.requestContext?.authorizer?.jwt?.claims ?? {},
+        request_id,
+        correlation_id,
+        observability,
+      });
+
       const body = parseJsonBody(event.body, request_id);
       assertTenantIdNotInExternalInput({
         request_id,
@@ -256,25 +318,31 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         path: event.pathParameters,
       });
 
-      ctx = buildTenantContext({
-        claims: event.requestContext?.authorizer?.jwt?.claims ?? {},
-        request_id,
-        correlation_id,
-        observability,
-      });
-
       const result = await handler({ event, ctx, body });
+      const latency_ms = (options.now?.() ?? new Date()).getTime() - start.getTime();
       emitSuccessObservability({
         observability,
         event,
         ctx,
-        latency_ms: (options.now?.() ?? new Date()).getTime() - start.getTime(),
+        latency_ms,
       });
       const response = withRequestIdHeader(
         isLambdaResponse(result) ? result : toLambdaJsonResponse(200, result),
         ctx.request_id,
       );
-      await flushObservability(observability);
+      logRequestCompleted({
+        event,
+        ctx,
+        response,
+        latency_ms,
+      });
+      await flushObservability({
+        observability,
+        event,
+        ctx,
+        request_id,
+        correlation_id,
+      });
       return response;
     } catch (error) {
       if (error instanceof TenantContextError) {
@@ -284,6 +352,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
           request_id,
           correlation_id,
           error_code: error.response.error_code,
+          status_code: error.status,
           details: error.response.details,
         });
         emitBoundaryObservability({
@@ -295,7 +364,13 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
           error_code: error.response.error_code,
           details: error.response.details,
         });
-        await flushObservability(observability);
+        await flushObservability({
+          observability,
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+        });
         return toErrorLambdaResponse(error.status, error.response);
       }
 
@@ -305,6 +380,7 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         request_id,
         correlation_id,
         error_code: 'INTERNAL_ERROR',
+        status_code: 500,
       });
       emitBoundaryObservability({
         observability,
@@ -314,7 +390,13 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         correlation_id,
         error_code: 'INTERNAL_ERROR',
       });
-      await flushObservability(observability);
+      await flushObservability({
+        observability,
+        event,
+        ctx,
+        request_id,
+        correlation_id,
+      });
       return toErrorLambdaResponse(500, {
         request_id,
         error_code: 'INTERNAL_ERROR',
