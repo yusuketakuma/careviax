@@ -132,6 +132,7 @@ describe('PH-OS Final No-Go gate', () => {
     });
     expect(template.Resources.PhosRestApiStage).toMatchObject({
       Type: 'AWS::ApiGateway::Stage',
+      DependsOn: expect.arrayContaining(['PhosApiAccessLogGroup', 'PhosApiExecutionLogGroup']),
       Properties: {
         TracingEnabled: true,
         AccessLogSetting: {
@@ -149,6 +150,22 @@ describe('PH-OS Final No-Go gate', () => {
     expect(template.Resources).not.toHaveProperty('PhosHttpApi');
     expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
     expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');
+    expect(template.Resources.PhosApiExecutionLogGroup).toMatchObject({
+      Type: 'AWS::Logs::LogGroup',
+      Properties: { RetentionInDays: 90 },
+    });
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).toContain(
+      'ph-os-api-gateway-cloudwatch-logs',
+    );
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      'AmazonAPIGatewayPushToCloudWatchLogs',
+    );
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      'logs:CreateLogGroup',
+    );
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      '"logs:*"',
+    );
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       expect(template.Resources[binding.route_logical_id]).toMatchObject({

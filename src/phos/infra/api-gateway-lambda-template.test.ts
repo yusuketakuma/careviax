@@ -418,10 +418,19 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const logGroupResources = resourcesByType('AWS::Logs::LogGroup');
 
-    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 1);
+    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 2);
     expect(template.Resources.PhosApiAccessLogGroup).toMatchObject({
       Type: 'AWS::Logs::LogGroup',
       Properties: {
+        RetentionInDays: 90,
+      },
+    });
+    expect(template.Resources.PhosApiExecutionLogGroup).toMatchObject({
+      Type: 'AWS::Logs::LogGroup',
+      Properties: {
+        LogGroupName: {
+          'Fn::Sub': 'API-Gateway-Execution-Logs_${PhosRestApi}/${StageName}',
+        },
         RetentionInDays: 90,
       },
     });
@@ -651,11 +660,40 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(template.Resources.PhosApiGatewayCloudWatchRole).toMatchObject({
       Type: 'AWS::IAM::Role',
       Properties: {
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs',
+        Policies: [
+          {
+            PolicyName: 'ph-os-api-gateway-cloudwatch-logs',
+            PolicyDocument: {
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                  Resource: [
+                    {
+                      'Fn::Sub':
+                        'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${PhosRestApi}/${StageName}/access:*',
+                    },
+                    {
+                      'Fn::Sub':
+                        'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:API-Gateway-Execution-Logs_${PhosRestApi}/${StageName}:*',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
         ],
       },
     });
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      'AmazonAPIGatewayPushToCloudWatchLogs',
+    );
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      'logs:CreateLogGroup',
+    );
+    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
+      '"logs:*"',
+    );
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       const functionName = readSub(

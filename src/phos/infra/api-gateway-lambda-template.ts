@@ -734,6 +734,13 @@ export function buildPhosApiGatewayLambdaTemplate(
         RetentionInDays: 90,
       },
     },
+    PhosApiExecutionLogGroup: {
+      Type: 'AWS::Logs::LogGroup',
+      Properties: {
+        LogGroupName: sub(`API-Gateway-Execution-Logs_\${PhosRestApi}/\${${stageNameParameter}}`),
+        RetentionInDays: 90,
+      },
+    },
     PhosApiGatewayCloudWatchRole: {
       Type: 'AWS::IAM::Role',
       Properties: {
@@ -747,8 +754,27 @@ export function buildPhosApiGatewayLambdaTemplate(
             },
           ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs',
+        Policies: [
+          {
+            PolicyName: 'ph-os-api-gateway-cloudwatch-logs',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                  Resource: [
+                    sub(
+                      `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/apigateway/\${PhosRestApi}/\${${stageNameParameter}}/access:*`,
+                    ),
+                    sub(
+                      `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:API-Gateway-Execution-Logs_\${PhosRestApi}/\${${stageNameParameter}}:*`,
+                    ),
+                  ],
+                },
+              ],
+            },
+          },
         ],
       },
     },
@@ -780,7 +806,12 @@ export function buildPhosApiGatewayLambdaTemplate(
     },
     PhosRestApiStage: {
       Type: 'AWS::ApiGateway::Stage',
-      DependsOn: ['PhosApiGatewayAccount', 'PhosApiAccessLogGroup', restApiDeploymentId],
+      DependsOn: [
+        'PhosApiGatewayAccount',
+        'PhosApiAccessLogGroup',
+        'PhosApiExecutionLogGroup',
+        restApiDeploymentId,
+      ],
       Properties: {
         RestApiId: ref('PhosRestApi'),
         DeploymentId: ref(restApiDeploymentId),

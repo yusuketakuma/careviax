@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-025906
+
+- current task: scope the PH-OS REST API Gateway CloudWatch logging role to managed log groups instead of the broad AWS managed policy.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`.
+- bugs found: the API Gateway CloudWatch role used the AWS managed `AmazonAPIGatewayPushToCloudWatchLogs` policy, which includes broad log-group creation powers even though the template already manages the access log group and can manage the REST execution log group.
+- security risks found: the role now has an inline policy limited to `logs:CreateLogStream` and `logs:PutLogEvents` on the explicit access log group and REST execution log group ARN patterns. The template now creates `PhosApiExecutionLogGroup` with 90-day retention and makes the stage depend on both managed log groups before attachment.
+- performance issues found: no runtime request path changed. Precreating the execution log group avoids API Gateway needing broad log-group creation permission at runtime/deploy time.
+- validation commands: Prettier for touched infra files; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-template.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused infra suite passed with 2 files / 58 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 714 tests. Next production build passed and generated 235 static pages.
+- remaining work: live API Gateway execution-log creation, CloudWatch log writes, and deployed IAM behavior remain external and unverified locally. Remaining local follow-ups include Aurora FeeRule RLS real DB harness and `NextActionView.target_endpoint` parity gate.
+- next action: commit this API Gateway logging-role least-privilege slice, then continue with Aurora FeeRule RLS proof or the `NextActionView.target_endpoint` parity gate.
+
 ### 20260610-025710
 
 - current task: add a PH-OS REST API proxy success matrix for every manifest route using injected Lambda dependencies.
