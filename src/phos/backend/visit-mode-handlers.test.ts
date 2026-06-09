@@ -154,4 +154,26 @@ describe('PH-OS visit-mode handlers', () => {
     });
     expect(repo.updateVisitStep).not.toHaveBeenCalled();
   });
+
+  it('rejects empty evidence keys before repository mutation', async () => {
+    const repo = repository();
+    const handler = createUpdateVisitStepHandler(repo);
+
+    const response = (await handler({
+      ctx: ctx(),
+      body: {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+        payload: { evidence_key: '   ' },
+      },
+      event: { pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD } },
+    })) as PhosLambdaResponse;
+
+    expect(response).toMatchObject({ statusCode: 400 });
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'payload.evidence_key' },
+    });
+    expect(repo.updateVisitStep).not.toHaveBeenCalled();
+  });
 });

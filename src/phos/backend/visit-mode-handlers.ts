@@ -8,6 +8,7 @@ import {
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
+import { parseIdempotencyKey, parsePositiveVersion, validationError } from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
@@ -16,15 +17,6 @@ import type { PhosVisitModeRepository } from './visit-mode-repository';
 function readPathParam(event: PhosHttpEvent, key: string): string | null {
   const value = event.pathParameters?.[key];
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
-function validationError(details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
 }
 
 function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
@@ -44,20 +36,6 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
     message_key: 'api.error.forbidden',
     details: error.details,
   });
-}
-
-function parsePositiveVersion(value: unknown): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw validationError({ field: 'client_version' });
-  }
-  return Number(value);
-}
-
-function parseIdempotencyKey(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw validationError({ field: 'idempotency_key' });
-  }
-  return value.trim();
 }
 
 function parseStep(event: PhosHttpEvent): VisitStep {
@@ -80,11 +58,20 @@ function parsePayload(value: unknown): VisitStepMutationPayload | undefined {
     throw validationError({ field: 'payload' });
   }
   const input = value as Partial<VisitStepMutationPayload>;
+  const reason_code = typeof input.reason_code === 'string' ? input.reason_code.trim() : undefined;
+  const reason_note = typeof input.reason_note === 'string' ? input.reason_note.trim() : undefined;
+  const evidence_key =
+    typeof input.evidence_key === 'string' ? input.evidence_key.trim() : undefined;
+
+  if (typeof input.evidence_key === 'string' && !evidence_key) {
+    throw validationError({ field: 'payload.evidence_key' });
+  }
+
   return {
     ...(input.arrival_outcome ? { arrival_outcome: input.arrival_outcome } : {}),
-    ...(typeof input.reason_code === 'string' ? { reason_code: input.reason_code.trim() } : {}),
-    ...(typeof input.reason_note === 'string' ? { reason_note: input.reason_note.trim() } : {}),
-    ...(typeof input.evidence_key === 'string' ? { evidence_key: input.evidence_key.trim() } : {}),
+    ...(reason_code ? { reason_code } : {}),
+    ...(reason_note ? { reason_note } : {}),
+    ...(evidence_key ? { evidence_key } : {}),
   };
 }
 

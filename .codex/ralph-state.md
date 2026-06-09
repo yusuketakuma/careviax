@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-162634
+
+- current task: harden PH-OS VisitMode mutation payload validation and reuse shared backend mutation parsers
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/visit-mode-handlers.ts`, `src/phos/backend/visit-mode-handlers.test.ts`, `src/phos/backend/input-validation.ts`, and recent backend validation commit context
+- files changed: `src/phos/backend/visit-mode-handlers.ts`, `src/phos/backend/visit-mode-handlers.test.ts`, `.codex/ralph-state.md`
+- bugs found: VisitMode step mutation payload parsing trimmed `payload.evidence_key` but allowed whitespace-only evidence keys to pass through as empty strings. That could let an evidence-upload step reach repository/domain code with a meaningless evidence identifier instead of failing deterministically at the API boundary.
+- security risks found: no auth, authorization, tenant boundary, route manifest, Lambda composition, database, S3 presign, frontend, or business state-transition policy changed. The handler now rejects empty evidence keys before repository mutation, omits empty optional reason fields from the normalized payload, and reuses shared idempotency/version validation from `src/phos/backend/input-validation.ts`.
+- performance issues found: no runtime performance path was broadened. The change is constant-time payload normalization and removes duplicated validation functions from the VisitMode handler; no fetch, polling, direct database access, scan, route handler, or Server Action was introduced.
+- validation commands: Prettier for touched VisitMode/backend validation files; targeted ESLint for touched VisitMode/backend validation files; `git diff --check`; focused `pnpm exec vitest run src/phos/backend/visit-mode-handlers.test.ts src/phos/backend/report-deliveries-handlers.test.ts src/phos/backend/handoffs-handlers.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed unchanged; targeted ESLint passed with zero warnings; whitespace diff check passed; focused backend handler suite passed with 3 files / 22 tests; TypeScript passed; full PH-OS Vitest passed with 94 files / 554 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. Further audit should continue across card action payload validation, claim candidate mutation parsing, fee-rule/capacity query validation reuse, repository adapter edge cases, and live API Gateway/runtime proof where available.
+- next action: commit this VisitMode validation slice, then continue backend audit from the next highest-risk PH-OS API mutation boundary.
+
 ### 20260609-162008
 
 - current task: harden PH-OS backend mutation input validation for SourceRef evidence timestamps and remove duplicated handler parsing
