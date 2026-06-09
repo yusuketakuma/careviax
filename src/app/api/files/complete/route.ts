@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, success, validationError } from '@/lib/api/response';
+import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { completeUploadedFile, FileStorageError } from '@/server/services/file-storage';
 
@@ -18,6 +19,9 @@ const completeUploadSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const disabledResponse = legacyFileApiDisabledResponse();
+  if (disabledResponse) return disabledResponse;
+
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;

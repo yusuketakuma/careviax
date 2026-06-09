@@ -3,6 +3,7 @@ import type { MemberRole } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { hasPermission } from '@/lib/auth/permissions';
 import {
   canAccessVisitScheduleAssignment,
@@ -199,6 +200,9 @@ async function canAccessReportFile(args: {
 }
 
 export async function POST(req: NextRequest) {
+  const disabledResponse = legacyFileApiDisabledResponse();
+  if (disabledResponse) return disabledResponse;
+
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;

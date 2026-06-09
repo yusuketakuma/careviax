@@ -6,6 +6,12 @@ import { PHOS_API_ROUTES } from './api-gateway-routes';
 const repoRoot = process.cwd();
 const nextApiRoot = join(repoRoot, 'src/app/api');
 const debtDocPath = join(repoRoot, 'docs/phos-legacy-api-isolation.md');
+const legacyFileRouteFiles = [
+  'src/app/api/files/presigned-upload/route.ts',
+  'src/app/api/files/complete/route.ts',
+  'src/app/api/files/[id]/download/route.ts',
+  'src/app/api/files/[id]/presigned-download/route.ts',
+] as const;
 
 function listRouteFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -116,5 +122,26 @@ describe('PH-OS legacy Next API isolation', () => {
     }
     expect(doc).toContain('API Gateway + Lambda');
     expect(doc.replace(/\s+/g, ' ')).toContain('not the canonical PH-OS v1.1 API boundary');
+  });
+
+  it('keeps PH-OS production from serving legacy file APIs beside canonical evidence upload', () => {
+    const doc = readFileSync(debtDocPath, 'utf8');
+    const boundarySource = readFileSync(
+      join(repoRoot, 'src/lib/api/legacy-file-api-boundary.ts'),
+      'utf8',
+    );
+
+    for (const routeFile of legacyFileRouteFiles) {
+      const source = readFileSync(join(repoRoot, routeFile), 'utf8');
+      expect(source, routeFile).toContain('legacyFileApiDisabledResponse');
+    }
+
+    expect(boundarySource).toContain('PHOS_DISABLE_LEGACY_FILE_API');
+    expect(boundarySource).toContain('PHOS_LEGACY_FILE_API_DISABLED');
+    expect(doc).toContain('PHOS_DISABLE_LEGACY_FILE_API=1');
+    expect(doc).toContain('/api/files/complete');
+    expect(doc).toContain('/api/files/{id}/download');
+    expect(doc).toContain('/api/files/{id}/presigned-download');
+    expect(doc).toContain('/evidence/presign-upload');
   });
 });

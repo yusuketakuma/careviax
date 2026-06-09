@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
 
 const { requireAuthContextMock, createPresignedDownloadMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -24,6 +25,8 @@ vi.mock('@/server/services/file-storage', () => ({
 }));
 
 import { GET } from './route';
+
+const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
 
 function createRequest(url = 'http://localhost/api/files/file_1/presigned-download') {
   return new NextRequest(url, {
@@ -52,6 +55,30 @@ describe('/api/files/[id]/presigned-download GET', () => {
       downloadUrl: 'https://example.com/download',
       expiresIn: 900,
     });
+  });
+
+  afterEach(() => {
+    if (originalDisableLegacyFileApi === undefined) {
+      delete process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+    } else {
+      process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = originalDisableLegacyFileApi;
+    }
+  });
+
+  it('disables the legacy route in PH-OS production before auth or presign', async () => {
+    process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = '1';
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'file_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'PHOS_LEGACY_FILE_API_DISABLED',
+    });
+    expect(requireAuthContextMock).not.toHaveBeenCalled();
+    expect(createPresignedDownloadMock).not.toHaveBeenCalled();
   });
 
   it('returns a presigned download url for the requested file', async () => {

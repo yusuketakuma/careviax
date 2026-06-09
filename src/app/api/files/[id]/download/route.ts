@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, validationError } from '@/lib/api/response';
+import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createPresignedDownload, FileStorageError } from '@/server/services/file-storage';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const disabledResponse = legacyFileApiDisabledResponse();
+  if (disabledResponse) return disabledResponse;
+
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
 

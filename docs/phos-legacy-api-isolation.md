@@ -58,6 +58,8 @@ PH-OS v1.1 API boundary and must not be called from `src/phos` UI/app code.
 - `/api/billing-evidence/stats`
 - `/api/files/presigned-upload`
 - `/api/files/complete`
+- `/api/files/{id}/download`
+- `/api/files/{id}/presigned-download`
 - `/api/prescription-intakes`
 - `/api/prescription-intakes/{id}`
 - `/api/set-plans`
@@ -74,3 +76,25 @@ a legacy dashboard route is migrated into PH-OS, add the Lambda route to
 `PHOS_API_ROUTES`, remove the obsolete Next route or keep it only as an
 explicitly documented non-PH-OS compatibility endpoint, and update the PR-15
 no-go gate.
+
+## Legacy File API Production Boundary
+
+The legacy file routes under `/api/files/*` predate PH-OS v1.1. They use the
+legacy dashboard S3 object-key layout and are compatibility endpoints only. The
+canonical PH-OS evidence upload path is API Gateway + Lambda
+`POST /evidence/presign-upload`.
+
+PH-OS production must set `PHOS_DISABLE_LEGACY_FILE_API=1`. With that setting,
+the legacy routes return `PHOS_LEGACY_FILE_API_DISABLED` before auth, database
+lookups, or S3 presign work:
+
+- `/api/files/presigned-upload`
+- `/api/files/complete`
+- `/api/files/{id}/download`
+- `/api/files/{id}/presigned-download`
+
+No `src/phos` UI, app code, Lambda handler, or contract test may call these
+legacy endpoints. If a remaining dashboard workflow needs PH-OS evidence
+semantics, migrate the workflow to `POST /evidence/presign-upload` or add a new
+Lambda-owned route to `PHOS_API_ROUTES`; do not extend the legacy Next Route
+Handlers.

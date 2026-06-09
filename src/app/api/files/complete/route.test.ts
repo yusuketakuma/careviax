@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
 
 const { requireAuthContextMock, completeUploadedFileMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -25,6 +26,8 @@ vi.mock('@/server/services/file-storage', () => ({
 }));
 
 import { POST } from './route';
+
+const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/files/complete', {
@@ -56,6 +59,32 @@ describe('/api/files/complete', () => {
       id: 'file_1',
       status: 'completed',
     });
+  });
+
+  afterEach(() => {
+    if (originalDisableLegacyFileApi === undefined) {
+      delete process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+    } else {
+      process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = originalDisableLegacyFileApi;
+    }
+  });
+
+  it('disables the legacy route in PH-OS production before auth or file state update', async () => {
+    process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = 'true';
+
+    const response = (await POST(
+      createRequest({
+        file_id: '11111111-1111-4111-8111-111111111111',
+        etag: 'etag-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'PHOS_LEGACY_FILE_API_DISABLED',
+    });
+    expect(requireAuthContextMock).not.toHaveBeenCalled();
+    expect(completeUploadedFileMock).not.toHaveBeenCalled();
   });
 
   it('completes an uploaded file', async () => {

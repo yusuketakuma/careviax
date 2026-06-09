@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
 
 const {
   requireAuthContextMock,
@@ -63,6 +64,8 @@ vi.mock('@/server/services/file-storage', () => ({
 
 import { POST } from './route';
 
+const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/files/presigned-upload', {
     method: 'POST',
@@ -117,6 +120,42 @@ describe('/api/files/presigned-upload POST', () => {
       expiresIn: 300,
       headers: { 'Content-Type': 'application/pdf' },
     });
+  });
+
+  afterEach(() => {
+    if (originalDisableLegacyFileApi === undefined) {
+      delete process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+    } else {
+      process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = originalDisableLegacyFileApi;
+    }
+  });
+
+  it('disables the legacy route in PH-OS production before auth, lookup, or presign', async () => {
+    process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = '1';
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'PHOS_LEGACY_FILE_API_DISABLED',
+    });
+    expect(requireAuthContextMock).not.toHaveBeenCalled();
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when required entity ids are missing for the purpose', async () => {
