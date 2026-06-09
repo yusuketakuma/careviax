@@ -66,15 +66,24 @@ function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {
     throw new TenantStorageKeyError('body is required');
   }
   const input = body as Partial<EvidenceUploadRequest>;
+  if ('s3_key' in input) {
+    throw new TenantStorageKeyError('client supplied s3_key is forbidden');
+  }
   return {
-    card_id: String(input.card_id ?? ''),
-    evidence_type: String(input.evidence_type ?? ''),
-    file_name: String(input.file_name ?? ''),
-    mime_type: String(input.mime_type ?? ''),
-    sha256: String(input.sha256 ?? ''),
+    card_id: parseRequiredString(input.card_id, 'card_id'),
+    evidence_type: parseRequiredString(input.evidence_type, 'evidence_type'),
+    file_name: parseRequiredString(input.file_name, 'file_name'),
+    mime_type: parseRequiredString(input.mime_type, 'mime_type'),
+    sha256: parseRequiredString(input.sha256, 'sha256').toLowerCase(),
     size_bytes: Number(input.size_bytes),
-    ...(typeof input.s3_key === 'string' ? { s3_key: input.s3_key } : {}),
   };
+}
+
+function parseRequiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new TenantStorageKeyError(`${field} is required`);
+  }
+  return value.trim();
 }
 
 function assertUploadPolicy(input: EvidenceUploadRequest, max_size_bytes: number): void {

@@ -115,6 +115,51 @@ describe('PH-OS evidence presign upload handler', () => {
     });
   });
 
+  it('trims upload metadata before building S3 keys and recording intents', async () => {
+    const fakePresigner = presigner();
+    const uploadIntentStore: EvidenceUploadIntentStore = {
+      recordUploadIntent: vi.fn(async () => {}),
+    };
+    const handler = withTenantContext(
+      createEvidencePresignUploadHandler(fakePresigner, {
+        generateEvidenceId: () => 'evidence_1',
+        upload_intent_store: uploadIntentStore,
+      }),
+    );
+
+    const response = await handler(
+      event({
+        body: JSON.stringify({
+          ...baseBody,
+          card_id: ' card_1 ',
+          evidence_type: ' PHOTO ',
+          file_name: ' photo.JPG ',
+          mime_type: ' image/jpeg ',
+          sha256: ` ${'A'.repeat(64)} `,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(fakePresigner.presignPut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+      }),
+    );
+    expect(uploadIntentStore.recordUploadIntent).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        card_id: 'card_1',
+        evidence_type: 'PHOTO',
+        s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+      }),
+    );
+  });
+
   it('rejects client supplied s3_key before presigning', async () => {
     const fakePresigner = presigner();
     const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner));
@@ -134,6 +179,48 @@ describe('PH-OS evidence presign upload handler', () => {
       request_id: 'req_1',
       error_code: 'VALIDATION_ERROR',
       details: { reason: 'client supplied s3_key is forbidden' },
+    });
+  });
+
+  it('rejects client supplied non-string s3_key before presigning', async () => {
+    const fakePresigner = presigner();
+    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner));
+
+    const response = await handler(
+      event({
+        body: JSON.stringify({
+          ...baseBody,
+          s3_key: 123,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { reason: 'client supplied s3_key is forbidden' },
+    });
+  });
+
+  it('rejects non-string upload identifiers before presigning', async () => {
+    const fakePresigner = presigner();
+    const handler = withTenantContext(createEvidencePresignUploadHandler(fakePresigner));
+
+    const response = await handler(
+      event({
+        body: JSON.stringify({
+          ...baseBody,
+          card_id: 123,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(fakePresigner.presignPut).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { reason: 'card_id is required' },
     });
   });
 

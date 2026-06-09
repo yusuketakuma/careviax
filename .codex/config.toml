@@ -1,6 +1,6 @@
 ################################################################################
 # Project-local Codex configuration
-# Codex CLI 0.134.0 loads trusted project-scoped config on top of
+# Codex CLI 0.138.0 loads trusted project-scoped config on top of
 # ~/.codex/config.toml. Keep runtime-like keys here aligned with the user-level
 # goal profile, and keep PH-OS-specific behavior in AGENTS.md.
 ################################################################################
