@@ -28,6 +28,7 @@ function createDb(overrides: Record<string, number> = {}) {
     drugInteraction: { count: count(value('drugInteraction')) },
     drugMasterImportLog: { count: count(value('drugMasterImportLog')) },
     packagingMethodMaster: { count: count(value('packagingMethodMaster')) },
+    pcaPump: { count: count(value('pcaPump')) },
     drugMaster: { count: count(value('drugMaster')) },
     drugAlertRule: { count: count(value('drugAlertRule')) },
     membership: { count: count(value('membership')) },
@@ -73,7 +74,9 @@ describe('buildAdminMasterReadinessSnapshot', () => {
     );
 
     const operations = snapshot.groups.find((group) => group.key === 'operations');
-    expect(operations?.items.find((item) => item.href === '/admin/business-holidays')).toMatchObject({
+    expect(
+      operations?.items.find((item) => item.href === '/admin/business-holidays'),
+    ).toMatchObject({
       status: 'warning',
     });
   });
@@ -85,6 +88,7 @@ describe('buildAdminMasterReadinessSnapshot', () => {
         facilityUnit: 0,
         facilityContact: 0,
         serviceArea: 1,
+        pcaPump: 1,
         externalProfessional: 2,
         prescriberInstitution: 1,
         documentDeliveryRule: 0,

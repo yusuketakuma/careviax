@@ -18,6 +18,7 @@ describe('admin master readiness catalog', () => {
         '/admin/settings',
         '/admin/pharmacy-sites',
         '/admin/facilities',
+        '/admin/pca-pumps',
         '/admin/external-professionals',
         '/admin/contact-profiles',
         '/admin/institutions',
@@ -36,16 +37,14 @@ describe('admin master readiness catalog', () => {
       SIDEBAR_ADMIN_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.href)),
     );
 
-    expect(listAdminMasterReadinessHrefs().filter((href) => !sidebarAdminHrefs.has(href))).toEqual([]);
+    expect(listAdminMasterReadinessHrefs().filter((href) => !sidebarAdminHrefs.has(href))).toEqual(
+      [],
+    );
   });
 
   it('only points to admin pages that exist in the app router', () => {
     const missingPages = listAdminMasterReadinessHrefs().filter((href) => {
-      const relativePagePath = join(
-        'src/app/(dashboard)',
-        href.replace(/^\//, ''),
-        'page.tsx',
-      );
+      const relativePagePath = join('src/app/(dashboard)', href.replace(/^\//, ''), 'page.tsx');
       return !existsSync(join(process.cwd(), relativePagePath));
     });
 

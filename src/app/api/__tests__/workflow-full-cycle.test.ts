@@ -146,9 +146,14 @@ const {
   patientFindFirstMock,
   careCaseFindFirstMock,
   pharmacistShiftFindFirstMock,
+  pharmacistShiftFindManyMock,
   prismaVisitScheduleFindFirstMock,
+  prismaVisitScheduleFindManyMock,
   inquiryRecordFindFirstMock,
   prescriptionLineFindFirstMock,
+  consentRecordFindFirstMock,
+  managementPlanFindFirstMock,
+  webhookRegistrationFindManyMock,
   careReportFindFirstMock,
   dispatchNotificationEventMock,
   upsertOperationalTaskMock,
@@ -166,11 +171,13 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler(Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        }));
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }),
+        );
     },
   ),
   requireAuthContextMock: vi.fn(),
@@ -178,9 +185,14 @@ const {
   patientFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
+  pharmacistShiftFindManyMock: vi.fn(),
   prismaVisitScheduleFindFirstMock: vi.fn(),
+  prismaVisitScheduleFindManyMock: vi.fn(),
   inquiryRecordFindFirstMock: vi.fn(),
   prescriptionLineFindFirstMock: vi.fn(),
+  consentRecordFindFirstMock: vi.fn(),
+  managementPlanFindFirstMock: vi.fn(),
+  webhookRegistrationFindManyMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -214,9 +226,20 @@ vi.mock('@/lib/db/client', () => ({
     },
     pharmacistShift: {
       findFirst: pharmacistShiftFindFirstMock,
+      findMany: pharmacistShiftFindManyMock,
     },
     visitSchedule: {
       findFirst: prismaVisitScheduleFindFirstMock,
+      findMany: prismaVisitScheduleFindManyMock,
+    },
+    consentRecord: {
+      findFirst: consentRecordFindFirstMock,
+    },
+    managementPlan: {
+      findFirst: managementPlanFindFirstMock,
+    },
+    webhookRegistration: {
+      findMany: webhookRegistrationFindManyMock,
     },
     inquiryRecord: {
       findFirst: inquiryRecordFindFirstMock,
@@ -479,6 +502,17 @@ function buildTx(state: TestState) {
       updateMany: vi.fn(async () => ({ count: 0 })), // B3/B4
     },
     prescriptionLine: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const line = state.intake?.lines.find((item) => item.id === where.id) ?? null;
+        return line
+          ? {
+              ...line,
+              packaging_instructions: null,
+              route: null,
+              updated_at: new Date('2026-03-29T09:00:00.000Z'),
+            }
+          : null;
+      }),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           if (state.intake == null) throw new Error('intake missing');
@@ -486,6 +520,21 @@ function buildTx(state: TestState) {
             line.id === where.id ? { ...line, ...data } : line,
           );
           return state.intake.lines.find((line) => line.id === where.id);
+        },
+      ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (state.intake == null) return { count: 0 };
+          const lineIndex = state.intake.lines.findIndex((line) => line.id === where.id);
+          if (lineIndex < 0) return { count: 0 };
+
+          const line = state.intake.lines[lineIndex];
+          if (!line) return { count: 0 };
+          state.intake.lines[lineIndex] = {
+            ...line,
+            ...data,
+          };
+          return { count: 1 };
         },
       ),
     },
@@ -511,6 +560,29 @@ function buildTx(state: TestState) {
           };
           return state.inquiry;
         },
+      ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (state.inquiry == null || state.inquiry.id !== where.id) return { count: 0 };
+          state.inquiry = {
+            ...state.inquiry,
+            ...(data.result !== undefined
+              ? {
+                  result: data.result as NonNullable<TestState['inquiry']>['result'],
+                }
+              : {}),
+            ...(data.change_detail !== undefined
+              ? { change_detail: data.change_detail as string | null }
+              : {}),
+            ...(data.resolved_at !== undefined
+              ? { resolved_at: data.resolved_at as Date | null }
+              : {}),
+          };
+          return { count: 1 };
+        },
+      ),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+        state.inquiry != null && state.inquiry.id === where.id ? state.inquiry : null,
       ),
       count: vi.fn(async () => 0),
     },
@@ -671,6 +743,7 @@ function buildTx(state: TestState) {
           visit_deadline_date: state.visitSchedule.visit_deadline_date,
         };
       }),
+      findMany: vi.fn(async () => []),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           if (where.id === state.visitSchedule.id) {
@@ -717,6 +790,12 @@ function buildTx(state: TestState) {
       ),
     },
     visitRecord: {
+      findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
+        if (state.visitRecord == null || state.visitRecord.id !== where.id) {
+          throw new Error('visit record missing');
+        }
+        return { structured_soap: null };
+      }),
       findFirst: vi.fn(async ({ where }: { where: { schedule_id?: string; id?: string } }) => {
         if (where.schedule_id) {
           if (state.visitRecord == null || where.schedule_id !== state.visitRecord.schedule_id) {
@@ -938,6 +1017,20 @@ describe('workflow full-cycle integration', () => {
     pharmacistShiftFindFirstMock.mockResolvedValue({
       site_id: 'site_1',
     });
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      {
+        date: new Date('2026-03-30T00:00:00.000Z'),
+        site_id: 'site_1',
+        available: true,
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+      },
+    ]);
+    consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
+    managementPlanFindFirstMock.mockResolvedValue({
+      id: 'plan_1',
+      next_review_date: null,
+    });
 
     prismaVisitScheduleFindFirstMock.mockImplementation(
       async ({ where }: { where: { id: string; org_id: string } }) =>
@@ -951,6 +1044,7 @@ describe('workflow full-cycle integration', () => {
             }
           : null,
     );
+    prismaVisitScheduleFindManyMock.mockResolvedValue([]);
 
     inquiryRecordFindFirstMock.mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (state.inquiry == null || where.id !== state.inquiry.id) return null;
@@ -960,6 +1054,10 @@ describe('workflow full-cycle integration', () => {
         line_id: state.inquiry.line_id,
         issue_id: state.inquiry.issue_id,
         result: state.inquiry.result,
+        updated_at: new Date('2026-03-29T09:00:00.000Z'),
+        cycle: {
+          overall_status: state.cycle.overall_status,
+        },
       };
     });
     prescriptionLineFindFirstMock.mockImplementation(
@@ -996,6 +1094,7 @@ describe('workflow full-cycle integration', () => {
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
     checkDispenseAlertsMock.mockResolvedValue([]);
     sendCareReportEmailMock.mockResolvedValue({ messageId: 'ses-message-1', stub: false });
+    webhookRegistrationFindManyMock.mockResolvedValue([]);
 
     generateReportsFromVisitMock.mockImplementation(
       async (_orgId: string, _userId: string, visitRecordId: string, reportType?: string) => {

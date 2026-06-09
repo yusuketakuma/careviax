@@ -13,8 +13,8 @@ describe('visit-schedule-shift', () => {
         {
           site_id: 'site_1',
           available: true,
-          available_from: new Date('1970-01-01T09:00:00'),
-          available_to: new Date('1970-01-01T18:00:00'),
+          available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0)),
+          available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
         },
         '09:30',
         '10:30',
@@ -25,8 +25,8 @@ describe('visit-schedule-shift', () => {
         {
           site_id: 'site_1',
           available: true,
-          available_from: new Date('1970-01-01T09:00:00'),
-          available_to: new Date('1970-01-01T18:00:00'),
+          available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0)),
+          available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
         },
         '08:30',
         '09:30',

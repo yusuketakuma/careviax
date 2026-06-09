@@ -32,6 +32,10 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PatientMcsMessage',
     'ManagementPlan',
     'VisitRecord',
+    'PcaPump',
+    'PcaPumpRental',
+    'PcaPumpRentalAccessory',
+    'PcaPumpMaintenanceEvent',
   ],
   partial: [
     'BillingCandidate',
@@ -79,6 +83,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'VisitScheduleProposal',
     'QrScanDraft',
     'JahisSupplementalRecord',
+    'VisitVehicleResource',
   ],
   backend_only: [
     'IntegrationJob',

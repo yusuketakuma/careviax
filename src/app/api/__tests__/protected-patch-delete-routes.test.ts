@@ -25,6 +25,9 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
     visit_deadline_date: null,
     escalation_reason: null,
     finalized_schedule_id: null,
+    cycle: {
+      overall_status: 'ready_to_dispense',
+    },
     schedule: {
       case_id: 'case_1',
       pharmacist_id: 'user_1',
@@ -40,6 +43,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
   const createModel = () => ({
     findMany: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn().mockResolvedValue(createRecord()),
+    findUnique: vi.fn().mockResolvedValue(createRecord()),
     count: vi.fn().mockResolvedValue(0),
     groupBy: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue(createRecord()),

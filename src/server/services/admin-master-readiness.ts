@@ -32,6 +32,7 @@ type DbClient = {
   membership: CountDelegate<'membership'>;
   notificationRule: CountDelegate<'notificationRule'>;
   packagingMethodMaster: CountDelegate<'packagingMethodMaster'>;
+  pcaPump: CountDelegate<'pcaPump'>;
   pharmacistCredential: CountDelegate<'pharmacistCredential'>;
   pharmacistShift: CountDelegate<'pharmacistShift'>;
   pharmacistShiftTemplate: CountDelegate<'pharmacistShiftTemplate'>;
@@ -55,10 +56,7 @@ const countResolvers: Record<string, CountResolver> = {
   '/admin/settings': (db, orgId) =>
     db.setting.count({
       where: {
-        OR: [
-          { scope_id: orgId },
-          { scope_id: null },
-        ],
+        OR: [{ scope_id: orgId }, { scope_id: null }],
       },
     }),
   '/admin/pharmacy-sites': (db, orgId) => db.pharmacySite.count({ where: { org_id: orgId } }),
@@ -75,7 +73,9 @@ const countResolvers: Record<string, CountResolver> = {
   '/admin/service-areas': (db, orgId) => db.serviceArea.count({ where: { org_id: orgId } }),
   '/admin/facility-standards': (db, orgId) =>
     db.facilityStandardRegistration.count({ where: { org_id: orgId } }),
-  '/admin/institutions': (db, orgId) => db.prescriberInstitution.count({ where: { org_id: orgId } }),
+  '/admin/institutions': (db, orgId) =>
+    db.prescriberInstitution.count({ where: { org_id: orgId } }),
+  '/admin/pca-pumps': (db, orgId) => db.pcaPump.count({ where: { org_id: orgId } }),
   '/admin/external-professionals': (db, orgId) =>
     db.externalProfessional.count({ where: { org_id: orgId } }),
   '/admin/contact-profiles': async (db, orgId) => {
@@ -144,7 +144,9 @@ const issueResolvers: Partial<Record<string, IssueResolver>> = {
       }),
     ]);
     return [
-      ...(unitCount === 0 ? ['施設ユニットが未登録です。複数名同時訪問の順路確認に影響します。'] : []),
+      ...(unitCount === 0
+        ? ['施設ユニットが未登録です。複数名同時訪問の順路確認に影響します。']
+        : []),
       ...(contactCount === 0 ? ['施設連絡先が未登録です。訪問前後の連絡導線に影響します。'] : []),
       ...(addressMissingCount > 0 ? [`住所未登録の施設が${addressMissingCount}件あります。`] : []),
     ];
@@ -193,27 +195,31 @@ const issueResolvers: Partial<Record<string, IssueResolver>> = {
   },
   '/admin/document-templates': async (db, orgId, counts) => {
     if ((counts['/admin/document-templates'] ?? 0) === 0) return [];
-    const [careReportTemplateCount, consentTemplateCount, physicianRuleCount, careManagerRuleCount] =
-      await Promise.all([
-        db.template.count({ where: { org_id: orgId, template_type: 'care_report' } }),
-        db.template.count({ where: { org_id: orgId, template_type: 'consent_form' } }),
-        db.documentDeliveryRule.count({
-          where: {
-            org_id: orgId,
-            document_type: 'care_report',
-            target_role: 'physician',
-            is_active: true,
-          },
-        }),
-        db.documentDeliveryRule.count({
-          where: {
-            org_id: orgId,
-            document_type: 'care_report',
-            target_role: 'care_manager',
-            is_active: true,
-          },
-        }),
-      ]);
+    const [
+      careReportTemplateCount,
+      consentTemplateCount,
+      physicianRuleCount,
+      careManagerRuleCount,
+    ] = await Promise.all([
+      db.template.count({ where: { org_id: orgId, template_type: 'care_report' } }),
+      db.template.count({ where: { org_id: orgId, template_type: 'consent_form' } }),
+      db.documentDeliveryRule.count({
+        where: {
+          org_id: orgId,
+          document_type: 'care_report',
+          target_role: 'physician',
+          is_active: true,
+        },
+      }),
+      db.documentDeliveryRule.count({
+        where: {
+          org_id: orgId,
+          document_type: 'care_report',
+          target_role: 'care_manager',
+          is_active: true,
+        },
+      }),
+    ]);
     return [
       ...(careReportTemplateCount === 0 ? ['報告書テンプレートが未登録です。'] : []),
       ...(consentTemplateCount === 0 ? ['同意書テンプレートが未登録です。'] : []),
@@ -242,9 +248,13 @@ const issueResolvers: Partial<Record<string, IssueResolver>> = {
       db.drugMasterImportLog.count({ where: { status: 'completed' } }),
     ]);
     return [
-      ...(packageInsertCount === 0 ? ['添付文書情報が未取込です。監査・訪問前確認に影響します。'] : []),
+      ...(packageInsertCount === 0
+        ? ['添付文書情報が未取込です。監査・訪問前確認に影響します。']
+        : []),
       ...(interactionCount === 0 ? ['相互作用マスターが未取込です。処方監査に影響します。'] : []),
-      ...(completedImportCount === 0 ? ['医薬品マスターの取込完了履歴がありません。最新性を確認してください。'] : []),
+      ...(completedImportCount === 0
+        ? ['医薬品マスターの取込完了履歴がありません。最新性を確認してください。']
+        : []),
     ];
   },
   '/admin/notification-settings': async (db, orgId, counts) => {
@@ -254,7 +264,9 @@ const issueResolvers: Partial<Record<string, IssueResolver>> = {
       db.escalationRule.count({ where: { org_id: orgId, is_active: true } }),
     ]);
     return [
-      ...(notificationRuleCount === 0 ? ['通知ルールが未登録です。訪問・報告の滞留通知に影響します。'] : []),
+      ...(notificationRuleCount === 0
+        ? ['通知ルールが未登録です。訪問・報告の滞留通知に影響します。']
+        : []),
       ...(escalationRuleCount === 0
         ? ['エスカレーションルールが未登録です。滞留時の管理者通知に影響します。']
         : []),
@@ -263,7 +275,9 @@ const issueResolvers: Partial<Record<string, IssueResolver>> = {
   '/admin/shifts': async (db, orgId, counts) => {
     if ((counts['/admin/shifts'] ?? 0) === 0) return [];
     const templateCount = await db.pharmacistShiftTemplate.count({ where: { org_id: orgId } });
-    return templateCount === 0 ? ['定型シフトが未登録です。翌月以降の訪問担当枠作成に影響します。'] : [];
+    return templateCount === 0
+      ? ['定型シフトが未登録です。翌月以降の訪問担当枠作成に影響します。']
+      : [];
   },
 };
 
@@ -310,10 +324,9 @@ function aggregateStatus(items: AdminMasterReadinessItemSummary[]): AdminMasterR
 
 async function buildCountMap(db: DbClient, orgId: string): Promise<CountMap> {
   const entries = await Promise.all(
-    Object.entries(countResolvers).map(async ([href, resolver]) => [
-      href,
-      await resolver(db, orgId),
-    ] as const),
+    Object.entries(countResolvers).map(
+      async ([href, resolver]) => [href, await resolver(db, orgId)] as const,
+    ),
   );
 
   return Object.fromEntries(entries);
@@ -324,10 +337,7 @@ async function buildIssueMap(db: DbClient, orgId: string, counts: CountMap): Pro
     (entry): entry is [string, IssueResolver] => typeof entry[1] === 'function',
   );
   const entries = await Promise.all(
-    resolvers.map(async ([href, resolver]) => [
-      href,
-      await resolver(db, orgId, counts),
-    ] as const),
+    resolvers.map(async ([href, resolver]) => [href, await resolver(db, orgId, counts)] as const),
   );
 
   return Object.fromEntries(entries);
