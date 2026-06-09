@@ -82,6 +82,7 @@ describe('PH-OS evidence presign upload handler', () => {
 
     const response = await presigner.presignPut({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      tenant_id: 'tenant_abc123',
       mime_type: 'image/jpeg',
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
@@ -97,7 +98,8 @@ describe('PH-OS evidence presign upload handler', () => {
         'x-amz-server-side-encryption': 'aws:kms',
         'x-amz-server-side-encryption-aws-kms-key-id':
           'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555',
-        'x-amz-tagging': 'phos-object-class=evidence&phos-upload-status=PRESIGNED',
+        'x-amz-tagging':
+          'phos-object-class=evidence&phos-upload-status=PRESIGNED&phos-tenant-id=tenant_abc123',
       },
       expires_in_seconds: 120,
     });
@@ -122,6 +124,7 @@ describe('PH-OS evidence presign upload handler', () => {
     expect(response.statusCode).toBe(200);
     expect(fakePresigner.presignPut).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      tenant_id: 'tenant_abc123',
       mime_type: 'image/jpeg',
       sha256: 'a'.repeat(64),
       size_bytes: 1024,

@@ -27,6 +27,7 @@ export const EVIDENCE_UPLOAD_DEFAULT_EXPIRES_IN_SECONDS = 300;
 
 export type EvidenceUploadPresignInput = {
   key: string;
+  tenant_id: string;
   mime_type: string;
   sha256: string;
   size_bytes: number;
@@ -213,6 +214,7 @@ export function createEvidencePresignUploadHandler(
 
       const presigned = await presigner.presignPut({
         key: s3_key,
+        tenant_id: ctx.tenant_id,
         mime_type: request.mime_type,
         sha256: request.sha256,
         size_bytes: request.size_bytes,
@@ -285,7 +287,7 @@ export function createS3EvidenceUploadPresigner(input: {
         Key: request.key,
         ContentType: request.mime_type,
         ChecksumSHA256: sha256HexToBase64(request.sha256),
-        Tagging: evidenceObjectTaggingHeader('PRESIGNED'),
+        Tagging: evidenceObjectTaggingHeader('PRESIGNED', request.tenant_id),
         ServerSideEncryption: 'aws:kms',
         SSEKMSKeyId: kms_key_arn,
         Metadata: {
@@ -303,7 +305,7 @@ export function createS3EvidenceUploadPresigner(input: {
           'x-amz-checksum-sha256': sha256HexToBase64(request.sha256),
           'x-amz-meta-sha256': request.sha256,
           'x-amz-meta-size_bytes': String(request.size_bytes),
-          'x-amz-tagging': evidenceObjectTaggingHeader('PRESIGNED'),
+          'x-amz-tagging': evidenceObjectTaggingHeader('PRESIGNED', request.tenant_id),
           'x-amz-server-side-encryption': 'aws:kms',
           'x-amz-server-side-encryption-aws-kms-key-id': kms_key_arn,
         },

@@ -763,6 +763,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
                 },
               },
             }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutTenantTag',
+              Action: 's3:PutObject',
+              Condition: {
+                StringNotLike: {
+                  's3:RequestObjectTag/phos-tenant-id': '*',
+                },
+              },
+            }),
           ]),
         },
       },
@@ -944,6 +953,9 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain('s3:GetObject');
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
+      's3:GetObjectTagging',
+    );
+    expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
       's3:DeleteObject',
     );
     expect(JSON.stringify(template.Resources[visitStep.role_logical_id])).toContain(
@@ -1023,6 +1035,15 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       ).toHaveLength(1);
       if (route.route_key !== 'GET /fee-rules') {
         expect(coreDynamoStatementsForRoute(route.route_key), route.route_key).not.toHaveLength(0);
+        for (const statement of coreDynamoStatementsForRoute(route.route_key)) {
+          expect(statement, route.route_key).toMatchObject({
+            Condition: {
+              'ForAllValues:StringLike': {
+                'dynamodb:LeadingKeys': 'TENANT#*',
+              },
+            },
+          });
+        }
       }
     }
   });

@@ -309,6 +309,7 @@ describe('createDynamoVisitModeRepository', () => {
     );
     expect(verifier.markObjectVerified).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      tenant_id: 'tenant_abc123',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
@@ -383,6 +384,7 @@ describe('createDynamoVisitModeRepository', () => {
     });
     expect(verifier.markObjectVerified).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      tenant_id: 'tenant_abc123',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });

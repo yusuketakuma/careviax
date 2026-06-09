@@ -1,10 +1,11 @@
 import {
   DeleteObjectCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   PutObjectTaggingCommand,
   type S3Client,
 } from '@aws-sdk/client-s3';
-import { evidenceObjectTagSet } from './evidence-object-tags';
+import { EVIDENCE_TENANT_ID_TAG, evidenceObjectTagSet } from './evidence-object-tags';
 
 export class EvidenceObjectVerificationError extends Error {
   readonly reason: string;
@@ -25,7 +26,7 @@ export type EvidenceObjectVerificationInput = {
   size_bytes: number;
   kms_key_arn: string;
   allowed_key_prefix?: string;
-  tenant_id?: string;
+  tenant_id: string;
   user_id?: string;
   request_id?: string;
   correlation_id?: string;
@@ -33,6 +34,7 @@ export type EvidenceObjectVerificationInput = {
 
 export type EvidenceObjectTaggingInput = {
   key: string;
+  tenant_id: string;
   allowed_key_prefix?: string;
   version_id?: string;
 };
@@ -56,6 +58,10 @@ type EvidenceHeadObjectResult = {
   ServerSideEncryption?: string;
   SSEKMSKeyId?: string;
   VersionId?: string;
+};
+
+type EvidenceObjectTaggingResult = {
+  TagSet?: { Key?: string; Value?: string }[];
 };
 
 type EvidenceCleanupFailure = {
@@ -183,6 +189,20 @@ function findVerificationMismatch(
   return undefined;
 }
 
+function findTenantTagMismatch(
+  result: EvidenceObjectTaggingResult,
+  expected: EvidenceObjectVerificationInput,
+): EvidenceObjectVerificationError | undefined {
+  const tenantTag = result.TagSet?.find((tag) => tag.Key === EVIDENCE_TENANT_ID_TAG)?.Value;
+  if (tenantTag !== expected.tenant_id) {
+    return new EvidenceObjectVerificationError('tenant_tag_mismatch', {
+      expected: expected.tenant_id,
+      actual: tenantTag ?? null,
+    });
+  }
+  return undefined;
+}
+
 async function cleanupMismatchedEvidenceObject(input: {
   client: Pick<S3Client, 'send'>;
   bucket: string;
@@ -273,7 +293,17 @@ export function createS3EvidenceObjectVerifier(input: {
         throw error;
       }
 
-      const mismatch = findVerificationMismatch(result, expected);
+      let mismatch = findVerificationMismatch(result, expected);
+      if (!mismatch) {
+        const tagResult = (await input.client.send(
+          new GetObjectTaggingCommand({
+            Bucket: input.bucket,
+            Key: expected.key,
+            ...(result.VersionId ? { VersionId: result.VersionId } : {}),
+          }),
+        )) as EvidenceObjectTaggingResult;
+        mismatch = findTenantTagMismatch(tagResult, expected);
+      }
       if (mismatch) {
         if (input.cleanup_mismatched_object !== false) {
           await cleanupMismatchedEvidenceObject({
@@ -306,7 +336,7 @@ export function createS3EvidenceObjectVerifier(input: {
           Key: expected.key,
           ...(expected.version_id ? { VersionId: expected.version_id } : {}),
           Tagging: {
-            TagSet: evidenceObjectTagSet('VERIFIED'),
+            TagSet: evidenceObjectTagSet('VERIFIED', expected.tenant_id),
           },
         }),
       );

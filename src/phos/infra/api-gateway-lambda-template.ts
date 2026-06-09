@@ -282,7 +282,13 @@ function routeS3Actions(route: PhosApiRoute): string[] {
     return ['s3:PutObject', 's3:PutObjectTagging'];
   }
   if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
-    return ['s3:GetObject', 's3:DeleteObject', 's3:DeleteObjectVersion', 's3:PutObjectTagging'];
+    return [
+      's3:GetObject',
+      's3:GetObjectTagging',
+      's3:DeleteObject',
+      's3:DeleteObjectVersion',
+      's3:PutObjectTagging',
+    ];
   }
   return [];
 }
@@ -295,6 +301,14 @@ function routeKmsActions(route: PhosApiRoute): string[] {
     return ['kms:Decrypt'];
   }
   return [];
+}
+
+function dynamoTenantLeadingKeyCondition(): CloudFormationValue {
+  return {
+    'ForAllValues:StringLike': {
+      'dynamodb:LeadingKeys': 'TENANT#*',
+    },
+  };
 }
 
 function buildLambdaEnvironment(input: {
@@ -364,6 +378,7 @@ function buildLambdaPolicyStatements(input: {
       Resource: sub(
         `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}`,
       ),
+      Condition: dynamoTenantLeadingKeyCondition(),
     });
   }
   if (dynamoAccess?.index_actions.length) {
@@ -375,6 +390,7 @@ function buildLambdaPolicyStatements(input: {
           `arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/\${${input.dynamodbTableNameParameter}}/index/${indexName}`,
         ),
       ),
+      Condition: dynamoTenantLeadingKeyCondition(),
     });
   }
 
@@ -810,6 +826,18 @@ function buildPhosEvidenceBucketPolicy(input: {
             Condition: {
               StringNotEquals: {
                 's3:RequestObjectTag/phos-upload-status': 'PRESIGNED',
+              },
+            },
+          },
+          {
+            Sid: 'DenyEvidenceUploadsWithoutTenantTag',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:PutObject',
+            Resource: evidenceObjectArn,
+            Condition: {
+              StringNotLike: {
+                's3:RequestObjectTag/phos-tenant-id': '*',
               },
             },
           },

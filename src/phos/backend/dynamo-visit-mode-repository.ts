@@ -309,6 +309,7 @@ async function markVerifiedEvidenceObject(input: {
   }
   await input.verifier.markObjectVerified({
     key: input.evidence.s3_key,
+    tenant_id: input.ctx.tenant_id,
     allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
     version_id: input.evidence.s3_version_id,
   });

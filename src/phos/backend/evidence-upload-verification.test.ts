@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   PutObjectTaggingCommand,
 } from '@aws-sdk/client-s3';
@@ -8,6 +9,7 @@ import { createS3EvidenceObjectVerifier } from './evidence-upload-verification';
 
 const expected = {
   key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+  tenant_id: 'tenant_abc123',
   mime_type: 'image/jpeg',
   sha256: 'a'.repeat(64),
   size_bytes: 1024,
@@ -75,7 +77,12 @@ describe('S3 evidence object verifier', () => {
   });
 
   it('heads the generated S3 key and accepts matching metadata', async () => {
-    const send = vi.fn(async (command: HeadObjectCommand) => {
+    const send = vi.fn(async (command: HeadObjectCommand | GetObjectTaggingCommand) => {
+      if (command instanceof GetObjectTaggingCommand) {
+        return {
+          TagSet: [{ Key: 'phos-tenant-id', Value: 'tenant_abc123' }],
+        };
+      }
       expect(command).toBeInstanceOf(HeadObjectCommand);
       return {
         ChecksumSHA256: expectedChecksum,
@@ -98,11 +105,16 @@ describe('S3 evidence object verifier', () => {
     await expect(verifier.verifyObject({ ...expected, kms_key_arn })).resolves.toEqual({
       version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
-    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledTimes(2);
     expect((send.mock.calls[0]?.[0] as HeadObjectCommand).input).toMatchObject({
       Bucket: 'phos-evidence-prod',
       Key: expected.key,
       ChecksumMode: 'ENABLED',
+    });
+    expect((send.mock.calls[1]?.[0] as GetObjectTaggingCommand).input).toMatchObject({
+      Bucket: 'phos-evidence-prod',
+      Key: expected.key,
+      VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
     });
   });
 
@@ -123,6 +135,48 @@ describe('S3 evidence object verifier', () => {
       details: { key: expected.key },
     });
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('rejects objects whose tenant tag does not match the tenant context', async () => {
+    const send = vi.fn(
+      async (command: HeadObjectCommand | GetObjectTaggingCommand | DeleteObjectCommand) => {
+        if (command instanceof HeadObjectCommand) {
+          return {
+            ChecksumSHA256: expectedChecksum,
+            ContentLength: 1024,
+            ContentType: 'image/jpeg',
+            Metadata: {
+              sha256: 'a'.repeat(64),
+              size_bytes: '1024',
+            },
+            ServerSideEncryption: 'aws:kms',
+            SSEKMSKeyId: kms_key_arn,
+            VersionId: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+          };
+        }
+        if (command instanceof GetObjectTaggingCommand) {
+          return {
+            TagSet: [{ Key: 'phos-tenant-id', Value: 'tenant_other' }],
+          };
+        }
+        expect(command).toBeInstanceOf(DeleteObjectCommand);
+        return {};
+      },
+    );
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
+      reason: 'tenant_tag_mismatch',
+      details: {
+        expected: 'tenant_abc123',
+        actual: 'tenant_other',
+      },
+    });
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send.mock.calls[2]?.[0]).toBeInstanceOf(DeleteObjectCommand);
   });
 
   it('deletes mismatched uploaded objects before rejecting them', async () => {
@@ -195,6 +249,7 @@ describe('S3 evidence object verifier', () => {
     await expect(
       verifier.markObjectVerified?.({
         key: expected.key,
+        tenant_id: 'tenant_abc123',
         allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
         version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
       }),
@@ -209,6 +264,7 @@ describe('S3 evidence object verifier', () => {
         TagSet: [
           { Key: 'phos-object-class', Value: 'evidence' },
           { Key: 'phos-upload-status', Value: 'VERIFIED' },
+          { Key: 'phos-tenant-id', Value: 'tenant_abc123' },
         ],
       },
     });
@@ -224,6 +280,7 @@ describe('S3 evidence object verifier', () => {
     await expect(
       verifier.markObjectVerified?.({
         key: 'tenants/tenant_abc123/reports/report_1.pdf',
+        tenant_id: 'tenant_abc123',
         allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       }),
     ).rejects.toMatchObject({
@@ -286,6 +343,7 @@ describe('S3 evidence object verifier', () => {
     expect(onCleanupFailure).toHaveBeenCalledWith({
       mismatch_reason: 'content_length_mismatch',
       cleanup_error: 'AccessDenied',
+      tenant_id: 'tenant_abc123',
     });
   });
 

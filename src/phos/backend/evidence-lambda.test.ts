@@ -86,6 +86,7 @@ describe('PH-OS evidence Lambda composition', () => {
     expect(response.statusCode).toBe(200);
     expect(fakePresigner.presignPut).toHaveBeenCalledWith({
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+      tenant_id: 'tenant_abc123',
       mime_type: 'image/jpeg',
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
