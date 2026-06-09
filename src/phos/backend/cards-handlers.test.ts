@@ -165,8 +165,22 @@ describe('PH-OS cards Lambda handlers', () => {
       request_id: 'req_1',
       error_code: 'VALIDATION_ERROR',
       message_key: 'api.error.validation.generic',
-      details: { field: 'limit', max: 50 },
+      details: { field: 'limit', min: 1, max: 50 },
     });
+  });
+
+  it('rejects malformed card search limits before repository access', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createCardSearchHandler(repo));
+
+    const response = await handler(event({ queryStringParameters: { limit: '25x' } }));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'limit' },
+    });
+    expect(repo.searchCards).not.toHaveBeenCalled();
   });
 
   it('returns card detail or NOT_FOUND without leaking another tenant', async () => {

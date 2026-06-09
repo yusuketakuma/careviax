@@ -38,6 +38,13 @@ function eventWithTenantQuery() {
   };
 }
 
+function eventWithQuery(queryStringParameters: Record<string, string>) {
+  return {
+    ...event(),
+    queryStringParameters,
+  };
+}
+
 function auroraPool(rows: QueryResultRow[] = []) {
   const query = vi.fn(async (sql: string, params?: readonly unknown[]) => {
     void params;
@@ -155,6 +162,20 @@ describe('fee-rules lambda composition', () => {
 
     await expect(handler(eventWithTenantQuery())).resolves.toMatchObject({
       statusCode: 400,
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed numeric limit before Aurora access', async () => {
+    const { pool } = auroraPool();
+    const handler = createFeeRuleSearchLambdaHandler({ auroraPool: pool });
+
+    const response = await handler(eventWithQuery({ fee_code: 'M001', limit: '1x' }));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'limit' },
     });
     expect(pool.connect).not.toHaveBeenCalled();
   });

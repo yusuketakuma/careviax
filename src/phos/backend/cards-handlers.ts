@@ -9,7 +9,13 @@ import type { CardSearchQuery, PhosCardsRepository } from './cards-repository';
 import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
 import { toErrorLambdaResponse } from './error-response';
-import { parseIdempotencyKey, parsePositiveVersion, validationError } from './input-validation';
+import {
+  parseBoundedIntegerQuery,
+  parseIdempotencyKey,
+  parsePositiveVersion,
+  readQueryParam,
+  validationError,
+} from './input-validation';
 
 export const CARD_SEARCH_DEFAULT_LIMIT = 50;
 export const CARD_SEARCH_MAX_LIMIT = 50;
@@ -18,25 +24,18 @@ type ParsedCardAction = ActionRequest & {
   action_code: ActionCode;
 };
 
-function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
-  const value = event.queryStringParameters?.[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
 function readCardId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.card_id ?? event.pathParameters?.cardId;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 function parseSearchQuery(event: PhosHttpEvent): CardSearchQuery {
-  const rawLimit = readQueryParam(event, 'limit');
-  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : CARD_SEARCH_DEFAULT_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > CARD_SEARCH_MAX_LIMIT) {
-    throw validationError({
-      field: 'limit',
-      max: CARD_SEARCH_MAX_LIMIT,
-    });
-  }
+  const limit = parseBoundedIntegerQuery({
+    value: readQueryParam(event, 'limit'),
+    field: 'limit',
+    defaultValue: CARD_SEARCH_DEFAULT_LIMIT,
+    max: CARD_SEARCH_MAX_LIMIT,
+  });
 
   return {
     query: readQueryParam(event, 'query'),

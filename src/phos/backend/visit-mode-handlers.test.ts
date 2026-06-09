@@ -176,4 +176,75 @@ describe('PH-OS visit-mode handlers', () => {
     });
     expect(repo.updateVisitStep).not.toHaveBeenCalled();
   });
+
+  it('rejects missing evidence upload payload before repository mutation', async () => {
+    const repo = repository();
+    const handler = createUpdateVisitStepHandler(repo);
+
+    const response = (await handler({
+      ctx: ctx(),
+      body: {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+      },
+      event: { pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD } },
+    })) as PhosLambdaResponse;
+
+    expect(response).toMatchObject({ statusCode: 400 });
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'payload.evidence_key' },
+    });
+    expect(repo.updateVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-string evidence keys before repository mutation', async () => {
+    const repo = repository();
+    const handler = createUpdateVisitStepHandler(repo);
+
+    const response = (await handler({
+      ctx: ctx(),
+      body: {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+        payload: { evidence_key: 123 },
+      },
+      event: { pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD } },
+    })) as PhosLambdaResponse;
+
+    expect(response).toMatchObject({ statusCode: 400 });
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'payload.evidence_key' },
+    });
+    expect(repo.updateVisitStep).not.toHaveBeenCalled();
+  });
+
+  it('trims evidence keys before completing evidence upload', async () => {
+    const repo = repository();
+    const handler = createUpdateVisitStepHandler(repo);
+
+    await expect(
+      handler({
+        ctx: ctx(),
+        body: {
+          idempotency_key: 'idem_1',
+          client_version: 3,
+          payload: { evidence_key: ' evidence_1 ' },
+        },
+        event: { pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD } },
+      }),
+    ).resolves.toEqual(visit({ server_version: 4 }));
+
+    expect(repo.updateVisitStep).toHaveBeenCalledWith(
+      ctx(),
+      'packet_1',
+      VisitStep.EVIDENCE_UPLOAD,
+      {
+        idempotency_key: 'idem_1',
+        client_version: 3,
+        payload: { evidence_key: 'evidence_1' },
+      },
+    );
+  });
 });

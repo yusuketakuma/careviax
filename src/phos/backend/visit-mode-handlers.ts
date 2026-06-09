@@ -52,7 +52,10 @@ function parsePacketId(event: PhosHttpEvent): string {
   return value;
 }
 
-function parsePayload(value: unknown): VisitStepMutationPayload | undefined {
+function parsePayload(step: VisitStep, value: unknown): VisitStepMutationPayload | undefined {
+  if (step === VisitStep.EVIDENCE_UPLOAD && value === undefined) {
+    throw validationError({ field: 'payload.evidence_key' });
+  }
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw validationError({ field: 'payload' });
@@ -63,7 +66,10 @@ function parsePayload(value: unknown): VisitStepMutationPayload | undefined {
   const evidence_key =
     typeof input.evidence_key === 'string' ? input.evidence_key.trim() : undefined;
 
-  if (typeof input.evidence_key === 'string' && !evidence_key) {
+  if (
+    step === VisitStep.EVIDENCE_UPLOAD &&
+    (typeof input.evidence_key !== 'string' || !evidence_key)
+  ) {
     throw validationError({ field: 'payload.evidence_key' });
   }
 
@@ -80,7 +86,7 @@ function parseMutationRequest(step: VisitStep, body: unknown): VisitStepMutation
     throw validationError({ field: 'body' });
   }
   const input = body as Partial<VisitStepMutationRequest>;
-  const payload = parsePayload(input.payload);
+  const payload = parsePayload(step, input.payload);
 
   if (step === VisitStep.ARRIVAL_CONFIRM) {
     const outcome = payload?.arrival_outcome;
@@ -101,10 +107,12 @@ function parseMutationRequest(step: VisitStep, body: unknown): VisitStepMutation
     });
   }
 
+  const normalizedPayload = payload && Object.keys(payload).length > 0 ? { payload } : undefined;
+
   return {
     idempotency_key: parseIdempotencyKey(input.idempotency_key),
     client_version: parsePositiveVersion(input.client_version),
-    ...(payload ? { payload } : {}),
+    ...normalizedPayload,
   };
 }
 

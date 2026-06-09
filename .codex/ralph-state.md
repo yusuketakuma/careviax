@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-171820
+
+- current task: harden PH-OS backend list query validation and VisitMode evidence upload completion semantics
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `/Users/yusuke/Desktop/PH-OS_Final_Review_Spec_v1.1.md`, `Plans.md`, `docs/phos-legacy-api-isolation.md`, `src/phos/backend/input-validation.ts`, list/mutation handlers and tests for cards, capacity, claim candidates, fee rules, handoffs, report deliveries, and VisitMode; subagent read-only backend/API review findings.
+- files changed: `src/phos/backend/input-validation.ts`, `src/phos/backend/capacity-handlers.ts`, `src/phos/backend/cards-handlers.ts`, `src/phos/backend/cards-handlers.test.ts`, `src/phos/backend/claim-candidates-handlers.ts`, `src/phos/backend/claim-candidates-handlers.test.ts`, `src/phos/backend/fee-rules-handlers.ts`, `src/phos/backend/fee-rules-lambda.test.ts`, `src/phos/backend/handoffs-handlers.ts`, `src/phos/backend/handoffs-handlers.test.ts`, `src/phos/backend/report-deliveries-handlers.ts`, `src/phos/backend/report-deliveries-handlers.test.ts`, `src/phos/backend/visit-mode-handlers.ts`, `src/phos/backend/visit-mode-handlers.test.ts`, `.codex/ralph-state.md`
+- bugs found: several Dynamo/Aurora-backed list handlers used `Number.parseInt`, so malformed client limits such as `25x`, `1.5`, or `25xyz` could be accepted as valid pagination input. VisitMode `EVIDENCE_UPLOAD` accepted missing, empty-object, or non-string `payload.evidence_key`, allowing an evidence step mutation to reach repository code without a concrete uploaded evidence reference.
+- security risks found: no auth, authorization, tenant boundary, API Gateway manifest, Lambda composition, database access, S3 key construction, frontend, or route ownership changed. The change tightens external API input before repository access, keeps tenant/query rejection behavior intact, reuses repo-local strict date-key validation for capacity, and ensures evidence upload completion cannot be recorded without a normalized evidence key.
+- performance issues found: no runtime fetch, polling, scan, direct database access, Server Action, route handler, or unbounded processing path was introduced. Shared query parsing is constant-time and removes duplicated handler validation code.
+- validation commands: Prettier for touched backend files; focused `pnpm exec vitest run src/phos/backend/capacity-handlers.test.ts src/phos/backend/cards-handlers.test.ts src/phos/backend/claim-candidates-handlers.test.ts src/phos/backend/fee-rules-lambda.test.ts src/phos/backend/handoffs-handlers.test.ts src/phos/backend/report-deliveries-handlers.test.ts src/phos/backend/visit-mode-handlers.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; targeted ESLint for touched backend files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed; focused backend handler suite passed with 7 files / 55 tests; TypeScript passed; targeted ESLint passed with zero warnings; whitespace diff check passed; full PH-OS Vitest passed with 94 files / 568 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. API contract review found a remaining medium issue where malformed Dynamo pagination cursors can throw generic 500s across cards, handoffs, report deliveries, and claim candidates; that should be the next backend slice. Live AWS/API Gateway/Cognito/X-Ray proof and Aurora RLS application evidence also remain external/not yet verified.
+- next action: commit this backend input-boundary slice, then implement shared Dynamo cursor validation/error handling across the remaining list Lambda clients.
+
 ### 20260609-163130
 
 - current task: harden PH-OS card action request boundary normalization for primary card mutations

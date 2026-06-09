@@ -86,6 +86,27 @@ describe('PH-OS claim-candidates handler', () => {
     });
   });
 
+  it('trims claim candidate query identifiers before repository access', async () => {
+    const repo = repository();
+
+    await expect(
+      createClaimCandidateSearchHandler(repo)({
+        ctx: ctx(),
+        body: undefined,
+        event: {
+          routeKey: 'GET /claim-candidates',
+          queryStringParameters: { card_id: ' card_1 ', cursor: ' cursor_1 ', limit: ' 25 ' },
+        },
+      }),
+    ).resolves.toEqual(searchResponse());
+
+    expect(repo.searchClaimCandidates).toHaveBeenCalledWith(ctx(), {
+      card_id: 'card_1',
+      cursor: 'cursor_1',
+      limit: 25,
+    });
+  });
+
   it('rejects invalid query before repository access', async () => {
     const repo = repository();
     const result = (await createClaimCandidateSearchHandler(repo)({
@@ -96,6 +117,22 @@ describe('PH-OS claim-candidates handler', () => {
 
     expect(result.statusCode).toBe(400);
     expect(JSON.parse(result.body)).toMatchObject({ error_code: 'VALIDATION_ERROR' });
+    expect(repo.searchClaimCandidates).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed numeric limit before repository access', async () => {
+    const repo = repository();
+    const result = (await createClaimCandidateSearchHandler(repo)({
+      ctx: ctx(),
+      body: undefined,
+      event: { queryStringParameters: { limit: '25x' } },
+    })) as PhosLambdaResponse;
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'limit' },
+    });
     expect(repo.searchClaimCandidates).not.toHaveBeenCalled();
   });
 

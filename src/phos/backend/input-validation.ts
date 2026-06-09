@@ -1,4 +1,6 @@
+import { isValidDateKey } from '@/lib/validations/date-key';
 import { SOURCE_REF_KINDS, type SourceRef } from '@/phos/contracts/phos_contracts';
+import type { PhosHttpEvent } from './lambda-handler';
 import { PhosDomainError } from './cards-repository';
 
 export function validationError(details: Record<string, unknown>): PhosDomainError {
@@ -22,6 +24,34 @@ export function parseIdempotencyKey(value: unknown): string {
     throw validationError({ field: 'idempotency_key' });
   }
   return value.trim();
+}
+
+export function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
+  const value = event.queryStringParameters?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+export function parseBoundedIntegerQuery(input: {
+  value: string | undefined;
+  field: string;
+  defaultValue: number;
+  max: number;
+  min?: number;
+}): number {
+  if (input.value === undefined) return input.defaultValue;
+  const parsed = Number(input.value);
+  const min = input.min ?? 1;
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > input.max) {
+    throw validationError({ field: input.field, min, max: input.max });
+  }
+  return parsed;
+}
+
+export function parseDateKeyQuery(value: string | undefined, field = 'date'): string {
+  if (!value || !isValidDateKey(value)) {
+    throw validationError({ field, expected: 'YYYY-MM-DD' });
+  }
+  return value;
 }
 
 export function parseOptionalIsoDate(value: unknown, field: string): string | undefined {

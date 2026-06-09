@@ -11,9 +11,11 @@ import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import {
+  parseBoundedIntegerQuery,
   parseIdempotencyKey,
   parsePositiveVersion,
   parseSourceRefs,
+  readQueryParam,
   validationError,
 } from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -24,11 +26,6 @@ import type { TenantContext } from './tenant-context';
 
 export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
 export const HANDOFF_SEARCH_MAX_LIMIT = 50;
-
-function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
-  const value = event.queryStringParameters?.[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
 
 function readHandoffId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.handoff_id ?? event.pathParameters?.handoffId;
@@ -55,11 +52,12 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function parseSearchQuery(event: PhosHttpEvent): HandoffSearchQuery {
-  const rawLimit = readQueryParam(event, 'limit');
-  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : HANDOFF_SEARCH_DEFAULT_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > HANDOFF_SEARCH_MAX_LIMIT) {
-    throw validationError({ field: 'limit', max: HANDOFF_SEARCH_MAX_LIMIT });
-  }
+  const limit = parseBoundedIntegerQuery({
+    value: readQueryParam(event, 'limit'),
+    field: 'limit',
+    defaultValue: HANDOFF_SEARCH_DEFAULT_LIMIT,
+    max: HANDOFF_SEARCH_MAX_LIMIT,
+  });
 
   const status = readQueryParam(event, 'status');
   if (status && !Object.values(HandoffStatus).includes(status as HandoffStatus)) {

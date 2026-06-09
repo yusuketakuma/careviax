@@ -4,37 +4,12 @@ import { PhosDomainError } from './cards-repository';
 import type { CapacityQuery, PhosCapacityRepository } from './capacity-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
+import { parseDateKeyQuery, readQueryParam, validationError } from './input-validation';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
 
-function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
-  const value = event.queryStringParameters?.[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function isValidDateKey(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
-
-function validationError(details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
-}
-
 function parseCapacityQuery(event: PhosHttpEvent): CapacityQuery {
-  const date = readQueryParam(event, 'date');
-  if (!date || !isValidDateKey(date)) {
-    throw validationError({ field: 'date', expected: 'YYYY-MM-DD' });
-  }
+  const date = parseDateKeyQuery(readQueryParam(event, 'date'));
 
   const scope = readQueryParam(event, 'scope') ?? CapacityScope.PHARMACY;
   if (!Object.values(CapacityScope).includes(scope as CapacityScope)) {

@@ -106,6 +106,24 @@ describe('PH-OS report-deliveries handler', () => {
     expect(repo.searchReportDeliveries).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed report delivery limits before repository access', async () => {
+    const repo = repository();
+    const handler = createReportDeliverySearchHandler(repo);
+
+    const result = (await handler({
+      ctx: ctx(),
+      body: undefined,
+      event: { queryStringParameters: { limit: '25xyz' } },
+    })) as PhosLambdaResponse;
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'limit' },
+    });
+    expect(repo.searchReportDeliveries).not.toHaveBeenCalled();
+  });
+
   it('rejects requests missing the report delivery read scope', async () => {
     const repo = repository();
     const handler = createReportDeliverySearchHandler(repo);

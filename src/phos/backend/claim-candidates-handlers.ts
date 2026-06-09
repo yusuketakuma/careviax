@@ -7,6 +7,13 @@ import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
+import {
+  parseBoundedIntegerQuery,
+  parseIdempotencyKey,
+  parsePositiveVersion,
+  readQueryParam,
+  validationError,
+} from './input-validation';
 import type {
   ClaimCandidateSearchQuery,
   PhosClaimCandidatesRepository,
@@ -17,31 +24,18 @@ import type { TenantContext } from './tenant-context';
 export const CLAIM_CANDIDATE_DEFAULT_LIMIT = 50;
 export const CLAIM_CANDIDATE_MAX_LIMIT = 50;
 
-function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
-  const value = event.queryStringParameters?.[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
 function readCandidateId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.candidate_id ?? event.pathParameters?.candidateId;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function validationError(details: Record<string, unknown>): PhosDomainError {
-  return new PhosDomainError({
-    status: 400,
-    error_code: 'VALIDATION_ERROR',
-    message_key: 'api.error.validation.generic',
-    details,
-  });
-}
-
 function parseSearchQuery(event: PhosHttpEvent): ClaimCandidateSearchQuery {
-  const rawLimit = readQueryParam(event, 'limit');
-  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : CLAIM_CANDIDATE_DEFAULT_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > CLAIM_CANDIDATE_MAX_LIMIT) {
-    throw validationError({ field: 'limit', max: CLAIM_CANDIDATE_MAX_LIMIT });
-  }
+  const limit = parseBoundedIntegerQuery({
+    value: readQueryParam(event, 'limit'),
+    field: 'limit',
+    defaultValue: CLAIM_CANDIDATE_DEFAULT_LIMIT,
+    max: CLAIM_CANDIDATE_MAX_LIMIT,
+  });
   const status = readQueryParam(event, 'status') as ClaimCandidateStatus | undefined;
   if (status && !Object.values(ClaimCandidateStatus).includes(status)) {
     throw validationError({ field: 'status' });
@@ -52,20 +46,6 @@ function parseSearchQuery(event: PhosHttpEvent): ClaimCandidateSearchQuery {
     ...(readQueryParam(event, 'cursor') ? { cursor: readQueryParam(event, 'cursor') } : {}),
     limit,
   };
-}
-
-function parsePositiveVersion(value: unknown): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw validationError({ field: 'client_version' });
-  }
-  return Number(value);
-}
-
-function parseIdempotencyKey(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw validationError({ field: 'idempotency_key' });
-  }
-  return value.trim();
 }
 
 function parseExcludeRequest(body: unknown): ExcludeClaimCandidateRequest {

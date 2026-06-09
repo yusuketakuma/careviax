@@ -146,6 +146,20 @@ describe('PH-OS handoffs Lambda handlers', () => {
     });
   });
 
+  it('rejects malformed handoff search limits before repository access', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createHandoffSearchHandler(repo));
+
+    const response = await handler(event({ queryStringParameters: { limit: '1.5' } }));
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'limit' },
+    });
+    expect(repo.searchHandoffs).not.toHaveBeenCalled();
+  });
+
   it('allows clerks to create handoffs with idempotency and expected version', async () => {
     const repo = repository();
     const handler = withTenantContext(createCreateHandoffHandler(repo));

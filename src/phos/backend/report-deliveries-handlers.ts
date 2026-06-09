@@ -8,10 +8,12 @@ import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
 import {
+  parseBoundedIntegerQuery,
   parseIdempotencyKey,
   parseOptionalIsoDate,
   parsePositiveVersion,
   parseSourceRefs,
+  readQueryParam,
   validationError,
 } from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
@@ -24,11 +26,6 @@ import type { TenantContext } from './tenant-context';
 
 export const REPORT_DELIVERY_DEFAULT_LIMIT = 50;
 export const REPORT_DELIVERY_MAX_LIMIT = 50;
-
-function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
-  const value = event.queryStringParameters?.[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
 
 function readDeliveryId(event: PhosHttpEvent): string | null {
   const value = event.pathParameters?.delivery_id ?? event.pathParameters?.deliveryId;
@@ -96,11 +93,12 @@ function parseMarkActionDoneRequest(body: unknown): MarkReportActionDoneRequest 
 }
 
 function parseSearchQuery(event: PhosHttpEvent): ReportDeliverySearchQuery {
-  const rawLimit = readQueryParam(event, 'limit');
-  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : REPORT_DELIVERY_DEFAULT_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > REPORT_DELIVERY_MAX_LIMIT) {
-    throw validationError({ field: 'limit', max: REPORT_DELIVERY_MAX_LIMIT });
-  }
+  const limit = parseBoundedIntegerQuery({
+    value: readQueryParam(event, 'limit'),
+    field: 'limit',
+    defaultValue: REPORT_DELIVERY_DEFAULT_LIMIT,
+    max: REPORT_DELIVERY_MAX_LIMIT,
+  });
 
   const status = readQueryParam(event, 'status') ?? ReportDeliveryStatus.WAITING_REPLY;
   if (!Object.values(ReportDeliveryStatus).includes(status as ReportDeliveryStatus)) {
