@@ -1,4 +1,4 @@
-import { ActionCode } from '@/phos/contracts/phos_contracts';
+import { ActionCode, BoardQuickFilter, BoardSortKey } from '@/phos/contracts/phos_contracts';
 import type { ActionRequest, ActionResponse, ErrorResponse } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
@@ -36,11 +36,19 @@ function parseSearchQuery(event: PhosHttpEvent): CardSearchQuery {
     defaultValue: CARD_SEARCH_DEFAULT_LIMIT,
     max: CARD_SEARCH_MAX_LIMIT,
   });
+  const filter = readQueryParam(event, 'filter');
+  if (filter && !Object.values(BoardQuickFilter).includes(filter as BoardQuickFilter)) {
+    throw validationError({ field: 'filter', allowed_values: Object.values(BoardQuickFilter) });
+  }
+  const sort = readQueryParam(event, 'sort');
+  if (sort && !Object.values(BoardSortKey).includes(sort as BoardSortKey)) {
+    throw validationError({ field: 'sort', allowed_values: Object.values(BoardSortKey) });
+  }
 
   return {
     query: readQueryParam(event, 'query'),
-    filter: readQueryParam(event, 'filter'),
-    sort: readQueryParam(event, 'sort'),
+    filter: filter as BoardQuickFilter | undefined,
+    sort: sort as BoardSortKey | undefined,
     cursor: readQueryParam(event, 'cursor'),
     limit,
   };

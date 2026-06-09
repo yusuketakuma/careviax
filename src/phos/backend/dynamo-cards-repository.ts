@@ -1,6 +1,4 @@
 import type {
-  BoardQuickFilter,
-  BoardSortKey,
   CardBoardItemView,
   CardDetailResponse,
   CardSearchResponse,
@@ -77,22 +75,13 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
         cursor: query.cursor,
       });
 
-      const quickFilter = Object.values(BoardQuickFilterValues).includes(
-        query.filter as BoardQuickFilter,
-      )
-        ? (query.filter as BoardQuickFilter)
-        : BoardQuickFilterValues.ALL;
-      const sortKey = Object.values(BoardSortKeyValues).includes(query.sort as BoardSortKey)
-        ? (query.sort as BoardSortKey)
-        : BoardSortKeyValues.VISIT_TIME;
-
       return {
         items: selectBoardItems(
           result.items.map((item) => mapper.toCardBoardItem(item)),
           {
-            quickFilter,
+            quickFilter: query.filter ?? BoardQuickFilterValues.ALL,
             query: query.query,
-            sortKey,
+            sortKey: query.sort ?? BoardSortKeyValues.VISIT_TIME,
           },
         ),
         next_cursor: result.next_cursor,

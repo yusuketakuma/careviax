@@ -2,6 +2,8 @@ import type {
   ActionCode,
   ActionRequest,
   ActionResponse,
+  BoardQuickFilter,
+  BoardSortKey,
   CardDetailResponse,
   CardSearchResponse,
 } from '@/phos/contracts/phos_contracts';
@@ -9,8 +11,8 @@ import type { TenantContext } from './tenant-context';
 
 export type CardSearchQuery = {
   query?: string;
-  filter?: string;
-  sort?: string;
+  filter?: BoardQuickFilter;
+  sort?: BoardSortKey;
   cursor?: string;
   limit: number;
 };

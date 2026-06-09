@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-172720
+
+- current task: enforce PH-OS card search filter/sort contract at the API boundary
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/contracts/phos_contracts.ts`, `src/phos/backend/cards-handlers.ts`, `src/phos/backend/cards-handlers.test.ts`, `src/phos/backend/cards-repository.ts`, `src/phos/backend/dynamo-cards-repository.ts`, and `src/phos/backend/dynamo-cards-repository.test.ts`
+- files changed: `src/phos/backend/cards-handlers.ts`, `src/phos/backend/cards-handlers.test.ts`, `src/phos/backend/cards-repository.ts`, `src/phos/backend/dynamo-cards-repository.ts`, `.codex/ralph-state.md`
+- bugs found: card search accepted arbitrary `filter` and `sort` strings at the API boundary, then the Dynamo repository silently fell back invalid values such as `READY` or `visit_time` to `ALL` / `VISIT_TIME`. That made client mistakes hard to detect and split query semantics between handler and repository.
+- security risks found: no tenant, authorization, API Gateway manifest, Lambda composition, Dynamo key construction, mutation, frontend, S3, or Aurora code changed. External query enum validation now happens before repository access with canonical `VALIDATION_ERROR` responses.
+- performance issues found: no runtime I/O path changed. Removing repository fallback eliminates repeated enum checks after mapping and keeps filtering/sorting over already-fetched board items unchanged.
+- validation commands: Prettier for touched card backend files; focused `pnpm exec vitest run src/phos/backend/cards-handlers.test.ts src/phos/backend/dynamo-cards-repository.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; targeted ESLint for touched files; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`
+- validation results: Prettier completed; focused cards suite passed with 2 files / 18 tests; TypeScript passed; targeted ESLint passed with zero warnings; whitespace diff check passed; full PH-OS Vitest passed with 94 files / 577 tests; Next production build passed and generated 235 static pages.
+- remaining work: the broader backend-only objective remains active. Remaining backend targets include Aurora fee-rule cursor/RLS deployment evidence, live AWS/API Gateway/Cognito/X-Ray proof, and deeper repository lifecycle/idempotency edge-case review.
+- next action: commit this card search boundary slice, then continue backend audit toward Aurora/RLS evidence and repository lifecycle edge cases.
+
 ### 20260609-172350
 
 - current task: convert malformed Dynamo pagination cursors from internal errors to deterministic validation errors

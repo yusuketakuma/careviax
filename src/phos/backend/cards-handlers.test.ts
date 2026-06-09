@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
   ActionKind,
+  BoardQuickFilter,
+  BoardSortKey,
   ButtonState,
   CardType,
   CurrentStep,
@@ -126,8 +128,8 @@ describe('PH-OS cards Lambda handlers', () => {
       event({
         queryStringParameters: {
           query: 'card',
-          filter: 'READY',
-          sort: 'visit_time',
+          filter: BoardQuickFilter.TODAY,
+          sort: BoardSortKey.VISIT_TIME,
           cursor: 'cursor_1',
           limit: '25',
         },
@@ -139,8 +141,8 @@ describe('PH-OS cards Lambda handlers', () => {
       expect.objectContaining({ tenant_id: 'tenant_abc123', user_id: 'user_001' }),
       {
         query: 'card',
-        filter: 'READY',
-        sort: 'visit_time',
+        filter: BoardQuickFilter.TODAY,
+        sort: BoardSortKey.VISIT_TIME,
         cursor: 'cursor_1',
         limit: 25,
       },
@@ -179,6 +181,26 @@ describe('PH-OS cards Lambda handlers', () => {
     expect(JSON.parse(response.body)).toMatchObject({
       error_code: 'VALIDATION_ERROR',
       details: { field: 'limit' },
+    });
+    expect(repo.searchCards).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid card search filter and sort before repository access', async () => {
+    const repo = repository();
+    const handler = withTenantContext(createCardSearchHandler(repo));
+
+    const filterResponse = await handler(event({ queryStringParameters: { filter: 'READY' } }));
+    const sortResponse = await handler(event({ queryStringParameters: { sort: 'visit_time' } }));
+
+    expect(filterResponse.statusCode).toBe(400);
+    expect(JSON.parse(filterResponse.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'filter' },
+    });
+    expect(sortResponse.statusCode).toBe(400);
+    expect(JSON.parse(sortResponse.body)).toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'sort' },
     });
     expect(repo.searchCards).not.toHaveBeenCalled();
   });
