@@ -9,7 +9,11 @@ import type {
   CardDetailResponse,
   EvidencePendingView,
 } from '@/phos/contracts/phos_contracts';
-import type { VisitArrivalOutcome, VisitStep } from '@/phos/contracts/phos_contracts';
+import {
+  SourceRefKind,
+  type VisitArrivalOutcome,
+  type VisitStep,
+} from '@/phos/contracts/phos_contracts';
 import { BlockerPanel } from './BlockerPanel';
 import type { HandoffCreateInput } from './HandoffPanel';
 import { HandoffPanel } from './HandoffPanel';
@@ -115,6 +119,12 @@ export function WorkspaceOverlay({
                   cardId={detail.card.card_id}
                   nextAction={detail.next_action}
                   blockers={detail.blockers}
+                  reportConfirmation={{
+                    patientName: detail.card.patient_name,
+                    evidenceCount: detail.source_refs.filter(
+                      (source) => source.kind === SourceRefKind.EVIDENCE_FILE,
+                    ).length,
+                  }}
                   actionPhase={actionPhase}
                   actionMessage={actionMessage}
                   onExecute={onExecute}

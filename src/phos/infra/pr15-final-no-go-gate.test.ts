@@ -560,4 +560,19 @@ describe('PH-OS Final No-Go gate', () => {
       /NEXT_PUBLIC_PHOS_API_BASE_URL/,
     ]);
   });
+
+  it('keeps SEND_REPORT behind an explicit confirmation surface', () => {
+    expectEvidence('src/phos/ui/workspace/NextActionPanel.tsx', [
+      /requiresSendConfirmation/,
+      /ActionCode\.SEND_REPORT/,
+      /送付前確認/,
+      /送付後は取り消せません/,
+      /onExecute\(cardId, nextAction\.code, executeReason\)/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/NextActionPanel.test.tsx', [
+      /requires explicit confirmation before executing SEND_REPORT/,
+      /expect\(onExecute\)\.not\.toHaveBeenCalled/,
+      /送付する/,
+    ]);
+  });
 });

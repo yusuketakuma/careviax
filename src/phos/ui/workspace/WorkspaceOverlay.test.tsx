@@ -318,6 +318,37 @@ describe('WorkspaceOverlay', () => {
     expect(onExecute).not.toHaveBeenCalled();
   });
 
+  it('passes report send confirmation context from card detail', () => {
+    const onExecute = vi.fn();
+    render(
+      <WorkspaceOverlay
+        detail={detail({
+          next_action: {
+            ...detail().next_action,
+            code: ActionCode.SEND_REPORT,
+            label_key: 'action.send_report',
+          },
+          source_refs: [
+            { kind: 'EVIDENCE_FILE', ref_id: 'evidence_1', label: '写真 1' },
+            { kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' },
+          ],
+        })}
+        open
+        onOpenChange={vi.fn()}
+        onExecute={onExecute}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '報告書を送付する' }));
+
+    const confirmation = screen.getByRole('region', { name: '送付前確認' });
+    expect(confirmation).toBeTruthy();
+    expect(within(confirmation).getByText('患者 山田太郎')).toBeTruthy();
+    expect(within(confirmation).getAllByText('1件').length).toBeGreaterThan(0);
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
   it('renders detail errors inside the overlay instead of closing the board surface', () => {
     render(
       <WorkspaceOverlay

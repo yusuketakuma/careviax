@@ -110,6 +110,44 @@ describe('NextActionPanel', () => {
     expect(onExecute).not.toHaveBeenCalled();
   });
 
+  it('requires explicit confirmation before executing SEND_REPORT', () => {
+    const onExecute = vi.fn();
+    render(
+      <NextActionPanel
+        cardId="card_1"
+        nextAction={{
+          ...nextAction,
+          code: ActionCode.SEND_REPORT,
+          label_key: 'action.send_report',
+        }}
+        blockers={[blocker]}
+        reportConfirmation={{
+          patientName: '患者 山田太郎',
+          targetLabel: '山田医師',
+          deliveryMethod: 'FAX',
+          summary: '眠気について共有',
+          evidenceCount: 2,
+        }}
+        onExecute={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '報告書を送付する' }));
+
+    expect(onExecute).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: '送付前確認' })).toBeTruthy();
+    expect(screen.getByText('患者 山田太郎')).toBeTruthy();
+    expect(screen.getByText('山田医師')).toBeTruthy();
+    expect(screen.getByText('FAX')).toBeTruthy();
+    expect(screen.getByText('眠気について共有')).toBeTruthy();
+    expect(screen.getByText('1件')).toBeTruthy();
+    expect(screen.getByText('2件')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '送付する' }));
+
+    expect(onExecute).toHaveBeenCalledWith('card_1', ActionCode.SEND_REPORT, undefined);
+  });
+
   it('locks execution while the action is submitting', () => {
     const onExecute = vi.fn();
     render(
