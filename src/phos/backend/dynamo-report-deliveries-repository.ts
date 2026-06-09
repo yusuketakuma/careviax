@@ -1,5 +1,6 @@
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { ReportDeliveryStatus, type ReportDeliveryView } from '@/phos/contracts/phos_contracts';
+import type { PhosDynamoDbGlobalSecondaryIndexName } from '@/phos/infra/dynamodb-table-contract';
 import { assertTenantGsiKey, reportDeliveryStatusGsiPk } from './dynamodb-keys';
 import { PHOS_REPORT_DELIVERY_STATUS_GSI, phosCoreTableName } from './dynamo-cards-repository';
 import { fromDynamoAttributeValue } from './dynamodb-attribute-values';
@@ -13,7 +14,7 @@ type DynamoItem = Record<string, AttributeValue>;
 
 export type DynamoReportDeliveryQueryInput = {
   table_name: string;
-  index_name: string;
+  index_name: PhosDynamoDbGlobalSecondaryIndexName;
   partition_key: string;
   limit: number;
   cursor?: string;

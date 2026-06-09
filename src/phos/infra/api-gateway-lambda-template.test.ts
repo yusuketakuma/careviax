@@ -7,7 +7,10 @@ import {
   buildPhosApiGatewayLambdaTemplate,
   buildPhosApiRouteDeploymentBindings,
 } from './api-gateway-lambda-template';
-import { PHOS_DYNAMODB_TABLE_CONTRACT } from './dynamodb-table-contract';
+import {
+  PHOS_DYNAMODB_TABLE_CONTRACT,
+  type PhosDynamoDbGlobalSecondaryIndexName,
+} from './dynamodb-table-contract';
 
 function resourcesByType(type: string) {
   const template = buildPhosApiGatewayLambdaTemplate();
@@ -1015,7 +1018,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
   });
 
   it('scopes DynamoDB Query routes to index resources and mutation routes to table resources', () => {
-    const expectedQueryIndexes = new Map<string, readonly string[]>([
+    const expectedQueryIndexes = new Map<string, readonly PhosDynamoDbGlobalSecondaryIndexName[]>([
       ['GET /cards', ['GSI1']],
       ['GET /claim-candidates', ['GSI7', 'GSI8']],
       ['GET /handoffs', ['GSI5']],

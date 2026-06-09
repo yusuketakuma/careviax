@@ -1,5 +1,8 @@
 import { PHOS_API_ROUTES, type PhosApiRoute } from './api-gateway-routes';
-import { PHOS_DYNAMODB_TABLE_CONTRACT } from './dynamodb-table-contract';
+import {
+  PHOS_DYNAMODB_TABLE_CONTRACT,
+  type PhosDynamoDbGlobalSecondaryIndexName,
+} from './dynamodb-table-contract';
 
 type CloudFormationReference = { Ref: string };
 type CloudFormationGetAtt = { 'Fn::GetAtt': readonly [string, string] };
@@ -82,7 +85,7 @@ type RouteDeploymentBinding = {
 type DynamoRouteAccess = {
   table_actions: readonly string[];
   index_actions: readonly string[];
-  index_names: readonly string[];
+  index_names: readonly PhosDynamoDbGlobalSecondaryIndexName[];
 };
 
 const PHOS_LOG_RETENTION_DAYS = 365;

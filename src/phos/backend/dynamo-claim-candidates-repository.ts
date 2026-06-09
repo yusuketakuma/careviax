@@ -6,6 +6,7 @@ import {
   type ClaimCandidateView,
   type ExcludeClaimCandidateRequest,
 } from '@/phos/contracts/phos_contracts';
+import type { PhosDynamoDbGlobalSecondaryIndexName } from '@/phos/infra/dynamodb-table-contract';
 import {
   assertTenantGsiKey,
   claimCandidateCardGsiPk,
@@ -32,7 +33,7 @@ type DynamoItem = Record<string, AttributeValue>;
 
 export type DynamoClaimCandidateQueryInput = {
   table_name: string;
-  index_name: string;
+  index_name: PhosDynamoDbGlobalSecondaryIndexName;
   partition_key: string;
   limit: number;
   cursor?: string;

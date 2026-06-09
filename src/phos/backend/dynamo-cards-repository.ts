@@ -3,6 +3,7 @@ import type {
   CardDetailResponse,
   CardSearchResponse,
 } from '@/phos/contracts/phos_contracts';
+import type { PhosDynamoDbGlobalSecondaryIndexName } from '@/phos/infra/dynamodb-table-contract';
 import {
   BoardQuickFilter as BoardQuickFilterValues,
   BoardSortKey as BoardSortKeyValues,
@@ -33,7 +34,7 @@ export function phosCoreTableName(): string {
 
 export type DynamoQueryInput = {
   table_name: string;
-  index_name?: string;
+  index_name?: PhosDynamoDbGlobalSecondaryIndexName;
   partition_key: string;
   key_type?: 'PK' | 'GSI';
   sort_key_begins_with?: string;
