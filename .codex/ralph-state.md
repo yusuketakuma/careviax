@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-075649
+
+- current task: align PH-OS HTTP API access-log JSON field names with the canonical structured-log contract from read-only backend/spec audit.
+- files inspected: `git status --short`, `git diff`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, PH-OS structured logger references, and read-only `Gatekeeper the 7th` / `security-auditor the 7th` findings.
+- files changed: `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the HTTP API access log format emitted PH-OS tenant/user context, but used camelCase keys such as `requestId`, `routeKey`, and `integrationError` instead of the canonical `request_id`, `route_key`, and `integration_error` fields used by backend structured logs and the PH-OS No-Go contract.
+- security risks found: API Gateway access logs now use canonical PH-OS structured field names while still avoiding PHI-bearing fields. The deployment-template test and backend live-readiness local-template check now reject the camelCase regression and assert `request_id`, `tenant_id`, `user_id`, `route_key`, and `integration_error`.
+- performance issues found: no runtime handler path changed. This only changes the emitted access-log JSON template and static/operator checks.
+- validation commands: `pnpm exec prettier --write src/phos/infra/api-gateway-lambda-template.ts src/phos/infra/api-gateway-lambda-template.test.ts tools/scripts/verify-phos-backend-live-readiness.ts tools/scripts/verify-phos-backend-live-readiness.test.ts`; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-template.test.ts tools/scripts/verify-phos-backend-live-readiness.test.ts --reporter=dot`; focused ESLint for touched template/readiness files; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:backend-live:readiness:report`; `git diff --check`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`.
+- validation results: Prettier was unchanged. Focused infra/readiness suite passed with 2 files / 37 tests. Focused ESLint passed. Standalone TypeScript passed. Non-strict backend live-readiness report passed with local template and legacy API boundary checks passed and live AWS/JWT/API checks missing. Whitespace diff check passed. Full repo ESLint passed. Full repo Vitest passed with 751 files passed / 1 skipped and 4971 tests passed / 1 skipped. Next production build passed, including TypeScript and 235 generated static pages.
+- remaining work: external live AWS/JWT/API proof still needs the target environment inputs. Read-only audits still leave medium follow-ups for removing runtime fallback to legacy `custom:*` Cognito claims and adding a stronger tenant-aware IAM/S3/Dynamo second boundary, plus lower-priority custom-domain `/api/phos` base URL, `PhosHttpApiBaseUrl` output, and dynamic import/require static gate coverage.
+- next action: commit this access-log contract slice, then remove the runtime legacy `custom:*` claim fallback as the next medium security finding.
+
 ### 20260610-075238
 
 - current task: add PH-OS live-readiness coverage for the legacy Next file API production boundary and fix the live API smoke URL stage-path regression found by read-only audit.

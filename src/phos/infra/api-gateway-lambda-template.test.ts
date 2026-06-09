@@ -203,7 +203,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         AutoDeploy: true,
         AccessLogSettings: {
           DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
-          Format: expect.stringContaining('$context.routeKey'),
+          Format: expect.stringContaining('"route_key":"$context.routeKey"'),
         },
         DefaultRouteSettings: {
           DetailedMetricsEnabled: true,
@@ -222,6 +222,16 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     const accessLogFormat = template.Resources.PhosHttpApiStage.Properties.AccessLogSettings as {
       Format: string;
     };
+    expect(accessLogFormat.Format).toContain('"request_id":"$context.requestId"');
+    expect(accessLogFormat.Format).toContain('"tenant_id":"$context.authorizer.claims.tenant_id"');
+    expect(accessLogFormat.Format).toContain('"user_id":"$context.authorizer.claims.sub"');
+    expect(accessLogFormat.Format).toContain('"route_key":"$context.routeKey"');
+    expect(accessLogFormat.Format).toContain(
+      '"integration_error":"$context.integrationErrorMessage"',
+    );
+    expect(accessLogFormat.Format).not.toContain('"requestId"');
+    expect(accessLogFormat.Format).not.toContain('"routeKey"');
+    expect(accessLogFormat.Format).not.toContain('"integrationError"');
     expect(accessLogFormat.Format).toContain('$context.requestId');
     expect(accessLogFormat.Format).toContain('$context.authorizer.claims.tenant_id');
     expect(accessLogFormat.Format).toContain('$context.authorizer.claims.sub');

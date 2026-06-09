@@ -939,7 +939,7 @@ export function buildPhosApiGatewayLambdaTemplate(
         AccessLogSettings: {
           DestinationArn: getAtt('PhosApiAccessLogGroup', 'Arn'),
           Format:
-            '{"requestId":"$context.requestId","tenant_id":"$context.authorizer.claims.tenant_id","user_id":"$context.authorizer.claims.sub","routeKey":"$context.routeKey","status":"$context.status","integrationError":"$context.integrationErrorMessage"}',
+            '{"request_id":"$context.requestId","tenant_id":"$context.authorizer.claims.tenant_id","user_id":"$context.authorizer.claims.sub","route_key":"$context.routeKey","status":"$context.status","integration_error":"$context.integrationErrorMessage"}',
         },
         DefaultRouteSettings: {
           DetailedMetricsEnabled: true,

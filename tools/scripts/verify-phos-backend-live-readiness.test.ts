@@ -37,6 +37,14 @@ describe('verify-phos-backend-live-readiness', () => {
     });
   });
 
+  it('requires canonical PH-OS structured field names in HTTP API access logs', () => {
+    expect(evaluateLocalTemplateReadiness()).toMatchObject({
+      name: 'local_template_contract',
+      status: 'passed',
+      detail: expect.stringContaining('PHI-minimized access logs'),
+    });
+  });
+
   it('rejects explicit legacy Next file API compatibility in PH-OS production readiness', () => {
     expect(
       evaluateLegacyNextApiBoundaryReadiness({

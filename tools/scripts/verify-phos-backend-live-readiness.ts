@@ -196,6 +196,14 @@ export function evaluateLocalTemplateReadiness(): ReadinessCheck {
     failures.push('HTTP API detailed metrics');
   }
   if (
+    !accessLogFormat.includes('"request_id":"$context.requestId"') ||
+    !accessLogFormat.includes('"tenant_id":"$context.authorizer.claims.tenant_id"') ||
+    !accessLogFormat.includes('"user_id":"$context.authorizer.claims.sub"') ||
+    !accessLogFormat.includes('"route_key":"$context.routeKey"') ||
+    !accessLogFormat.includes('"integration_error":"$context.integrationErrorMessage"') ||
+    accessLogFormat.includes('"requestId"') ||
+    accessLogFormat.includes('"routeKey"') ||
+    accessLogFormat.includes('"integrationError"') ||
     !accessLogFormat.includes('$context.requestId') ||
     !accessLogFormat.includes('$context.authorizer.claims.tenant_id') ||
     !accessLogFormat.includes('$context.authorizer.claims.sub') ||
