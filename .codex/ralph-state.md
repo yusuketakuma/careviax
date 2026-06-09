@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-085801
+
+- current task: keep PH-OS backend live-readiness reports machine-readable when the read-only API smoke request fails before receiving an HTTP response.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/scripts/verify-phos-backend-live-readiness.ts`, and `tools/scripts/verify-phos-backend-live-readiness.test.ts`.
+- files changed: `tools/scripts/verify-phos-backend-live-readiness.ts`, `tools/scripts/verify-phos-backend-live-readiness.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: `buildPhosBackendLiveReadinessReport` awaited `fetch` directly for the `GET /cards` smoke check, so DNS/TLS/network/fetch implementation errors rejected the whole report instead of returning a JSON check result.
+- security risks found: no new secret exposure. The failure detail records only the fetch error message under `api_gateway_lambda_smoke`; the Authorization bearer token is not logged or echoed.
+- performance issues found: no runtime application path changed. Readiness now adds one local `try/catch` around the existing read-only smoke request.
+- validation commands: `pnpm exec prettier --write tools/scripts/verify-phos-backend-live-readiness.ts tools/scripts/verify-phos-backend-live-readiness.test.ts`; focused `pnpm exec vitest run tools/scripts/verify-phos-backend-live-readiness.test.ts --reporter=dot`; focused ESLint for the touched readiness files; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:backend-live:readiness:report`.
+- validation results: Prettier was unchanged. Focused readiness suite passed with 1 file / 18 tests. Focused ESLint passed. Standalone TypeScript passed. Non-strict backend live-readiness report passed and emitted JSON with local checks passed and live AWS/JWT/API inputs still missing.
+- remaining work: external live AWS/JWT/API proof still needs target environment inputs. Additional locally actionable lower-priority findings remain for `PHOS_LAMBDA_ARTIFACT_ROOT` path restrictions, warm Lambda handler caching in `evidence-lambda.ts`, and making live DDB rate-limit verification explicitly opt-in.
+- next action: commit this readiness reporting slice, then continue with the next locally actionable backend deploy/stability gap.
+
 ### 20260610-085631
 
 - current task: fix the PH-OS VisitMode evidence commit ordering so an S3 evidence object is not tagged `VERIFIED` before the DynamoDB visit/evidence transaction commits.

@@ -414,14 +414,24 @@ export async function buildPhosBackendLiveReadinessReport(
         detail: smokeUrl.message,
       });
     } else {
-      const response = await (input.fetch ?? fetch)(smokeUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      checks.push({
-        name: 'api_gateway_lambda_smoke',
-        status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
-        detail: `GET /cards returned HTTP ${response.status}.`,
-      });
+      try {
+        const response = await (input.fetch ?? fetch)(smokeUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        checks.push({
+          name: 'api_gateway_lambda_smoke',
+          status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
+          detail: `GET /cards returned HTTP ${response.status}.`,
+        });
+      } catch (error) {
+        checks.push({
+          name: 'api_gateway_lambda_smoke',
+          status: 'failed',
+          detail: `GET /cards request failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
     }
   }
 

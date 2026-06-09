@@ -293,6 +293,36 @@ describe('verify-phos-backend-live-readiness', () => {
     );
   });
 
+  it('keeps the readiness report machine-readable when the API smoke fetch fails', async () => {
+    const report = await buildPhosBackendLiveReadinessReport({
+      env: {
+        PHOS_COGNITO_ACCESS_TOKEN: jwt({
+          ...validTemporalClaims,
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user_001',
+          scope: 'phos/cards.read',
+        }),
+        PHOS_API_BASE_URL: 'https://api.example.test',
+      },
+      now,
+      fetch: async () => {
+        throw new TypeError('network unreachable');
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api_gateway_lambda_smoke',
+          status: 'failed',
+          detail: 'GET /cards request failed: network unreachable',
+        }),
+      ]),
+    );
+  });
+
   it('fails the API smoke check before fetch when the API base URL carries unsafe URL parts', async () => {
     const fetchImpl = async () => {
       throw new Error('fetch should not run for invalid PHOS_API_BASE_URL');
