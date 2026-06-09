@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-024250
+
+- current task: force PH-OS REST API Gateway redeployment when route auth or Lambda integration contracts change.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, and prior read-only security finding from subagent `019ead62-224f-7910-a1a4-f19128e094fa`.
+- files changed: `src/phos/infra/api-gateway-lambda-template.ts`, `src/phos/infra/api-gateway-lambda-template.test.ts`, `.codex/ralph-state.md`.
+- bugs found: the REST API deployment used a fixed `PhosRestApiDeployment` logical id. Changing method OAuth scopes, route paths, route handlers, or generated AWS_PROXY/Cognito method contract could leave CloudFormation updating Method resources without creating a fresh API Gateway deployment.
+- security risks found: the deployment logical id now includes a stable fingerprint of the REST authorizer contract, AWS_PROXY integration contract, route keys, paths, methods, required scopes, Lambda handlers, and generated method/resource logical ids. Stage `DeploymentId` and `DependsOn` now point at the fingerprinted deployment, so auth and integration changes are represented as a replacement deployment instead of a stale stage attachment.
+- performance issues found: no runtime path changed. The fingerprint is generated only while building the CloudFormation template and uses the existing route manifest.
+- validation commands: Prettier for touched infra files; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-template.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused infra suite passed with 2 files / 57 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 711 tests. Next production build passed and generated 235 static pages.
+- remaining work: live API Gateway deployment behavior remains external and unverified locally. Remaining local follow-ups include server-side evidence `VERIFIED` tag durability before committing VisitMode evidence, API Gateway logging-role least privilege, REST API proxy success matrix, Lambda artifact/handler resolution gate, Aurora FeeRule RLS real DB harness, and `NextActionView.target_endpoint` parity gate.
+- next action: commit this REST deployment freshness slice, then continue with evidence verified-tag durability or a route proxy/artifact verification gate.
+
 ### 20260610-023705
 
 - current task: harden PH-OS mismatched S3 evidence cleanup for versioned evidence buckets.

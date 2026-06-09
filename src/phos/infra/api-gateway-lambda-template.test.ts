@@ -12,6 +12,28 @@ function resourcesByType(type: string) {
   return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
 }
 
+function resourcesByTypeFromTemplate(
+  template: ReturnType<typeof buildPhosApiGatewayLambdaTemplate>,
+  type: string,
+) {
+  return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
+}
+
+function singleResourceByType(type: string) {
+  const resources = resourcesByType(type);
+  expect(resources).toHaveLength(1);
+  return resources[0]!;
+}
+
+function singleResourceByTypeFromTemplate(
+  template: ReturnType<typeof buildPhosApiGatewayLambdaTemplate>,
+  type: string,
+) {
+  const resources = resourcesByTypeFromTemplate(template, type);
+  expect(resources).toHaveLength(1);
+  return resources[0]!;
+}
+
 function policyStatementsForRoute(routeKey: string) {
   const template = buildPhosApiGatewayLambdaTemplate();
   const binding = bindPhosApiRouteForDeployment(
@@ -177,7 +199,6 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       Type: 'AWS::ApiGateway::Stage',
       Properties: {
         RestApiId: { Ref: 'PhosRestApi' },
-        DeploymentId: { Ref: 'PhosRestApiDeployment' },
         TracingEnabled: true,
         AccessLogSetting: {
           DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
@@ -193,6 +214,9 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           },
         ],
       },
+    });
+    expect(template.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
+      Ref: singleResourceByType('AWS::ApiGateway::Deployment')[0],
     });
     expect(template.Resources.PhosApiGatewayAccount).toMatchObject({
       Type: 'AWS::ApiGateway::Account',
@@ -251,9 +275,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
   it('creates only API Gateway REST methods with manifest OAuth scopes', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const methodResources = resourcesByType('AWS::ApiGateway::Method');
+    const [deploymentLogicalId, deployment] = singleResourceByType('AWS::ApiGateway::Deployment');
 
     expect(methodResources).toHaveLength(PHOS_API_ROUTES.length);
-    expect(template.Resources.PhosRestApiDeployment.DependsOn).toEqual(
+    expect(deploymentLogicalId).toMatch(/^PhosRestApiDeployment[a-z0-9]{6}$/);
+    expect(template.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
+      Ref: deploymentLogicalId,
+    });
+    expect(deployment.Properties.Description).toContain(
+      deploymentLogicalId.replace(/^PhosRestApiDeployment/, ''),
+    );
+    expect(deployment.DependsOn).toEqual(
       PHOS_API_ROUTES.map((route) => bindPhosApiRouteForDeployment(route).route_logical_id),
     );
     for (const route of PHOS_API_ROUTES) {
@@ -276,6 +308,53 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         },
       });
     }
+  });
+
+  it('changes the REST deployment logical id when route auth or integration contracts change', () => {
+    const baseTemplate = buildPhosApiGatewayLambdaTemplate();
+    const [baseDeploymentLogicalId] = singleResourceByTypeFromTemplate(
+      baseTemplate,
+      'AWS::ApiGateway::Deployment',
+    );
+
+    const scopeChangedTemplate = buildPhosApiGatewayLambdaTemplate({
+      routes: PHOS_API_ROUTES.map((route, index) =>
+        index === 0
+          ? {
+              ...route,
+              required_scopes: [...route.required_scopes, 'phos/cards.audit'],
+            }
+          : route,
+      ),
+    });
+    const [scopeChangedDeploymentLogicalId] = singleResourceByTypeFromTemplate(
+      scopeChangedTemplate,
+      'AWS::ApiGateway::Deployment',
+    );
+
+    const handlerChangedTemplate = buildPhosApiGatewayLambdaTemplate({
+      routes: PHOS_API_ROUTES.map((route, index) =>
+        index === 0
+          ? {
+              ...route,
+              lambda_handler: '@/phos/backend/cards-lambda#cardSearchHandlerV2',
+            }
+          : route,
+      ),
+    });
+    const [handlerChangedDeploymentLogicalId] = singleResourceByTypeFromTemplate(
+      handlerChangedTemplate,
+      'AWS::ApiGateway::Deployment',
+    );
+
+    expect(scopeChangedDeploymentLogicalId).not.toBe(baseDeploymentLogicalId);
+    expect(handlerChangedDeploymentLogicalId).not.toBe(baseDeploymentLogicalId);
+    expect(scopeChangedTemplate.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
+      Ref: scopeChangedDeploymentLogicalId,
+    });
+    expect(handlerChangedTemplate.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
+      Ref: handlerChangedDeploymentLogicalId,
+    });
   });
 
   it('creates Lambda functions with Node.js 24 active tracing and production PH-OS environment', () => {

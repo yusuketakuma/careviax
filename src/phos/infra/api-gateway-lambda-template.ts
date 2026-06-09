@@ -43,6 +43,7 @@ export type PhosApiGatewayLambdaTemplate = {
 
 type PhosApiGatewayLambdaTemplateOptions = {
   api_name?: string;
+  routes?: readonly PhosApiRoute[];
   stage_name_parameter?: string;
   lambda_artifact_bucket_parameter?: string;
   lambda_artifact_key_parameter?: string;
@@ -440,6 +441,37 @@ function stableNameHash(input: string): string {
   return (hash >>> 0).toString(36).padStart(6, '0').slice(0, 6);
 }
 
+const REST_API_DEPLOYMENT_CONTRACT_VERSION = 'rest-api-cognito-user-pools-aws-proxy-v1';
+
+function restApiDeploymentFingerprint(bindings: readonly RouteDeploymentBinding[]): string {
+  return stableNameHash(
+    JSON.stringify({
+      version: REST_API_DEPLOYMENT_CONTRACT_VERSION,
+      authorizer: {
+        type: 'COGNITO_USER_POOLS',
+        identity_source: 'method.request.header.Authorization',
+      },
+      integration: {
+        type: 'AWS_PROXY',
+        integration_http_method: 'POST',
+      },
+      routes: bindings.map((binding) => ({
+        route_key: binding.route.route_key,
+        path: binding.route.path,
+        method: binding.route.method,
+        required_scopes: binding.route.required_scopes,
+        lambda_handler: binding.route.lambda_handler,
+        method_logical_id: apiMethodLogicalId(binding),
+        resource_logical_id: apiResourceLogicalId(binding.route.path),
+      })),
+    }),
+  );
+}
+
+function restApiDeploymentLogicalId(bindings: readonly RouteDeploymentBinding[]): string {
+  return `PhosRestApiDeployment${restApiDeploymentFingerprint(bindings)}`;
+}
+
 function lambdaFunctionName(input: {
   binding: RouteDeploymentBinding;
   stageNameParameter: string;
@@ -682,7 +714,8 @@ export function buildPhosApiGatewayLambdaTemplate(
   const auroraDatabaseSecretArnParameter =
     options.aurora_database_secret_arn_parameter ?? 'PhosAuroraDatabaseSecretArn';
   const runtime = options.lambda_runtime ?? 'nodejs24.x';
-  const bindings = buildPhosApiRouteDeploymentBindings();
+  const bindings = buildPhosApiRouteDeploymentBindings(options.routes ?? PHOS_API_ROUTES);
+  const restApiDeploymentId = restApiDeploymentLogicalId(bindings);
 
   const resources: Record<string, CloudFormationResource> = {
     PhosRestApi: {
@@ -735,20 +768,22 @@ export function buildPhosApiGatewayLambdaTemplate(
         ProviderARNs: [ref(cognitoUserPoolArnParameter)],
       },
     },
-    PhosRestApiDeployment: {
+    [restApiDeploymentId]: {
       Type: 'AWS::ApiGateway::Deployment',
       DependsOn: bindings.map((binding) => apiMethodLogicalId(binding)),
       Properties: {
         RestApiId: ref('PhosRestApi'),
-        Description: 'PH-OS business REST API deployment with X-Ray tracing support.',
+        Description: `PH-OS business REST API deployment ${restApiDeploymentFingerprint(
+          bindings,
+        )} with X-Ray tracing support.`,
       },
     },
     PhosRestApiStage: {
       Type: 'AWS::ApiGateway::Stage',
-      DependsOn: ['PhosApiGatewayAccount', 'PhosApiAccessLogGroup', 'PhosRestApiDeployment'],
+      DependsOn: ['PhosApiGatewayAccount', 'PhosApiAccessLogGroup', restApiDeploymentId],
       Properties: {
         RestApiId: ref('PhosRestApi'),
-        DeploymentId: ref('PhosRestApiDeployment'),
+        DeploymentId: ref(restApiDeploymentId),
         StageName: ref(stageNameParameter),
         TracingEnabled: true,
         AccessLogSetting: {
