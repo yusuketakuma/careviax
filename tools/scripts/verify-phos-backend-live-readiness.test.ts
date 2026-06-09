@@ -24,6 +24,15 @@ describe('verify-phos-backend-live-readiness', () => {
     expect(evaluateLocalTemplateReadiness()).toMatchObject({
       name: 'local_template_contract',
       status: 'passed',
+      detail: expect.stringContaining('canonical HTTP API/JWT authorizer'),
+    });
+  });
+
+  it('records the accepted HTTP API observability contract in local readiness', () => {
+    expect(evaluateLocalTemplateReadiness()).toMatchObject({
+      name: 'local_template_contract',
+      status: 'passed',
+      detail: expect.stringContaining('PHI-minimized access logs, Lambda active tracing'),
     });
   });
 

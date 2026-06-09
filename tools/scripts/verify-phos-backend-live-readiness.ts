@@ -88,6 +88,14 @@ function readNested(value: unknown, keys: string[]): unknown {
   }, value);
 }
 
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function hasProperty(value: unknown, key: string): boolean {
+  return !!value && typeof value === 'object' && key in value;
+}
+
 export function evaluateAccessTokenReadiness(
   token: string,
   expected: { now?: Date; issuer?: string; audience?: string } = {},
@@ -145,12 +153,43 @@ export function evaluateLocalTemplateReadiness(): ReadinessCheck {
   const template = buildPhosApiGatewayLambdaTemplate();
   const resources = template.Resources;
   const failures: string[] = [];
+  const stageProperties = asRecord(resources.PhosHttpApiStage?.Properties);
+  const defaultRouteSettings = asRecord(stageProperties.DefaultRouteSettings);
+  const accessLogSettings = asRecord(stageProperties.AccessLogSettings);
+  const accessLogFormat = asString(accessLogSettings.Format);
 
   if (resources.PhosHttpApi?.Type !== 'AWS::ApiGatewayV2::Api') {
     failures.push('PhosHttpApi HTTP API resource');
   }
   if (resources.PhosJwtAuthorizer?.Type !== 'AWS::ApiGatewayV2::Authorizer') {
     failures.push('PhosJwtAuthorizer JWT authorizer resource');
+  }
+  if (resources.PhosRestApi || resources.PhosRestApiStage) {
+    failures.push('HTTP API/JWT canonical template without REST API stage resources');
+  }
+  if (resources.PhosHttpApiStage?.Type !== 'AWS::ApiGatewayV2::Stage') {
+    failures.push('PhosHttpApiStage HTTP API stage resource');
+  }
+  if (stageProperties.AutoDeploy !== true) {
+    failures.push('HTTP API stage auto deploy');
+  }
+  if (
+    stageProperties.TracingEnabled !== undefined ||
+    hasProperty(stageProperties, 'MethodSettings')
+  ) {
+    failures.push('HTTP API stage avoids unsupported REST-only tracing/execution-log properties');
+  }
+  if (defaultRouteSettings.DetailedMetricsEnabled !== true) {
+    failures.push('HTTP API detailed metrics');
+  }
+  if (
+    !accessLogFormat.includes('$context.requestId') ||
+    !accessLogFormat.includes('$context.authorizer.claims.tenant_id') ||
+    !accessLogFormat.includes('$context.authorizer.claims.sub') ||
+    !accessLogFormat.includes('$context.routeKey') ||
+    /patient|patient_name|drug|medication|report_body|photo|sha256|file_name/i.test(accessLogFormat)
+  ) {
+    failures.push('PHI-minimized HTTP API access log format');
   }
   if (!resources.PhosCognitoPreTokenGenerationFunction) {
     failures.push('Cognito Pre Token Generation Lambda');
@@ -180,6 +219,14 @@ export function evaluateLocalTemplateReadiness(): ReadinessCheck {
   if (resources.PhosApiAccessLogGroup?.Properties?.RetentionInDays !== 365) {
     failures.push('HTTP API access log 365 day retention');
   }
+  for (const [logicalId, resource] of Object.entries(resources)) {
+    if (
+      resource.Type === 'AWS::Lambda::Function' &&
+      readNested(resource.Properties, ['TracingConfig', 'Mode']) !== 'Active'
+    ) {
+      failures.push(`${logicalId} Lambda active tracing`);
+    }
+  }
 
   return failures.length > 0
     ? {
@@ -191,16 +238,18 @@ export function evaluateLocalTemplateReadiness(): ReadinessCheck {
         name: 'local_template_contract',
         status: 'passed',
         detail:
-          'Template emits HTTP API/JWT authorizer, Cognito trigger output, Dynamo/S3 SSE-KMS, and 365 day access-log retention.',
+          'Template emits canonical HTTP API/JWT authorizer, PHI-minimized access logs, Lambda active tracing, Cognito trigger output, Dynamo/S3 SSE-KMS, and 365 day access-log retention.',
       };
 }
 
-export async function buildPhosBackendLiveReadinessReport(input: {
-  env?: Env;
-  strict?: boolean;
-  now?: Date;
-  fetch?: FetchLike;
-} = {}): Promise<PhosBackendLiveReadinessReport> {
+export async function buildPhosBackendLiveReadinessReport(
+  input: {
+    env?: Env;
+    strict?: boolean;
+    now?: Date;
+    fetch?: FetchLike;
+  } = {},
+): Promise<PhosBackendLiveReadinessReport> {
   const env = input.env ?? process.env;
   const checks: ReadinessCheck[] = [evaluateLocalTemplateReadiness()];
   const missingInputs = new Set<string>();
@@ -225,7 +274,9 @@ export async function buildPhosBackendLiveReadinessReport(input: {
       const proof = await verifyCognitoPreTokenGenerationLiveProof({
         user_pool_id: readEnv(env, 'PHOS_COGNITO_USER_POOL_ID') ?? '',
         expected_lambda_arn: readEnv(env, 'PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN') ?? '',
-        client: new CognitoIdentityProviderClient({ region: readEnv(env, 'AWS_REGION') ?? undefined }),
+        client: new CognitoIdentityProviderClient({
+          region: readEnv(env, 'AWS_REGION') ?? undefined,
+        }),
       });
       checks.push({
         name: 'cognito_trigger_live_attachment',
@@ -255,7 +306,8 @@ export async function buildPhosBackendLiveReadinessReport(input: {
     checks.push({
       name: 'access_token_claims',
       status: 'missing',
-      detail: 'Set PHOS_COGNITO_ACCESS_TOKEN to prove tenant_id, role, sub, and scope/scp are in the access token.',
+      detail:
+        'Set PHOS_COGNITO_ACCESS_TOKEN to prove tenant_id, role, sub, and scope/scp are in the access token.',
     });
   }
 
@@ -267,7 +319,8 @@ export async function buildPhosBackendLiveReadinessReport(input: {
     checks.push({
       name: 'api_gateway_lambda_smoke',
       status: 'missing',
-      detail: 'Set PHOS_API_BASE_URL and PHOS_COGNITO_ACCESS_TOKEN to run a read-only GET /cards smoke request.',
+      detail:
+        'Set PHOS_API_BASE_URL and PHOS_COGNITO_ACCESS_TOKEN to run a read-only GET /cards smoke request.',
     });
   } else {
     const response = await (input.fetch ?? fetch)(new URL('/cards', apiBaseUrl), {
@@ -281,8 +334,12 @@ export async function buildPhosBackendLiveReadinessReport(input: {
   }
 
   const strict = input.strict ?? false;
-  const ok = checks.every((check) => check.status === 'passed' || (!strict && check.status === 'missing'));
-  const nextActions = Array.from(missingInputs).map((name) => `Set ${name} for live PH-OS backend proof.`);
+  const ok = checks.every(
+    (check) => check.status === 'passed' || (!strict && check.status === 'missing'),
+  );
+  const nextActions = Array.from(missingInputs).map(
+    (name) => `Set ${name} for live PH-OS backend proof.`,
+  );
 
   return {
     ok,
