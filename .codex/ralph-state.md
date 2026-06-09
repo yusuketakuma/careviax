@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-024705
+
+- current task: require durable S3 `VERIFIED` evidence tagging before committing VisitMode evidence completion.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/dynamo-visit-mode-repository.ts`, `src/phos/backend/dynamo-visit-mode-repository.test.ts`, `src/phos/backend/visit-mode-lifecycle-repository.ts`, `src/phos/backend/visit-mode-lambda.ts`, evidence intent/tag search results, and prior read-only security finding from subagent `019ead62-224f-7910-a1a4-f19128e094fa`.
+- files changed: `src/phos/backend/dynamo-visit-mode-repository.ts`, `src/phos/backend/dynamo-visit-mode-repository.test.ts`, `.codex/ralph-state.md`.
+- bugs found: VisitMode evidence completion committed the Dynamo visit packet, idempotency row, and evidence intent `upload_status=VERIFIED` transaction before writing the S3 object's `phos-upload-status=VERIFIED` tag. A tag write failure could leave the server-side visit/evidence state verified while the S3 object still had the lifecycle-expirable `PRESIGNED` tag.
+- security risks found: evidence commit now requires `markObjectVerified` to succeed before the Dynamo transaction runs. If S3 tagging fails, VisitMode evidence completion is not committed, so server state cannot claim verified evidence that may still be lifecycle-deleted as unverified. Existing idempotency replay still retries verified tagging for already committed evidence.
+- performance issues found: no extra success-path network call was added; the existing S3 tagging call moved before the Dynamo transaction. Failed tagging now avoids an unnecessary Dynamo transaction.
+- validation commands: Prettier for touched repository/test files; focused `pnpm exec vitest run src/phos/backend/dynamo-visit-mode-repository.test.ts src/phos/backend/visit-mode-lifecycle-repository.test.ts src/phos/backend/visit-mode-lambda.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused backend suite passed with 3 files / 26 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 712 tests. Next production build passed and generated 235 static pages.
+- remaining work: live S3 tag durability, API Gateway/Lambda/Cognito/Dynamo/Aurora/CloudWatch/X-Ray proof remains external and unverified locally. Remaining local follow-ups include API Gateway logging-role least privilege, REST API proxy success matrix, Lambda artifact/handler resolution gate, Aurora FeeRule RLS real DB harness, and `NextActionView.target_endpoint` parity gate.
+- next action: commit this evidence tagging durability slice, then continue with a route proxy/artifact verification gate or API Gateway logging-role least privilege.
+
 ### 20260610-024250
 
 - current task: force PH-OS REST API Gateway redeployment when route auth or Lambda integration contracts change.

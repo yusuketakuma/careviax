@@ -255,7 +255,8 @@ describe('createDynamoVisitModeRepository', () => {
   });
 
   it('includes verified evidence status update in the visit commit transaction', async () => {
-    const fakeClient = client();
+    const transactCommitVisitStep = vi.fn(async () => undefined);
+    const fakeClient = client({ transactCommitVisitStep });
     const verifier = {
       verifyObject: vi.fn(async () => undefined),
       markObjectVerified: vi.fn(async () => undefined),
@@ -299,6 +300,47 @@ describe('createDynamoVisitModeRepository', () => {
       key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
     });
+    expect(verifier.markObjectVerified.mock.invocationCallOrder[0]).toBeLessThan(
+      transactCommitVisitStep.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('does not commit VisitMode evidence when the S3 verified tag cannot be written', async () => {
+    const transactCommitVisitStep = vi.fn(async () => undefined);
+    const fakeClient = client({ transactCommitVisitStep });
+    const verifier = {
+      verifyObject: vi.fn(async () => undefined),
+      markObjectVerified: vi.fn(async () => {
+        throw new Error('tagging failed');
+      }),
+    };
+    const store = createDynamoVisitModeRepository(fakeClient, {
+      now: () => new Date('2026-06-09T00:00:00.000Z'),
+      evidence_object_verifier: verifier,
+    });
+
+    await expect(
+      store.commitVisitStep(ctx, {
+        packet_id: 'packet_1',
+        step: VisitStep.EVIDENCE_UPLOAD,
+        mutation_key: 'VISIT_STEP:packet_1:EVIDENCE_UPLOAD',
+        command: {
+          idempotency_key: 'idem_1',
+          client_version: 3,
+          payload: { evidence_key: 'evidence_1' },
+        },
+        request_fingerprint: 'fingerprint_1',
+        previous_visit: visit(),
+        response: visit({ server_version: 4 }),
+        verified_evidence: {
+          evidence_id: 'evidence_1',
+          card_id: 'card_1',
+          s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        },
+      }),
+    ).rejects.toThrow('tagging failed');
+
+    expect(transactCommitVisitStep).not.toHaveBeenCalled();
   });
 
   it('marks already committed evidence objects verified during idempotency replay', async () => {
