@@ -1,11 +1,261 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole } from '@/phos/contracts/phos_contracts';
+import {
+  ActionCode,
+  ActionKind,
+  ButtonState,
+  CapacityScope,
+  CapacityStatus,
+  CardType,
+  ClaimCandidateStatus,
+  CurrentStep,
+  DisplayStatus,
+  HandoffStatus,
+  HandoffUrgency,
+  ReportDeliveryStatus,
+  UserRole,
+  VisitStatus,
+  VisitStep,
+  type ActionResponse,
+  type CapacityResponse,
+  type CardDetailResponse,
+  type CardSearchResponse,
+  type ClaimCandidateMutationResponse,
+  type ClaimCandidateSearchResponse,
+  type FeeRuleSearchResponse,
+  type HandoffMutationResponse,
+  type HandoffSearchResponse,
+  type HandoffView,
+  type NextActionView,
+  type ReportDeliveryMutationResponse,
+  type ReportDeliverySearchResponse,
+  type ReportDeliveryView,
+  type VisitModeView,
+} from '@/phos/contracts/phos_contracts';
+import {
+  createCardDetailLambdaHandler,
+  createCardSearchLambdaHandler,
+  createExecuteCardActionLambdaHandler,
+} from '@/phos/backend/cards-lambda';
+import { createCapacityLambdaHandler } from '@/phos/backend/capacity-lambda';
+import {
+  createClaimCandidateSearchLambdaHandler,
+  createExcludeClaimCandidateLambdaHandler,
+} from '@/phos/backend/claim-candidates-lambda';
+import { createEvidencePresignUploadLambdaHandler } from '@/phos/backend/evidence-lambda';
+import { createFeeRuleSearchLambdaHandler } from '@/phos/backend/fee-rules-lambda';
+import {
+  createCreateHandoffLambdaHandler,
+  createHandoffSearchLambdaHandler,
+  createOpenHandoffLambdaHandler,
+  createResolveHandoffLambdaHandler,
+  createReturnHandoffLambdaHandler,
+} from '@/phos/backend/handoffs-lambda';
+import {
+  createMarkReportActionDoneLambdaHandler,
+  createRegisterReportReplyLambdaHandler,
+  createReportDeliverySearchLambdaHandler,
+} from '@/phos/backend/report-deliveries-lambda';
+import {
+  createGetVisitModeLambdaHandler,
+  createUpdateVisitStepLambdaHandler,
+} from '@/phos/backend/visit-mode-lambda';
 import type { PhosLambdaResponse } from '@/phos/backend/error-response';
 import type { PhosHttpEvent } from '@/phos/backend/lambda-handler';
 import { PHOS_API_ROUTES, type PhosApiRoute } from './api-gateway-routes';
 import { bindPhosApiRouteForDeployment } from './api-gateway-lambda-template';
 
 type PhosLambdaHandler = (event: PhosHttpEvent) => Promise<PhosLambdaResponse>;
+type RuntimeSuccessCase = {
+  handler: PhosLambdaHandler;
+  overrides?: Partial<PhosHttpEvent>;
+};
+
+const serverTime = '2026-06-09T00:00:00.000Z';
+
+const nextAction: NextActionView = {
+  code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+  kind: ActionKind.STEP_CHANGING,
+  label_key: 'action.confirm_prescription_diff',
+  enabled: true,
+  offline_allowed: false,
+  priority: 'PRIMARY',
+  required_role: [],
+  target_endpoint: '/cards/card_1/actions',
+  ui_state: ButtonState.ACTIONABLE,
+  can_user_handle: true,
+};
+
+const card = {
+  card_id: 'card_1',
+  card_type: CardType.PRESCRIPTION,
+  patient_name: '患者 山田太郎',
+  current_step: CurrentStep.DIFF_REVIEW,
+  display_status: DisplayStatus.READY,
+  server_version: 1,
+  tags: [],
+};
+
+const cardSearchResponse: CardSearchResponse = {
+  items: [{ card, next_action: nextAction }],
+  server_time: serverTime,
+};
+
+const cardDetailResponse: CardDetailResponse = {
+  card,
+  visible_tabs: ['OVERVIEW'],
+  permissions: {
+    can_read: true,
+    can_write: true,
+    allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
+  },
+  next_action: nextAction,
+  blockers: [],
+  source_refs: [],
+  server_version: 1,
+};
+
+const cardActionResponse: ActionResponse = {
+  card: { ...card, current_step: CurrentStep.DISPENSING, server_version: 2 },
+  next_action: nextAction,
+  display_status: DisplayStatus.READY,
+  blockers: [],
+  side_effects: [],
+  server_version: 2,
+};
+
+const capacityResponse: CapacityResponse = {
+  date: '2026-06-09',
+  scope: CapacityScope.PHARMACY,
+  status: CapacityStatus.AVAILABLE,
+  total_planned_minutes: 120,
+  total_available_minutes: 180,
+  utilization_percent: 67,
+  work_buckets: [],
+  staff_loads: [],
+  bottlenecks: [],
+  server_time: serverTime,
+};
+
+const claimCandidate = {
+  candidate_id: 'claim_1',
+  card_id: 'card_1',
+  patient_name: '患者 山田太郎',
+  fee_code: 'M001',
+  fee_label: '在宅患者訪問薬剤管理指導料',
+  billing_month: '2026-06',
+  status: ClaimCandidateStatus.READY,
+  status_label: '請求候補',
+  missing_evidence_keys: [],
+  evidence_requirements: [],
+  rule_version_id: 'rule_version_1',
+  priority_rank: 1,
+  source_refs: [],
+  created_at: serverTime,
+  updated_at: serverTime,
+  server_version: 1,
+};
+
+const claimCandidateSearchResponse: ClaimCandidateSearchResponse = {
+  items: [claimCandidate],
+  server_time: serverTime,
+};
+
+const claimCandidateMutationResponse: ClaimCandidateMutationResponse = {
+  candidate: { ...claimCandidate, status: ClaimCandidateStatus.EXCLUDED, server_version: 2 },
+  side_effects: [],
+  server_version: 2,
+};
+
+const feeRuleSearchResponse: FeeRuleSearchResponse = {
+  items: [
+    {
+      rule_id: 'rule_1',
+      rule_version_id: 'rule_version_1',
+      fee_code: 'M001',
+      fee_label: '在宅患者訪問薬剤管理指導料',
+      tenant_scope: 'SYSTEM',
+      revision_code: '2026',
+      active_from: '2026-04-01',
+      condition: { op: 'EXISTS', field: 'visit_record_id' },
+      evidence_requirements: [],
+      source_refs: [],
+    },
+  ],
+  server_time: serverTime,
+};
+
+const visitMode: VisitModeView = {
+  packet_id: 'packet_1',
+  card_id: 'card_1',
+  server_version: 4,
+  patient_name: '患者 山田太郎',
+  visit_status: VisitStatus.IN_PROGRESS,
+  applicable_steps: [VisitStep.EVIDENCE_UPLOAD],
+  required_steps: [VisitStep.EVIDENCE_UPLOAD],
+  step_completed: Object.fromEntries(
+    Object.values(VisitStep).map((step) => [step, step === VisitStep.EVIDENCE_UPLOAD]),
+  ) as Record<VisitStep, boolean>,
+  last_opened_step: VisitStep.EVIDENCE_UPLOAD,
+  evidence_sync: { blocking_unsynced_count: 0, non_blocking_unsynced_count: 0 },
+  online: true,
+};
+
+function handoff(overrides: Partial<HandoffView> = {}): HandoffView {
+  return {
+    handoff_id: 'handoff_1',
+    card_id: 'card_1',
+    status: HandoffStatus.OPEN,
+    reason_code: 'DIFF_REVIEW',
+    summary: '薬剤師確認が必要です。',
+    source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+    requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+    urgency: HandoffUrgency.HIGH,
+    related_blocker_code: 'MISSING_EVIDENCE',
+    created_by_user_id: 'user_clerk',
+    assignee_user_id: 'user_1',
+    created_at: serverTime,
+    updated_at: serverTime,
+    server_version: 1,
+    patient_name: '患者 山田太郎',
+    age_minutes: 12,
+    ...overrides,
+  };
+}
+
+const handoffSearchResponse: HandoffSearchResponse = {
+  items: [handoff()],
+  server_time: serverTime,
+};
+
+function handoffMutationResponse(overrides: Partial<HandoffView> = {}): HandoffMutationResponse {
+  const next = handoff(overrides);
+  return { handoff: next, side_effects: [], server_version: next.server_version };
+}
+
+const reportDelivery: ReportDeliveryView = {
+  delivery_id: 'delivery_1',
+  card_id: 'card_1',
+  report_id: 'report_1',
+  patient_name: '患者 山田太郎',
+  target_label: '山田医師',
+  sent_at: serverTime,
+  stale_minutes: 0,
+  status: ReportDeliveryStatus.WAITING_REPLY,
+  delivery_method: 'FAX',
+  server_version: 1,
+  source_refs: [],
+};
+
+const reportDeliverySearchResponse: ReportDeliverySearchResponse = {
+  items: [reportDelivery],
+  server_time: serverTime,
+};
+
+const reportDeliveryMutationResponse: ReportDeliveryMutationResponse = {
+  delivery: { ...reportDelivery, status: ReportDeliveryStatus.ACTION_DONE, server_version: 2 },
+  side_effects: [{ type: 'REPORT_ACTION_DONE', delivery_id: 'delivery_1' }],
+  server_version: 2,
+};
 
 function pathFor(route: PhosApiRoute): string {
   return route.path.replace(/\{([^}]+)\}/g, (_, name: string) => `${name}_1`);
@@ -45,6 +295,213 @@ function apiGatewayEventFor(
       },
     },
     ...overrides,
+  };
+}
+
+function buildRuntimeSuccessCases(): Record<string, RuntimeSuccessCase> {
+  const cardsRepository = {
+    searchCards: vi.fn(async () => cardSearchResponse),
+    getCardDetail: vi.fn(async () => cardDetailResponse),
+    executeCardAction: vi.fn(async () => cardActionResponse),
+  };
+  const claimCandidatesRepository = {
+    searchClaimCandidates: vi.fn(async () => claimCandidateSearchResponse),
+    excludeClaimCandidate: vi.fn(async () => claimCandidateMutationResponse),
+  };
+  const handoffsRepository = {
+    searchHandoffs: vi.fn(async () => handoffSearchResponse),
+    createHandoff: vi.fn(async () => handoffMutationResponse()),
+    openHandoff: vi.fn(async () => handoffMutationResponse({ status: HandoffStatus.IN_REVIEW })),
+    resolveHandoff: vi.fn(async () =>
+      handoffMutationResponse({
+        status: HandoffStatus.RESOLVED,
+        resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        server_version: 2,
+      }),
+    ),
+    returnHandoff: vi.fn(async () =>
+      handoffMutationResponse({
+        status: HandoffStatus.RETURNED,
+        return_reason_code: 'NEED_MORE_INFO',
+        return_note: '施設連絡先を確認してください。',
+        server_version: 2,
+      }),
+    ),
+  };
+  const reportDeliveriesRepository = {
+    searchReportDeliveries: vi.fn(async () => reportDeliverySearchResponse),
+    registerReportReply: vi.fn(async () => reportDeliveryMutationResponse),
+    markReportActionDone: vi.fn(async () => reportDeliveryMutationResponse),
+  };
+  const visitModeRepository = {
+    getVisitMode: vi.fn(async () => visitMode),
+    updateVisitStep: vi.fn(async () => ({ ...visitMode, server_version: 5 })),
+  };
+
+  return {
+    'GET /cards': {
+      handler: createCardSearchLambdaHandler({ repository: cardsRepository }),
+      overrides: { queryStringParameters: { limit: '25' } },
+    },
+    'GET /cards/{card_id}': {
+      handler: createCardDetailLambdaHandler({ repository: cardsRepository }),
+    },
+    'POST /cards/{card_id}/actions': {
+      handler: createExecuteCardActionLambdaHandler({ repository: cardsRepository }),
+      overrides: {
+        body: JSON.stringify({
+          action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_card_action',
+          client_version: 1,
+        }),
+      },
+    },
+    'GET /capacity': {
+      handler: createCapacityLambdaHandler({
+        repository: { getCapacity: vi.fn(async () => capacityResponse) },
+      }),
+      overrides: {
+        queryStringParameters: { date: '2026-06-09', scope: CapacityScope.PHARMACY },
+      },
+    },
+    'GET /claim-candidates': {
+      handler: createClaimCandidateSearchLambdaHandler({ repository: claimCandidatesRepository }),
+      overrides: { queryStringParameters: { status: ClaimCandidateStatus.READY, limit: '25' } },
+    },
+    'POST /claim-candidates/{candidate_id}/exclude': {
+      handler: createExcludeClaimCandidateLambdaHandler({ repository: claimCandidatesRepository }),
+      overrides: {
+        body: JSON.stringify({
+          reason_code: 'NOT_ELIGIBLE',
+          idempotency_key: 'idem_claim_exclude',
+          client_version: 1,
+        }),
+      },
+    },
+    'GET /fee-rules': {
+      handler: createFeeRuleSearchLambdaHandler({
+        repository: { searchFeeRules: vi.fn(async () => feeRuleSearchResponse) },
+      }),
+      overrides: { queryStringParameters: { fee_code: 'M001', limit: '25' } },
+    },
+    'GET /visit-packets/{packet_id}/visit-mode': {
+      handler: createGetVisitModeLambdaHandler({ repository: visitModeRepository }),
+      overrides: { pathParameters: { packet_id: 'packet_1' } },
+    },
+    'POST /visit-packets/{packet_id}/visit-steps/{step}': {
+      handler: createUpdateVisitStepLambdaHandler({ repository: visitModeRepository }),
+      overrides: {
+        pathParameters: { packet_id: 'packet_1', step: VisitStep.EVIDENCE_UPLOAD },
+        body: JSON.stringify({
+          idempotency_key: 'idem_visit_step',
+          client_version: 4,
+          payload: { evidence_key: 'evidence_1' },
+        }),
+      },
+    },
+    'POST /evidence/presign-upload': {
+      handler: createEvidencePresignUploadLambdaHandler({
+        presigner: {
+          presignPut: vi.fn(async () => ({
+            upload_url: 'https://s3.example/upload',
+            headers: { 'Content-Type': 'image/jpeg' },
+            expires_in_seconds: 300,
+          })),
+        },
+        upload_authorizer: {
+          authorizeEvidenceUpload: vi.fn(async () => undefined),
+        },
+        upload_intent_store: {
+          recordUploadIntent: vi.fn(async () => undefined),
+        },
+        generateEvidenceId: () => 'evidence_1',
+        now: () => new Date(serverTime),
+      }),
+      overrides: {
+        body: JSON.stringify({
+          idempotency_key: 'idem_evidence',
+          card_id: 'card_1',
+          evidence_type: 'PHOTO',
+          file_name: 'photo.jpg',
+          mime_type: 'image/jpeg',
+          sha256: 'a'.repeat(64),
+          size_bytes: 1024,
+        }),
+      },
+    },
+    'GET /handoffs': {
+      handler: createHandoffSearchLambdaHandler({ repository: handoffsRepository }),
+      overrides: { queryStringParameters: { status: HandoffStatus.OPEN, limit: '25' } },
+    },
+    'POST /handoffs': {
+      handler: createCreateHandoffLambdaHandler({ repository: handoffsRepository }),
+      overrides: {
+        body: JSON.stringify({
+          card_id: 'card_1',
+          reason_code: 'DIFF_REVIEW',
+          summary: '薬剤師確認が必要です。',
+          source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
+          urgency: HandoffUrgency.HIGH,
+          related_blocker_code: 'MISSING_EVIDENCE',
+          idempotency_key: 'idem_handoff_create',
+          client_version: 1,
+        }),
+      },
+    },
+    'POST /handoffs/{handoff_id}/open': {
+      handler: createOpenHandoffLambdaHandler({ repository: handoffsRepository }),
+      overrides: {
+        body: JSON.stringify({ idempotency_key: 'idem_handoff_open', client_version: 1 }),
+      },
+    },
+    'POST /handoffs/{handoff_id}/resolve': {
+      handler: createResolveHandoffLambdaHandler({ repository: handoffsRepository }),
+      overrides: {
+        body: JSON.stringify({
+          resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_handoff_resolve',
+          client_version: 1,
+        }),
+      },
+    },
+    'POST /handoffs/{handoff_id}/return': {
+      handler: createReturnHandoffLambdaHandler({ repository: handoffsRepository }),
+      overrides: {
+        body: JSON.stringify({
+          return_reason_code: 'NEED_MORE_INFO',
+          return_note: '施設連絡先を確認してください。',
+          idempotency_key: 'idem_handoff_return',
+          client_version: 1,
+        }),
+      },
+    },
+    'GET /report-deliveries': {
+      handler: createReportDeliverySearchLambdaHandler({ repository: reportDeliveriesRepository }),
+      overrides: {
+        queryStringParameters: { status: ReportDeliveryStatus.WAITING_REPLY, limit: '25' },
+      },
+    },
+    'POST /report-deliveries/{delivery_id}/reply': {
+      handler: createRegisterReportReplyLambdaHandler({ repository: reportDeliveriesRepository }),
+      overrides: {
+        body: JSON.stringify({
+          result_status: ReportDeliveryStatus.ACTION_DONE,
+          reply_summary: '問題ありません。',
+          idempotency_key: 'idem_report_reply',
+          client_version: 1,
+        }),
+      },
+    },
+    'POST /report-deliveries/{delivery_id}/action-done': {
+      handler: createMarkReportActionDoneLambdaHandler({ repository: reportDeliveriesRepository }),
+      overrides: {
+        body: JSON.stringify({
+          action_note: '折り返し確認済みです。',
+          idempotency_key: 'idem_report_done',
+          client_version: 1,
+        }),
+      },
+    },
   };
 }
 
@@ -119,6 +576,46 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('successfully handles a REST proxy event for every manifest route with injected dependencies', async () => {
+    const successCases = buildRuntimeSuccessCases();
+    expect(Object.keys(successCases).sort()).toEqual(
+      PHOS_API_ROUTES.map((route) => route.route_key).sort(),
+    );
+
+    for (const route of PHOS_API_ROUTES) {
+      clearConsoleSpies();
+      const testCase = successCases[route.route_key]!;
+      const response = await testCase.handler(apiGatewayEventFor(route, testCase.overrides));
+
+      expect(response.statusCode, route.route_key).toBe(200);
+      expect(response.headers['Content-Type'], route.route_key).toBe('application/json');
+      expect(response.headers['X-Request-Id'], route.route_key).toBe(
+        `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+      );
+      expect(parseBody(response), route.route_key).toEqual(expect.any(Object));
+      expect(parsedConsoleErrorEntries(), route.route_key).toEqual([]);
+      expect(parsedConsoleLogEntries(), route.route_key).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            route_key: route.route_key,
+            tenant_id: 'tenant_abc123',
+            user_id: 'user_1',
+            RequestLatencyMs: expect.any(Number),
+          }),
+          expect.objectContaining({
+            level: 'INFO',
+            message: 'PH-OS lambda request completed',
+            result: 'SUCCESS',
+            status_code: 200,
+            tenant_id: 'tenant_abc123',
+            user_id: 'user_1',
+            route_key: route.route_key,
+          }),
+        ]),
+      );
+    }
   });
 
   it('invokes every manifest Lambda export and rejects external tenant_id with JWT attribution', async () => {

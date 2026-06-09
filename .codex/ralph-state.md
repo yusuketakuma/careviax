@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-025710
+
+- current task: add a PH-OS REST API proxy success matrix for every manifest route using injected Lambda dependencies.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/infra/api-gateway-lambda-runtime.test.ts`, `src/phos/infra/api-gateway-routes.ts`, PH-OS Lambda factory tests under `src/phos/backend/*-lambda.test.ts`, repository interfaces under `src/phos/backend/*-repository.ts`, and prior read-only test-architect finding from subagent `019ead62-38b9-75c0-88e8-5ac09d52b905`.
+- files changed: `src/phos/infra/api-gateway-lambda-runtime.test.ts`, `.codex/ralph-state.md`.
+- bugs found: runtime proof covered manifest route exports, tenant-boundary rejection, missing claims, malformed JSON, missing scopes, and disallowed roles, while success-path REST proxy events were still spread across individual Lambda tests and did not prove every manifest route could return a canonical 200 response through the Lambda boundary.
+- security risks found: no production auth, authorization, tenant boundary, database, S3, Aurora, or logging code changed. The new matrix proves every route manifest entry has an injected-dependency success path through the same REST proxy event shape, request-id propagation, and success observability logging used in deployment.
+- performance issues found: no runtime path changed. The matrix uses in-memory fake repositories/presigner/intent store and runs only in Vitest.
+- validation commands: Prettier for touched runtime proof test; focused `pnpm exec vitest run src/phos/infra/api-gateway-lambda-runtime.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused runtime proof passed with 1 file / 6 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 714 tests. Next production build passed and generated 235 static pages.
+- remaining work: live API Gateway/Lambda/Cognito/Dynamo/Aurora/S3/CloudWatch/X-Ray proof remains external and unverified locally. Remaining local follow-ups include API Gateway logging-role least privilege, Aurora FeeRule RLS real DB harness, and `NextActionView.target_endpoint` parity gate.
+- next action: commit this REST proxy success matrix, then continue with API Gateway logging-role least privilege or `NextActionView.target_endpoint` parity.
+
 ### 20260610-024910
 
 - current task: add a PH-OS Lambda artifact/handler export resolution gate for API Gateway route bindings.
