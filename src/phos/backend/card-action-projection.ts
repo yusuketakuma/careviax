@@ -2,6 +2,7 @@ import {
   ActionCode,
   ActionKind,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CurrentStep,
   DisplayStatus,
 } from '@/phos/contracts/phos_contracts';
@@ -100,6 +101,7 @@ export function normalizeNextActionView(next_action: NextActionView): NextAction
     kind: transition.kind,
     enabled: uiEnabled,
     reason_required: 'reason_required' in transition && transition.reason_required === true,
+    target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
   };
 }
 

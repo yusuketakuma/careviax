@@ -2,6 +2,7 @@ import {
   ActionCode,
   ActionKind,
   BlockerSeverity,
+  CARD_ACTION_TARGET_ENDPOINT,
   CurrentStep,
   DisplayStatus,
 } from '@/phos/contracts/phos_contracts';
@@ -324,6 +325,18 @@ function assertCanonicalActionResponse(input: {
       'api.error.action_response_next_action_kind_mismatch',
       {
         next_action_code: response.next_action.code,
+      },
+    );
+  }
+  if (response.next_action.target_endpoint !== CARD_ACTION_TARGET_ENDPOINT) {
+    throw domainError(
+      500,
+      'INTERNAL_ERROR',
+      'api.error.action_response_next_action_endpoint_mismatch',
+      {
+        next_action_code: response.next_action.code,
+        target_endpoint: response.next_action.target_endpoint,
+        expected_target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
       },
     );
   }

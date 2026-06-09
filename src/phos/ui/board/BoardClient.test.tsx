@@ -7,6 +7,7 @@ import {
   ActionKind,
   BlockerSeverity,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CapacityScope,
   CapacityStatus,
   CardType,
@@ -100,7 +101,7 @@ const nextAction = {
   offline_allowed: false,
   priority: 'PRIMARY',
   required_role: [],
-  target_endpoint: '/cards/card_1/actions',
+  target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
   ui_state: ButtonState.ACTIONABLE,
   can_user_handle: true,
 } satisfies NextActionView;

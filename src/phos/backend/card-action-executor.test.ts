@@ -4,6 +4,7 @@ import {
   ActionKind,
   BlockerSeverity,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CardType,
   CurrentStep,
   DisplayStatus,
@@ -59,7 +60,7 @@ function nextAction(overrides: Partial<NextActionView> = {}): NextActionView {
     offline_allowed: false,
     priority: 'PRIMARY',
     required_role: [UserRole.PHARMACIST],
-    target_endpoint: '/cards/card_1/actions',
+    target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
     ui_state: ButtonState.ACTIONABLE,
     can_user_handle: true,
     ...overrides,
@@ -654,6 +655,32 @@ describe('createCardActionExecutorRepository', () => {
       details: {
         display_status: DisplayStatus.READY,
         card_display_status: DisplayStatus.IN_PROGRESS,
+      },
+    });
+  });
+
+  it('rejects ActionResponse next_action endpoints that drift from the card action route contract', async () => {
+    const fakeStore = store({
+      commitAction: vi.fn(async () =>
+        actionResponse({
+          next_action: nextAction({
+            code: ActionCode.START_DISPENSING,
+            kind: ActionKind.INTRA_STEP,
+            label_key: 'action.start_dispensing',
+            target_endpoint: '/cards/card_1/actions',
+          }),
+        }),
+      ),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(ctx, 'card_1', command)).rejects.toMatchObject({
+      status: 500,
+      error_code: 'INTERNAL_ERROR',
+      details: {
+        next_action_code: ActionCode.START_DISPENSING,
+        target_endpoint: '/cards/card_1/actions',
+        expected_target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
       },
     });
   });

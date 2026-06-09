@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-030437
+
+- current task: add a PH-OS `NextActionView.target_endpoint` parity gate for the card action route contract.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/contracts/phos_contracts.ts`, `src/phos/backend/card-action-projection.ts`, `src/phos/backend/card-action-executor.ts`, `src/phos/backend/card-action-projection.test.ts`, `src/phos/backend/card-action-executor.test.ts`, `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, and `src/phos/ui/board/BoardClient.test.tsx`.
+- files changed: `src/phos/contracts/phos_contracts.ts`, `src/phos/backend/card-action-projection.ts`, `src/phos/backend/card-action-executor.ts`, `src/phos/backend/card-action-projection.test.ts`, `src/phos/backend/card-action-executor.test.ts`, `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, `src/phos/ui/board/BoardClient.test.tsx`, `.codex/ralph-state.md`.
+- bugs found: `NextActionView.target_endpoint` was treated as any string in the API client and was mixed between concrete card URLs and the card action route contract in fixtures. A backend projection or persisted response could drift from the frontend action contract without being caught locally.
+- security risks found: no auth, authorization, tenant boundary, persistence, S3, Aurora, or IAM behavior changed. Successful API responses now fail frontend runtime validation when `next_action.target_endpoint` is not the canonical card action endpoint, reducing client-side action routing drift for PH-OS action buttons.
+- performance issues found: no network, database, scan, or render path was expanded. The new endpoint equality check is constant-time runtime validation on already parsed responses.
+- validation commands: Prettier for touched PH-OS contract/backend/API/UI test files; focused `pnpm exec vitest run src/phos/backend/card-action-projection.test.ts src/phos/backend/card-action-executor.test.ts src/phos/api/client.test.ts --reporter=dot`; focused `pnpm exec vitest run src/phos/ui/board/BoardClient.test.tsx --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec eslint src/phos --max-warnings=0`; `git diff --check`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm build`.
+- validation results: Prettier completed unchanged. Focused backend/API suite passed with 3 files / 64 tests. Initial full PH-OS Vitest found a BoardClient success fixture still using a concrete card URL; after updating it to the shared contract constant, BoardClient passed with 1 file / 40 tests. Standalone TypeScript passed. PH-OS ESLint passed with zero warnings. Whitespace diff check passed. Full PH-OS Vitest passed with 99 files / 716 tests. Next production build passed and generated 235 static pages.
+- remaining work: live API Gateway/frontend deployment proof remains external and unverified locally. Remaining local follow-up is Aurora FeeRule RLS real DB harness/evidence.
+- next action: commit this `NextActionView.target_endpoint` parity gate, then continue with Aurora FeeRule RLS real DB proof if local environment support exists.
+
 ### 20260610-025906
 
 - current task: scope the PH-OS REST API Gateway CloudWatch logging role to managed log groups instead of the broad AWS managed policy.

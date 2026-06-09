@@ -112,6 +112,8 @@ export const ButtonState = {
 } as const;
 export type ButtonState = (typeof ButtonState)[keyof typeof ButtonState];
 
+export const CARD_ACTION_TARGET_ENDPOINT = 'POST /cards/{card_id}/actions' as const;
+
 export type NextActionView = {
   code: ActionCode;
   kind: ActionKind;

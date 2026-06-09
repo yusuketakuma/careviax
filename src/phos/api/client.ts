@@ -18,6 +18,7 @@ import {
   BlockerSeverity,
   BoardQuickFilter,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CapacityScope,
   CapacityStatus,
   CardType,
@@ -387,7 +388,7 @@ function isNextAction(value: unknown): boolean {
     typeof value.offline_allowed === 'boolean' &&
     isOneOf(['PRIMARY', 'SECONDARY', 'DANGER', 'INFO'], value.priority) &&
     everyArrayItem(value, 'required_role', (item) => isOneOf(Object.values(UserRole), item)) &&
-    hasString(value, 'target_endpoint') &&
+    value.target_endpoint === CARD_ACTION_TARGET_ENDPOINT &&
     isOneOf(Object.values(ButtonState), value.ui_state) &&
     typeof value.can_user_handle === 'boolean' &&
     hasOptionalBoolean(value, 'reason_required')

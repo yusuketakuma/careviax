@@ -4,6 +4,7 @@ import {
   ActionKind,
   BlockerSeverity,
   ButtonState,
+  CARD_ACTION_TARGET_ENDPOINT,
   CardType,
   CurrentStep,
   DisplayStatus,
@@ -36,7 +37,7 @@ function nextAction(overrides: Partial<NextActionView> = {}): NextActionView {
     offline_allowed: false,
     priority: 'PRIMARY',
     required_role: [UserRole.PHARMACIST],
-    target_endpoint: '/cards/card_1/actions',
+    target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
     ui_state: ButtonState.ACTIONABLE,
     can_user_handle: true,
     ...overrides,
@@ -174,6 +175,7 @@ describe('projectCardActionResponse', () => {
         code: ActionCode.START_DISPENSING,
         kind: ActionKind.STEP_CHANGING,
         enabled: false,
+        target_endpoint: '/cards/card_1/actions',
         ui_state: ButtonState.ACTIONABLE,
       }),
       display_context: displayContext(),
@@ -184,6 +186,7 @@ describe('projectCardActionResponse', () => {
       kind: ActionKind.INTRA_STEP,
       enabled: true,
       reason_required: false,
+      target_endpoint: CARD_ACTION_TARGET_ENDPOINT,
     });
   });
 
