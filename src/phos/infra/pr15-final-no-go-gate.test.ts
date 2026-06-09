@@ -189,11 +189,34 @@ describe('PH-OS Final No-Go gate', () => {
       AllowedPattern: '^phos_core$',
     });
     expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
+    const evidenceBinding = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find((route) => route.route_key === 'POST /evidence/presign-upload')!,
+    );
+    const visitStepBinding = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find(
+        (route) => route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}',
+      )!,
+    );
     expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
       'dynamodb:TransactWriteItems',
     );
     expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
       's3:PutObject',
+    );
+    expect(JSON.stringify(template.Resources.PhosGETCapacityFunctionRole)).not.toContain(
+      's3:DeleteObject',
+    );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).toContain(
+      's3:PutObject',
+    );
+    expect(JSON.stringify(template.Resources[evidenceBinding.role_logical_id])).not.toContain(
+      's3:DeleteObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      's3:GetObject',
+    );
+    expect(JSON.stringify(template.Resources[visitStepBinding.role_logical_id])).toContain(
+      's3:DeleteObject',
     );
   });
 

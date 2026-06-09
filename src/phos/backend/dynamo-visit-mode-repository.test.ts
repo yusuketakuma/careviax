@@ -163,6 +163,7 @@ describe('createDynamoVisitModeRepository', () => {
       mime_type: 'image/jpeg',
       sha256: 'a'.repeat(64),
       size_bytes: 1024,
+      allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
     });
   });
 

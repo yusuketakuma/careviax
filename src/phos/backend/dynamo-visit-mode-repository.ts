@@ -209,6 +209,7 @@ async function verifyEvidenceUploadIntent(input: {
       mime_type: intent.mime_type,
       sha256: intent.sha256,
       size_bytes,
+      allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
     });
   } catch (error) {
     if (error instanceof EvidenceObjectVerificationError) {

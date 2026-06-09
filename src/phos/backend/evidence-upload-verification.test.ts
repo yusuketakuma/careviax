@@ -1,9 +1,6 @@
-import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createS3EvidenceObjectVerifier,
-  EvidenceObjectVerificationError,
-} from './evidence-upload-verification';
+import { createS3EvidenceObjectVerifier } from './evidence-upload-verification';
 
 const expected = {
   key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
@@ -57,12 +54,13 @@ describe('S3 evidence object verifier', () => {
       reason: 'object_missing',
       details: { key: expected.key },
     });
+    expect(send).toHaveBeenCalledOnce();
   });
 
-  it('rejects size, mime, and sha256 metadata mismatches', async () => {
-    const verifier = createS3EvidenceObjectVerifier({
-      client: {
-        send: vi.fn(async () => ({
+  it('deletes mismatched uploaded objects before rejecting them', async () => {
+    const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
           ChecksumSHA256: Buffer.from('b'.repeat(64), 'hex').toString('base64'),
           ContentLength: 2048,
           ContentType: 'image/png',
@@ -70,17 +68,47 @@ describe('S3 evidence object verifier', () => {
             sha256: 'b'.repeat(64),
             size_bytes: '2048',
           },
-        })),
-      },
+        };
+      }
+      expect(command).toBeInstanceOf(DeleteObjectCommand);
+      return {};
+    });
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
       bucket: 'phos-evidence-prod',
     });
 
-    await expect(verifier.verifyObject(expected)).rejects.toBeInstanceOf(
-      EvidenceObjectVerificationError,
-    );
     await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
       reason: 'content_type_mismatch',
     });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]?.[0]).toBeInstanceOf(DeleteObjectCommand);
+    expect((send.mock.calls[1]?.[0] as DeleteObjectCommand).input).toMatchObject({
+      Bucket: 'phos-evidence-prod',
+      Key: expected.key,
+    });
+  });
+
+  it('rejects keys outside the allowed tenant evidence prefix before S3 calls', async () => {
+    const send = vi.fn(async () => ({}));
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(
+      verifier.verifyObject({
+        ...expected,
+        key: 'tenants/tenant_abc123/reports/report_1.pdf',
+        allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
+      }),
+    ).rejects.toMatchObject({
+      reason: 'evidence_key_prefix_mismatch',
+      details: {
+        expected_prefix: 'tenants/tenant_abc123/evidence/',
+      },
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('rejects objects whose S3 checksum does not match the claimed sha256', async () => {
@@ -101,6 +129,39 @@ describe('S3 evidence object verifier', () => {
 
     await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
       reason: 'checksum_sha256_mismatch',
+    });
+  });
+
+  it('preserves mismatch reason and reports a non-PHI warning when cleanup fails', async () => {
+    const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: expectedChecksum,
+          ContentLength: 2048,
+          ContentType: 'image/jpeg',
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '2048',
+          },
+        };
+      }
+      const error = new Error('denied');
+      error.name = 'AccessDenied';
+      throw error;
+    });
+    const onCleanupFailure = vi.fn();
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+      on_cleanup_failure: onCleanupFailure,
+    });
+
+    await expect(verifier.verifyObject(expected)).rejects.toMatchObject({
+      reason: 'content_length_mismatch',
+    });
+    expect(onCleanupFailure).toHaveBeenCalledWith({
+      mismatch_reason: 'content_length_mismatch',
+      cleanup_error: 'AccessDenied',
     });
   });
 });

@@ -1,4 +1,4 @@
-import { HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 
 export class EvidenceObjectVerificationError extends Error {
   readonly reason: string;
@@ -17,10 +17,23 @@ export type EvidenceObjectVerificationInput = {
   mime_type: string;
   sha256: string;
   size_bytes: number;
+  allowed_key_prefix?: string;
 };
 
 export type EvidenceObjectVerifier = {
   verifyObject(input: EvidenceObjectVerificationInput): Promise<void>;
+};
+
+type EvidenceHeadObjectResult = {
+  ChecksumSHA256?: string;
+  ContentLength?: number;
+  ContentType?: string;
+  Metadata?: Record<string, string>;
+};
+
+type EvidenceCleanupFailure = {
+  mismatch_reason: string;
+  cleanup_error: string;
 };
 
 function normalizeContentType(value: string | undefined): string {
@@ -52,18 +65,126 @@ function isMissingObjectError(error: unknown): boolean {
   );
 }
 
+function cleanupErrorName(error: unknown): string {
+  if (error instanceof Error && error.name) return error.name;
+  return typeof error;
+}
+
+function assertAllowedEvidenceKeyPrefix(expected: EvidenceObjectVerificationInput): void {
+  if (!expected.allowed_key_prefix) return;
+  if (expected.key.startsWith(expected.allowed_key_prefix)) return;
+  throw new EvidenceObjectVerificationError('evidence_key_prefix_mismatch', {
+    expected_prefix: expected.allowed_key_prefix,
+  });
+}
+
+function findVerificationMismatch(
+  result: EvidenceHeadObjectResult,
+  expected: EvidenceObjectVerificationInput,
+): EvidenceObjectVerificationError | undefined {
+  const actualContentType = normalizeContentType(result.ContentType);
+  const expectedContentType = normalizeContentType(expected.mime_type);
+  if (actualContentType !== expectedContentType) {
+    return new EvidenceObjectVerificationError('content_type_mismatch', {
+      expected: expectedContentType,
+      actual: actualContentType,
+    });
+  }
+
+  if (result.ContentLength !== expected.size_bytes) {
+    return new EvidenceObjectVerificationError('content_length_mismatch', {
+      expected: expected.size_bytes,
+      actual: result.ContentLength,
+    });
+  }
+
+  const metadataSha256 = readMetadataSha256(result.Metadata);
+  if (metadataSha256 !== expected.sha256.toLowerCase()) {
+    return new EvidenceObjectVerificationError('sha256_mismatch', {
+      expected: expected.sha256.toLowerCase(),
+      actual: metadataSha256 ?? null,
+    });
+  }
+
+  const expectedChecksum = sha256HexToBase64(expected.sha256);
+  if (result.ChecksumSHA256 !== expectedChecksum) {
+    return new EvidenceObjectVerificationError('checksum_sha256_mismatch', {
+      expected: expectedChecksum,
+      actual: result.ChecksumSHA256 ?? null,
+    });
+  }
+
+  const metadataSizeBytes = readMetadataSizeBytes(result.Metadata);
+  if (metadataSizeBytes !== expected.size_bytes) {
+    return new EvidenceObjectVerificationError('metadata_size_mismatch', {
+      expected: expected.size_bytes,
+      actual: metadataSizeBytes ?? null,
+    });
+  }
+
+  return undefined;
+}
+
+async function cleanupMismatchedEvidenceObject(input: {
+  client: Pick<S3Client, 'send'>;
+  bucket: string;
+  key: string;
+  mismatch: EvidenceObjectVerificationError;
+  on_cleanup_failure: (failure: EvidenceCleanupFailure) => void;
+}): Promise<void> {
+  try {
+    await input.client.send(
+      new DeleteObjectCommand({
+        Bucket: input.bucket,
+        Key: input.key,
+      }),
+    );
+  } catch (error) {
+    input.on_cleanup_failure({
+      mismatch_reason: input.mismatch.reason,
+      cleanup_error: cleanupErrorName(error),
+    });
+  }
+}
+
+function reportCleanupFailure(
+  handler: ((failure: EvidenceCleanupFailure) => void) | undefined,
+  failure: EvidenceCleanupFailure,
+): void {
+  const reporter =
+    handler ??
+    ((event: EvidenceCleanupFailure) => {
+      console.error(
+        JSON.stringify({
+          level: 'WARNING',
+          message: 'phos_evidence_cleanup_failed',
+          ...event,
+        }),
+      );
+    });
+  try {
+    reporter(failure);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: 'WARNING',
+        message: 'phos_evidence_cleanup_failure_report_failed',
+        reporter_error: cleanupErrorName(error),
+      }),
+    );
+  }
+}
+
 export function createS3EvidenceObjectVerifier(input: {
   client: Pick<S3Client, 'send'>;
   bucket: string;
+  cleanup_mismatched_object?: boolean;
+  on_cleanup_failure?: (failure: EvidenceCleanupFailure) => void;
 }): EvidenceObjectVerifier {
   return {
     async verifyObject(expected) {
-      let result: {
-        ChecksumSHA256?: string;
-        ContentLength?: number;
-        ContentType?: string;
-        Metadata?: Record<string, string>;
-      };
+      assertAllowedEvidenceKeyPrefix(expected);
+      let result: EvidenceHeadObjectResult;
       try {
         result = await input.client.send(
           new HeadObjectCommand({
@@ -79,44 +200,19 @@ export function createS3EvidenceObjectVerifier(input: {
         throw error;
       }
 
-      const actualContentType = normalizeContentType(result.ContentType);
-      const expectedContentType = normalizeContentType(expected.mime_type);
-      if (actualContentType !== expectedContentType) {
-        throw new EvidenceObjectVerificationError('content_type_mismatch', {
-          expected: expectedContentType,
-          actual: actualContentType,
-        });
-      }
-
-      if (result.ContentLength !== expected.size_bytes) {
-        throw new EvidenceObjectVerificationError('content_length_mismatch', {
-          expected: expected.size_bytes,
-          actual: result.ContentLength,
-        });
-      }
-
-      const metadataSha256 = readMetadataSha256(result.Metadata);
-      if (metadataSha256 !== expected.sha256.toLowerCase()) {
-        throw new EvidenceObjectVerificationError('sha256_mismatch', {
-          expected: expected.sha256.toLowerCase(),
-          actual: metadataSha256 ?? null,
-        });
-      }
-
-      const expectedChecksum = sha256HexToBase64(expected.sha256);
-      if (result.ChecksumSHA256 !== expectedChecksum) {
-        throw new EvidenceObjectVerificationError('checksum_sha256_mismatch', {
-          expected: expectedChecksum,
-          actual: result.ChecksumSHA256 ?? null,
-        });
-      }
-
-      const metadataSizeBytes = readMetadataSizeBytes(result.Metadata);
-      if (metadataSizeBytes !== expected.size_bytes) {
-        throw new EvidenceObjectVerificationError('metadata_size_mismatch', {
-          expected: expected.size_bytes,
-          actual: metadataSizeBytes ?? null,
-        });
+      const mismatch = findVerificationMismatch(result, expected);
+      if (mismatch) {
+        if (input.cleanup_mismatched_object !== false) {
+          await cleanupMismatchedEvidenceObject({
+            client: input.client,
+            bucket: input.bucket,
+            key: expected.key,
+            mismatch,
+            on_cleanup_failure: (failure) =>
+              reportCleanupFailure(input.on_cleanup_failure, failure),
+          });
+        }
+        throw mismatch;
       }
     },
   };

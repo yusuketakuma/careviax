@@ -258,7 +258,7 @@ function routeUsesAurora(route: PhosApiRoute): boolean {
 function routeS3Actions(route: PhosApiRoute): string[] {
   if (route.route_key === 'POST /evidence/presign-upload') return ['s3:PutObject'];
   if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
-    return ['s3:GetObject'];
+    return ['s3:GetObject', 's3:DeleteObject'];
   }
   return [];
 }
