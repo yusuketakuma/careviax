@@ -364,7 +364,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const functionResources = resourcesByType('AWS::Lambda::Function');
 
-    expect(functionResources).toHaveLength(PHOS_API_ROUTES.length);
+    expect(functionResources).toHaveLength(PHOS_API_ROUTES.length + 1);
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       const functionName = readSub(
@@ -398,11 +398,60 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     }
   });
 
-  it('creates managed per-route Lambda log groups with retention before runtime logging', () => {
+  it('creates a Cognito Pre Token Generation trigger Lambda for PH-OS access-token claims', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+    const functionName = readSub(
+      template.Resources.PhosCognitoPreTokenGenerationFunction.Properties.FunctionName,
+    );
+
+    expect(functionName).toMatch(/^phos-\$\{StageName\}-cognito-pre-token-[a-z0-9]{6}$/);
+    expect(functionName.replace('${StageName}', 'abcdefghijklmnop').length).toBeLessThanOrEqual(64);
+    expect(template.Parameters.PhosCognitoUserPoolArn).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^arn:aws:cognito-idp:[A-Za-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+$',
+      Description: expect.stringContaining('LambdaConfig'),
+    });
+    expect(template.Resources.PhosCognitoPreTokenGenerationFunction).toMatchObject({
+      Type: 'AWS::Lambda::Function',
+      DependsOn: 'PhosCognitoPreTokenGenerationFunctionLogGroup',
+      Properties: {
+        FunctionName: { 'Fn::Sub': functionName },
+        Runtime: 'nodejs24.x',
+        Handler: 'src/phos/backend/cognito-pre-token-generation.handler',
+        Role: { 'Fn::GetAtt': ['PhosCognitoPreTokenGenerationFunctionRole', 'Arn'] },
+        Timeout: 5,
+        MemorySize: 128,
+        Architectures: ['arm64'],
+        TracingConfig: {
+          Mode: 'Active',
+        },
+        Environment: {
+          Variables: {
+            NODE_ENV: 'production',
+          },
+        },
+      },
+    });
+    expect(template.Resources.PhosCognitoPreTokenGenerationInvokePermission).toMatchObject({
+      Type: 'AWS::Lambda::Permission',
+      Properties: {
+        Action: 'lambda:InvokeFunction',
+        FunctionName: { Ref: 'PhosCognitoPreTokenGenerationFunction' },
+        Principal: 'cognito-idp.amazonaws.com',
+        SourceArn: { Ref: 'PhosCognitoUserPoolArn' },
+      },
+    });
+    expect(template.Outputs.PhosCognitoPreTokenGenerationFunctionArn).toMatchObject({
+      Description: expect.stringContaining('PreTokenGenerationConfig'),
+      Value: { 'Fn::GetAtt': ['PhosCognitoPreTokenGenerationFunction', 'Arn'] },
+    });
+  });
+
+  it('creates managed Lambda log groups with retention before runtime logging', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const logGroupResources = resourcesByType('AWS::Logs::LogGroup');
 
-    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 1);
+    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 2);
     expect(template.Resources.PhosApiAccessLogGroup).toMatchObject({
       Type: 'AWS::Logs::LogGroup',
       Properties: {
@@ -428,6 +477,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         },
       });
     }
+    expect(template.Resources.PhosCognitoPreTokenGenerationFunctionLogGroup).toMatchObject({
+      Type: 'AWS::Logs::LogGroup',
+      Properties: {
+        LogGroupName: {
+          'Fn::Sub': `/aws/lambda/${readSub(
+            template.Resources.PhosCognitoPreTokenGenerationFunction.Properties.FunctionName,
+          )}`,
+        },
+        RetentionInDays: 90,
+      },
+    });
   });
 
   it('treats the Aurora database URL as a Secrets Manager value instead of Lambda env', () => {

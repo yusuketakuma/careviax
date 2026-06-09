@@ -170,6 +170,22 @@ describe('PH-OS Final No-Go gate', () => {
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
+    expect(template.Resources.PhosCognitoPreTokenGenerationFunction).toMatchObject({
+      Type: 'AWS::Lambda::Function',
+      Properties: {
+        Handler: 'src/phos/backend/cognito-pre-token-generation.handler',
+      },
+    });
+    expect(template.Resources.PhosCognitoPreTokenGenerationInvokePermission).toMatchObject({
+      Type: 'AWS::Lambda::Permission',
+      Properties: {
+        Principal: 'cognito-idp.amazonaws.com',
+        SourceArn: { Ref: 'PhosCognitoUserPoolArn' },
+      },
+    });
+    expect(template.Outputs.PhosCognitoPreTokenGenerationFunctionArn).toMatchObject({
+      Value: { 'Fn::GetAtt': ['PhosCognitoPreTokenGenerationFunction', 'Arn'] },
+    });
     expect(template.Resources).not.toHaveProperty('PhosRestApi');
     expect(template.Resources).not.toHaveProperty('PhosRestApiStage');
     expect(template.Resources).not.toHaveProperty('PhosCognitoAuthorizer');

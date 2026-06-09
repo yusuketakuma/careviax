@@ -34,11 +34,17 @@ type CloudFormationParameter = {
   NoEcho?: boolean;
 };
 
+type CloudFormationOutput = {
+  Description?: string;
+  Value: CloudFormationValue;
+};
+
 export type PhosApiGatewayLambdaTemplate = {
   AWSTemplateFormatVersion: '2010-09-09';
   Description: string;
   Parameters: Record<string, CloudFormationParameter>;
   Resources: Record<string, CloudFormationResource>;
+  Outputs: Record<string, CloudFormationOutput>;
 };
 
 type PhosApiGatewayLambdaTemplateOptions = {
@@ -52,6 +58,7 @@ type PhosApiGatewayLambdaTemplateOptions = {
   dynamodb_table_name_parameter?: string;
   evidence_bucket_name_parameter?: string;
   evidence_upload_allowed_origin_parameter?: string;
+  cognito_user_pool_arn_parameter?: string;
   security_event_table_name_parameter?: string;
   aurora_database_secret_arn_parameter?: string;
   lambda_runtime?: 'nodejs24.x';
@@ -675,6 +682,56 @@ function buildPhosEvidenceBucketPolicy(input: {
   };
 }
 
+function buildCognitoPreTokenGenerationRole(input: {
+  functionLogGroupName: string;
+}): CloudFormationResource {
+  return {
+    Type: 'AWS::IAM::Role',
+    Properties: {
+      AssumeRolePolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: {
+              Service: 'lambda.amazonaws.com',
+            },
+            Action: 'sts:AssumeRole',
+          },
+        ],
+      },
+      Policies: [
+        {
+          PolicyName: 'ph-os-cognito-pre-token-generation-runtime',
+          PolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [
+              {
+                Effect: 'Allow',
+                Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                Resource: sub(
+                  `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:${input.functionLogGroupName}:*`,
+                ),
+              },
+              {
+                Effect: 'Allow',
+                Action: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
+                Resource: '*',
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+function cognitoPreTokenFunctionName(stageNameParameter: string): string {
+  return `phos-\${${stageNameParameter}}-cognito-pre-token-${stableNameHash(
+    'cognito-pre-token-generation',
+  )}`;
+}
+
 export function buildPhosApiGatewayLambdaTemplate(
   options: PhosApiGatewayLambdaTemplateOptions = {},
 ): PhosApiGatewayLambdaTemplate {
@@ -690,6 +747,8 @@ export function buildPhosApiGatewayLambdaTemplate(
     options.evidence_bucket_name_parameter ?? 'PhosEvidenceBucketName';
   const evidenceUploadAllowedOriginParameter =
     options.evidence_upload_allowed_origin_parameter ?? 'PhosEvidenceUploadAllowedOrigin';
+  const cognitoUserPoolArnParameter =
+    options.cognito_user_pool_arn_parameter ?? 'PhosCognitoUserPoolArn';
   const securityEventTableNameParameter =
     options.security_event_table_name_parameter ?? 'PhosSecurityEventTableName';
   const auroraDatabaseSecretArnParameter =
@@ -697,6 +756,8 @@ export function buildPhosApiGatewayLambdaTemplate(
   const runtime = options.lambda_runtime ?? 'nodejs24.x';
   const bindings = buildPhosApiRouteDeploymentBindings(options.routes ?? PHOS_API_ROUTES);
   const httpApiRouteContractId = httpApiRouteContractFingerprint(bindings);
+  const preTokenFunctionName = cognitoPreTokenFunctionName(stageNameParameter);
+  const preTokenFunctionLogGroupName = `/aws/lambda/${preTokenFunctionName}`;
 
   const resources: Record<string, CloudFormationResource> = {
     PhosHttpApi: {
@@ -750,6 +811,48 @@ export function buildPhosApiGatewayLambdaTemplate(
       evidenceUploadAllowedOriginParameter,
     }),
     PhosEvidenceBucketPolicy: buildPhosEvidenceBucketPolicy({ evidenceBucketNameParameter }),
+    PhosCognitoPreTokenGenerationFunctionRole: buildCognitoPreTokenGenerationRole({
+      functionLogGroupName: preTokenFunctionLogGroupName,
+    }),
+    PhosCognitoPreTokenGenerationFunctionLogGroup: buildLambdaLogGroup({
+      functionLogGroupName: preTokenFunctionLogGroupName,
+    }),
+    PhosCognitoPreTokenGenerationFunction: {
+      Type: 'AWS::Lambda::Function',
+      DependsOn: 'PhosCognitoPreTokenGenerationFunctionLogGroup',
+      Properties: {
+        FunctionName: sub(preTokenFunctionName),
+        Runtime: runtime,
+        Handler: 'src/phos/backend/cognito-pre-token-generation.handler',
+        Role: getAtt('PhosCognitoPreTokenGenerationFunctionRole', 'Arn'),
+        Code: {
+          S3Bucket: ref(lambdaArtifactBucketParameter),
+          S3Key: ref(lambdaArtifactKeyParameter),
+        },
+        Description:
+          'PH-OS Cognito Pre Token Generation trigger that injects canonical tenant_id and role access-token claims.',
+        Timeout: 5,
+        MemorySize: 128,
+        Architectures: ['arm64'],
+        TracingConfig: {
+          Mode: 'Active',
+        },
+        Environment: {
+          Variables: {
+            NODE_ENV: 'production',
+          },
+        },
+      },
+    },
+    PhosCognitoPreTokenGenerationInvokePermission: {
+      Type: 'AWS::Lambda::Permission',
+      Properties: {
+        Action: 'lambda:InvokeFunction',
+        FunctionName: ref('PhosCognitoPreTokenGenerationFunction'),
+        Principal: 'cognito-idp.amazonaws.com',
+        SourceArn: ref(cognitoUserPoolArnParameter),
+      },
+    },
   };
 
   for (const binding of bindings) {
@@ -865,6 +968,11 @@ export function buildPhosApiGatewayLambdaTemplate(
         AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
         Description: 'HTTPS origin allowed to PUT PH-OS evidence objects through presigned URLs.',
       }),
+      [cognitoUserPoolArnParameter]: parameter('String', {
+        AllowedPattern: '^arn:aws:cognito-idp:[A-Za-z0-9-]+:[0-9]{12}:userpool/[A-Za-z0-9_-]+$',
+        Description:
+          'Cognito User Pool ARN allowed to invoke the PH-OS Pre Token Generation trigger. The User Pool LambdaConfig must attach this function with LambdaVersion V2_0 or V3_0.',
+      }),
       [securityEventTableNameParameter]: parameter('String', {
         Default: 'phos_security_events',
         AllowedPattern: '^phos_security_events$',
@@ -875,5 +983,12 @@ export function buildPhosApiGatewayLambdaTemplate(
       }),
     },
     Resources: resources,
+    Outputs: {
+      PhosCognitoPreTokenGenerationFunctionArn: {
+        Description:
+          'Attach this ARN to the Cognito User Pool LambdaConfig.PreTokenGenerationConfig LambdaArn with LambdaVersion V2_0 or V3_0.',
+        Value: getAtt('PhosCognitoPreTokenGenerationFunction', 'Arn'),
+      },
+    },
   };
 }
