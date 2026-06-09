@@ -1,8 +1,15 @@
 import type {
+  BoardQuickFilter,
+  BoardSortKey,
   CardBoardItemView,
   CardDetailResponse,
   CardSearchResponse,
 } from '@/phos/contracts/phos_contracts';
+import {
+  BoardQuickFilter as BoardQuickFilterValues,
+  BoardSortKey as BoardSortKeyValues,
+} from '@/phos/contracts/phos_contracts';
+import { selectBoardItems } from '@/phos/domain/board/boardFilters';
 import {
   assertTenantPk,
   assertTenantScopedDynamoOperation,
@@ -70,8 +77,24 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
         cursor: query.cursor,
       });
 
+      const quickFilter = Object.values(BoardQuickFilterValues).includes(
+        query.filter as BoardQuickFilter,
+      )
+        ? (query.filter as BoardQuickFilter)
+        : BoardQuickFilterValues.ALL;
+      const sortKey = Object.values(BoardSortKeyValues).includes(query.sort as BoardSortKey)
+        ? (query.sort as BoardSortKey)
+        : BoardSortKeyValues.VISIT_TIME;
+
       return {
-        items: result.items.map((item) => mapper.toCardBoardItem(item)),
+        items: selectBoardItems(
+          result.items.map((item) => mapper.toCardBoardItem(item)),
+          {
+            quickFilter,
+            query: query.query,
+            sortKey,
+          },
+        ),
         next_cursor: result.next_cursor,
         server_time: new Date().toISOString(),
       };

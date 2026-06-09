@@ -3,28 +3,36 @@
 import type {
   ActionCode,
   ActionReasonInput,
+  BoardSortKey,
   BoardQuickFilter,
   CapacityResponse,
   CardBoardItemView,
   TriageLane,
 } from '@/phos/contracts/phos_contracts';
-import { PhosEmptyState } from '@/phos/contracts/phos_copy.ja';
+import { PhosBoardCopy, PhosEmptyState } from '@/phos/contracts/phos_copy.ja';
 import type { BoardFilterCounts } from '@/phos/domain/board/boardFilters';
 import { CardTile } from './CardTile';
 import { CapacityBar } from './CapacityBar';
 import { QuickFilterBar } from './QuickFilterBar';
+import { SearchBox } from './SearchBox';
+import { SortSelect } from './SortSelect';
 import { TriageRail } from './TriageRail';
 
 export type CardBoardProps = {
   items: CardBoardItemView[];
   totalItemCount: number;
+  phase?: 'LOADING' | 'READY';
   selectedCardId?: string;
+  searchQuery: string;
+  sortKey: BoardSortKey;
   quickFilter: BoardQuickFilter;
   triageLane?: TriageLane;
   counts: BoardFilterCounts;
   capacity?: CapacityResponse;
   capacityPhase?: 'IDLE' | 'LOADING' | 'ERROR';
   capacityError?: string;
+  onSearchQueryChange(query: string): void;
+  onSortChange(sortKey: BoardSortKey): void;
   onQuickFilterChange(filter: BoardQuickFilter): void;
   onTriageLaneChange(lane?: TriageLane): void;
   onResetFilters(): void;
@@ -35,13 +43,18 @@ export type CardBoardProps = {
 export function CardBoard({
   items,
   totalItemCount,
+  phase = 'READY',
   selectedCardId,
+  searchQuery,
+  sortKey,
   quickFilter,
   triageLane,
   counts,
   capacity,
   capacityPhase = 'IDLE',
   capacityError,
+  onSearchQueryChange,
+  onSortChange,
   onQuickFilterChange,
   onTriageLaneChange,
   onResetFilters,
@@ -50,6 +63,7 @@ export function CardBoard({
 }: CardBoardProps) {
   const hasFilterResult = items.length > 0;
   const hasAnyItems = totalItemCount > 0;
+  const isLoading = phase === 'LOADING';
 
   return (
     <section
@@ -71,11 +85,17 @@ export function CardBoard({
           </p>
         </div>
         <div className="mt-4">
-          <QuickFilterBar
-            activeFilter={quickFilter}
-            counts={counts.quickFilters}
-            onFilterChange={onQuickFilterChange}
-          />
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <SearchBox query={searchQuery} onQueryChange={onSearchQueryChange} />
+            <SortSelect sortKey={sortKey} onSortChange={onSortChange} />
+          </div>
+          <div className="mt-3">
+            <QuickFilterBar
+              activeFilter={quickFilter}
+              counts={counts.quickFilters}
+              onFilterChange={onQuickFilterChange}
+            />
+          </div>
         </div>
         {capacity || capacityPhase !== 'IDLE' ? (
           <div className="mt-4">
@@ -93,7 +113,19 @@ export function CardBoard({
           />
 
           <div>
-            {!hasAnyItems ? (
+            {isLoading ? (
+              <div
+                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5"
+                aria-label="カード読み込み中"
+              >
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="min-h-[120px] animate-pulse rounded-lg border border-border/70 bg-muted/35"
+                  />
+                ))}
+              </div>
+            ) : !hasAnyItems ? (
               <div className="rounded-md border border-dashed border-border/70 bg-background p-6 text-sm text-muted-foreground">
                 {PhosEmptyState.EMPTY_TODAY_NONE}
               </div>
@@ -110,11 +142,11 @@ export function CardBoard({
                   className="mt-4 min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
                   onClick={() => onResetFilters()}
                 >
-                  検索条件を解除
+                  {PhosBoardCopy.RESET_FILTERS}
                 </button>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
                 {items.map((item) => (
                   <CardTile
                     key={item.card.card_id}

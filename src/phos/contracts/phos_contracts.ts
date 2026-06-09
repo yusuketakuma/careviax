@@ -470,11 +470,20 @@ export type CardSummaryView = {
   facility_name?: string;
   room?: string;
   visit_time?: string;
+  visit_date?: string;
+  service_date?: string;
+  due_at?: string;
+  updated_at?: string;
+  stale_minutes?: number;
+  urgency_rank?: number;
   current_step: CurrentStep;
   display_status: DisplayStatus;
   assigned_user?: string;
   server_version: number;
   tags: TagView[];
+  quick_filter_keys?: BoardQuickFilter[];
+  triage_lanes?: TriageLane[];
+  search_texts?: string[];
   blocker_summary?: BlockerSummaryView;
 };
 
@@ -786,21 +795,40 @@ export type CardBoardItemView = {
 
 export const BoardQuickFilter = {
   ALL: 'ALL',
-  ACTIONABLE: 'ACTIONABLE',
-  BLOCKED: 'BLOCKED',
-  SAFETY: 'SAFETY',
-  VISIT: 'VISIT',
+  TODAY: 'TODAY',
+  MY_ASSIGNED: 'MY_ASSIGNED',
+  INCOMPLETE: 'INCOMPLETE',
+  PHARMACIST_REVIEW: 'PHARMACIST_REVIEW',
+  CLERK_READY: 'CLERK_READY',
+  SET_AUDIT_WAITING: 'SET_AUDIT_WAITING',
+  VISIT_READY_CHECK: 'VISIT_READY_CHECK',
+  REPORT_UNSENT: 'REPORT_UNSENT',
+  WAITING_REPLY: 'WAITING_REPLY',
+  MISSING_EVIDENCE: 'MISSING_EVIDENCE',
+  URGENT: 'URGENT',
 } as const;
 export type BoardQuickFilter = (typeof BoardQuickFilter)[keyof typeof BoardQuickFilter];
 
 export const TriageLane = {
-  MY_ASSIGNED: 'MY_ASSIGNED',
+  TODAY_VISIT: 'TODAY_VISIT',
   PHARMACIST_REVIEW: 'PHARMACIST_REVIEW',
   CLERK_READY: 'CLERK_READY',
+  REPORT_UNSENT: 'REPORT_UNSENT',
   WAITING_REPLY: 'WAITING_REPLY',
-  CLAIM_MISSING: 'CLAIM_MISSING',
+  MISSING_EVIDENCE: 'MISSING_EVIDENCE',
 } as const;
 export type TriageLane = (typeof TriageLane)[keyof typeof TriageLane];
+
+export const BoardSortKey = {
+  VISIT_TIME: 'VISIT_TIME',
+  URGENCY: 'URGENCY',
+  STALE_TIME: 'STALE_TIME',
+  CURRENT_STEP: 'CURRENT_STEP',
+  ASSIGNEE: 'ASSIGNEE',
+  FACILITY: 'FACILITY',
+  UPDATED: 'UPDATED',
+} as const;
+export type BoardSortKey = (typeof BoardSortKey)[keyof typeof BoardSortKey];
 
 export type CardSearchResponse = {
   items: CardBoardItemView[];

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
   ActionKind,
+  BoardSortKey,
   BoardQuickFilter,
   ButtonState,
   CardType,
@@ -50,8 +51,12 @@ const item = {
 describe('CardBoard', () => {
   const baseProps = {
     totalItemCount: 1,
+    searchQuery: '',
+    sortKey: BoardSortKey.VISIT_TIME,
     quickFilter: BoardQuickFilter.ALL,
     counts: countBoardFilters([item]),
+    onSearchQueryChange: vi.fn(),
+    onSortChange: vi.fn(),
     onQuickFilterChange: vi.fn(),
     onTriageLaneChange: vi.fn(),
     onResetFilters: vi.fn(),
@@ -74,8 +79,12 @@ describe('CardBoard', () => {
       <CardBoard
         items={[]}
         totalItemCount={0}
+        searchQuery=""
+        sortKey={BoardSortKey.VISIT_TIME}
         quickFilter={BoardQuickFilter.ALL}
         counts={countBoardFilters([])}
+        onSearchQueryChange={vi.fn()}
+        onSortChange={vi.fn()}
         onQuickFilterChange={vi.fn()}
         onTriageLaneChange={vi.fn()}
         onResetFilters={vi.fn()}
@@ -94,8 +103,12 @@ describe('CardBoard', () => {
       <CardBoard
         items={[]}
         totalItemCount={1}
-        quickFilter={BoardQuickFilter.BLOCKED}
+        searchQuery="山田"
+        sortKey={BoardSortKey.VISIT_TIME}
+        quickFilter={BoardQuickFilter.MISSING_EVIDENCE}
         counts={countBoardFilters([item])}
+        onSearchQueryChange={vi.fn()}
+        onSortChange={vi.fn()}
         onQuickFilterChange={vi.fn()}
         onTriageLaneChange={vi.fn()}
         onResetFilters={onResetFilters}
@@ -108,5 +121,29 @@ describe('CardBoard', () => {
 
     expect(screen.getByText('条件に一致するカードはありません。')).toBeTruthy();
     expect(onResetFilters).toHaveBeenCalledWith();
+  });
+
+  it('renders a stable loading skeleton instead of the empty state', () => {
+    render(
+      <CardBoard
+        items={[]}
+        totalItemCount={0}
+        phase="LOADING"
+        searchQuery=""
+        sortKey={BoardSortKey.VISIT_TIME}
+        quickFilter={BoardQuickFilter.ALL}
+        counts={countBoardFilters([])}
+        onSearchQueryChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onQuickFilterChange={vi.fn()}
+        onTriageLaneChange={vi.fn()}
+        onResetFilters={vi.fn()}
+        onOpen={vi.fn()}
+        onPrimaryAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('カード読み込み中')).toBeTruthy();
+    expect(screen.queryByText('本日対応予定のカードはありません。')).toBeNull();
   });
 });

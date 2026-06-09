@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   ActionPhase,
+  BoardSortKey,
   BoardQuickFilter,
   CapacityScope,
   HandoffStatus,
@@ -238,6 +239,8 @@ export function BoardClient({
   const currentUserName = session?.user?.name ?? undefined;
   const canViewCapacity = sessionHasCapacityRole(session?.phosRole, session?.cognitoGroups);
   const [items, setItems] = useState<CardBoardItemView[]>(initialItems);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<BoardSortKey>(BoardSortKey.VISIT_TIME);
   const [quickFilter, setQuickFilter] = useState<BoardQuickFilter>(BoardQuickFilter.ALL);
   const [triageLane, setTriageLane] = useState<TriageLane | undefined>();
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
@@ -301,9 +304,14 @@ export function BoardClient({
     if (!apiClient) return;
 
     let active = true;
+    setPhase('LOADING');
 
     void apiClient
-      .getCards()
+      .getCards({
+        ...(searchQuery ? { query: searchQuery } : {}),
+        ...(quickFilter !== BoardQuickFilter.ALL ? { filter: quickFilter } : {}),
+        sort: sortKey,
+      })
       .then((response) => {
         if (!active) return;
         setItems(response.items);
@@ -318,7 +326,7 @@ export function BoardClient({
     return () => {
       active = false;
     };
-  }, [apiClient, initialItems.length]);
+  }, [apiClient, initialItems.length, quickFilter, searchQuery, sortKey]);
 
   useEffect(() => {
     if (!apiClient) return;
@@ -770,12 +778,37 @@ export function BoardClient({
   const activePendingEvidence = activeDetail?.visit_mode
     ? (pendingEvidenceByPacket[activeDetail.visit_mode.packet_id] ?? [])
     : [];
-  const counts = useMemo(() => countBoardFilters(items, currentUserName), [currentUserName, items]);
+  const today = useMemo(() => dateKey(new Date()), []);
+  const isServerFilteredBoard = initialItems.length === 0 && Boolean(apiClient);
+  const counts = useMemo(
+    () => countBoardFilters(items, currentUserName, today),
+    [currentUserName, items, today],
+  );
   const visibleItems = useMemo(
-    () => selectBoardItems(items, { quickFilter, triageLane, currentUserName }),
-    [currentUserName, items, quickFilter, triageLane],
+    () =>
+      selectBoardItems(items, {
+        quickFilter,
+        triageLane,
+        currentUserName,
+        query: searchQuery,
+        sortKey,
+        todayKey: today,
+        serverFiltered: isServerFilteredBoard,
+      }),
+    [
+      currentUserName,
+      isServerFilteredBoard,
+      items,
+      quickFilter,
+      searchQuery,
+      sortKey,
+      today,
+      triageLane,
+    ],
   );
   const resetFilters = useCallback(() => {
+    setSearchQuery('');
+    setSortKey(BoardSortKey.VISIT_TIME);
     setQuickFilter(BoardQuickFilter.ALL);
     setTriageLane(undefined);
   }, []);
@@ -844,13 +877,18 @@ export function BoardClient({
           <CardBoard
             items={visibleItems}
             totalItemCount={items.length}
+            phase={displayPhase === 'LOADING' ? 'LOADING' : 'READY'}
             selectedCardId={selectedCardId}
+            searchQuery={searchQuery}
+            sortKey={sortKey}
             quickFilter={quickFilter}
             triageLane={triageLane}
             counts={counts}
             capacity={canViewCapacity ? capacity : undefined}
             capacityPhase={canViewCapacity ? capacityPhase : 'IDLE'}
             capacityError={capacityError}
+            onSearchQueryChange={setSearchQuery}
+            onSortChange={setSortKey}
             onQuickFilterChange={setQuickFilter}
             onTriageLaneChange={setTriageLane}
             onResetFilters={resetFilters}

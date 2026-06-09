@@ -326,6 +326,7 @@ describe('BoardClient', () => {
       user: { name: '薬剤師A' },
     };
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('loads cards from the PH-OS API client', async () => {
@@ -334,7 +335,45 @@ describe('BoardClient', () => {
     render(<BoardClient client={apiClient} />);
 
     await waitFor(() => expect(screen.getByText('患者 山田太郎')).toBeTruthy());
-    expect(apiClient.getCards).toHaveBeenCalledWith();
+    expect(apiClient.getCards).toHaveBeenCalledWith({ sort: 'VISIT_TIME' });
+  });
+
+  it('renders a loading skeleton before cards resolve', () => {
+    const apiClient = client({
+      getCards: vi.fn(() => new Promise<CardSearchResponse>(() => undefined)),
+      getHandoffs: vi.fn(() => new Promise<HandoffSearchResponse>(() => undefined)),
+      getReportDeliveries: vi.fn(() => new Promise<ReportDeliverySearchResponse>(() => undefined)),
+    });
+
+    render(<BoardClient client={apiClient} />);
+
+    expect(screen.getByText('カードを読み込み中')).toBeTruthy();
+    expect(screen.getByLabelText('カード読み込み中')).toBeTruthy();
+    expect(screen.queryByText('本日対応予定のカードはありません。')).toBeNull();
+  });
+
+  it('sends Board search and sort changes to the PH-OS API client', async () => {
+    const apiClient = client({
+      getCards: vi.fn(async () => searchResponse()),
+      getHandoffs: vi.fn(() => new Promise<HandoffSearchResponse>(() => undefined)),
+      getReportDeliveries: vi.fn(() => new Promise<ReportDeliverySearchResponse>(() => undefined)),
+    });
+
+    render(<BoardClient client={apiClient} />);
+
+    await waitFor(() => expect(apiClient.getCards).toHaveBeenCalledWith({ sort: 'VISIT_TIME' }));
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '山田' } });
+
+    await waitFor(() =>
+      expect(apiClient.getCards).toHaveBeenCalledWith({ query: '山田', sort: 'VISIT_TIME' }),
+    );
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'STALE_TIME' } });
+
+    await waitFor(() =>
+      expect(apiClient.getCards).toHaveBeenCalledWith({ query: '山田', sort: 'STALE_TIME' }),
+    );
   });
 
   it('loads and renders CapacityBar only for manager or admin sessions', async () => {
@@ -571,7 +610,7 @@ describe('BoardClient', () => {
 
     await waitFor(() => expect(screen.getByText('患者 山田太郎')).toBeTruthy());
     expect(fetchImpl).toHaveBeenCalledWith(
-      'https://api.example.com/prod/cards',
+      'https://api.example.com/prod/cards?sort=VISIT_TIME',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer session-access-token',
@@ -789,12 +828,12 @@ describe('BoardClient', () => {
     expect(screen.getByText('患者 安全')).toBeTruthy();
     expect(screen.getByText('患者 返信')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /安全確認/ }));
+    fireEvent.click(screen.getByRole('button', { name: /緊急/ }));
     expect(screen.queryByText('患者 山田太郎')).toBeNull();
     expect(screen.getByText('患者 安全')).toBeTruthy();
     expect(screen.queryByText('患者 返信')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /報告返信待ち/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /返信待ち/ })[1]);
     expect(screen.getByText('条件に一致するカードはありません。')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '検索条件を解除' }));

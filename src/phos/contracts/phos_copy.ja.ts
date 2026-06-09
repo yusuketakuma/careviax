@@ -1,5 +1,6 @@
 import {
   ActionCode,
+  BoardSortKey,
   BoardQuickFilter,
   CurrentStep,
   DisplayStatus,
@@ -89,21 +90,46 @@ export const PhosEmptyState = {
   EMPTY_WAITING_REPLY: '返信待ちはありません。',
 } as const;
 
+export const PhosBoardCopy = {
+  SEARCH_PLACEHOLDER: '患者名・施設名・薬剤名・担当者で検索',
+  SEARCH_LABEL: 'Board検索',
+  SORT_LABEL: '並び順',
+  RESET_FILTERS: '検索条件を解除',
+} as const;
+
 export const PhosBoardQuickFilterLabel = {
   [BoardQuickFilter.ALL]: 'すべて',
-  [BoardQuickFilter.ACTIONABLE]: '対応可',
-  [BoardQuickFilter.BLOCKED]: '不足あり',
-  [BoardQuickFilter.SAFETY]: '安全確認',
-  [BoardQuickFilter.VISIT]: '訪問',
+  [BoardQuickFilter.TODAY]: '本日',
+  [BoardQuickFilter.MY_ASSIGNED]: '自分の担当',
+  [BoardQuickFilter.INCOMPLETE]: '未完了',
+  [BoardQuickFilter.PHARMACIST_REVIEW]: '薬剤師判断待ち',
+  [BoardQuickFilter.CLERK_READY]: '事務対応可',
+  [BoardQuickFilter.SET_AUDIT_WAITING]: 'セット監査待ち',
+  [BoardQuickFilter.VISIT_READY_CHECK]: '訪問前確認',
+  [BoardQuickFilter.REPORT_UNSENT]: '報告未送付',
+  [BoardQuickFilter.WAITING_REPLY]: '返信待ち',
+  [BoardQuickFilter.MISSING_EVIDENCE]: '証跡不足',
+  [BoardQuickFilter.URGENT]: '緊急',
 } as const satisfies Record<BoardQuickFilter, string>;
 
 export const PhosTriageLaneLabel = {
-  [TriageLane.MY_ASSIGNED]: '自分の担当',
+  [TriageLane.TODAY_VISIT]: '本日訪問',
   [TriageLane.PHARMACIST_REVIEW]: '薬剤師判断待ち',
   [TriageLane.CLERK_READY]: '事務対応可',
-  [TriageLane.WAITING_REPLY]: '報告返信待ち',
-  [TriageLane.CLAIM_MISSING]: '算定不足',
+  [TriageLane.REPORT_UNSENT]: '報告未送付',
+  [TriageLane.WAITING_REPLY]: '返信待ち',
+  [TriageLane.MISSING_EVIDENCE]: '証跡不足',
 } as const satisfies Record<TriageLane, string>;
+
+export const PhosBoardSortLabel = {
+  [BoardSortKey.VISIT_TIME]: '訪問時間順',
+  [BoardSortKey.URGENCY]: '緊急度順',
+  [BoardSortKey.STALE_TIME]: '滞留時間順',
+  [BoardSortKey.CURRENT_STEP]: '現在工程順',
+  [BoardSortKey.ASSIGNEE]: '担当者順',
+  [BoardSortKey.FACILITY]: '施設順',
+  [BoardSortKey.UPDATED]: '更新順',
+} as const satisfies Record<BoardSortKey, string>;
 
 export const PhosVisitStepLabel = {
   [VisitStep.ARRIVAL_CONFIRM]: '到着確認',

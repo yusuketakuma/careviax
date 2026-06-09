@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ActionCode,
+  BoardQuickFilter,
+  BoardSortKey,
   ButtonState,
   CardType,
   CurrentStep,
@@ -114,6 +116,38 @@ describe('createDynamoCardsRepository', () => {
     expect(result.items[0]?.next_action.code).toBe(ActionCode.CONFIRM_PRESCRIPTION_DIFF);
     expect(result.next_cursor).toBe('cursor_2');
     expect(result.server_time).toEqual(expect.any(String));
+  });
+
+  it('applies bounded query filters and sort after mapping board items', async () => {
+    const fakeClient = client();
+    vi.mocked(fakeClient.query).mockResolvedValueOnce({
+      items: [
+        { id: 'late', patient: '患者 佐藤' },
+        { id: 'early', patient: '患者 山田' },
+      ],
+    });
+    const repository = createDynamoCardsRepository(fakeClient, {
+      ...mapper,
+      toCardBoardItem: (summary) => ({
+        ...mapper.toCardBoardItem(summary),
+        card: {
+          ...mapper.toCardBoardItem(summary).card,
+          visit_time: summary.id === 'early' ? '09:00' : '11:00',
+          quick_filter_keys:
+            summary.id === 'early' ? [BoardQuickFilter.TODAY] : [BoardQuickFilter.URGENT],
+          search_texts: summary.id === 'early' ? ['薬剤A', '山田医師'] : ['薬剤B'],
+        },
+      }),
+    });
+
+    const result = await repository.searchCards(ctx, {
+      query: '山田医師',
+      filter: BoardQuickFilter.TODAY,
+      sort: BoardSortKey.VISIT_TIME,
+      limit: 25,
+    });
+
+    expect(result.items.map((entry) => entry.card.card_id)).toEqual(['early']);
   });
 
   it('gets card detail through tenant PK and card SK', async () => {
