@@ -41,6 +41,40 @@ function readSub(value: unknown): string {
   return (value as { 'Fn::Sub': string })['Fn::Sub'];
 }
 
+function collectSubReferences(value: string): string[] {
+  return [...value.matchAll(/\$\{([^}]+)\}/g)]
+    .map((match) => match[1]!)
+    .filter((reference) => !reference.startsWith('!'))
+    .map((reference) => reference.split('.')[0]!)
+    .filter((reference) => reference.length > 0);
+}
+
+function collectTemplateReferences(value: unknown, references = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectTemplateReferences(item, references);
+    return references;
+  }
+  if (!value || typeof value !== 'object') return references;
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.Ref === 'string') references.add(record.Ref);
+  if (typeof record['Fn::Sub'] === 'string') {
+    for (const reference of collectSubReferences(record['Fn::Sub'])) references.add(reference);
+  }
+  const getAtt = record['Fn::GetAtt'];
+  if (Array.isArray(getAtt) && typeof getAtt[0] === 'string') references.add(getAtt[0]);
+
+  for (const nested of Object.values(record)) collectTemplateReferences(nested, references);
+  return references;
+}
+
+function collectDependsOnReferences(dependsOn: unknown): string[] {
+  if (typeof dependsOn === 'string') return [dependsOn];
+  if (Array.isArray(dependsOn))
+    return dependsOn.filter((value): value is string => typeof value === 'string');
+  return [];
+}
+
 function coreDynamoStatementsForRoute(routeKey: string) {
   return policyStatementsForRoute(routeKey).filter((statement) =>
     resourceSubValues(statement.Resource).some((resource) =>
@@ -73,6 +107,28 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       expect(resource.Type).toMatch(/^AWS::/);
       expect(resource.Properties).toBeDefined();
     }
+  });
+
+  it('keeps every CloudFormation reference pointed at a declared parameter or resource', () => {
+    const template = buildPhosApiGatewayLambdaTemplate();
+    const declaredNames = new Set([
+      ...Object.keys(template.Parameters),
+      ...Object.keys(template.Resources),
+      'AWS::AccountId',
+      'AWS::Region',
+    ]);
+    const referencedNames = new Set<string>();
+
+    for (const resource of Object.values(template.Resources)) {
+      collectTemplateReferences(resource.Properties, referencedNames);
+      for (const dependency of collectDependsOnReferences(resource.DependsOn)) {
+        referencedNames.add(dependency);
+      }
+    }
+
+    expect(
+      [...referencedNames].filter((reference) => !declaredNames.has(reference)).sort(),
+    ).toEqual([]);
   });
 
   it('derives one deployment binding from every implemented route manifest entry', () => {
@@ -156,6 +212,40 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(template.Resources).not.toHaveProperty('PhosHttpApi');
     expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
     expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');
+  });
+
+  it('respects custom deploy parameter names without stale hard-coded references', () => {
+    const template = buildPhosApiGatewayLambdaTemplate({
+      stage_name_parameter: 'PhosStageName',
+      cognito_user_pool_arn_parameter: 'PhosCognitoPoolArn',
+    });
+    const detailRoute = bindPhosApiRouteForDeployment(
+      PHOS_API_ROUTES.find((route) => route.route_key === 'GET /cards/{card_id}')!,
+    );
+    const functionName = readSub(
+      template.Resources[detailRoute.function_logical_id].Properties.FunctionName,
+    );
+
+    expect(template.Parameters).toHaveProperty('PhosStageName');
+    expect(template.Parameters).not.toHaveProperty('StageName');
+    expect(template.Parameters).toHaveProperty('PhosCognitoPoolArn');
+    expect(template.Parameters).not.toHaveProperty('CognitoUserPoolArn');
+    expect(template.Resources.PhosApiAccessLogGroup.Properties.LogGroupName).toEqual({
+      'Fn::Sub': '/aws/apigateway/${PhosRestApi}/${PhosStageName}/access',
+    });
+    expect(template.Resources.PhosRestApiStage.Properties.StageName).toEqual({
+      Ref: 'PhosStageName',
+    });
+    expect(template.Resources.PhosCognitoAuthorizer.Properties.ProviderARNs).toEqual([
+      { Ref: 'PhosCognitoPoolArn' },
+    ]);
+    expect(functionName).toContain('${PhosStageName}');
+    expect(template.Resources[detailRoute.permission_logical_id].Properties.SourceArn).toEqual({
+      'Fn::Sub':
+        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosRestApi}/${PhosStageName}/GET/cards/*',
+    });
+    expect(JSON.stringify(template)).not.toContain('${StageName}');
+    expect(JSON.stringify(template)).not.toContain('${CognitoUserPoolArn}');
   });
 
   it('creates only API Gateway REST methods with manifest OAuth scopes', () => {

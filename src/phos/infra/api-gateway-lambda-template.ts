@@ -46,8 +46,6 @@ type PhosApiGatewayLambdaTemplateOptions = {
   stage_name_parameter?: string;
   lambda_artifact_bucket_parameter?: string;
   lambda_artifact_key_parameter?: string;
-  cognito_issuer_parameter?: string;
-  cognito_audience_parameter?: string;
   cognito_user_pool_arn_parameter?: string;
   dynamodb_table_name_parameter?: string;
   evidence_bucket_name_parameter?: string;
@@ -689,7 +687,7 @@ export function buildPhosApiGatewayLambdaTemplate(
     PhosApiAccessLogGroup: {
       Type: 'AWS::Logs::LogGroup',
       Properties: {
-        LogGroupName: sub('/aws/apigateway/${PhosRestApi}/${StageName}/access'),
+        LogGroupName: sub(`/aws/apigateway/\${PhosRestApi}/\${${stageNameParameter}}/access`),
         RetentionInDays: 90,
       },
     },
