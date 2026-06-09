@@ -274,6 +274,8 @@ function apiGatewayEventFor(
   overrides: Partial<PhosHttpEvent> = {},
 ): PhosHttpEvent {
   return {
+    version: '2.0',
+    routeKey: route.route_key,
     resource: route.path,
     httpMethod: route.method,
     rawPath: pathFor(route),
@@ -287,12 +289,14 @@ function apiGatewayEventFor(
     requestContext: {
       requestId: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
       authorizer: {
-        claims: {
-          token_use: 'access',
-          tenant_id: 'tenant_abc123',
-          sub: 'user_1',
-          role: route.allowed_roles[0] ?? UserRole.ADMIN,
-          scope: route.required_scopes.join(' '),
+        jwt: {
+          claims: {
+            token_use: 'access',
+            tenant_id: 'tenant_abc123',
+            sub: 'user_1',
+            role: route.allowed_roles[0] ?? UserRole.ADMIN,
+            scope: route.required_scopes.join(' '),
+          },
         },
       },
     },
@@ -598,7 +602,7 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
     vi.restoreAllMocks();
   });
 
-  it('successfully handles a REST proxy event for every manifest route with injected dependencies', async () => {
+  it('successfully handles an HTTP API proxy event for every manifest route with injected dependencies', async () => {
     const successCases = buildRuntimeSuccessCases();
     expect(Object.keys(successCases).sort()).toEqual(
       PHOS_API_ROUTES.map((route) => route.route_key).sort(),

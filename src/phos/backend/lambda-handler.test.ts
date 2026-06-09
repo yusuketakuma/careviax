@@ -62,7 +62,7 @@ describe('withTenantContext', () => {
     );
   });
 
-  it('accepts API Gateway REST proxy authorizer claims and resource route metadata', async () => {
+  it('keeps backwards-compatible REST proxy authorizer claims and resource route metadata', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const handler = withTenantContext(async ({ ctx }) => ({

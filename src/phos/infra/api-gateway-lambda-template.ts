@@ -47,7 +47,8 @@ type PhosApiGatewayLambdaTemplateOptions = {
   stage_name_parameter?: string;
   lambda_artifact_bucket_parameter?: string;
   lambda_artifact_key_parameter?: string;
-  cognito_user_pool_arn_parameter?: string;
+  jwt_issuer_parameter?: string;
+  jwt_audience_parameter?: string;
   dynamodb_table_name_parameter?: string;
   evidence_bucket_name_parameter?: string;
   evidence_upload_allowed_origin_parameter?: string;
@@ -108,22 +109,6 @@ function parseLambdaHandler(lambda_handler: string): {
 
 function toSourceArnPath(path: string): string {
   return path.replace(/\{[^}]+\}/g, '*');
-}
-
-function routePathSegments(path: string): string[] {
-  return path.split('/').filter(Boolean);
-}
-
-function routePathPrefix(segments: readonly string[], length: number): string {
-  return `/${segments.slice(0, length).join('/')}`;
-}
-
-function apiResourceLogicalId(pathPrefix: string): string {
-  return `PhosApiResource${toLogicalId(pathPrefix)}`;
-}
-
-function apiMethodLogicalId(binding: RouteDeploymentBinding): string {
-  return binding.route_logical_id;
 }
 
 export function bindPhosApiRouteForDeployment(route: PhosApiRoute): RouteDeploymentBinding {
@@ -441,19 +426,20 @@ function stableNameHash(input: string): string {
   return (hash >>> 0).toString(36).padStart(6, '0').slice(0, 6);
 }
 
-const REST_API_DEPLOYMENT_CONTRACT_VERSION = 'rest-api-cognito-user-pools-aws-proxy-v1';
+const HTTP_API_ROUTE_CONTRACT_VERSION = 'http-api-jwt-authorizer-aws-proxy-v1';
 
-function restApiDeploymentFingerprint(bindings: readonly RouteDeploymentBinding[]): string {
+function httpApiRouteContractFingerprint(bindings: readonly RouteDeploymentBinding[]): string {
   return stableNameHash(
     JSON.stringify({
-      version: REST_API_DEPLOYMENT_CONTRACT_VERSION,
+      version: HTTP_API_ROUTE_CONTRACT_VERSION,
       authorizer: {
-        type: 'COGNITO_USER_POOLS',
-        identity_source: 'method.request.header.Authorization',
+        type: 'JWT',
+        identity_source: '$request.header.Authorization',
       },
       integration: {
         type: 'AWS_PROXY',
         integration_http_method: 'POST',
+        payload_format_version: '2.0',
       },
       routes: bindings.map((binding) => ({
         route_key: binding.route.route_key,
@@ -461,15 +447,10 @@ function restApiDeploymentFingerprint(bindings: readonly RouteDeploymentBinding[
         method: binding.route.method,
         required_scopes: binding.route.required_scopes,
         lambda_handler: binding.route.lambda_handler,
-        method_logical_id: apiMethodLogicalId(binding),
-        resource_logical_id: apiResourceLogicalId(binding.route.path),
+        route_logical_id: binding.route_logical_id,
       })),
     }),
   );
-}
-
-function restApiDeploymentLogicalId(bindings: readonly RouteDeploymentBinding[]): string {
-  return `PhosRestApiDeployment${restApiDeploymentFingerprint(bindings)}`;
 }
 
 function lambdaFunctionName(input: {
@@ -701,8 +682,8 @@ export function buildPhosApiGatewayLambdaTemplate(
   const lambdaArtifactBucketParameter =
     options.lambda_artifact_bucket_parameter ?? 'LambdaArtifactBucket';
   const lambdaArtifactKeyParameter = options.lambda_artifact_key_parameter ?? 'LambdaArtifactKey';
-  const cognitoUserPoolArnParameter =
-    options.cognito_user_pool_arn_parameter ?? 'CognitoUserPoolArn';
+  const jwtIssuerParameter = options.jwt_issuer_parameter ?? 'JwtIssuer';
+  const jwtAudienceParameter = options.jwt_audience_parameter ?? 'JwtAudience';
   const dynamodbTableNameParameter =
     options.dynamodb_table_name_parameter ?? 'PhosDynamoDbTableName';
   const evidenceBucketNameParameter =
@@ -715,122 +696,52 @@ export function buildPhosApiGatewayLambdaTemplate(
     options.aurora_database_secret_arn_parameter ?? 'PhosAuroraDatabaseSecretArn';
   const runtime = options.lambda_runtime ?? 'nodejs24.x';
   const bindings = buildPhosApiRouteDeploymentBindings(options.routes ?? PHOS_API_ROUTES);
-  const restApiDeploymentId = restApiDeploymentLogicalId(bindings);
+  const httpApiRouteContractId = httpApiRouteContractFingerprint(bindings);
 
   const resources: Record<string, CloudFormationResource> = {
-    PhosRestApi: {
-      Type: 'AWS::ApiGateway::RestApi',
+    PhosHttpApi: {
+      Type: 'AWS::ApiGatewayV2::Api',
       Properties: {
         Name: options.api_name ?? 'ph-os-business-api',
-        EndpointConfiguration: {
-          Types: ['REGIONAL'],
-        },
+        ProtocolType: 'HTTP',
       },
     },
     PhosApiAccessLogGroup: {
       Type: 'AWS::Logs::LogGroup',
       Properties: {
-        LogGroupName: sub(`/aws/apigateway/\${PhosRestApi}/\${${stageNameParameter}}/access`),
+        LogGroupName: sub(`/aws/apigateway/\${PhosHttpApi}/\${${stageNameParameter}}/access`),
         RetentionInDays: 90,
       },
     },
-    PhosApiExecutionLogGroup: {
-      Type: 'AWS::Logs::LogGroup',
+    PhosJwtAuthorizer: {
+      Type: 'AWS::ApiGatewayV2::Authorizer',
       Properties: {
-        LogGroupName: sub(`API-Gateway-Execution-Logs_\${PhosRestApi}/\${${stageNameParameter}}`),
-        RetentionInDays: 90,
-      },
-    },
-    PhosApiGatewayCloudWatchRole: {
-      Type: 'AWS::IAM::Role',
-      Properties: {
-        AssumeRolePolicyDocument: {
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: { Service: 'apigateway.amazonaws.com' },
-              Action: 'sts:AssumeRole',
-            },
-          ],
+        ApiId: ref('PhosHttpApi'),
+        Name: 'ph-os-cognito-access-token-jwt-authorizer',
+        AuthorizerType: 'JWT',
+        IdentitySource: ['$request.header.Authorization'],
+        JwtConfiguration: {
+          Issuer: ref(jwtIssuerParameter),
+          Audience: [ref(jwtAudienceParameter)],
         },
-        Policies: [
-          {
-            PolicyName: 'ph-os-api-gateway-cloudwatch-logs',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [
-                {
-                  Effect: 'Allow',
-                  Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
-                  Resource: [
-                    sub(
-                      `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/apigateway/\${PhosRestApi}/\${${stageNameParameter}}/access:*`,
-                    ),
-                    sub(
-                      `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:API-Gateway-Execution-Logs_\${PhosRestApi}/\${${stageNameParameter}}:*`,
-                    ),
-                  ],
-                },
-              ],
-            },
-          },
-        ],
       },
     },
-    PhosApiGatewayAccount: {
-      Type: 'AWS::ApiGateway::Account',
+    PhosHttpApiStage: {
+      Type: 'AWS::ApiGatewayV2::Stage',
+      DependsOn: ['PhosApiAccessLogGroup'],
       Properties: {
-        CloudWatchRoleArn: getAtt('PhosApiGatewayCloudWatchRole', 'Arn'),
-      },
-    },
-    PhosCognitoAuthorizer: {
-      Type: 'AWS::ApiGateway::Authorizer',
-      Properties: {
-        RestApiId: ref('PhosRestApi'),
-        Name: 'ph-os-cognito-access-token-authorizer',
-        Type: 'COGNITO_USER_POOLS',
-        IdentitySource: 'method.request.header.Authorization',
-        ProviderARNs: [ref(cognitoUserPoolArnParameter)],
-      },
-    },
-    [restApiDeploymentId]: {
-      Type: 'AWS::ApiGateway::Deployment',
-      DependsOn: bindings.map((binding) => apiMethodLogicalId(binding)),
-      Properties: {
-        RestApiId: ref('PhosRestApi'),
-        Description: `PH-OS business REST API deployment ${restApiDeploymentFingerprint(
-          bindings,
-        )} with X-Ray tracing support.`,
-      },
-    },
-    PhosRestApiStage: {
-      Type: 'AWS::ApiGateway::Stage',
-      DependsOn: [
-        'PhosApiGatewayAccount',
-        'PhosApiAccessLogGroup',
-        'PhosApiExecutionLogGroup',
-        restApiDeploymentId,
-      ],
-      Properties: {
-        RestApiId: ref('PhosRestApi'),
-        DeploymentId: ref(restApiDeploymentId),
+        ApiId: ref('PhosHttpApi'),
         StageName: ref(stageNameParameter),
-        TracingEnabled: true,
-        AccessLogSetting: {
+        AutoDeploy: true,
+        Description: `PH-OS business HTTP API route contract ${httpApiRouteContractId}.`,
+        AccessLogSettings: {
           DestinationArn: getAtt('PhosApiAccessLogGroup', 'Arn'),
           Format:
-            '{"requestId":"$context.requestId","tenant_id":"$context.authorizer.claims.tenant_id","user_id":"$context.authorizer.claims.sub","routeKey":"$context.httpMethod $context.resourcePath","status":"$context.status","integrationError":"$context.integrationErrorMessage"}',
+            '{"requestId":"$context.requestId","tenant_id":"$context.authorizer.claims.tenant_id","user_id":"$context.authorizer.claims.sub","routeKey":"$context.routeKey","status":"$context.status","integrationError":"$context.integrationErrorMessage"}',
         },
-        MethodSettings: [
-          {
-            ResourcePath: '/*',
-            HttpMethod: '*',
-            MetricsEnabled: true,
-            LoggingLevel: 'ERROR',
-            DataTraceEnabled: false,
-          },
-        ],
+        DefaultRouteSettings: {
+          DetailedMetricsEnabled: true,
+        },
       },
     },
     PhosCoreDynamoDbTable: buildPhosCoreDynamoDbTable({ dynamodbTableNameParameter }),
@@ -840,32 +751,6 @@ export function buildPhosApiGatewayLambdaTemplate(
     }),
     PhosEvidenceBucketPolicy: buildPhosEvidenceBucketPolicy({ evidenceBucketNameParameter }),
   };
-
-  const apiResourcePaths = new Set<string>();
-  for (const binding of bindings) {
-    const segments = routePathSegments(binding.route.path);
-    for (let index = 1; index <= segments.length; index += 1) {
-      apiResourcePaths.add(routePathPrefix(segments, index));
-    }
-  }
-  const sortedApiResourcePaths = [...apiResourcePaths].sort(
-    (left, right) => routePathSegments(left).length - routePathSegments(right).length,
-  );
-  for (const pathPrefix of sortedApiResourcePaths) {
-    const segments = routePathSegments(pathPrefix);
-    const parentPrefix =
-      segments.length > 1 ? routePathPrefix(segments, segments.length - 1) : null;
-    resources[apiResourceLogicalId(pathPrefix)] = {
-      Type: 'AWS::ApiGateway::Resource',
-      Properties: {
-        RestApiId: ref('PhosRestApi'),
-        ParentId: parentPrefix
-          ? ref(apiResourceLogicalId(parentPrefix))
-          : getAtt('PhosRestApi', 'RootResourceId'),
-        PathPart: segments[segments.length - 1]!,
-      },
-    };
-  }
 
   for (const binding of bindings) {
     const functionName = lambdaFunctionName({ binding, stageNameParameter });
@@ -911,22 +796,27 @@ export function buildPhosApiGatewayLambdaTemplate(
         },
       },
     };
-    resources[apiMethodLogicalId(binding)] = {
-      Type: 'AWS::ApiGateway::Method',
+    resources[binding.integration_logical_id] = {
+      Type: 'AWS::ApiGatewayV2::Integration',
       Properties: {
-        RestApiId: ref('PhosRestApi'),
-        ResourceId: ref(apiResourceLogicalId(binding.route.path)),
-        HttpMethod: binding.route.method,
-        AuthorizationType: 'COGNITO_USER_POOLS',
-        AuthorizerId: ref('PhosCognitoAuthorizer'),
+        ApiId: ref('PhosHttpApi'),
+        IntegrationType: 'AWS_PROXY',
+        IntegrationMethod: 'POST',
+        PayloadFormatVersion: '2.0',
+        IntegrationUri: sub(
+          `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${binding.function_logical_id}.Arn}/invocations`,
+        ),
+      },
+    };
+    resources[binding.route_logical_id] = {
+      Type: 'AWS::ApiGatewayV2::Route',
+      Properties: {
+        ApiId: ref('PhosHttpApi'),
+        RouteKey: binding.route.route_key,
+        AuthorizationType: 'JWT',
+        AuthorizerId: ref('PhosJwtAuthorizer'),
         AuthorizationScopes: binding.route.required_scopes,
-        Integration: {
-          Type: 'AWS_PROXY',
-          IntegrationHttpMethod: 'POST',
-          Uri: sub(
-            `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${binding.function_logical_id}.Arn}/invocations`,
-          ),
-        },
+        Target: sub(`integrations/\${${binding.integration_logical_id}}`),
       },
     };
     resources[binding.permission_logical_id] = {
@@ -936,7 +826,7 @@ export function buildPhosApiGatewayLambdaTemplate(
         FunctionName: ref(binding.function_logical_id),
         Principal: 'apigateway.amazonaws.com',
         SourceArn: sub(
-          `arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${PhosRestApi}/\${${stageNameParameter}}/${binding.route.method}${toSourceArnPath(binding.route.path)}`,
+          `arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${PhosHttpApi}/\${${stageNameParameter}}/${binding.route.method}${toSourceArnPath(binding.route.path)}`,
         ),
       },
     };
@@ -945,7 +835,7 @@ export function buildPhosApiGatewayLambdaTemplate(
   return {
     AWSTemplateFormatVersion: '2010-09-09',
     Description:
-      'PH-OS business REST API with API Gateway and Lambda X-Ray tracing. Next.js does not host PH-OS business API handlers.',
+      'PH-OS business HTTP API with API Gateway JWT authorizer and Lambda X-Ray tracing. Next.js does not host PH-OS business API handlers.',
     Parameters: {
       [stageNameParameter]: parameter('String', {
         Default: 'prod',
@@ -955,8 +845,15 @@ export function buildPhosApiGatewayLambdaTemplate(
       }),
       [lambdaArtifactBucketParameter]: parameter('String'),
       [lambdaArtifactKeyParameter]: parameter('String'),
-      [cognitoUserPoolArnParameter]: parameter('String', {
-        Description: 'Cognito User Pool ARN used by the PH-OS API Gateway REST authorizer.',
+      [jwtIssuerParameter]: parameter('String', {
+        AllowedPattern: '^https://cognito-idp\\.[A-Za-z0-9-]+\\.amazonaws\\.com/[A-Za-z0-9_-]+$',
+        Description:
+          'Issuer URL for the Cognito access token used by the PH-OS HTTP API JWT authorizer.',
+      }),
+      [jwtAudienceParameter]: parameter('String', {
+        MinLength: 1,
+        Description:
+          'Cognito app client id accepted as JWT audience by the PH-OS HTTP API authorizer.',
       }),
       [dynamodbTableNameParameter]: parameter('String', {
         Default: 'phos_core',

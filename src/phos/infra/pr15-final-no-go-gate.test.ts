@@ -127,27 +127,35 @@ describe('PH-OS Final No-Go gate', () => {
       expect(parameter).not.toHaveProperty('Properties');
       expect(parameter.Type).toBe('String');
     }
-    expect(template.Resources.PhosRestApi).toMatchObject({
-      Type: 'AWS::ApiGateway::RestApi',
+    expect(template.Resources.PhosHttpApi).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Api',
+      Properties: { ProtocolType: 'HTTP' },
     });
-    expect(template.Resources.PhosRestApiStage).toMatchObject({
-      Type: 'AWS::ApiGateway::Stage',
-      DependsOn: expect.arrayContaining(['PhosApiAccessLogGroup', 'PhosApiExecutionLogGroup']),
+    expect(template.Resources.PhosJwtAuthorizer).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Authorizer',
       Properties: {
-        TracingEnabled: true,
-        AccessLogSetting: {
-          DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
+        AuthorizerType: 'JWT',
+        IdentitySource: ['$request.header.Authorization'],
+        JwtConfiguration: {
+          Issuer: { Ref: 'JwtIssuer' },
+          Audience: [{ Ref: 'JwtAudience' }],
         },
-        MethodSettings: [
-          expect.objectContaining({
-            MetricsEnabled: true,
-            LoggingLevel: 'ERROR',
-            DataTraceEnabled: false,
-          }),
-        ],
       },
     });
-    const accessLogFormat = template.Resources.PhosRestApiStage.Properties.AccessLogSetting as {
+    expect(template.Resources.PhosHttpApiStage).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Stage',
+      DependsOn: expect.arrayContaining(['PhosApiAccessLogGroup']),
+      Properties: {
+        AutoDeploy: true,
+        AccessLogSettings: {
+          DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
+        },
+        DefaultRouteSettings: {
+          DetailedMetricsEnabled: true,
+        },
+      },
+    });
+    const accessLogFormat = template.Resources.PhosHttpApiStage.Properties.AccessLogSettings as {
       Format: string;
     };
     expect(accessLogFormat.Format).toContain('$context.authorizer.claims.tenant_id');
@@ -162,33 +170,26 @@ describe('PH-OS Final No-Go gate', () => {
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
-    expect(template.Resources).not.toHaveProperty('PhosHttpApi');
-    expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
-    expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');
-    expect(template.Resources.PhosApiExecutionLogGroup).toMatchObject({
-      Type: 'AWS::Logs::LogGroup',
-      Properties: { RetentionInDays: 90 },
-    });
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).toContain(
-      'ph-os-api-gateway-cloudwatch-logs',
-    );
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      'AmazonAPIGatewayPushToCloudWatchLogs',
-    );
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      'logs:CreateLogGroup',
-    );
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      '"logs:*"',
-    );
+    expect(template.Resources).not.toHaveProperty('PhosRestApi');
+    expect(template.Resources).not.toHaveProperty('PhosRestApiStage');
+    expect(template.Resources).not.toHaveProperty('PhosCognitoAuthorizer');
+    expect(template.Resources).not.toHaveProperty('PhosApiExecutionLogGroup');
+    expect(template.Resources).not.toHaveProperty('PhosApiGatewayCloudWatchRole');
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       expect(template.Resources[binding.route_logical_id]).toMatchObject({
-        Type: 'AWS::ApiGateway::Method',
+        Type: 'AWS::ApiGatewayV2::Route',
         Properties: {
-          AuthorizationType: 'COGNITO_USER_POOLS',
-          AuthorizerId: { Ref: 'PhosCognitoAuthorizer' },
+          AuthorizationType: 'JWT',
+          AuthorizerId: { Ref: 'PhosJwtAuthorizer' },
           AuthorizationScopes: route.required_scopes,
+        },
+      });
+      expect(template.Resources[binding.integration_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGatewayV2::Integration',
+        Properties: {
+          IntegrationType: 'AWS_PROXY',
+          PayloadFormatVersion: '2.0',
         },
       });
       const functionName = readSub(

@@ -14,28 +14,6 @@ function resourcesByType(type: string) {
   return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
 }
 
-function resourcesByTypeFromTemplate(
-  template: ReturnType<typeof buildPhosApiGatewayLambdaTemplate>,
-  type: string,
-) {
-  return Object.entries(template.Resources).filter(([, resource]) => resource.Type === type);
-}
-
-function singleResourceByType(type: string) {
-  const resources = resourcesByType(type);
-  expect(resources).toHaveLength(1);
-  return resources[0]!;
-}
-
-function singleResourceByTypeFromTemplate(
-  template: ReturnType<typeof buildPhosApiGatewayLambdaTemplate>,
-  type: string,
-) {
-  const resources = resourcesByTypeFromTemplate(template, type);
-  expect(resources).toHaveLength(1);
-  return resources[0]!;
-}
-
 function policyStatementsForRoute(routeKey: string) {
   const template = buildPhosApiGatewayLambdaTemplate();
   const binding = bindPhosApiRouteForDeployment(
@@ -191,76 +169,76 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     }
   });
 
-  it('creates a REST API with a Cognito authorizer and X-Ray traced stage', () => {
+  it('creates an HTTP API with a JWT authorizer and access-log stage', () => {
     const template = buildPhosApiGatewayLambdaTemplate({
       api_name: 'ph-os-business-api-test',
     });
 
-    expect(template.Resources.PhosRestApi).toMatchObject({
-      Type: 'AWS::ApiGateway::RestApi',
+    expect(template.Resources.PhosHttpApi).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Api',
       Properties: {
         Name: 'ph-os-business-api-test',
-        EndpointConfiguration: {
-          Types: ['REGIONAL'],
+        ProtocolType: 'HTTP',
+      },
+    });
+    expect(template.Resources.PhosJwtAuthorizer).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Authorizer',
+      Properties: {
+        ApiId: { Ref: 'PhosHttpApi' },
+        AuthorizerType: 'JWT',
+        IdentitySource: ['$request.header.Authorization'],
+        JwtConfiguration: {
+          Issuer: { Ref: 'JwtIssuer' },
+          Audience: [{ Ref: 'JwtAudience' }],
         },
       },
     });
-    expect(template.Resources.PhosCognitoAuthorizer).toMatchObject({
-      Type: 'AWS::ApiGateway::Authorizer',
+    expect(template.Resources.PhosHttpApiStage).toMatchObject({
+      Type: 'AWS::ApiGatewayV2::Stage',
       Properties: {
-        RestApiId: { Ref: 'PhosRestApi' },
-        Type: 'COGNITO_USER_POOLS',
-        IdentitySource: 'method.request.header.Authorization',
-        ProviderARNs: [{ Ref: 'CognitoUserPoolArn' }],
-      },
-    });
-    expect(template.Resources.PhosRestApiStage).toMatchObject({
-      Type: 'AWS::ApiGateway::Stage',
-      Properties: {
-        RestApiId: { Ref: 'PhosRestApi' },
-        TracingEnabled: true,
-        AccessLogSetting: {
+        ApiId: { Ref: 'PhosHttpApi' },
+        AutoDeploy: true,
+        AccessLogSettings: {
           DestinationArn: { 'Fn::GetAtt': ['PhosApiAccessLogGroup', 'Arn'] },
-          Format: expect.stringContaining('$context.resourcePath'),
+          Format: expect.stringContaining('$context.routeKey'),
         },
-        MethodSettings: [
-          {
-            ResourcePath: '/*',
-            HttpMethod: '*',
-            MetricsEnabled: true,
-            LoggingLevel: 'ERROR',
-            DataTraceEnabled: false,
-          },
-        ],
+        DefaultRouteSettings: {
+          DetailedMetricsEnabled: true,
+        },
       },
     });
-    const accessLogFormat = template.Resources.PhosRestApiStage.Properties.AccessLogSetting as {
+    expect(template.Resources.PhosHttpApiStage.Properties).not.toHaveProperty('DeploymentId');
+    expect(template.Resources.PhosHttpApiStage.Properties).not.toHaveProperty('TracingEnabled');
+    expect(template.Resources.PhosHttpApiStage.Properties).not.toHaveProperty('MethodSettings');
+    expect(template.Resources.PhosHttpApiStage.Properties.DefaultRouteSettings).not.toHaveProperty(
+      'LoggingLevel',
+    );
+    expect(template.Resources.PhosHttpApiStage.Properties.DefaultRouteSettings).not.toHaveProperty(
+      'DataTraceEnabled',
+    );
+    const accessLogFormat = template.Resources.PhosHttpApiStage.Properties.AccessLogSettings as {
       Format: string;
     };
     expect(accessLogFormat.Format).toContain('$context.requestId');
     expect(accessLogFormat.Format).toContain('$context.authorizer.claims.tenant_id');
     expect(accessLogFormat.Format).toContain('$context.authorizer.claims.sub');
-    expect(accessLogFormat.Format).toContain('$context.httpMethod $context.resourcePath');
+    expect(accessLogFormat.Format).toContain('$context.routeKey');
     expect(accessLogFormat.Format).not.toMatch(
       /patient|patient_name|drug|medication|report_body|photo|sha256|file_name/i,
     );
-    expect(template.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
-      Ref: singleResourceByType('AWS::ApiGateway::Deployment')[0],
-    });
-    expect(template.Resources.PhosApiGatewayAccount).toMatchObject({
-      Type: 'AWS::ApiGateway::Account',
-      Properties: {
-        CloudWatchRoleArn: { 'Fn::GetAtt': ['PhosApiGatewayCloudWatchRole', 'Arn'] },
-      },
-    });
     expect(template.Parameters.StageName).toMatchObject({
       Default: 'prod',
       MinLength: 1,
       MaxLength: 16,
       AllowedPattern: '^[A-Za-z0-9-]+$',
     });
-    expect(template.Parameters.CognitoUserPoolArn).toMatchObject({
+    expect(template.Parameters.JwtIssuer).toMatchObject({
       Type: 'String',
+      AllowedPattern: '^https://cognito-idp\\.[A-Za-z0-9-]+\\.amazonaws\\.com/[A-Za-z0-9_-]+$',
+    });
+    expect(template.Parameters.JwtAudience).toMatchObject({
+      Type: 'String',
+      MinLength: 1,
     });
     expect(template.Parameters.PhosSecurityEventTableName).toMatchObject({
       Type: 'String',
@@ -270,15 +248,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
-    expect(template.Resources).not.toHaveProperty('PhosHttpApi');
-    expect(template.Resources).not.toHaveProperty('PhosHttpApiStage');
-    expect(template.Resources).not.toHaveProperty('PhosJwtAuthorizer');
+    expect(template.Resources).not.toHaveProperty('PhosRestApi');
+    expect(template.Resources).not.toHaveProperty('PhosRestApiStage');
+    expect(template.Resources).not.toHaveProperty('PhosCognitoAuthorizer');
+    expect(template.Resources).not.toHaveProperty('PhosApiGatewayAccount');
   });
 
   it('respects custom deploy parameter names without stale hard-coded references', () => {
     const template = buildPhosApiGatewayLambdaTemplate({
       stage_name_parameter: 'PhosStageName',
-      cognito_user_pool_arn_parameter: 'PhosCognitoPoolArn',
+      jwt_issuer_parameter: 'PhosJwtIssuer',
+      jwt_audience_parameter: 'PhosJwtAudience',
     });
     const detailRoute = bindPhosApiRouteForDeployment(
       PHOS_API_ROUTES.find((route) => route.route_key === 'GET /cards/{card_id}')!,
@@ -289,70 +269,68 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(template.Parameters).toHaveProperty('PhosStageName');
     expect(template.Parameters).not.toHaveProperty('StageName');
-    expect(template.Parameters).toHaveProperty('PhosCognitoPoolArn');
-    expect(template.Parameters).not.toHaveProperty('CognitoUserPoolArn');
+    expect(template.Parameters).toHaveProperty('PhosJwtIssuer');
+    expect(template.Parameters).toHaveProperty('PhosJwtAudience');
+    expect(template.Parameters).not.toHaveProperty('JwtIssuer');
+    expect(template.Parameters).not.toHaveProperty('JwtAudience');
     expect(template.Resources.PhosApiAccessLogGroup.Properties.LogGroupName).toEqual({
-      'Fn::Sub': '/aws/apigateway/${PhosRestApi}/${PhosStageName}/access',
+      'Fn::Sub': '/aws/apigateway/${PhosHttpApi}/${PhosStageName}/access',
     });
-    expect(template.Resources.PhosRestApiStage.Properties.StageName).toEqual({
+    expect(template.Resources.PhosHttpApiStage.Properties.StageName).toEqual({
       Ref: 'PhosStageName',
     });
-    expect(template.Resources.PhosCognitoAuthorizer.Properties.ProviderARNs).toEqual([
-      { Ref: 'PhosCognitoPoolArn' },
-    ]);
+    expect(template.Resources.PhosJwtAuthorizer.Properties.JwtConfiguration).toEqual({
+      Issuer: { Ref: 'PhosJwtIssuer' },
+      Audience: [{ Ref: 'PhosJwtAudience' }],
+    });
     expect(functionName).toContain('${PhosStageName}');
     expect(template.Resources[detailRoute.permission_logical_id].Properties.SourceArn).toEqual({
       'Fn::Sub':
-        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosRestApi}/${PhosStageName}/GET/cards/*',
+        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosHttpApi}/${PhosStageName}/GET/cards/*',
     });
     expect(JSON.stringify(template)).not.toContain('${StageName}');
-    expect(JSON.stringify(template)).not.toContain('${CognitoUserPoolArn}');
+    expect(JSON.stringify(template)).not.toContain('${JwtIssuer}');
+    expect(JSON.stringify(template)).not.toContain('${JwtAudience}');
   });
 
-  it('creates only API Gateway REST methods with manifest OAuth scopes', () => {
+  it('creates only API Gateway HTTP API routes with manifest OAuth scopes', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
-    const methodResources = resourcesByType('AWS::ApiGateway::Method');
-    const [deploymentLogicalId, deployment] = singleResourceByType('AWS::ApiGateway::Deployment');
+    const routeResources = resourcesByType('AWS::ApiGatewayV2::Route');
+    const integrationResources = resourcesByType('AWS::ApiGatewayV2::Integration');
 
-    expect(methodResources).toHaveLength(PHOS_API_ROUTES.length);
-    expect(deploymentLogicalId).toMatch(/^PhosRestApiDeployment[a-z0-9]{6}$/);
-    expect(template.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
-      Ref: deploymentLogicalId,
-    });
-    expect(deployment.Properties.Description).toContain(
-      deploymentLogicalId.replace(/^PhosRestApiDeployment/, ''),
-    );
-    expect(deployment.DependsOn).toEqual(
-      PHOS_API_ROUTES.map((route) => bindPhosApiRouteForDeployment(route).route_logical_id),
-    );
+    expect(routeResources).toHaveLength(PHOS_API_ROUTES.length);
+    expect(integrationResources).toHaveLength(PHOS_API_ROUTES.length);
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
-      expect(template.Resources[binding.route_logical_id]).toMatchObject({
-        Type: 'AWS::ApiGateway::Method',
+      expect(template.Resources[binding.integration_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGatewayV2::Integration',
         Properties: {
-          RestApiId: { Ref: 'PhosRestApi' },
-          HttpMethod: route.method,
-          AuthorizationType: 'COGNITO_USER_POOLS',
-          AuthorizerId: { Ref: 'PhosCognitoAuthorizer' },
-          AuthorizationScopes: route.required_scopes,
-          Integration: {
-            Type: 'AWS_PROXY',
-            IntegrationHttpMethod: 'POST',
-            Uri: {
-              'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${binding.function_logical_id}.Arn}/invocations`,
-            },
+          ApiId: { Ref: 'PhosHttpApi' },
+          IntegrationType: 'AWS_PROXY',
+          IntegrationMethod: 'POST',
+          PayloadFormatVersion: '2.0',
+          IntegrationUri: {
+            'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${binding.function_logical_id}.Arn}/invocations`,
           },
+        },
+      });
+      expect(template.Resources[binding.route_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGatewayV2::Route',
+        Properties: {
+          ApiId: { Ref: 'PhosHttpApi' },
+          RouteKey: route.route_key,
+          AuthorizationType: 'JWT',
+          AuthorizerId: { Ref: 'PhosJwtAuthorizer' },
+          AuthorizationScopes: route.required_scopes,
+          Target: { 'Fn::Sub': `integrations/\${${binding.integration_logical_id}}` },
         },
       });
     }
   });
 
-  it('changes the REST deployment logical id when route auth or integration contracts change', () => {
+  it('changes the HTTP stage route-contract description when route auth or integration contracts change', () => {
     const baseTemplate = buildPhosApiGatewayLambdaTemplate();
-    const [baseDeploymentLogicalId] = singleResourceByTypeFromTemplate(
-      baseTemplate,
-      'AWS::ApiGateway::Deployment',
-    );
+    const baseDescription = String(baseTemplate.Resources.PhosHttpApiStage.Properties.Description);
 
     const scopeChangedTemplate = buildPhosApiGatewayLambdaTemplate({
       routes: PHOS_API_ROUTES.map((route, index) =>
@@ -364,11 +342,6 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           : route,
       ),
     });
-    const [scopeChangedDeploymentLogicalId] = singleResourceByTypeFromTemplate(
-      scopeChangedTemplate,
-      'AWS::ApiGateway::Deployment',
-    );
-
     const handlerChangedTemplate = buildPhosApiGatewayLambdaTemplate({
       routes: PHOS_API_ROUTES.map((route, index) =>
         index === 0
@@ -379,19 +352,12 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           : route,
       ),
     });
-    const [handlerChangedDeploymentLogicalId] = singleResourceByTypeFromTemplate(
-      handlerChangedTemplate,
-      'AWS::ApiGateway::Deployment',
+    expect(scopeChangedTemplate.Resources.PhosHttpApiStage.Properties.Description).not.toBe(
+      baseDescription,
     );
-
-    expect(scopeChangedDeploymentLogicalId).not.toBe(baseDeploymentLogicalId);
-    expect(handlerChangedDeploymentLogicalId).not.toBe(baseDeploymentLogicalId);
-    expect(scopeChangedTemplate.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
-      Ref: scopeChangedDeploymentLogicalId,
-    });
-    expect(handlerChangedTemplate.Resources.PhosRestApiStage.Properties.DeploymentId).toEqual({
-      Ref: handlerChangedDeploymentLogicalId,
-    });
+    expect(handlerChangedTemplate.Resources.PhosHttpApiStage.Properties.Description).not.toBe(
+      baseDescription,
+    );
   });
 
   it('creates Lambda functions with Node.js 24 active tracing and production PH-OS environment', () => {
@@ -436,22 +402,17 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     const template = buildPhosApiGatewayLambdaTemplate();
     const logGroupResources = resourcesByType('AWS::Logs::LogGroup');
 
-    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 2);
+    expect(logGroupResources).toHaveLength(PHOS_API_ROUTES.length + 1);
     expect(template.Resources.PhosApiAccessLogGroup).toMatchObject({
       Type: 'AWS::Logs::LogGroup',
       Properties: {
-        RetentionInDays: 90,
-      },
-    });
-    expect(template.Resources.PhosApiExecutionLogGroup).toMatchObject({
-      Type: 'AWS::Logs::LogGroup',
-      Properties: {
         LogGroupName: {
-          'Fn::Sub': 'API-Gateway-Execution-Logs_${PhosRestApi}/${StageName}',
+          'Fn::Sub': '/aws/apigateway/${PhosHttpApi}/${StageName}/access',
         },
         RetentionInDays: 90,
       },
     });
+    expect(template.Resources).not.toHaveProperty('PhosApiExecutionLogGroup');
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       const functionName = readSub(
@@ -675,43 +636,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(template.Resources).not.toHaveProperty('PhosLambdaExecutionRole');
     expect(lambdaRoleResources).toHaveLength(PHOS_API_ROUTES.length);
-    expect(template.Resources.PhosApiGatewayCloudWatchRole).toMatchObject({
-      Type: 'AWS::IAM::Role',
-      Properties: {
-        Policies: [
-          {
-            PolicyName: 'ph-os-api-gateway-cloudwatch-logs',
-            PolicyDocument: {
-              Statement: [
-                {
-                  Effect: 'Allow',
-                  Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
-                  Resource: [
-                    {
-                      'Fn::Sub':
-                        'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${PhosRestApi}/${StageName}/access:*',
-                    },
-                    {
-                      'Fn::Sub':
-                        'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:API-Gateway-Execution-Logs_${PhosRestApi}/${StageName}:*',
-                    },
-                  ],
-                },
-              ],
-            },
-          },
-        ],
-      },
-    });
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      'AmazonAPIGatewayPushToCloudWatchLogs',
-    );
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      'logs:CreateLogGroup',
-    );
-    expect(JSON.stringify(template.Resources.PhosApiGatewayCloudWatchRole)).not.toContain(
-      '"logs:*"',
-    );
+    expect(template.Resources).not.toHaveProperty('PhosApiGatewayCloudWatchRole');
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
       const functionName = readSub(
@@ -978,14 +903,18 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     for (const route of PHOS_API_ROUTES) {
       const binding = bindPhosApiRouteForDeployment(route);
-      expect(template.Resources).not.toHaveProperty(binding.integration_logical_id);
-      expect(template.Resources[binding.route_logical_id]).toMatchObject({
-        Type: 'AWS::ApiGateway::Method',
+      expect(template.Resources[binding.integration_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGatewayV2::Integration',
         Properties: {
-          Integration: {
-            Type: 'AWS_PROXY',
-            IntegrationHttpMethod: 'POST',
-          },
+          IntegrationType: 'AWS_PROXY',
+          IntegrationMethod: 'POST',
+          PayloadFormatVersion: '2.0',
+        },
+      });
+      expect(template.Resources[binding.route_logical_id]).toMatchObject({
+        Type: 'AWS::ApiGatewayV2::Route',
+        Properties: {
+          Target: { 'Fn::Sub': `integrations/\${${binding.integration_logical_id}}` },
         },
       });
       expect(template.Resources[binding.permission_logical_id]).toMatchObject({
@@ -1010,11 +939,11 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(template.Resources[detailRoute.permission_logical_id].Properties.SourceArn).toEqual({
       'Fn::Sub':
-        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosRestApi}/${StageName}/GET/cards/*',
+        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosHttpApi}/${StageName}/GET/cards/*',
     });
     expect(template.Resources[actionRoute.permission_logical_id].Properties.SourceArn).toEqual({
       'Fn::Sub':
-        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosRestApi}/${StageName}/POST/cards/*/actions',
+        'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhosHttpApi}/${StageName}/POST/cards/*/actions',
     });
   });
 
