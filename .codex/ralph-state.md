@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260609-141430
+
+- current task: implement UI-PR9C question-mark shortcut help dialog
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, and `src/phos/infra/pr15-final-no-go-gate.test.ts`.
+- files changed: `src/phos/contracts/phos_copy.ja.ts`, `src/phos/contracts/phos_copy.test.ts`, `src/phos/ui/a11y/ShortcutHelpDialog.tsx`, `src/phos/ui/a11y/ShortcutHelpDialog.test.tsx`, `src/phos/ui/board/BoardClient.tsx`, `src/phos/ui/board/BoardClient.test.tsx`, `src/phos/infra/pr15-final-no-go-gate.test.ts`, `.codex/ralph-state.md`
+- bugs found: UI-PR9 specified `?` for a shortcut list, but PH-OS had no shortcut help surface or global question-mark handler. There was also no proof that the shortcut help trigger avoids text-entry fields.
+- security risks found: no auth, authorization, tenant boundary, API route, mutation semantics, report send, evidence upload, persistence, database, S3, or logging behavior changed. The global handler only opens a local help dialog, ignores input/select/textarea/contenteditable targets and modifier-key combinations, and does not introduce native `disabled`.
+- performance issues found: the help surface is static copy and a single global keydown listener owned by BoardClient. It adds no fetch, polling, route handler, Server Action, database call, scan, external send, chart rendering, or broad recomputation.
+- validation commands: Prettier for touched copy/a11y/board/gate files; focused `pnpm exec vitest run src/phos/ui/a11y/ShortcutHelpDialog.test.tsx src/phos/ui/board/BoardClient.test.tsx src/phos/contracts/phos_copy.test.ts src/phos/infra/pr15-final-no-go-gate.test.ts --reporter=dot`; `pnpm exec tsc --noEmit`; focused ESLint for touched files; `git diff --check`; native `disabled` grep; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm exec eslint src/phos --max-warnings=0`; `pnpm build`
+- validation results: focused suite passed with 4 files / 82 tests after widening the Dialog close assertion and waiting for BoardClient async effects; TypeScript passed; focused ESLint passed; whitespace diff check passed; native `disabled` grep returned no hits; full PH-OS Vitest passed with 91 files / 517 tests; full PH-OS ESLint passed with zero warnings; Next production build passed.
+- remaining work: UI-PR9 still has possible follow-ups around `Cmd/Ctrl+Enter` confirm semantics in every form and browser-level accessibility flow checks, but the P0 listed shortcuts now have local test coverage for `/`, `j/k`, `Enter`, `Space`, `Esc`, `g then number`, `[`/`]`, and `?`.
+- next action: commit this shortcut help slice, then run a fresh UIUX v1.1 coverage audit to identify any remaining P0 gaps before claiming completion.
+
 ### 20260609-140930
 
 - current task: implement UI-PR9B Workspace keyboard shortcuts for tab switching and opened-card navigation

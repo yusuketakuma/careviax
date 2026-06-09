@@ -649,4 +649,27 @@ describe('PH-OS Final No-Go gate', () => {
       /does not switch opened cards while typing/,
     ]);
   });
+
+  it('keeps shortcut help available from question mark without hijacking text entry', () => {
+    expectEvidence('src/phos/ui/a11y/ShortcutHelpDialog.tsx', [
+      /PhosShortcutHelpCopy/,
+      /PhosShortcutHelpRows/,
+      /DialogContent/,
+      /Keyboard/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.tsx', [
+      /ShortcutHelpDialog/,
+      /event\.key !== '\?'/,
+      /isTextEntryTarget/,
+      /setShortcutHelpOpen\(true\)/,
+    ]);
+    expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
+      /opens shortcut help with question mark/,
+      /does not open shortcut help with question mark while typing/,
+    ]);
+    expectEvidence('src/phos/ui/a11y/ShortcutHelpDialog.test.tsx', [
+      /keyboard shortcut help from copy rows/,
+      /delegates close through the dialog primitive/,
+    ]);
+  });
 });

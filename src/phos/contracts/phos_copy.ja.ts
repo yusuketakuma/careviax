@@ -111,6 +111,22 @@ export const PhosSourceDrawerCopy = {
   WORKSPACE_SECTION_HEADING: '参照情報',
 } as const;
 
+export const PhosShortcutHelpCopy = {
+  TITLE: 'ショートカット',
+  DESCRIPTION: '現在の画面で使えるキーボード操作です。',
+} as const;
+
+export const PhosShortcutHelpRows = [
+  { keys: '/', label: 'Board検索へ移動' },
+  { keys: 'j / k', label: '次/前のカードへ移動' },
+  { keys: 'Enter', label: 'カードを開く' },
+  { keys: 'Space', label: '主アクションを実行' },
+  { keys: 'Esc', label: 'Workspaceを閉じる' },
+  { keys: 'g then 1..5', label: 'Workspaceタブを切替' },
+  { keys: '[ / ]', label: '開いているカードを前後移動' },
+  { keys: '?', label: 'ショートカットを表示' },
+] as const;
+
 export const PhosClinicalSignalCodeLabel = {
   DOSE_INCREASE: '増量',
   NEW_HIGH_RISK: '高リスク薬',

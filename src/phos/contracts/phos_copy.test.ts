@@ -16,6 +16,8 @@ import {
   PhosReportComposerCopy,
   PhosReportComposerTemplateLabel,
   PhosRejectReasonLabel,
+  PhosShortcutHelpCopy,
+  PhosShortcutHelpRows,
   PhosSourceDrawerCopy,
   PhosSourceRefKindLabel,
   PhosDeliveryMethodLabel,
@@ -73,6 +75,20 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosSourceDrawerCopy.WORKSPACE_SECTION_HEADING).toBe('参照情報');
   });
 
+  it('contains keyboard shortcut help copy', () => {
+    expect(PhosShortcutHelpCopy.TITLE).toBe('ショートカット');
+    expect(PhosShortcutHelpRows.map((row) => row.keys)).toEqual([
+      '/',
+      'j / k',
+      'Enter',
+      'Space',
+      'Esc',
+      'g then 1..5',
+      '[ / ]',
+      '?',
+    ]);
+  });
+
   it('contains PharmacistBrief display copy without raw enum labels', () => {
     expect(PhosPharmacistBriefCopy.TITLE).toBe('薬剤師判断');
     expect(PhosClinicalSignalCodeLabel.DOSE_INCREASE).toBe('増量');
@@ -122,6 +138,8 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosReportComposerCopy),
       ...Object.values(PhosReportComposerTemplateLabel).flatMap((labels) => Object.values(labels)),
       ...Object.values(PhosRejectReasonLabel),
+      ...Object.values(PhosShortcutHelpCopy),
+      ...PhosShortcutHelpRows.flatMap((row) => [row.keys, row.label]),
       ...Object.values(PhosSourceDrawerCopy),
       ...Object.values(PhosSourceRefKindLabel),
       ...Object.values(PhosSupportBriefCopy),

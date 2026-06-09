@@ -1206,6 +1206,31 @@ describe('BoardClient', () => {
     );
   });
 
+  it('opens shortcut help with question mark outside text entry fields', async () => {
+    const apiClient = client();
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    await waitFor(() => expect(apiClient.getHandoffs).toHaveBeenCalledTimes(2));
+
+    fireEvent.keyDown(window, { key: '?' });
+
+    expect(await screen.findByRole('heading', { name: 'ショートカット' })).toBeTruthy();
+    expect(screen.getByText('Board検索へ移動')).toBeTruthy();
+  });
+
+  it('does not open shortcut help with question mark while typing in search', async () => {
+    const apiClient = client();
+    render(<BoardClient client={apiClient} initialItems={[item]} />);
+
+    await waitFor(() => expect(apiClient.getHandoffs).toHaveBeenCalledTimes(2));
+
+    const search = screen.getByPlaceholderText('患者名・施設名・薬剤名・担当者で検索');
+    search.focus();
+    fireEvent.keyDown(search, { key: '?' });
+
+    expect(screen.queryByRole('heading', { name: 'ショートカット' })).toBeNull();
+  });
+
   it('uses selected detail server_version for workspace actions', async () => {
     const apiClient = client({
       getCardDetail: vi.fn(async () => detailResponse({ server_version: 7 })),

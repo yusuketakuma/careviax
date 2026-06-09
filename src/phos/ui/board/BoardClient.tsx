@@ -45,6 +45,7 @@ import { countBoardFilters, selectBoardItems } from '@/phos/domain/board/boardFi
 import { ClerkSupportWorkbench } from '@/phos/ui/handoff/ClerkSupportWorkbench';
 import { HandoffQueue } from '@/phos/ui/handoff/HandoffQueue';
 import { ReportDeliveryQueue } from '@/phos/ui/report/ReportDeliveryQueue';
+import { ShortcutHelpDialog } from '@/phos/ui/a11y/ShortcutHelpDialog';
 import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
 import { appendPhosToast, PhosToastRegion } from '@/phos/ui/feedback/PhosToastRegion';
 import type { PhosToastInput, PhosToastEntry } from '@/phos/ui/feedback/PhosToastRegion';
@@ -116,6 +117,12 @@ function sessionHasCapacityRole(role: unknown, groups: unknown): boolean {
     const normalized = group.trim().toUpperCase();
     return normalized === UserRole.MANAGER || normalized === UserRole.ADMIN;
   });
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName);
 }
 
 function updateBoardItem(
@@ -288,6 +295,7 @@ export function BoardClient({
     Record<string, EvidencePendingView[]>
   >({});
   const [toasts, setToasts] = useState<PhosToastEntry[]>([]);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [capacity, setCapacity] = useState<CapacityResponse | undefined>();
   const [capacityPhase, setCapacityPhase] = useState<CapacityPhase>('LOADING');
   const [capacityError, setCapacityError] = useState<string | undefined>();
@@ -326,6 +334,18 @@ export function BoardClient({
 
   const enqueueToast = useCallback((toast: PhosToastInput) => {
     setToasts((current) => appendPhosToast(current, toast, Date.now()));
+  }, []);
+
+  useEffect(() => {
+    function onShortcutHelpKeyDown(event: KeyboardEvent) {
+      if (event.key !== '?' || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTextEntryTarget(event.target)) return;
+      event.preventDefault();
+      setShortcutHelpOpen(true);
+    }
+
+    window.addEventListener('keydown', onShortcutHelpKeyDown);
+    return () => window.removeEventListener('keydown', onShortcutHelpKeyDown);
   }, []);
 
   useEffect(() => {
@@ -903,6 +923,7 @@ export function BoardClient({
   return (
     <div className="space-y-4">
       <PhosToastRegion toasts={toasts} />
+      <ShortcutHelpDialog open={shortcutHelpOpen} onOpenChange={setShortcutHelpOpen} />
       <div
         className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
         style={displayPhase === 'ERROR' ? warningFeedbackStyle : undefined}
