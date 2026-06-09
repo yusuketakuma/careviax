@@ -245,6 +245,14 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       Default: 'phos_security_events',
       AllowedPattern: '^phos_security_events$',
     });
+    expect(template.Parameters.PhosDynamoDbKmsKeyArn).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+    });
+    expect(template.Parameters.PhosEvidenceKmsKeyArn).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+    });
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
@@ -458,7 +466,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
         LogGroupName: {
           'Fn::Sub': '/aws/apigateway/${PhosHttpApi}/${StageName}/access',
         },
-        RetentionInDays: 90,
+        RetentionInDays: 365,
       },
     });
     expect(template.Resources).not.toHaveProperty('PhosApiExecutionLogGroup');
@@ -473,7 +481,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           LogGroupName: {
             'Fn::Sub': `/aws/lambda/${functionName}`,
           },
-          RetentionInDays: 90,
+          RetentionInDays: 365,
         },
       });
     }
@@ -485,7 +493,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
             template.Resources.PhosCognitoPreTokenGenerationFunction.Properties.FunctionName,
           )}`,
         },
-        RetentionInDays: 90,
+        RetentionInDays: 365,
       },
     });
   });
@@ -545,7 +553,11 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           expect.objectContaining({ IndexName: 'GSI8' }),
         ]),
         PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
-        SSESpecification: { SSEEnabled: true },
+        SSESpecification: {
+          SSEEnabled: true,
+          SSEType: 'KMS',
+          KMSMasterKeyId: { Ref: 'PhosDynamoDbKmsKeyArn' },
+        },
         TimeToLiveSpecification: {
           AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute,
           Enabled: true,
@@ -555,6 +567,23 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({
       Default: 'phos_core',
       AllowedPattern: '^phos_core$',
+    });
+    expect(template.Resources.PhosSecurityEventTable).toMatchObject({
+      Type: 'AWS::DynamoDB::Table',
+      Properties: {
+        TableName: { Ref: 'PhosSecurityEventTableName' },
+        BillingMode: 'PAY_PER_REQUEST',
+        KeySchema: [
+          { AttributeName: 'PK', KeyType: 'HASH' },
+          { AttributeName: 'SK', KeyType: 'RANGE' },
+        ],
+        PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
+        SSESpecification: {
+          SSEEnabled: true,
+          SSEType: 'KMS',
+          KMSMasterKeyId: { Ref: 'PhosDynamoDbKmsKeyArn' },
+        },
+      },
     });
   });
 
@@ -584,8 +613,10 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
           ServerSideEncryptionConfiguration: [
             {
               ServerSideEncryptionByDefault: {
-                SSEAlgorithm: 'AES256',
+                SSEAlgorithm: 'aws:kms',
+                KMSMasterKeyID: { Ref: 'PhosEvidenceKmsKeyArn' },
               },
+              BucketKeyEnabled: true,
             },
           ],
         },
@@ -632,6 +663,8 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
                 'x-amz-checksum-sha256',
                 'x-amz-meta-sha256',
                 'x-amz-meta-size_bytes',
+                'x-amz-server-side-encryption',
+                'x-amz-server-side-encryption-aws-kms-key-id',
                 'x-amz-tagging',
               ],
               ExposedHeaders: ['x-amz-checksum-sha256'],
@@ -644,6 +677,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
     expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
       '"AllowedOrigins":["*"]',
     );
+    expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain('AES256');
     expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
       '"ExpirationInDays":365',
     );
@@ -652,8 +686,8 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       Properties: {
         Bucket: { Ref: 'PhosEvidenceBucketName' },
         PolicyDocument: {
-          Statement: [
-            {
+          Statement: expect.arrayContaining([
+            expect.objectContaining({
               Sid: 'DenyInsecureTransport',
               Effect: 'Deny',
               Principal: '*',
@@ -667,8 +701,38 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
                   'aws:SecureTransport': 'false',
                 },
               },
-            },
-          ],
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithoutSseKms',
+              Effect: 'Deny',
+              Principal: '*',
+              Action: 's3:PutObject',
+              Resource: {
+                'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
+              },
+              Condition: {
+                StringNotEquals: {
+                  's3:x-amz-server-side-encryption': 'aws:kms',
+                },
+              },
+            }),
+            expect.objectContaining({
+              Sid: 'DenyEvidenceUploadsWithWrongKmsKey',
+              Effect: 'Deny',
+              Principal: '*',
+              Action: 's3:PutObject',
+              Resource: {
+                'Fn::Sub': 'arn:aws:s3:::${PhosEvidenceBucketName}/tenants/*/evidence/*',
+              },
+              Condition: {
+                StringNotEquals: {
+                  's3:x-amz-server-side-encryption-aws-kms-key-id': {
+                    Ref: 'PhosEvidenceKmsKeyArn',
+                  },
+                },
+              },
+            }),
+          ]),
         },
       },
     });

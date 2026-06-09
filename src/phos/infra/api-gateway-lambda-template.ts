@@ -56,7 +56,9 @@ type PhosApiGatewayLambdaTemplateOptions = {
   jwt_issuer_parameter?: string;
   jwt_audience_parameter?: string;
   dynamodb_table_name_parameter?: string;
+  dynamodb_kms_key_arn_parameter?: string;
   evidence_bucket_name_parameter?: string;
+  evidence_kms_key_arn_parameter?: string;
   evidence_upload_allowed_origin_parameter?: string;
   cognito_user_pool_arn_parameter?: string;
   security_event_table_name_parameter?: string;
@@ -82,6 +84,8 @@ type DynamoRouteAccess = {
   index_actions: readonly string[];
   index_names: readonly string[];
 };
+
+const PHOS_LOG_RETENTION_DAYS = 365;
 
 function toLogicalId(input: string): string {
   const words = input
@@ -280,12 +284,23 @@ function routeS3Actions(route: PhosApiRoute): string[] {
   return [];
 }
 
+function routeKmsActions(route: PhosApiRoute): string[] {
+  if (route.route_key === 'POST /evidence/presign-upload') {
+    return ['kms:GenerateDataKey'];
+  }
+  if (route.route_key === 'POST /visit-packets/{packet_id}/visit-steps/{step}') {
+    return ['kms:Decrypt'];
+  }
+  return [];
+}
+
 function buildLambdaEnvironment(input: {
   route: PhosApiRoute;
   dynamodbTableNameParameter: string;
   securityEventTableNameParameter: string;
   auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
+  evidenceKmsKeyArnParameter: string;
 }): Record<string, CloudFormationValue> {
   return {
     ...(routeUsesDynamoCore(input.route)
@@ -298,6 +313,7 @@ function buildLambdaEnvironment(input: {
       ? {
           PHOS_EVIDENCE_BUCKET: ref(input.evidenceBucketNameParameter),
           PHOS_EVIDENCE_BUCKET_NAME: ref(input.evidenceBucketNameParameter),
+          PHOS_EVIDENCE_KMS_KEY_ARN: ref(input.evidenceKmsKeyArnParameter),
         }
       : {}),
     PHOS_SECURITY_EVENT_TABLE_NAME: ref(input.securityEventTableNameParameter),
@@ -313,6 +329,7 @@ function buildLambdaPolicyStatements(input: {
   securityEventTableNameParameter: string;
   auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
+  evidenceKmsKeyArnParameter: string;
 }): CloudFormationValue[] {
   const statements: CloudFormationValue[] = [
     {
@@ -375,6 +392,15 @@ function buildLambdaPolicyStatements(input: {
     });
   }
 
+  const kmsActions = routeKmsActions(input.route);
+  if (kmsActions.length > 0) {
+    statements.push({
+      Effect: 'Allow',
+      Action: kmsActions,
+      Resource: ref(input.evidenceKmsKeyArnParameter),
+    });
+  }
+
   return statements;
 }
 
@@ -385,6 +411,7 @@ function buildLambdaExecutionRole(input: {
   securityEventTableNameParameter: string;
   auroraDatabaseSecretArnParameter: string;
   evidenceBucketNameParameter: string;
+  evidenceKmsKeyArnParameter: string;
 }): CloudFormationResource {
   return {
     Type: 'AWS::IAM::Role',
@@ -419,7 +446,7 @@ function buildLambdaLogGroup(input: { functionLogGroupName: string }): CloudForm
     Type: 'AWS::Logs::LogGroup',
     Properties: {
       LogGroupName: sub(input.functionLogGroupName),
-      RetentionInDays: 90,
+      RetentionInDays: PHOS_LOG_RETENTION_DAYS,
     },
   };
 }
@@ -476,6 +503,7 @@ function lambdaFunctionName(input: {
 
 function buildPhosCoreDynamoDbTable(input: {
   dynamodbTableNameParameter: string;
+  dynamodbKmsKeyArnParameter: string;
 }): CloudFormationResource {
   const attributeNames = new Set<string>([
     PHOS_DYNAMODB_TABLE_CONTRACT.primary_key.partition_key,
@@ -532,6 +560,8 @@ function buildPhosCoreDynamoDbTable(input: {
       },
       SSESpecification: {
         SSEEnabled: true,
+        SSEType: 'KMS',
+        KMSMasterKeyId: ref(input.dynamodbKmsKeyArnParameter),
       },
       ...(PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute
         ? {
@@ -551,8 +581,44 @@ function buildPhosCoreDynamoDbTable(input: {
   };
 }
 
+function buildPhosSecurityEventTable(input: {
+  securityEventTableNameParameter: string;
+  dynamodbKmsKeyArnParameter: string;
+}): CloudFormationResource {
+  return {
+    Type: 'AWS::DynamoDB::Table',
+    Properties: {
+      TableName: ref(input.securityEventTableNameParameter),
+      BillingMode: 'PAY_PER_REQUEST',
+      AttributeDefinitions: [
+        { AttributeName: 'PK', AttributeType: 'S' },
+        { AttributeName: 'SK', AttributeType: 'S' },
+      ],
+      KeySchema: [
+        { AttributeName: 'PK', KeyType: 'HASH' },
+        { AttributeName: 'SK', KeyType: 'RANGE' },
+      ],
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true,
+      },
+      SSESpecification: {
+        SSEEnabled: true,
+        SSEType: 'KMS',
+        KMSMasterKeyId: ref(input.dynamodbKmsKeyArnParameter),
+      },
+      Tags: [
+        {
+          Key: 'System',
+          Value: 'PH-OS',
+        },
+      ],
+    },
+  };
+}
+
 function buildPhosEvidenceBucket(input: {
   evidenceBucketNameParameter: string;
+  evidenceKmsKeyArnParameter: string;
   evidenceUploadAllowedOriginParameter: string;
 }): CloudFormationResource {
   return {
@@ -574,8 +640,10 @@ function buildPhosEvidenceBucket(input: {
         ServerSideEncryptionConfiguration: [
           {
             ServerSideEncryptionByDefault: {
-              SSEAlgorithm: 'AES256',
+              SSEAlgorithm: 'aws:kms',
+              KMSMasterKeyID: ref(input.evidenceKmsKeyArnParameter),
             },
+            BucketKeyEnabled: true,
           },
         ],
       },
@@ -635,6 +703,8 @@ function buildPhosEvidenceBucket(input: {
               'x-amz-checksum-sha256',
               'x-amz-meta-sha256',
               'x-amz-meta-size_bytes',
+              'x-amz-server-side-encryption',
+              'x-amz-server-side-encryption-aws-kms-key-id',
               'x-amz-tagging',
             ],
             ExposedHeaders: ['x-amz-checksum-sha256'],
@@ -654,9 +724,13 @@ function buildPhosEvidenceBucket(input: {
 
 function buildPhosEvidenceBucketPolicy(input: {
   evidenceBucketNameParameter: string;
+  evidenceKmsKeyArnParameter: string;
 }): CloudFormationResource {
   const bucketArn = sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}`);
   const objectArn = sub(`arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/*`);
+  const evidenceObjectArn = sub(
+    `arn:aws:s3:::\${${input.evidenceBucketNameParameter}}/tenants/*/evidence/*`,
+  );
   return {
     Type: 'AWS::S3::BucketPolicy',
     Properties: {
@@ -673,6 +747,32 @@ function buildPhosEvidenceBucketPolicy(input: {
             Condition: {
               Bool: {
                 'aws:SecureTransport': 'false',
+              },
+            },
+          },
+          {
+            Sid: 'DenyEvidenceUploadsWithoutSseKms',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:PutObject',
+            Resource: evidenceObjectArn,
+            Condition: {
+              StringNotEquals: {
+                's3:x-amz-server-side-encryption': 'aws:kms',
+              },
+            },
+          },
+          {
+            Sid: 'DenyEvidenceUploadsWithWrongKmsKey',
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:PutObject',
+            Resource: evidenceObjectArn,
+            Condition: {
+              StringNotEquals: {
+                's3:x-amz-server-side-encryption-aws-kms-key-id': ref(
+                  input.evidenceKmsKeyArnParameter,
+                ),
               },
             },
           },
@@ -743,8 +843,12 @@ export function buildPhosApiGatewayLambdaTemplate(
   const jwtAudienceParameter = options.jwt_audience_parameter ?? 'JwtAudience';
   const dynamodbTableNameParameter =
     options.dynamodb_table_name_parameter ?? 'PhosDynamoDbTableName';
+  const dynamodbKmsKeyArnParameter =
+    options.dynamodb_kms_key_arn_parameter ?? 'PhosDynamoDbKmsKeyArn';
   const evidenceBucketNameParameter =
     options.evidence_bucket_name_parameter ?? 'PhosEvidenceBucketName';
+  const evidenceKmsKeyArnParameter =
+    options.evidence_kms_key_arn_parameter ?? 'PhosEvidenceKmsKeyArn';
   const evidenceUploadAllowedOriginParameter =
     options.evidence_upload_allowed_origin_parameter ?? 'PhosEvidenceUploadAllowedOrigin';
   const cognitoUserPoolArnParameter =
@@ -771,7 +875,7 @@ export function buildPhosApiGatewayLambdaTemplate(
       Type: 'AWS::Logs::LogGroup',
       Properties: {
         LogGroupName: sub(`/aws/apigateway/\${PhosHttpApi}/\${${stageNameParameter}}/access`),
-        RetentionInDays: 90,
+        RetentionInDays: PHOS_LOG_RETENTION_DAYS,
       },
     },
     PhosJwtAuthorizer: {
@@ -805,12 +909,23 @@ export function buildPhosApiGatewayLambdaTemplate(
         },
       },
     },
-    PhosCoreDynamoDbTable: buildPhosCoreDynamoDbTable({ dynamodbTableNameParameter }),
+    PhosCoreDynamoDbTable: buildPhosCoreDynamoDbTable({
+      dynamodbTableNameParameter,
+      dynamodbKmsKeyArnParameter,
+    }),
+    PhosSecurityEventTable: buildPhosSecurityEventTable({
+      securityEventTableNameParameter,
+      dynamodbKmsKeyArnParameter,
+    }),
     PhosEvidenceBucket: buildPhosEvidenceBucket({
       evidenceBucketNameParameter,
+      evidenceKmsKeyArnParameter,
       evidenceUploadAllowedOriginParameter,
     }),
-    PhosEvidenceBucketPolicy: buildPhosEvidenceBucketPolicy({ evidenceBucketNameParameter }),
+    PhosEvidenceBucketPolicy: buildPhosEvidenceBucketPolicy({
+      evidenceBucketNameParameter,
+      evidenceKmsKeyArnParameter,
+    }),
     PhosCognitoPreTokenGenerationFunctionRole: buildCognitoPreTokenGenerationRole({
       functionLogGroupName: preTokenFunctionLogGroupName,
     }),
@@ -865,6 +980,7 @@ export function buildPhosApiGatewayLambdaTemplate(
       securityEventTableNameParameter,
       auroraDatabaseSecretArnParameter,
       evidenceBucketNameParameter,
+      evidenceKmsKeyArnParameter,
     });
     resources[binding.log_group_logical_id] = buildLambdaLogGroup({
       functionLogGroupName,
@@ -895,6 +1011,7 @@ export function buildPhosApiGatewayLambdaTemplate(
             securityEventTableNameParameter,
             auroraDatabaseSecretArnParameter,
             evidenceBucketNameParameter,
+            evidenceKmsKeyArnParameter,
           }),
         },
       },
@@ -963,7 +1080,15 @@ export function buildPhosApiGatewayLambdaTemplate(
         AllowedPattern: '^phos_core$',
         Description: 'Fixed PH-OS P0 DynamoDB single-table name.',
       }),
+      [dynamodbKmsKeyArnParameter]: parameter('String', {
+        AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+        Description: 'Customer-managed KMS key ARN for PH-OS DynamoDB PHI tables.',
+      }),
       [evidenceBucketNameParameter]: parameter('String'),
+      [evidenceKmsKeyArnParameter]: parameter('String', {
+        AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+        Description: 'Customer-managed KMS key ARN required for PH-OS evidence S3 objects.',
+      }),
       [evidenceUploadAllowedOriginParameter]: parameter('String', {
         AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$',
         Description: 'HTTPS origin allowed to PUT PH-OS evidence objects through presigned URLs.',

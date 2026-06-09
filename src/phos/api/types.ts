@@ -75,7 +75,11 @@ export type PhosApiClient = {
     limit?: number;
   }): Promise<FeeRuleSearchResponse>;
   getCardDetail(card_id: string): Promise<CardDetailResponse>;
-  executeCardAction(card_id: string, request: ActionRequest): Promise<ActionResponse>;
+  executeCardAction(
+    card_id: string,
+    request: ActionRequest,
+    options?: { offlineReplay?: boolean },
+  ): Promise<ActionResponse>;
   getVisitMode(packet_id: string): Promise<VisitModeView>;
   updateVisitStep(
     packet_id: string,

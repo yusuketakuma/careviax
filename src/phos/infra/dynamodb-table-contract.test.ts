@@ -154,6 +154,8 @@ describe('PH-OS DynamoDB table contract', () => {
         },
         SSESpecification: {
           SSEEnabled: true,
+          SSEType: 'KMS',
+          KMSMasterKeyId: { Ref: 'PhosDynamoDbKmsKeyArn' },
         },
         TimeToLiveSpecification: {
           AttributeName: PHOS_DYNAMODB_TABLE_CONTRACT.ttl_attribute,

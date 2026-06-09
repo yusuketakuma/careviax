@@ -12,11 +12,66 @@ const expected = {
   sha256: 'a'.repeat(64),
   size_bytes: 1024,
 };
+const kms_key_arn =
+  'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555';
 const expectedChecksum = Buffer.from(expected.sha256, 'hex').toString('base64');
 
 describe('S3 evidence object verifier', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('rejects objects that are not encrypted with the configured evidence KMS key', async () => {
+    const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: expectedChecksum,
+          ContentLength: 1024,
+          ContentType: 'image/jpeg',
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '1024',
+          },
+          ServerSideEncryption: 'AES256',
+        };
+      }
+      return {};
+    });
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
+      reason: 'server_side_encryption_mismatch',
+    });
+  });
+
+  it('rejects objects encrypted with a different KMS key', async () => {
+    const send = vi.fn(async (command: HeadObjectCommand | DeleteObjectCommand) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: expectedChecksum,
+          ContentLength: 1024,
+          ContentType: 'image/jpeg',
+          Metadata: {
+            sha256: 'a'.repeat(64),
+            size_bytes: '1024',
+          },
+          ServerSideEncryption: 'aws:kms',
+          SSEKMSKeyId: `${kms_key_arn}-old`,
+        };
+      }
+      return {};
+    });
+    const verifier = createS3EvidenceObjectVerifier({
+      client: { send },
+      bucket: 'phos-evidence-prod',
+    });
+
+    await expect(verifier.verifyObject({ ...expected, kms_key_arn })).rejects.toMatchObject({
+      reason: 'kms_key_mismatch',
+    });
   });
 
   it('heads the generated S3 key and accepts matching metadata', async () => {

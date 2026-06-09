@@ -75,6 +75,8 @@ describe('PH-OS evidence presign upload handler', () => {
         },
       }),
       bucket: 'phos-evidence-prod',
+      kms_key_arn:
+        'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555',
       expires_in_seconds: 120,
     });
 
@@ -92,6 +94,9 @@ describe('PH-OS evidence presign upload handler', () => {
         'x-amz-checksum-sha256': Buffer.from('a'.repeat(64), 'hex').toString('base64'),
         'x-amz-meta-sha256': 'a'.repeat(64),
         'x-amz-meta-size_bytes': '1024',
+        'x-amz-server-side-encryption': 'aws:kms',
+        'x-amz-server-side-encryption-aws-kms-key-id':
+          'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555',
         'x-amz-tagging': 'phos-object-class=evidence&phos-upload-status=PRESIGNED',
       },
       expires_in_seconds: 120,

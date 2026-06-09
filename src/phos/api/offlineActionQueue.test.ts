@@ -167,7 +167,7 @@ describe('PH-OS offline action queue', () => {
       failed: 0,
     });
 
-    expect(executeCardAction).toHaveBeenCalledWith('card_1', request);
+    expect(executeCardAction).toHaveBeenCalledWith('card_1', request, { offlineReplay: true });
     expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
   });
 

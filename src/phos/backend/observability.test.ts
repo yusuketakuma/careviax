@@ -43,7 +43,7 @@ describe('PH-OS observability', () => {
       CrossTenantAttemptCount: ['src/phos/backend/lambda-handler.ts'],
       VisitCompleteGuardBlockedCount: ['src/phos/backend/visit-mode-lifecycle-repository.ts'],
       EvidenceUploadFailedCount: ['src/phos/backend/evidence-handlers.ts'],
-      OfflineSyncConflictCount: ['src/phos/api/offlineActionQueue.ts'],
+      OfflineSyncConflictCount: ['src/phos/backend/cards-handlers.ts'],
       HandoffReturnedCount: ['src/phos/backend/handoffs-handlers.ts'],
       ReportSendFailedCount: ['src/phos/backend/cards-handlers.ts'],
     } satisfies Record<(typeof P0_REQUIRED_METRIC_NAMES)[number], string[]>;

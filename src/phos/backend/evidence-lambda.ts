@@ -34,6 +34,7 @@ type EvidenceLambdaDependencies = PhosLambdaRuntimeDependencies & {
   dynamo_client?: Pick<AwsDynamoDBClient, 'send'>;
   s3_client?: S3Client;
   bucket?: string;
+  kms_key_arn?: string;
   expires_in_seconds?: number;
   generateEvidenceId?: () => string;
   max_size_bytes?: number;
@@ -51,6 +52,7 @@ export function createEvidenceUploadPresigner(
   return createS3EvidenceUploadPresigner({
     client: deps.s3_client ?? new S3Client({}),
     bucket,
+    kms_key_arn: deps.kms_key_arn ?? process.env.PHOS_EVIDENCE_KMS_KEY_ARN,
     expires_in_seconds: deps.expires_in_seconds,
   });
 }

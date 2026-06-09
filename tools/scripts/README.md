@@ -5,6 +5,7 @@
 - `external-access-case-boundary-audit.ts` : legacy ExternalAccessGrant case-boundary audit/backfill
 - `link-prisma-client.mjs` : Prisma client の postinstall 補助
 - `perf-smoke.ts` : API performance smoke test
+- `verify-phos-cognito-token-trigger.ts` : PH-OS Cognito Pre Token Generation live proof
 - `pilot-dossier.ts` : pilot launch dossier 生成
 - `pilot-org-audit.ts` : pilot organization audit
 - `pilot-readiness-report.ts` : pilot readiness report

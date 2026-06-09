@@ -148,7 +148,7 @@ export async function retryPhosOfflineCardActions(input: {
     if (record.id === undefined) continue;
     try {
       const payload = await readQueuedCardAction(record);
-      await input.client.executeCardAction(payload.card_id, payload.request);
+      await input.client.executeCardAction(payload.card_id, payload.request, { offlineReplay: true });
       await phosOfflineActionDb.offlineActions.delete(record.id);
       synced++;
     } catch (error) {

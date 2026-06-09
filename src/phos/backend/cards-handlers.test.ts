@@ -539,10 +539,55 @@ describe('PH-OS cards Lambda handlers', () => {
         error_code: 'STALE_VERSION',
       }),
     );
+    expect(observability.metrics).not.toContainEqual(
+      expect.objectContaining({
+        name: 'OfflineSyncConflictCount',
+      }),
+    );
     expect(observability.annotations).toContainEqual(
       expect.objectContaining({
         route_key: 'POST /cards/{card_id}/actions',
         tenant_id_hash: hashTenantId('tenant_abc123'),
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        error_code: 'STALE_VERSION',
+      }),
+    );
+  });
+
+  it('emits a backend offline conflict metric for offline replay 409 responses', async () => {
+    const observability = createInMemoryObservabilitySink();
+    const repo = repository({
+      executeCardAction: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+          details: { server_version: 2 },
+        });
+      }),
+    });
+    const handler = withTenantContext(createExecuteCardActionHandler(repo), { observability });
+
+    const response = await handler(
+      event({
+        routeKey: 'POST /cards/{card_id}/actions',
+        headers: { 'x-phos-offline-replay': '1' },
+        pathParameters: { card_id: 'card_1' },
+        body: JSON.stringify({
+          action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: 'idem_offline_conflict',
+          client_version: 1,
+        }),
+      }),
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'OfflineSyncConflictCount',
+        route_key: 'POST /cards/{card_id}/actions',
+        tenant_id: 'tenant_abc123',
+        user_id: 'user_001',
         action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
         error_code: 'STALE_VERSION',
       }),

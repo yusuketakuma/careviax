@@ -238,13 +238,14 @@ async function verifyEvidenceUploadIntent(input: {
     });
   }
   try {
-    await input.verifier.verifyObject({
-      key: intent.s3_key,
-      mime_type: intent.mime_type,
-      sha256: intent.sha256,
-      size_bytes,
-      allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
-      tenant_id: input.ctx.tenant_id,
+      await input.verifier.verifyObject({
+        key: intent.s3_key,
+        mime_type: intent.mime_type,
+        sha256: intent.sha256,
+        size_bytes,
+        kms_key_arn: process.env.PHOS_EVIDENCE_KMS_KEY_ARN?.trim() || undefined,
+        allowed_key_prefix: `tenants/${input.ctx.tenant_id}/evidence/`,
+        tenant_id: input.ctx.tenant_id,
       user_id: input.ctx.user_id,
       request_id: input.ctx.request_id,
       correlation_id: input.ctx.correlation_id,

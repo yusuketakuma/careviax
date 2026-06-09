@@ -612,6 +612,7 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
     method: 'GET' | 'POST';
     responseContract: ResponseContract;
     query?: Record<string, string | number | undefined>;
+    headers?: Record<string, string>;
     body?: unknown;
   }): Promise<T> {
     const token = await options.getAccessToken?.();
@@ -621,6 +622,7 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       ...(input.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
+      ...input.headers,
     };
 
     const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
@@ -710,12 +712,17 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
         responseContract: route.response_contract,
       });
     },
-    executeCardAction(card_id: string, actionRequest: ActionRequest) {
+    executeCardAction(
+      card_id: string,
+      actionRequest: ActionRequest,
+      options?: { offlineReplay?: boolean },
+    ) {
       const route = routeInfo('POST /cards/{card_id}/actions', { card_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
+        headers: options?.offlineReplay ? { 'x-phos-offline-replay': '1' } : undefined,
         body: actionRequest,
       });
     },

@@ -167,6 +167,12 @@ describe('PH-OS Final No-Go gate', () => {
       Default: 'phos_security_events',
       AllowedPattern: '^phos_security_events$',
     });
+    expect(template.Parameters.PhosDynamoDbKmsKeyArn).toMatchObject({
+      AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+    });
+    expect(template.Parameters.PhosEvidenceKmsKeyArn).toMatchObject({
+      AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
+    });
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
@@ -273,7 +279,7 @@ describe('PH-OS Final No-Go gate', () => {
           LogGroupName: {
             'Fn::Sub': `/aws/lambda/${functionName}`,
           },
-          RetentionInDays: 90,
+          RetentionInDays: 365,
         },
       });
       const roleJson = JSON.stringify(template.Resources[binding.role_logical_id]);
@@ -317,6 +323,24 @@ describe('PH-OS Final No-Go gate', () => {
           expect.objectContaining({ IndexName: 'GSI7' }),
           expect.objectContaining({ IndexName: 'GSI8' }),
         ]),
+        SSESpecification: {
+          SSEEnabled: true,
+          SSEType: 'KMS',
+          KMSMasterKeyId: { Ref: 'PhosDynamoDbKmsKeyArn' },
+        },
+      },
+    });
+    expect(template.Resources.PhosSecurityEventTable).toMatchObject({
+      Type: 'AWS::DynamoDB::Table',
+      Properties: {
+        TableName: { Ref: 'PhosSecurityEventTableName' },
+        BillingMode: 'PAY_PER_REQUEST',
+        PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
+        SSESpecification: {
+          SSEEnabled: true,
+          SSEType: 'KMS',
+          KMSMasterKeyId: { Ref: 'PhosDynamoDbKmsKeyArn' },
+        },
       },
     });
     expect(template.Resources.PhosEvidenceBucket).toMatchObject({
@@ -335,8 +359,10 @@ describe('PH-OS Final No-Go gate', () => {
           ServerSideEncryptionConfiguration: expect.arrayContaining([
             expect.objectContaining({
               ServerSideEncryptionByDefault: {
-                SSEAlgorithm: 'AES256',
+                SSEAlgorithm: 'aws:kms',
+                KMSMasterKeyID: { Ref: 'PhosEvidenceKmsKeyArn' },
               },
+              BucketKeyEnabled: true,
             }),
           ]),
         },
@@ -365,7 +391,11 @@ describe('PH-OS Final No-Go gate', () => {
             expect.objectContaining({
               AllowedMethods: ['PUT'],
               AllowedOrigins: [{ Ref: 'PhosEvidenceUploadAllowedOrigin' }],
-              AllowedHeaders: expect.arrayContaining(['x-amz-tagging']),
+              AllowedHeaders: expect.arrayContaining([
+                'x-amz-server-side-encryption',
+                'x-amz-server-side-encryption-aws-kms-key-id',
+                'x-amz-tagging',
+              ]),
             }),
           ],
         },
@@ -374,6 +404,7 @@ describe('PH-OS Final No-Go gate', () => {
     expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain(
       '"AllowedOrigins":["*"]',
     );
+    expect(JSON.stringify(template.Resources.PhosEvidenceBucket)).not.toContain('AES256');
     expect(template.Resources.PhosEvidenceBucketPolicy).toMatchObject({
       Type: 'AWS::S3::BucketPolicy',
       Properties: {
@@ -388,9 +419,29 @@ describe('PH-OS Final No-Go gate', () => {
                   'aws:SecureTransport': 'false',
                 },
               },
-            }),
-          ]),
-        },
+              }),
+              expect.objectContaining({
+                Sid: 'DenyEvidenceUploadsWithoutSseKms',
+                Action: 's3:PutObject',
+                Condition: {
+                  StringNotEquals: {
+                    's3:x-amz-server-side-encryption': 'aws:kms',
+                  },
+                },
+              }),
+              expect.objectContaining({
+                Sid: 'DenyEvidenceUploadsWithWrongKmsKey',
+                Action: 's3:PutObject',
+                Condition: {
+                  StringNotEquals: {
+                    's3:x-amz-server-side-encryption-aws-kms-key-id': {
+                      Ref: 'PhosEvidenceKmsKeyArn',
+                    },
+                  },
+                },
+              }),
+            ]),
+          },
       },
     });
     expect(template.Parameters.PhosDynamoDbTableName).toMatchObject({

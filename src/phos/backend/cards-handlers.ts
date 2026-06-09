@@ -20,6 +20,7 @@ import {
 export const CARD_SEARCH_DEFAULT_LIMIT = 50;
 export const CARD_SEARCH_MAX_LIMIT = 50;
 const CARD_ACTION_ROUTE_KEY = 'POST /cards/{card_id}/actions';
+const OFFLINE_REPLAY_HEADER = 'x-phos-offline-replay';
 
 type ParsedCardAction = ActionRequest & {
   action_code: ActionCode;
@@ -102,6 +103,12 @@ function parseActionRequest(body: unknown): ParsedCardAction {
     ...(reasonCode ? { reason_code: reasonCode } : {}),
     ...(reasonNote ? { reason_note: reasonNote } : {}),
   };
+}
+
+function isOfflineReplay(event: PhosHttpEvent): boolean {
+  return Object.entries(event.headers ?? {}).some(
+    ([key, value]) => key.toLowerCase() === OFFLINE_REPLAY_HEADER && value === '1',
+  );
 }
 
 function domainErrorResponse(ctx: TenantContext, error: PhosDomainError) {
@@ -194,7 +201,25 @@ function emitActionFailureMetrics(input: {
   route_key: string;
   action_code: ActionCode;
   error_code: string;
+  offline_replay?: boolean;
 }) {
+  if (
+    input.offline_replay &&
+    (input.error_code === 'STALE_VERSION' || input.error_code === 'IDEMPOTENCY_CONFLICT')
+  ) {
+    input.ctx.observability?.emitMetric({
+      name: 'OfflineSyncConflictCount',
+      value: 1,
+      unit: 'Count',
+      route_key: input.route_key,
+      tenant_id: input.ctx.tenant_id,
+      user_id: input.ctx.user_id,
+      request_id: input.ctx.request_id,
+      correlation_id: input.ctx.correlation_id,
+      action_code: input.action_code,
+      error_code: input.error_code,
+    });
+  }
   if (input.error_code === 'ACTION_GUARD_FAILED') {
     input.ctx.observability?.emitMetric({
       name: 'ActionGuardFailedCount',
@@ -347,11 +372,12 @@ export function createExecuteCardActionHandler(repository: PhosCardsRepository):
             error_code: error.error_code,
           });
           emitActionFailureMetrics({
-            ctx,
-            route_key,
-            action_code,
-            error_code: error.error_code,
-          });
+              ctx,
+              route_key,
+              action_code,
+              error_code: error.error_code,
+              offline_replay: isOfflineReplay(event),
+            });
         }
         logHandlerError({
           ctx,
