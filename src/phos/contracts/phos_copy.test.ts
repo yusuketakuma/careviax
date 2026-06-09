@@ -14,6 +14,10 @@ import {
   PhosRejectReasonLabel,
   PhosSourceDrawerCopy,
   PhosSourceRefKindLabel,
+  PhosDeliveryMethodLabel,
+  PhosHandoffReturnReasonLabel,
+  PhosSupportBriefCopy,
+  PhosSupportTaskCodeLabel,
   PhosToast,
   PhosToastMessageByKey,
 } from './phos_copy.ja';
@@ -72,6 +76,14 @@ describe('PH-OS Japanese copy contract', () => {
     expect(PhosClaimCandidateStatusLabel.MISSING_EVIDENCE).toBe('証跡不足');
   });
 
+  it('contains SupportBrief and returned handoff display copy', () => {
+    expect(PhosSupportBriefCopy.TITLE).toBe('事務サポート');
+    expect(PhosSupportBriefCopy.COUNT_SUFFIX).toBe('件');
+    expect(PhosSupportTaskCodeLabel.CONTACT_SETUP).toBe('連絡先の確認');
+    expect(PhosDeliveryMethodLabel.HAND_DELIVERY).toBe('手渡し');
+    expect(PhosHandoffReturnReasonLabel.NEED_MORE_INFO).toBe('情報の追加が必要です');
+  });
+
   it('contains reason labels and no prohibited double-L cancellation copy', () => {
     const prohibitedCanceledSpelling = ['CANCEL', 'LED'].join('');
     const allCopy = [
@@ -83,12 +95,16 @@ describe('PH-OS Japanese copy contract', () => {
       ...Object.values(PhosCommunicationIntentLabel),
       ...Object.values(PhosCommunicationTargetTypeLabel),
       ...Object.values(PhosDecisionReasonLabel),
+      ...Object.values(PhosDeliveryMethodLabel),
       ...Object.values(PhosDisabledReason),
       ...Object.values(PhosEmptyState),
+      ...Object.values(PhosHandoffReturnReasonLabel),
       ...Object.values(PhosPharmacistBriefCopy),
       ...Object.values(PhosRejectReasonLabel),
       ...Object.values(PhosSourceDrawerCopy),
       ...Object.values(PhosSourceRefKindLabel),
+      ...Object.values(PhosSupportBriefCopy),
+      ...Object.values(PhosSupportTaskCodeLabel),
       ...Object.values(PhosToast),
       ...Object.values(PhosToastMessageByKey),
     ].join('\n');

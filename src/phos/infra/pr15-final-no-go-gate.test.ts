@@ -428,4 +428,36 @@ describe('PH-OS Final No-Go gate', () => {
       /queryByText\('report_1'\)/,
     ]);
   });
+
+  it('keeps SupportBrief and returned handoff displays clerk-safe and copy-driven', () => {
+    expectEvidence('src/phos/ui/workspace/SupportBriefPanel.tsx', [
+      /PhosSupportBriefCopy/,
+      /PhosSupportTaskCodeLabel/,
+      /PhosDeliveryMethodLabel/,
+      /PhosCommunicationTargetTypeLabel/,
+      /PhosDecisionReasonLabel/,
+      /SourceRefList/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/WorkspaceOverlay.tsx', [
+      /SupportBriefPanel/,
+      /detail\.support_brief/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/ClerkSupportWorkbench.tsx', [
+      /PhosHandoffReturnReasonLabel/,
+      /RETURNED_DETAIL_PREFIX/,
+    ]);
+    expectEvidence('src/phos/ui/workspace/SupportBriefPanel.test.tsx', [
+      /without raw enum display/,
+      /queryByText\('CONTACT_SETUP'\)/,
+      /queryByText\('DIFF_REVIEW'\)/,
+      /queryByText\('PRESCRIPTION'\)/,
+      /queryByText\('rx_1'\)/,
+      /queryByText\('phone'\)/,
+    ]);
+    expectEvidence('src/phos/ui/handoff/ClerkSupportWorkbench.test.tsx', [
+      /情報の追加が必要です/,
+      /追加すること/,
+      /queryByText\('NEED_MORE_INFO'\)/,
+    ]);
+  });
 });

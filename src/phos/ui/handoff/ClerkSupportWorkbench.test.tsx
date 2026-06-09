@@ -37,8 +37,9 @@ describe('ClerkSupportWorkbench', () => {
     );
 
     expect(screen.getByText('1件')).toBeTruthy();
-    expect(screen.getByText('NEED_MORE_INFO')).toBeTruthy();
-    expect(screen.getByText('施設連絡先を確認してください。')).toBeTruthy();
+    expect(screen.getByText('情報の追加が必要です')).toBeTruthy();
+    expect(screen.getByText('追加すること: 施設連絡先を確認してください。')).toBeTruthy();
+    expect(screen.queryByText('NEED_MORE_INFO')).toBeNull();
   });
 
   it('opens the returned handoff card', () => {

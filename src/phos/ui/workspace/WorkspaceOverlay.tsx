@@ -16,6 +16,7 @@ import { HandoffPanel } from './HandoffPanel';
 import { NextActionPanel } from './NextActionPanel';
 import { PharmacistBriefPanel } from './PharmacistBriefPanel';
 import { SourceDrawerTrigger } from './SourceDrawerTrigger';
+import { SupportBriefPanel } from './SupportBriefPanel';
 import { WorkspaceTabs } from './WorkspaceTabs';
 
 export type WorkspaceOverlayProps = {
@@ -122,6 +123,7 @@ export function WorkspaceOverlay({
                   actionPhase={actionPhase}
                   onExecute={onExecute}
                 />
+                <SupportBriefPanel brief={detail.support_brief} />
                 <HandoffPanel
                   handoffs={detail.handoffs ?? []}
                   createSources={detail.source_refs}

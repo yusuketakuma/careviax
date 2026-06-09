@@ -19,7 +19,9 @@ import type {
   ClaimWarning,
   ClinicalSignal,
   CommunicationRecommendation,
+  DeliveryTargetView,
   PharmacistDecisionRequired,
+  SupportTaskView,
 } from './phos_contracts';
 
 export const PhosActionLabel = {
@@ -170,6 +172,60 @@ export const PhosPharmacistBriefCopy = {
   NOTE_PLACEHOLDER: '必要な補足を入力してください',
   OPTION_NOT_ACTIONABLE: 'この選択は記録のみです',
   ACTION_REQUIRED: '実行する操作があります',
+} as const;
+
+export const PhosSupportTaskCodeLabel = {
+  INTAKE: '処方受付情報の整理',
+  CONTACT_SETUP: '連絡先の確認',
+  SCHEDULE_INPUT: '訪問候補日時の入力',
+  DOCUMENT_RECORD: '文書交付記録',
+  REPORT_PREP: '報告書送付準備',
+  REPLY_FOLLOWUP: '返信待ち確認',
+  EVIDENCE_ATTACH: '証跡添付',
+} as const satisfies Record<SupportTaskView['task_code'], string>;
+
+export const PhosDeliveryMethodLabel = {
+  FAX: 'FAX',
+  EMAIL: 'メール',
+  PHONE: '電話',
+  HAND_DELIVERY: '手渡し',
+  MCS: 'MCS',
+} as const satisfies Record<DeliveryTargetView['delivery_method'], string>;
+
+export const PhosHandoffReturnReasonLabel: Readonly<Record<string, string>> = {
+  NEED_MORE_INFO: '情報の追加が必要です',
+  MISSING_SOURCE: '根拠の追加が必要です',
+  WRONG_TARGET: '確認先の見直しが必要です',
+  NEED_CONTACT: '連絡先の確認が必要です',
+  NEED_EVIDENCE: '証跡の追加が必要です',
+  OTHER: '追加確認が必要です',
+} as const;
+
+export const PhosSupportBriefCopy = {
+  TITLE: '事務サポート',
+  EMPTY: 'いま事務で処理できる作業はありません。',
+  COUNT_SUFFIX: '件',
+  TASKS_HEADING: '事務でできること',
+  MISSING_CONTACTS_HEADING: '不足連絡先',
+  DELIVERY_TARGETS_HEADING: '送付先準備',
+  SCHEDULE_CANDIDATES_HEADING: '訪問候補時間',
+  MISSING_EVIDENCES_HEADING: '不足証跡',
+  WAITING_REPLIES_HEADING: '返信待ち',
+  PHARMACIST_REVIEW_HEADING: '薬剤師確認が必要なこと',
+  ENABLED: '対応できます',
+  BLOCKED: '確認が必要です',
+  READY: '準備済み',
+  NOT_READY: '未準備',
+  REQUIRED: '必須',
+  OPTIONAL: '任意',
+  TARGET_PREFIX: '宛先',
+  MISSING_FIELDS_PREFIX: '不足項目',
+  MISSING_FIELDS_SUFFIX: '件',
+  METHOD_PREFIX: '方法',
+  SCHEDULE_PREFIX: '候補',
+  STALE_MINUTES_SUFFIX: '分経過',
+  RETURNED_HEADING: '差し戻し',
+  RETURNED_DETAIL_PREFIX: '追加すること',
 } as const;
 
 export const PhosToast = {

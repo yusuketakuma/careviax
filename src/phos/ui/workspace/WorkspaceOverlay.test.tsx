@@ -153,6 +153,39 @@ describe('WorkspaceOverlay', () => {
     expect(screen.queryByText('visit_1')).toBeNull();
   });
 
+  it('renders support brief details in the right pane from server-provided detail', () => {
+    render(
+      <WorkspaceOverlay
+        detail={detail({
+          support_brief: {
+            support_tasks: [
+              {
+                task_code: 'CONTACT_SETUP',
+                label: '施設連絡先を確認する',
+                enabled: true,
+              },
+            ],
+            missing_contacts: [],
+            delivery_targets: [],
+            schedule_candidates: [],
+            missing_evidences: [],
+            waiting_replies: [],
+            pharmacist_review_reasons: [],
+          },
+        })}
+        open
+        onOpenChange={vi.fn()}
+        onExecute={vi.fn()}
+        onOpenHandoffReview={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '事務サポート' })).toBeTruthy();
+    expect(screen.getByText('施設連絡先を確認する')).toBeTruthy();
+    expect(screen.getByText('対応できます')).toBeTruthy();
+    expect(screen.queryByText('CONTACT_SETUP')).toBeNull();
+  });
+
   it('renders opened card tabs and delegates card switching', () => {
     const onSelectOpenedCard = vi.fn();
     render(

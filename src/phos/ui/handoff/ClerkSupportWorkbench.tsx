@@ -1,5 +1,6 @@
 'use client';
 
+import { PhosHandoffReturnReasonLabel, PhosSupportBriefCopy } from '@/phos/contracts/phos_copy.ja';
 import { HandoffStatus } from '@/phos/contracts/phos_contracts';
 import type { HandoffView } from '@/phos/contracts/phos_contracts';
 
@@ -27,11 +28,16 @@ export function ClerkSupportWorkbench({ handoffs, onOpenCard }: ClerkSupportWork
             <li key={handoff.handoff_id} className="rounded-md border border-border/70 p-3">
               <p className="font-medium text-foreground">{handoff.patient_name}</p>
               <p className="mt-1 text-sm text-muted-foreground">{handoff.summary}</p>
-              <p className="mt-2 text-sm text-foreground">
-                {handoff.return_reason_code ?? '理由未設定'}
+              <p className="mt-2 text-sm font-medium text-foreground">
+                {handoff.return_reason_code
+                  ? (PhosHandoffReturnReasonLabel[handoff.return_reason_code] ??
+                    PhosHandoffReturnReasonLabel.OTHER)
+                  : PhosHandoffReturnReasonLabel.OTHER}
               </p>
               {handoff.return_note ? (
-                <p className="mt-1 text-sm text-muted-foreground">{handoff.return_note}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {PhosSupportBriefCopy.RETURNED_DETAIL_PREFIX}: {handoff.return_note}
+                </p>
               ) : null}
               <button
                 type="button"
