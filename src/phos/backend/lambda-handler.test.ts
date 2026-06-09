@@ -211,6 +211,54 @@ describe('withTenantContext', () => {
     expect(observability.flush).toHaveBeenCalledOnce();
   });
 
+  it('flushes observability before returning handler-produced Lambda responses', async () => {
+    const calls: string[] = [];
+    const observability = {
+      metrics: [],
+      annotations: [],
+      security_events: [],
+      emitMetric: vi.fn(),
+      annotateTrace: vi.fn(),
+      recordSecurityEvent: vi.fn(() => {
+        calls.push('recordSecurityEvent');
+      }),
+      flush: vi.fn(async () => {
+        calls.push('flush');
+      }),
+    };
+    const handler = withTenantContext(
+      async ({ ctx }) => {
+        ctx.observability?.recordSecurityEvent({
+          event_type: 'AUTHORIZATION_DENIED',
+          severity: 'WARNING',
+          tenant_id: ctx.tenant_id,
+          user_id: ctx.user_id,
+          request_id: ctx.request_id,
+          correlation_id: ctx.correlation_id,
+          route_key: 'GET /cards',
+          error_code: 'FORBIDDEN',
+          details: { missing_scopes: ['phos/cards.read'] },
+        });
+        return {
+          statusCode: 403,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            request_id: ctx.request_id,
+            error_code: 'FORBIDDEN',
+            message_key: 'api.error.forbidden',
+          }),
+        };
+      },
+      { observability },
+    );
+
+    const response = await handler(validEvent);
+
+    expect(response.statusCode).toBe(403);
+    expect(calls).toEqual(['recordSecurityEvent', 'flush']);
+    expect(observability.flush).toHaveBeenCalledOnce();
+  });
+
   it('returns TENANT_CONTEXT_MISSING when API Gateway claims are absent', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const handler = withTenantContext(async () => ({}));

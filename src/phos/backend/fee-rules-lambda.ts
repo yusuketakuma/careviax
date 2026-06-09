@@ -22,8 +22,7 @@ export function createFeeRulesRepository(
   if (deps.repository) return deps.repository;
   return createAuroraFeeRulesRepository({
     pool: deps.auroraPool,
-    databaseUrl:
-      deps.databaseUrl ?? process.env.PHOS_AURORA_DATABASE_URL ?? process.env.DATABASE_URL,
+    databaseUrl: deps.databaseUrl ?? process.env.PHOS_AURORA_DATABASE_URL,
     now: deps.now,
   });
 }

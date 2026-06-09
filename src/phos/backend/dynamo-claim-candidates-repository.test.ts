@@ -7,6 +7,7 @@ import {
 import { toDynamoAttributeValue } from './dynamodb-attribute-values';
 import { createDynamoClaimCandidatesRepository } from './dynamo-claim-candidates-repository';
 import type { DynamoClaimCandidatesClient } from './dynamo-claim-candidates-repository';
+import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
 
 const ctx: TenantContext = {
@@ -152,6 +153,73 @@ describe('createDynamoClaimCandidatesRepository', () => {
       sort_key: 'CLAIM_CANDIDATE_IDEMPOTENCY#exclude#claim_1#idem_1',
     });
     expect(fakeClient.excludeClaimCandidate).not.toHaveBeenCalled();
+  });
+
+  it('replays matching exclude idempotency responses after concurrent commit races', async () => {
+    const replayed: ClaimCandidateMutationResponse = {
+      candidate: candidate({ status: 'EXCLUDED', status_label: '除外済み', server_version: 2 }),
+      side_effects: [{ type: 'CLAIM_RECALCULATED', card_id: 'card_1' }],
+      server_version: 2,
+    };
+    const fakeClient = client({
+      getIdempotency: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          request_fingerprint: toDynamoAttributeValue(
+            JSON.stringify({
+              client_version: 1,
+              reason_code: 'NOT_ELIGIBLE',
+              reason_note: null,
+            }),
+          ),
+          response_json: toDynamoAttributeValue(JSON.stringify(replayed)),
+        }),
+      excludeClaimCandidate: vi.fn(async () => {
+        throw new PhosDomainError({
+          status: 409,
+          error_code: 'STALE_VERSION',
+          message_key: 'api.error.stale_version',
+        });
+      }),
+    });
+    const repository = createDynamoClaimCandidatesRepository(fakeClient);
+
+    await expect(
+      repository.excludeClaimCandidate(ctx, 'claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(replayed);
+
+    expect(fakeClient.getIdempotency).toHaveBeenCalledTimes(2);
+    expect(fakeClient.excludeClaimCandidate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps stale exclude conflicts when concurrent idempotency replay is absent', async () => {
+    const stale = new PhosDomainError({
+      status: 409,
+      error_code: 'STALE_VERSION',
+      message_key: 'api.error.stale_version',
+    });
+    const fakeClient = client({
+      getIdempotency: vi.fn(async () => null),
+      excludeClaimCandidate: vi.fn(async () => {
+        throw stale;
+      }),
+    });
+    const repository = createDynamoClaimCandidatesRepository(fakeClient);
+
+    await expect(
+      repository.excludeClaimCandidate(ctx, 'claim_1', {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_1',
+        client_version: 1,
+      }),
+    ).rejects.toBe(stale);
+
+    expect(fakeClient.getIdempotency).toHaveBeenCalledTimes(2);
   });
 
   it('rejects conflicting exclude idempotency keys before candidate mutation', async () => {

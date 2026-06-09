@@ -50,6 +50,27 @@ function apiGatewayEventFor(
   };
 }
 
+function withJwtClaims(event: PhosHttpEvent, claims: Record<string, string>): PhosHttpEvent {
+  return {
+    ...event,
+    requestContext: {
+      ...event.requestContext,
+      authorizer: {
+        jwt: {
+          claims: {
+            ...(event.requestContext?.authorizer?.jwt?.claims ?? {}),
+            ...claims,
+          },
+        },
+      },
+    },
+  };
+}
+
+function disallowedRoleFor(route: PhosApiRoute): UserRole | undefined {
+  return Object.values(UserRole).find((role) => !route.allowed_roles.includes(role));
+}
+
 async function importRouteHandler(route: PhosApiRoute): Promise<PhosLambdaHandler> {
   const [modulePath, exportName] = route.lambda_handler.split('#');
   expect(modulePath).toBeTruthy();
@@ -124,6 +145,50 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
       expect(parseBody(response)).toMatchObject({
         error_code: 'VALIDATION_ERROR',
         message_key: 'api.error.invalid_json',
+      });
+    }
+  });
+
+  it('returns canonical 403 responses for every manifest route when required scopes are missing', async () => {
+    for (const route of PHOS_API_ROUTES) {
+      const handler = await importRouteHandler(route);
+      const response = await handler(
+        withJwtClaims(apiGatewayEventFor(route), {
+          scope: 'phos/unrelated.read',
+        }),
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(parseBody(response)).toMatchObject({
+        request_id: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+        error_code: 'FORBIDDEN',
+        message_key: 'api.error.forbidden',
+        details: { missing_scopes: [...route.required_scopes] },
+      });
+    }
+  });
+
+  it('returns canonical 403 responses for manifest routes when the caller role is not allowed', async () => {
+    for (const route of PHOS_API_ROUTES) {
+      const disallowedRole = disallowedRoleFor(route);
+      if (!disallowedRole) continue;
+
+      const handler = await importRouteHandler(route);
+      const response = await handler(
+        withJwtClaims(apiGatewayEventFor(route), {
+          role: disallowedRole,
+        }),
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(parseBody(response)).toMatchObject({
+        request_id: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
+        error_code: 'FORBIDDEN',
+        message_key: 'api.error.forbidden',
+        details: {
+          role: disallowedRole,
+          allowed_roles: [...route.allowed_roles],
+        },
       });
     }
   });

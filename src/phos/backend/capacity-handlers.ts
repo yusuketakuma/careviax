@@ -39,7 +39,6 @@ function forbiddenError(error: PhosAuthorizationError): PhosDomainError {
 }
 
 function assertCapacityReadAccess(ctx: TenantContext, query: CapacityQuery) {
-  assertRouteAccess(ctx, 'GET /capacity');
   if (query.scope === CapacityScope.ME && !ctx.user_id) {
     throw validationError({ field: 'scope', reason: 'missing_user_context' });
   }
@@ -78,6 +77,7 @@ export function createCapacityHandler(repository: PhosCapacityRepository): PhosH
   return async ({ event, ctx }) => {
     const route_key = event.routeKey ?? 'GET /capacity';
     try {
+      assertRouteAccess(ctx, 'GET /capacity');
       const query = parseCapacityQuery(event);
       assertCapacityReadAccess(ctx, query);
       const response = await repository.getCapacity(ctx, query);

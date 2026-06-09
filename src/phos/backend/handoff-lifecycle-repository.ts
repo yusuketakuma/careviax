@@ -334,6 +334,12 @@ export function createHandoffLifecycleRepository(
     },
     async openHandoff(ctx, handoff_id, command: OpenHandoffRequest) {
       const request_fingerprint = stableStringify(command);
+      const handoff = await store.loadHandoff(ctx, handoff_id);
+      if (!handoff) {
+        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
+      }
+      assertCanTransitionHandoff(ctx, handoff);
+
       const matched = await assertIdempotent({
         store,
         ctx,
@@ -343,11 +349,6 @@ export function createHandoffLifecycleRepository(
       });
       if (matched) return matched;
 
-      const handoff = await store.loadHandoff(ctx, handoff_id);
-      if (!handoff) {
-        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
-      }
-      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const result = openHandoffForReview(handoff);
       const response = responseFromTransition(handoff, result, now);
@@ -374,6 +375,12 @@ export function createHandoffLifecycleRepository(
     },
     async resolveHandoff(ctx, handoff_id, command) {
       const request_fingerprint = stableStringify(command);
+      const handoff = await store.loadHandoff(ctx, handoff_id);
+      if (!handoff) {
+        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
+      }
+      assertCanTransitionHandoff(ctx, handoff);
+
       const matched = await assertIdempotent({
         store,
         ctx,
@@ -383,11 +390,6 @@ export function createHandoffLifecycleRepository(
       });
       if (matched) return matched;
 
-      const handoff = await store.loadHandoff(ctx, handoff_id);
-      if (!handoff) {
-        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
-      }
-      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const reviewHandoff = reviewReadyHandoff(handoff);
       const response = responseFromTransition(
@@ -429,6 +431,12 @@ export function createHandoffLifecycleRepository(
     },
     async returnHandoff(ctx, handoff_id, command) {
       const request_fingerprint = stableStringify(command);
+      const handoff = await store.loadHandoff(ctx, handoff_id);
+      if (!handoff) {
+        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
+      }
+      assertCanTransitionHandoff(ctx, handoff);
+
       const matched = await assertIdempotent({
         store,
         ctx,
@@ -438,11 +446,6 @@ export function createHandoffLifecycleRepository(
       });
       if (matched) return matched;
 
-      const handoff = await store.loadHandoff(ctx, handoff_id);
-      if (!handoff) {
-        throw domainError(404, 'NOT_FOUND', 'api.error.handoff_not_found', { handoff_id });
-      }
-      assertCanTransitionHandoff(ctx, handoff);
       assertFreshVersion(handoff, command.client_version);
       const reviewHandoff = reviewReadyHandoff(handoff);
       const response = responseFromTransition(

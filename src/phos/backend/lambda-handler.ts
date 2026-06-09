@@ -260,8 +260,9 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         ctx,
         latency_ms: (options.now?.() ?? new Date()).getTime() - start.getTime(),
       });
-      if (isLambdaResponse(result)) return result;
-      return toLambdaJsonResponse(200, result);
+      const response = isLambdaResponse(result) ? result : toLambdaJsonResponse(200, result);
+      await flushObservability(observability);
+      return response;
     } catch (error) {
       if (error instanceof TenantContextError) {
         logBoundaryError({

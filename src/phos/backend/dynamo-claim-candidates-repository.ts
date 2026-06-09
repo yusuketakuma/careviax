@@ -116,6 +116,44 @@ function idempotencyConflict(idempotency_key: string): PhosDomainError {
   });
 }
 
+async function readIdempotentExcludeResponse(input: {
+  client: DynamoClaimCandidatesClient;
+  table_name: string;
+  partition_key: string;
+  sort_key: string;
+  request_fingerprint: string;
+  idempotency_key: string;
+}): Promise<ClaimCandidateMutationResponse | null> {
+  const idempotencyItem = await input.client.getIdempotency({
+    table_name: input.table_name,
+    partition_key: input.partition_key,
+    sort_key: input.sort_key,
+  });
+  if (!idempotencyItem) return null;
+
+  const existingFingerprint = stringAttr(idempotencyItem, 'request_fingerprint');
+  const response = parseJsonAttr<ClaimCandidateMutationResponse>(idempotencyItem, 'response_json');
+  if (existingFingerprint === input.request_fingerprint && response) return response;
+  throw idempotencyConflict(input.idempotency_key);
+}
+
+async function replayExcludeAfterCommitConflict(input: {
+  error: unknown;
+  client: DynamoClaimCandidatesClient;
+  table_name: string;
+  partition_key: string;
+  sort_key: string;
+  request_fingerprint: string;
+  idempotency_key: string;
+}): Promise<ClaimCandidateMutationResponse> {
+  if (!(input.error instanceof PhosDomainError) || input.error.error_code !== 'STALE_VERSION') {
+    throw input.error;
+  }
+  const matched = await readIdempotentExcludeResponse(input);
+  if (matched) return matched;
+  throw input.error;
+}
+
 export function createDynamoClaimCandidatesRepository(
   client: DynamoClaimCandidatesClient,
   options: { now?: () => Date } = {},
@@ -155,33 +193,41 @@ export function createDynamoClaimCandidatesRepository(
         mutation_key: `exclude#${candidate_id}`,
         idempotency_key: command.idempotency_key,
       });
-      const idempotencyItem = await client.getIdempotency({
-        table_name: phosCoreTableName(),
+      const table_name = phosCoreTableName();
+      const matched = await readIdempotentExcludeResponse({
+        client,
+        table_name,
         partition_key,
         sort_key: idempotency_sort_key,
-      });
-      if (idempotencyItem) {
-        const existingFingerprint = stringAttr(idempotencyItem, 'request_fingerprint');
-        const response = parseJsonAttr<ClaimCandidateMutationResponse>(
-          idempotencyItem,
-          'response_json',
-        );
-        if (existingFingerprint === request_fingerprint && response) return response;
-        throw idempotencyConflict(command.idempotency_key);
-      }
-
-      return client.excludeClaimCandidate({
-        table_name: phosCoreTableName(),
-        partition_key,
-        sort_key: claimCandidateSk(candidate_id),
-        candidate_id,
-        idempotency_sort_key,
         request_fingerprint,
-        client_version: command.client_version,
-        reason_code: command.reason_code,
-        ...(command.reason_note ? { reason_note: command.reason_note } : {}),
-        updated_at: (options.now?.() ?? new Date()).toISOString(),
+        idempotency_key: command.idempotency_key,
       });
+      if (matched) return matched;
+
+      try {
+        return await client.excludeClaimCandidate({
+          table_name,
+          partition_key,
+          sort_key: claimCandidateSk(candidate_id),
+          candidate_id,
+          idempotency_sort_key,
+          request_fingerprint,
+          client_version: command.client_version,
+          reason_code: command.reason_code,
+          ...(command.reason_note ? { reason_note: command.reason_note } : {}),
+          updated_at: (options.now?.() ?? new Date()).toISOString(),
+        });
+      } catch (error) {
+        return replayExcludeAfterCommitConflict({
+          error,
+          client,
+          table_name,
+          partition_key,
+          sort_key: idempotency_sort_key,
+          request_fingerprint,
+          idempotency_key: command.idempotency_key,
+        });
+      }
     },
   };
 }

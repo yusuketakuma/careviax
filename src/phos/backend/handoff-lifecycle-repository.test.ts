@@ -316,7 +316,7 @@ describe('createHandoffLifecycleRepository', () => {
     expect(backingStore.commitCreateHandoff).toHaveBeenCalledOnce();
   });
 
-  it('returns matched idempotent responses and rejects conflicting idempotency keys', async () => {
+  it('returns matched transition idempotent responses after loading and authorizing the handoff', async () => {
     const matched = mutationResponse(
       handoff({ status: HandoffStatus.RESOLVED, server_version: 2 }),
     );
@@ -332,8 +332,61 @@ describe('createHandoffLifecycleRepository', () => {
         client_version: 1,
       }),
     ).resolves.toEqual(matched);
-    expect(matchedStore.loadHandoff).not.toHaveBeenCalled();
+    expect(matchedStore.loadHandoff).toHaveBeenCalledWith(ctx(), 'handoff_1');
+    expect(matchedStore.commitHandoffTransition).not.toHaveBeenCalled();
+  });
 
+  it('rejects non-assignee transition idempotency replay before lookup disclosure', async () => {
+    const matched = mutationResponse(
+      handoff({ status: HandoffStatus.RESOLVED, server_version: 2 }),
+    );
+    const backingStore = store({
+      loadHandoff: vi.fn(async () =>
+        handoff({ assignee_user_id: 'user_other', status: HandoffStatus.IN_REVIEW }),
+      ),
+      getIdempotentMutation: vi.fn(async () => ({ status: 'MATCH' as const, response: matched })),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.resolveHandoff(ctx(), 'handoff_1', {
+        resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_resolve',
+        client_version: 1,
+      }),
+    ).rejects.toMatchObject({
+      error_code: 'FORBIDDEN',
+      details: { reason: 'handoff_assignee_transition_forbidden' },
+    } satisfies Partial<PhosDomainError>);
+
+    expect(backingStore.getIdempotentMutation).not.toHaveBeenCalled();
+    expect(backingStore.commitHandoffTransition).not.toHaveBeenCalled();
+  });
+
+  it('allows manager transition idempotency replay after object authorization', async () => {
+    const matched = mutationResponse(
+      handoff({ status: HandoffStatus.RESOLVED, server_version: 2 }),
+    );
+    const backingStore = store({
+      loadHandoff: vi.fn(async () =>
+        handoff({ assignee_user_id: 'user_other', status: HandoffStatus.IN_REVIEW }),
+      ),
+      getIdempotentMutation: vi.fn(async () => ({ status: 'MATCH' as const, response: matched })),
+    });
+    const repo = createHandoffLifecycleRepository(backingStore);
+
+    await expect(
+      repo.resolveHandoff(ctxWithRole(UserRole.MANAGER), 'handoff_1', {
+        resolved_action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_resolve',
+        client_version: 1,
+      }),
+    ).resolves.toEqual(matched);
+    expect(backingStore.getIdempotentMutation).toHaveBeenCalledOnce();
+    expect(backingStore.commitHandoffTransition).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicting transition idempotency keys after object authorization', async () => {
     const conflictRepo = createHandoffLifecycleRepository(
       store({
         getIdempotentMutation: vi.fn(async () => ({

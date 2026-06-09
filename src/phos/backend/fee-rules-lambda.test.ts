@@ -128,6 +128,30 @@ describe('fee-rules lambda composition', () => {
     }
   });
 
+  it('does not fall back to generic DATABASE_URL for the PH-OS FeeRule repository', () => {
+    const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.PHOS_AURORA_DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://legacy-app-wide-credential';
+
+    try {
+      expect(() => createFeeRulesRepository()).toThrow(
+        'PH-OS FeeRule Aurora database URL is not configured',
+      );
+    } finally {
+      if (previousAuroraUrl === undefined) {
+        delete process.env.PHOS_AURORA_DATABASE_URL;
+      } else {
+        process.env.PHOS_AURORA_DATABASE_URL = previousAuroraUrl;
+      }
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
   it('rejects tenant_id query at the Lambda boundary before default Aurora configuration is read', async () => {
     const previousAuroraUrl = process.env.PHOS_AURORA_DATABASE_URL;
     const previousDatabaseUrl = process.env.DATABASE_URL;
