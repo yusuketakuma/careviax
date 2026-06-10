@@ -13,6 +13,8 @@ const {
   careCaseFindFirstMock,
   validateOrgReferencesMock,
   notifyWorkflowMutationMock,
+  evaluateReadyTransitionMock,
+  getReadyTransitionErrorMessageMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -26,6 +28,8 @@ const {
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  evaluateReadyTransitionMock: vi.fn(),
+  getReadyTransitionErrorMessageMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -69,6 +73,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
+vi.mock('@/server/services/visit-preparation-readiness', () => ({
+  evaluateVisitScheduleReadyTransition: evaluateReadyTransitionMock,
+  getVisitReadyTransitionErrorMessage: getReadyTransitionErrorMessageMock,
+}));
+
 import { DELETE, GET, PATCH } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -109,6 +118,10 @@ describe('/api/visit-schedules/[id] GET', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
+    evaluateReadyTransitionMock.mockResolvedValue({ ok: true });
+    getReadyTransitionErrorMessageMock.mockReturnValue(
+      '訪問準備に未解決のブロッカーがあるため ready へ進めません',
+    );
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1', schedule_status: 'in_progress' });
     visitScheduleCountMock.mockResolvedValue(0);
     visitVehicleResourceFindFirstMock.mockResolvedValue({
@@ -142,6 +155,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       case_id: 'case_1',
       cycle_id: 'cycle_1',
       visit_type: 'regular',
+      schedule_status: 'planned',
       scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
       time_window_start: null,
       time_window_end: null,
@@ -242,6 +256,28 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('does not evaluate ready blockers before assignment access passes', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      confirmed_at: null,
+      pharmacist_id: 'user_other',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'ready' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('allows an assigned pharmacist to patch a schedule', async () => {
     const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
       params: Promise.resolve({ id: 'schedule_1' }),
@@ -259,6 +295,336 @@ describe('/api/visit-schedules/[id] GET', () => {
       }),
     );
     expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('allows ready status only after the server-side readiness gate passes', async () => {
+    const response = await PATCH(createPatchRequest({ schedule_status: 'ready' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visitSchedule: {
+          update: visitScheduleUpdateMock,
+        },
+      }),
+      {
+        orgId: 'org_1',
+        scheduleId: 'schedule_1',
+      },
+    );
+    expect(evaluateReadyTransitionMock.mock.invocationCallOrder[0]).toBeLessThan(
+      visitScheduleUpdateMock.mock.invocationCallOrder[0],
+    );
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'schedule_1' },
+        data: expect.objectContaining({
+          schedule_status: 'ready',
+          pre_visit_checklist_completed: true,
+          version: { increment: 1 },
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_update', schedule_id: 'schedule_1' },
+    });
+  });
+
+  it('rejects ready status when server-side readiness blockers remain', async () => {
+    const details = {
+      readiness_blockers: [],
+      onboarding_blockers: [{ key: 'management_plan_approved', label: '管理計画未承認' }],
+      billing_blockers: [
+        {
+          evidence_id: 'billing_1',
+          visit_record_id: 'visit_record_1',
+          key: 'missing_management_plan',
+          reason: '算定根拠が未確認',
+          action_href: '/billing',
+          action_label: '算定根拠を確認',
+          severity: 'high',
+        },
+      ],
+    };
+    evaluateReadyTransitionMock.mockResolvedValueOnce({ ok: false, details });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'ready' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問準備に未解決のブロッカーがあるため ready へ進めません',
+      details: {
+        readiness_blockers: [],
+        onboarding_blockers: [{ key: 'management_plan_approved', label: '管理計画未承認' }],
+        billing_blockers: [
+          {
+            key: 'missing_management_plan',
+            reason: '算定根拠が未確認',
+            action_label: '算定根拠を確認',
+            severity: 'high',
+          },
+        ],
+      },
+    });
+    expect(body.details.billing_blockers[0]).not.toHaveProperty('evidence_id');
+    expect(body.details.billing_blockers[0]).not.toHaveProperty('visit_record_id');
+    expect(body.details.billing_blockers[0]).not.toHaveProperty('action_href');
+    expect(getReadyTransitionErrorMessageMock).toHaveBeenCalledWith(details);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {});
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['departed', 'in_progress', 'completed'] as const)(
+    'rejects %s status when server-side readiness blockers remain',
+    async (scheduleStatus) => {
+      const details = {
+        readiness_blockers: ['オフライン同期確認'],
+        onboarding_blockers: [],
+        billing_blockers: [],
+      };
+      evaluateReadyTransitionMock.mockResolvedValueOnce({ ok: false, details });
+      getReadyTransitionErrorMessageMock.mockReturnValueOnce(
+        '訪問準備チェックリストが未完了のため ready へ進めません',
+      );
+
+      const response = await PATCH(createPatchRequest({ schedule_status: scheduleStatus }), {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '訪問準備チェックリストが未完了のため ready へ進めません',
+        details,
+      });
+      expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          visitSchedule: {
+            update: visitScheduleUpdateMock,
+          },
+        }),
+        { orgId: 'org_1', scheduleId: 'schedule_1' },
+      );
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects ready-gated status changes when the case is changed in the same patch', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await PATCH(
+      createPatchRequest({ schedule_status: 'ready', case_id: 'case_2' }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新ではケース変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects case changes while the current schedule is already ready-gated', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ case_id: 'case_2' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新ではケース変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects case changes from ready-gated schedules even when status is downgraded', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(
+      createPatchRequest({ schedule_status: 'planned', case_id: 'case_2' }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新ではケース変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects visit-date changes in the same patch as a ready-gated status transition', async () => {
+    const response = await PATCH(
+      createPatchRequest({ schedule_status: 'ready', scheduled_date: '2026-05-01' }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新では訪問日変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects visit-date changes while the current schedule is already ready-gated', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'in_progress',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-05-01' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新では訪問日変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects visit-date changes from ready-gated schedules even when status is downgraded', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'departed',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(
+      createPatchRequest({ schedule_status: 'planned', scheduled_date: '2026-05-01' }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ready 系ステータスへ進める更新では訪問日変更を同時に行えません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects moving terminal schedules back to ready-gated statuses', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'completed',
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'ready' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '終了済みまたは中止済みの訪問予定は ready 系ステータスへ戻せません',
+    });
+    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
   it('assigns selected vehicle resources during schedule PATCH', async () => {

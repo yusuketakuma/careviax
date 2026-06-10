@@ -11,7 +11,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { updateVisitScheduleSchema } from '@/lib/validations/visit-schedule';
+import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validations/visit-schedule';
 import { prisma } from '@/lib/db/client';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import {
@@ -19,6 +19,11 @@ import {
   validateVisitVehicleResourceForSchedule,
 } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import {
+  evaluateVisitScheduleReadyTransition,
+  getVisitReadyTransitionErrorMessage,
+  type VisitReadyTransitionBlockers,
+} from '@/server/services/visit-preparation-readiness';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -85,6 +90,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: {
       id: true,
       case_id: true,
+      schedule_status: true,
       confirmed_at: true,
       pharmacist_id: true,
       site_id: true,
@@ -135,31 +141,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return forbiddenResponse('訪問予定のケースまたは担当薬剤師を変更する権限がありません');
   }
 
-  if (rest.schedule_status === 'ready') {
-    const preparation = await prisma.visitPreparation.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        schedule_id: id,
-      },
-      select: {
-        medication_changes_reviewed: true,
-        carry_items_confirmed: true,
-        previous_issues_reviewed: true,
-        route_confirmed: true,
-        offline_synced: true,
-      },
-    });
-
-    const readyForVisit =
-      preparation?.medication_changes_reviewed &&
-      preparation.carry_items_confirmed &&
-      preparation.previous_issues_reviewed &&
-      preparation.route_confirmed &&
-      preparation.offline_synced;
-
-    if (!readyForVisit) {
-      return validationError('訪問準備チェックリストが未完了のため ready へ進めません');
-    }
+  const targetScheduleStatus = rest.schedule_status;
+  const existingScheduleStatus = existing.schedule_status as ScheduleStatus;
+  const effectiveScheduleStatus = targetScheduleStatus ?? existingScheduleStatus;
+  const touchesReadyGatedSchedule =
+    isReadyGatedScheduleStatus(existingScheduleStatus) ||
+    isReadyGatedScheduleStatus(effectiveScheduleStatus);
+  const requiresReadyTransitionGate = shouldRequireReadyTransitionGate(
+    existingScheduleStatus,
+    targetScheduleStatus,
+  );
+  if (
+    targetScheduleStatus &&
+    isTerminalScheduleStatus(existingScheduleStatus) &&
+    isReadyGatedScheduleStatus(targetScheduleStatus) &&
+    targetScheduleStatus !== existingScheduleStatus
+  ) {
+    return validationError('終了済みまたは中止済みの訪問予定は ready 系ステータスへ戻せません');
+  }
+  if (touchesReadyGatedSchedule && case_id !== undefined && case_id !== existing.case_id) {
+    return validationError('ready 系ステータスへ進める更新ではケース変更を同時に行えません');
+  }
+  if (touchesReadyGatedSchedule && scheduled_date !== undefined) {
+    return validationError('ready 系ステータスへ進める更新では訪問日変更を同時に行えません');
   }
 
   const refResult = await validateOrgReferences(ctx.orgId, {
@@ -305,7 +309,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const schedule = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      return tx.visitSchedule.update({
+      if (requiresReadyTransitionGate) {
+        const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
+          orgId: ctx.orgId,
+          scheduleId: id,
+        });
+
+        if (!readyTransition.ok) {
+          return {
+            ok: false as const,
+            response: validationError(
+              getVisitReadyTransitionErrorMessage(readyTransition.details),
+              sanitizeVisitReadyTransitionDetails(readyTransition.details),
+            ),
+          };
+        }
+      }
+
+      const updatedSchedule = await tx.visitSchedule.update({
         where: { id },
         data: {
           ...(site_id !== undefined ? { site_id: site_id || null } : {}),
@@ -322,7 +343,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 time_window_end: time_window_end ? new Date(`1970-01-01T${time_window_end}`) : null,
               }
             : {}),
-          ...(rest.schedule_status === 'ready' ? { pre_visit_checklist_completed: true } : {}),
+          ...(targetScheduleStatus && isReadyGatedScheduleStatus(targetScheduleStatus)
+            ? { pre_visit_checklist_completed: true }
+            : {}),
           ...(case_id !== undefined ? { case_id } : {}),
           ...(vehicle_resource_id !== undefined
             ? { vehicle_resource_id: vehicle_resource_id || null }
@@ -331,20 +354,77 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           version: { increment: 1 },
         },
       });
+      return { ok: true as const, schedule: updatedSchedule };
     },
     { requestContext: ctx },
   );
+
+  if (!schedule.ok) return schedule.response;
 
   await notifyWorkflowMutation({
     orgId: ctx.orgId,
     payload: { source: 'visit_schedules_update', schedule_id: id },
   });
 
-  return success(schedule);
+  return success(schedule.schedule);
 }
 
 function readPatchTimeString(value: Date | null | undefined) {
   return timeDateToString(value);
+}
+
+const READY_GATED_SCHEDULE_STATUSES = new Set<ScheduleStatus>([
+  'ready',
+  'departed',
+  'in_progress',
+  'completed',
+]);
+
+const READY_SATISFIED_SCHEDULE_STATUSES = new Set<ScheduleStatus>([
+  'ready',
+  'departed',
+  'in_progress',
+  'completed',
+]);
+
+const TERMINAL_SCHEDULE_STATUSES = new Set<ScheduleStatus>([
+  'completed',
+  'cancelled',
+  'postponed',
+  'rescheduled',
+  'no_show',
+]);
+
+function isReadyGatedScheduleStatus(status: ScheduleStatus) {
+  return READY_GATED_SCHEDULE_STATUSES.has(status);
+}
+
+function isTerminalScheduleStatus(status: ScheduleStatus) {
+  return TERMINAL_SCHEDULE_STATUSES.has(status);
+}
+
+function shouldRequireReadyTransitionGate(
+  currentStatus: ScheduleStatus,
+  targetStatus: ScheduleStatus | undefined,
+) {
+  return (
+    targetStatus !== undefined &&
+    isReadyGatedScheduleStatus(targetStatus) &&
+    !READY_SATISFIED_SCHEDULE_STATUSES.has(currentStatus)
+  );
+}
+
+function sanitizeVisitReadyTransitionDetails(details: VisitReadyTransitionBlockers) {
+  return {
+    readiness_blockers: details.readiness_blockers,
+    onboarding_blockers: details.onboarding_blockers,
+    billing_blockers: details.billing_blockers.map(({ key, reason, action_label, severity }) => ({
+      key,
+      reason,
+      action_label,
+      severity,
+    })),
+  };
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

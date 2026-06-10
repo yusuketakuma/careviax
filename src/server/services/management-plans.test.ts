@@ -86,6 +86,21 @@ describe('findCurrentManagementPlan', () => {
 
     expect(result.current).toEqual(plan);
     expect(result.reviewOverdue).toBe(false);
+    expect(managementPlanFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { effective_from: null },
+            {
+              effective_from: {
+                lte: expect.any(Date),
+              },
+            },
+          ],
+        }),
+        orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+      }),
+    );
   });
 
   it('returns reviewOverdue=true when next_review_date is past', async () => {
@@ -115,6 +130,26 @@ describe('findCurrentManagementPlan', () => {
 
     expect(result.current).toBeNull();
     expect(result.reviewOverdue).toBe(false);
+  });
+
+  it('uses the as-of date when looking up an effective management plan', async () => {
+    managementPlanFindFirstMock.mockResolvedValue(null);
+    const asOf = new Date('2026-04-15T00:00:00.000Z');
+
+    const result = await findCurrentManagementPlan(makeGateDb(), {
+      orgId: 'org-1',
+      caseId: 'case-1',
+      asOf,
+    });
+
+    expect(result.current).toBeNull();
+    expect(managementPlanFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ effective_from: null }, { effective_from: { lte: asOf } }],
+        }),
+      }),
+    );
   });
 });
 

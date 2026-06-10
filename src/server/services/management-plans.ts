@@ -78,8 +78,9 @@ export async function findCurrentManagementPlan(
       case_id: args.caseId,
       status: 'approved',
       approved_at: { not: null },
+      OR: [{ effective_from: null }, { effective_from: { lte: asOf } }],
     },
-    orderBy: [{ version: 'desc' }, { approved_at: 'desc' }],
+    orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
   });
 
   if (!approvedPlan) {
