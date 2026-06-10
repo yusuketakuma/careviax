@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-012504
+
+- current task: add a page-level daily schedule board group around the right-column tabs.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/components/layout/page-section.tsx`, and read-only code-mapper, accessibility/UX, and final A11y/UX verifier findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the primary right-column daily work area was a bare `Tabs` block without a page-level group heading or boundary, so candidate/confirmed schedule work was not exposed as a single main work group under the PH-OS UI/UX SSOT.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, or persistence behavior changed. This slice only changes semantic grouping, heading hierarchy, and already-visible count summaries.
+- performance issues found: no network, DB, render-loop, or unbounded computation path changed. The added count badges reuse existing selected-day proposal/schedule arrays already rendered in the tab triggers.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`; read-only A11y/UX verifier focused run.
+- validation results: focused day-view suite passed with 1 file / 22 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed. A11y/UX verifier found no blocker in the scoped diff.
+- remaining work: mobile visit list still needs PageSection-style boundary/order alignment, confirmed cards still have primary actions low in the card, and proposal loading/empty states still need status semantics.
+- next action: commit this daily board grouping slice, then continue with proposal loading/empty status semantics or mobile visit list PageSection alignment as the next small UI/UX improvement.
+
 ### 20260611-012151
 
 - current task: prioritize the daily confirmed schedule tab as the default schedule board view.

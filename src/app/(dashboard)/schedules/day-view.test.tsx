@@ -609,6 +609,10 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '週次訪問の進捗' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '日次スケジュールボード' })).toBeTruthy();
+    expect(
+      screen.getByText('4月9日(木) の候補、確定予定、施設グループ、ルート順を確認します'),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: '訪問候補を生成' })).toBeTruthy();
     expect(screen.getByLabelText('社用車')).toBeTruthy();
     expect(screen.getByText('担当薬剤師の拠点設定後に社用車を選択できます')).toBeTruthy();
@@ -616,6 +620,8 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '関連管理' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '翌週' })).toBeTruthy();
+    expect(screen.getByText('候補 0件')).toBeTruthy();
+    expect(screen.getByText('確定 0件')).toBeTruthy();
 
     const selectedDayButton = screen.getByRole('button', {
       name: /2026年4月9日\(木\) 候補0件 確定0件/,
