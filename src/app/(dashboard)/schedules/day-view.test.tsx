@@ -930,13 +930,24 @@ describe('ScheduleDayView', () => {
     const dialogElement = screen.getByRole('dialog');
     const dialog = within(dialogElement);
     expect(dialog.getByRole('heading', { name: '訪問準備チェック' })).toBeTruthy();
+    expect(dialog.getByRole('region', { name: '対象訪問' })).toBeTruthy();
     await waitFor(() => {
-      expect(dialog.getByRole('heading', { name: 'Pre-Visit Pack' })).toBeTruthy();
+      expect(dialog.getByRole('heading', { name: '訪問前提・確認材料' })).toBeTruthy();
     });
 
+    expect(dialog.getByRole('region', { name: 'ready 判定' })).toBeTruthy();
+    expect(dialog.getByRole('region', { name: '訪問前提・確認材料' })).toBeTruthy();
+    expect(dialog.getByRole('region', { name: '出発前チェックリスト' })).toBeTruthy();
+    expect(dialog.getByRole('region', { name: '訪問先マップ' })).toBeTruthy();
     expect(dialog.getByRole('heading', { name: 'ready 判定' })).toBeTruthy();
     expect(dialog.getByRole('heading', { name: '出発前チェックリスト' })).toBeTruthy();
-    expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeTruthy();
+    expect(dialog.getByRole('heading', { name: '訪問先マップ' })).toBeTruthy();
+    const readinessRegion = within(dialog.getByRole('region', { name: 'ready 判定' }));
+    const readinessSummary = readinessRegion.getByText('出発前に解決が必要な項目があります。');
+    expect(readinessSummary).toBeTruthy();
+    expect(readinessSummary.getAttribute('role')).toBe('status');
+    expect(readinessSummary.getAttribute('aria-live')).toBe('polite');
+    expect(readinessSummary.getAttribute('aria-atomic')).toBe('true');
     expect(dialog.getByRole('list', { name: 'ready 停止カテゴリ' })).toBeTruthy();
     expect(dialog.getByText('訪問前提 1件')).toBeTruthy();
     expect(dialog.getByText('導入準備 3件')).toBeTruthy();
@@ -949,22 +960,41 @@ describe('ScheduleDayView', () => {
     expect(dialog.getByText('処方差分、薬歴、前回からの用法・薬剤変更を確認します。')).toBeTruthy();
 
     expect(
-      dialog.queryByRole('button', {
+      dialog.getByRole('button', {
         name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
       }),
-    ).toBeNull();
+    ).toBeTruthy();
     expect(
-      dialog.queryByRole('button', {
+      dialog.getByRole('button', {
         name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を保存/,
       }),
-    ).toBeNull();
+    ).toBeTruthy();
     const readyButton = dialog.getByRole('button', {
-      name: 'ready に進める',
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
-    expect(dialog.getByRole('button', { name: '保存' })).toBeTruthy();
+    const saveButton = dialog.getByRole('button', {
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を保存/,
+    }) as HTMLButtonElement;
+    expect(dialogElement.querySelector('#preparation-action-target-summary')?.textContent).toMatch(
+      /最終操作対象:.*山田花子.*4\/9.*18:00 - 19:00/,
+    );
+    expect(saveButton.getAttribute('aria-describedby')).toBe('preparation-action-target-summary');
+    expect(readyButton.getAttribute('aria-describedby')).toBe(
+      'preparation-readiness-summary preparation-action-target-summary',
+    );
     expect(readyButton.disabled).toBe(true);
 
-    for (const checkbox of dialog.getAllByRole('checkbox')) {
+    const checklist = within(dialog.getByRole('region', { name: '出発前チェックリスト' }));
+    for (const label of [
+      '薬歴・前回変更の確認',
+      '持参薬・物品確認',
+      '前回課題の確認',
+      'ルート確認',
+      'オフライン同期確認',
+    ]) {
+      expect(checklist.getByRole('checkbox', { name: label })).toBeTruthy();
+    }
+    for (const checkbox of checklist.getAllByRole('checkbox')) {
       fireEvent.click(checkbox);
     }
 
@@ -1025,23 +1055,34 @@ describe('ScheduleDayView', () => {
       screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
     );
 
-    const dialog = within(screen.getByRole('dialog'));
+    const dialogElement = screen.getByRole('dialog');
+    const dialog = within(dialogElement);
     await waitFor(() => {
       expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeTruthy();
     });
     expect(dialog.getByText('訪問前提 5件')).toBeTruthy();
 
+    const readinessRegion = within(dialog.getByRole('region', { name: 'ready 判定' }));
+    const checklist = within(dialog.getByRole('region', { name: '出発前チェックリスト' }));
     const readyButton = dialog.getByRole('button', {
-      name: 'ready に進める',
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
+    expect(readinessRegion.getByText('ready 停止中')).toBeTruthy();
     expect(readyButton.disabled).toBe(true);
 
-    for (const checkbox of dialog.getAllByRole('checkbox')) {
+    for (const checkbox of checklist.getAllByRole('checkbox')) {
       fireEvent.click(checkbox);
     }
 
-    expect(dialog.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
-    expect(dialog.getByText('ready に進める状態です。')).toBeTruthy();
+    expect(checklist.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
+    expect(readinessRegion.getByText('ready に進める状態です。')).toBeTruthy();
+    expect(readinessRegion.getByText('ready 可能')).toBeTruthy();
+    expect(readyButton.getAttribute('aria-describedby')).toBe(
+      'preparation-readiness-summary preparation-action-target-summary',
+    );
+    expect(dialogElement.querySelector('#preparation-readiness-summary')?.textContent).toContain(
+      'ready に進める状態です。',
+    );
     expect(readyButton.disabled).toBe(false);
   });
 
@@ -1092,7 +1133,7 @@ describe('ScheduleDayView', () => {
     });
 
     const readyButton = dialog.getByRole('button', {
-      name: 'ready に進める',
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
     expect(dialog.getByText('導入準備 不明')).toBeTruthy();
     expect(readyButton.disabled).toBe(true);
@@ -1138,7 +1179,7 @@ describe('ScheduleDayView', () => {
     });
 
     const readyButton = dialog.getByRole('button', {
-      name: 'ready に進める',
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
     expect(dialog.getByRole('alert')).toBeTruthy();
     expect(readyButton.disabled).toBe(true);
@@ -1211,9 +1252,11 @@ describe('ScheduleDayView', () => {
     });
 
     const readyButton = dialog.getByRole('button', {
-      name: 'ready に進める',
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
-    const saveButton = dialog.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    const saveButton = dialog.getByRole('button', {
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を保存/,
+    }) as HTMLButtonElement;
     expect(dialog.queryByText('別患者')).toBeNull();
     expect(dialog.queryByText('東京都港区9-9-9')).toBeNull();
     expect(dialog.getByText(/未完了: 薬歴・前回変更の確認/)).toBeTruthy();
@@ -1303,7 +1346,11 @@ describe('ScheduleDayView', () => {
     expect(dialog.getByText('最新の訪問準備情報を読み込み中です。')).toBeTruthy();
     expect(dialog.queryByText('ready に進める状態です。')).toBeNull();
     expect(
-      (dialog.getByRole('button', { name: 'ready に進める' }) as HTMLButtonElement).disabled,
+      (
+        dialog.getByRole('button', {
+          name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
 
     await act(async () => {

@@ -3693,10 +3693,30 @@ export function ScheduleDayView({
           </DialogHeader>
           <div className="space-y-4">
             {preparationTarget && (
-              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                <p className="font-medium text-foreground">
-                  {preparationTarget.case_.patient.name}
-                </p>
+              <section
+                aria-labelledby="preparation-target-heading"
+                className="rounded-lg border bg-muted/30 px-3 py-3 text-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <h3
+                      id="preparation-target-heading"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      対象訪問
+                    </h3>
+                    <p className="font-medium text-foreground">
+                      {preparationTarget.case_.patient.name}
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {preparationLoading
+                      ? '最新確認中'
+                      : preparationDetails?.preparation?.prepared_at
+                        ? '保存済み'
+                        : '未保存'}
+                  </Badge>
+                </div>
                 <p className="text-muted-foreground">
                   {format(parseISO(preparationTarget.scheduled_date), 'yyyy/MM/dd', {
                     locale: ja,
@@ -3719,7 +3739,7 @@ export function ScheduleDayView({
                         )}`
                       : '未保存'}
                 </p>
-              </div>
+              </section>
             )}
             {getDepartureCarryWarning(preparationTarget) && (
               <div
@@ -3748,7 +3768,13 @@ export function ScheduleDayView({
                   <h3 id="preparation-readiness-heading" className="font-medium">
                     ready 判定
                   </h3>
-                  <p id="preparation-readiness-summary" className="mt-1 text-xs leading-5">
+                  <p
+                    id="preparation-readiness-summary"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="mt-1 text-xs leading-5"
+                  >
                     {preparationLoading
                       ? '最新の訪問準備情報を読み込み中です。'
                       : preparationPackStatusError
@@ -3787,8 +3813,11 @@ export function ScheduleDayView({
                 <div className="grid gap-3 lg:grid-cols-2">
                   <div className="space-y-1 text-sm">
                     <h3 id="preparation-pack-heading" className="font-medium text-foreground">
-                      Pre-Visit Pack
+                      訪問前提・確認材料
                     </h3>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      患者住所、導入準備、算定、処方差分、前回課題を訪問前に確認します。
+                    </p>
                     <p className="text-muted-foreground">
                       {preparationDetails.pack.patient.address ?? '住所未登録'}
                     </p>
@@ -4180,6 +4209,7 @@ export function ScheduleDayView({
                 </p>
                 <div className="grid gap-3">
                   {PREPARATION_ITEMS.map(([field, label]) => {
+                    const labelId = `preparation-check-${field}-label`;
                     const descriptionId = `preparation-check-${field}-description`;
                     return (
                       <label
@@ -4187,6 +4217,7 @@ export function ScheduleDayView({
                         className="flex min-h-11 items-start gap-3 rounded-lg border border-border/70 px-3 py-3 text-sm"
                       >
                         <Checkbox
+                          aria-labelledby={labelId}
                           aria-describedby={descriptionId}
                           checked={preparationForm[field as keyof typeof preparationForm]}
                           onCheckedChange={(checked) =>
@@ -4197,7 +4228,9 @@ export function ScheduleDayView({
                           }
                         />
                         <span className="grid gap-0.5">
-                          <span className="font-medium">{label}</span>
+                          <span id={labelId} className="font-medium">
+                            {label}
+                          </span>
                           <span
                             id={descriptionId}
                             className="text-xs leading-5 text-muted-foreground"
@@ -4212,9 +4245,17 @@ export function ScheduleDayView({
               </section>
 
               {preparationDetails?.pack?.patient.address ? (
-                <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+                <section
+                  aria-labelledby="preparation-map-heading"
+                  className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3"
+                >
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">訪問先マップ</p>
+                    <h3
+                      id="preparation-map-heading"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      訪問先マップ
+                    </h3>
                     <p className="text-xs leading-5 text-muted-foreground">
                       {preparationDetails.pack.patient.address}
                     </p>
@@ -4237,10 +4278,23 @@ export function ScheduleDayView({
                     <Navigation className="size-4" aria-hidden="true" />
                     ナビで開く
                   </a>
-                </div>
+                </section>
               ) : null}
             </div>
           </div>
+          {preparationTarget && (
+            <div
+              id="preparation-action-target-summary"
+              className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground"
+            >
+              <span className="font-medium text-foreground">最終操作対象:</span>{' '}
+              {preparationTarget.case_.patient.name}{' '}
+              {format(parseISO(preparationTarget.scheduled_date), 'M/d', {
+                locale: ja,
+              })}{' '}
+              {timeLabel(preparationTarget.time_window_start, preparationTarget.time_window_end)}
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
@@ -4251,6 +4305,12 @@ export function ScheduleDayView({
             </Button>
             <Button
               variant="outline"
+              aria-label={
+                preparationTarget
+                  ? scheduleActionLabel(preparationTarget, '訪問準備を保存')
+                  : undefined
+              }
+              aria-describedby={preparationTarget ? 'preparation-action-target-summary' : undefined}
               onClick={() =>
                 preparationTarget &&
                 preparationMutation.mutate({
@@ -4263,7 +4323,16 @@ export function ScheduleDayView({
               保存
             </Button>
             <Button
-              aria-describedby="preparation-readiness-summary"
+              aria-label={
+                preparationTarget
+                  ? scheduleActionLabel(preparationTarget, '訪問準備をreadyに進める')
+                  : undefined
+              }
+              aria-describedby={
+                preparationTarget
+                  ? 'preparation-readiness-summary preparation-action-target-summary'
+                  : 'preparation-readiness-summary'
+              }
               onClick={() =>
                 preparationTarget &&
                 preparationMutation.mutate({
