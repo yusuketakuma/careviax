@@ -619,6 +619,70 @@ describe('createPhosApiClient', () => {
     });
   });
 
+  it('rejects oversized PH-OS API responses from Content-Length before contract validation', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response('{}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Content-Length': '6' },
+        }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+      responseMaxBytes: 5,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 200,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          response_contract: 'CardSearchResponse',
+          response_body_too_large: true,
+          max_response_bytes: 5,
+        },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
+  it('rejects streamed PH-OS API responses that exceed the body cap without Content-Length', async () => {
+    const bytes = new TextEncoder().encode('{"items":[');
+    const fetchImpl = vi.fn(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+      responseMaxBytes: 5,
+    });
+
+    await expect(client.getCards()).rejects.toMatchObject({
+      status: 200,
+      response: {
+        request_id: '',
+        error_code: 'INTERNAL_ERROR',
+        message_key: 'api.error.invalid_response',
+        details: {
+          response_contract: 'CardSearchResponse',
+          response_body_too_large: true,
+          max_response_bytes: 5,
+        },
+      },
+    } satisfies Partial<PhosApiError>);
+  });
+
   it('allows API Gateway custom-domain /api/phos base paths', async () => {
     const searchResponse = {
       items: [{ card: readyCard, next_action: nextAction }],

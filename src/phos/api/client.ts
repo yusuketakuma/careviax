@@ -54,10 +54,13 @@ export type CreatePhosApiClientOptions = {
   getAccessToken?: () => string | Promise<string>;
   correlationId?: () => string | undefined;
   requestTimeoutMs?: number;
+  responseMaxBytes?: number;
 };
 
 const DEFAULT_PHOS_API_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_PHOS_API_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_PHOS_API_RESPONSE_MAX_BYTES = 1024 * 1024;
+const MAX_PHOS_API_RESPONSE_MAX_BYTES = 5 * 1024 * 1024;
 
 function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
@@ -104,17 +107,102 @@ function buildUrl(
 type ParsedJsonResponse = {
   payload: unknown;
   invalid_json: boolean;
+  response_too_large: boolean;
+  max_response_bytes?: number;
   content_type: string | null;
 };
 
-async function readJsonResponse(response: Response): Promise<ParsedJsonResponse> {
-  const text = await response.text();
-  const contentType = response.headers.get('content-type');
-  if (!text) return { payload: undefined, invalid_json: false, content_type: contentType };
+class ResponseBodyTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super('PH-OS API response body exceeded the configured size limit');
+    this.name = 'ResponseBodyTooLargeError';
+  }
+}
+
+function parseContentLength(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+async function readResponseText(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = parseContentLength(response.headers.get('content-length'));
+  if (contentLength !== null && contentLength > maxBytes) {
+    throw new ResponseBodyTooLargeError(maxBytes);
+  }
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new ResponseBodyTooLargeError(maxBytes);
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   try {
-    return { payload: JSON.parse(text), invalid_json: false, content_type: contentType };
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new ResponseBodyTooLargeError(maxBytes);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function readJsonResponse(response: Response, maxBytes: number): Promise<ParsedJsonResponse> {
+  const contentType = response.headers.get('content-type');
+  let text: string;
+  try {
+    text = await readResponseText(response, maxBytes);
+  } catch (error) {
+    if (error instanceof ResponseBodyTooLargeError) {
+      return {
+        payload: undefined,
+        invalid_json: false,
+        response_too_large: true,
+        max_response_bytes: error.maxBytes,
+        content_type: contentType,
+      };
+    }
+    throw error;
+  }
+  if (!text) {
+    return {
+      payload: undefined,
+      invalid_json: false,
+      response_too_large: false,
+      content_type: contentType,
+    };
+  }
+  try {
+    return {
+      payload: JSON.parse(text),
+      invalid_json: false,
+      response_too_large: false,
+      content_type: contentType,
+    };
   } catch {
-    return { payload: undefined, invalid_json: true, content_type: contentType };
+    return {
+      payload: undefined,
+      invalid_json: true,
+      response_too_large: false,
+      content_type: contentType,
+    };
   }
 }
 
@@ -164,6 +252,12 @@ function invalidResponseError(
       content_type: parsed.content_type,
       ...(responseContract ? { response_contract: responseContract } : {}),
       ...(parsed.invalid_json ? { invalid_json: true } : {}),
+      ...(parsed.response_too_large
+        ? {
+            response_body_too_large: true,
+            max_response_bytes: parsed.max_response_bytes,
+          }
+        : {}),
     },
   };
 }
@@ -685,6 +779,10 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
     fallbackMs: DEFAULT_PHOS_API_REQUEST_TIMEOUT_MS,
     maxMs: MAX_PHOS_API_REQUEST_TIMEOUT_MS,
   });
+  const responseMaxBytes = normalizePositiveTimeoutMs(options.responseMaxBytes, {
+    fallbackMs: DEFAULT_PHOS_API_RESPONSE_MAX_BYTES,
+    maxMs: MAX_PHOS_API_RESPONSE_MAX_BYTES,
+  });
 
   async function request<T>(input: {
     path: string;
@@ -720,7 +818,7 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
         signal: requestAbort.signal,
         ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
       });
-      const parsed = await readJsonResponse(response);
+      const parsed = await readJsonResponse(response, responseMaxBytes);
       if (!response.ok) {
         if (isErrorResponse(parsed.payload)) {
           throw new PhosApiError(response.status, parsed.payload);

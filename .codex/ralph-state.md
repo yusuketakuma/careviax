@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-113000
+
+- current task: cap PH-OS API client response body reads so malformed or oversized API Gateway/Lambda responses cannot be buffered unbounded before contract validation.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, and latest read-only performance/security review notes.
+- files changed: `src/phos/api/client.ts`, `src/phos/api/client.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: PH-OS API responses were read with `response.text()` before JSON parsing and contract validation, so an unexpectedly large response body could be buffered fully in the browser/runtime before failing the typed PH-OS response contract.
+- security risks found: no auth, tenant, credential, or redirect behavior changed. Oversized responses now fail closed as the existing `INTERNAL_ERROR` / `api.error.invalid_response` shape with bounded details (`response_body_too_large`, `max_response_bytes`) and without logging or surfacing response body contents.
+- performance issues found: PH-OS API client responses now default to a 1 MB cap, configurable through `responseMaxBytes` and capped at 5 MB. The client rejects oversized `Content-Length` before reading the body and stops streamed responses once accumulated bytes exceed the cap.
+- validation commands: focused `pnpm exec vitest run src/phos/api/client.test.ts src/phos/api/usePhosAction.test.tsx src/phos/api/offlineActionQueue.test.ts src/phos/api/offlineEvidenceQueue.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`; `git diff --check`.
+- validation results: focused API/offline suite passed with 4 files / 68 tests. Standalone TypeScript passed. PH-OS suite passed with 105 files passed / 1 skipped and 788 tests passed / 1 skipped. Full ESLint passed. Full Vitest passed with 755 files passed / 1 skipped and 5031 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`. Whitespace diff check passed.
+- remaining work: locally actionable follow-ups remain from read-only reviews: handoff and visit-mode idempotency replay should become actor-bound, offline replay should batch IndexedDB reads, PH-OS app logs should remove or hash raw workflow object IDs, and Aurora/database calls may still need a bounded query-timeout review. External live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI.
+- next action: checkpoint this validated API response body cap slice, then implement the next local high-value PH-OS backend/security/performance follow-up.
+
 ### 20260610-112100
 
 - current task: prevent `perf:smoke` from hanging indefinitely on one stalled request by adding per-request abort timeouts and timeout reporting.
