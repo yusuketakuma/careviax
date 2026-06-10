@@ -309,6 +309,15 @@ describe('ScheduleDayView', () => {
     expect(
       screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*架電結果を記録/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*辞退として記録/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*日時を確定/ }),
+    ).toBeTruthy();
   });
 
   it('opens, resets, and closes the contact log dialog from proposal cards', async () => {
@@ -360,7 +369,11 @@ describe('ScheduleDayView', () => {
 
     await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
 
-    fireEvent.click(screen.getByRole('button', { name: '架電結果を記録' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*架電結果を記録/,
+      }),
+    );
 
     let dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('山田花子')).toBeTruthy();
@@ -381,7 +394,11 @@ describe('ScheduleDayView', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '架電結果を記録' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*架電結果を記録/,
+      }),
+    );
 
     dialog = screen.getByRole('dialog');
     expect((within(dialog).getByLabelText('対応者名') as HTMLInputElement).value).toBe('家族A');
@@ -530,7 +547,19 @@ describe('ScheduleDayView', () => {
       <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /山田花子.*変更承認を確認/ }));
+    expect(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*リスケ候補を作る/,
+      }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*変更承認を確認/,
+      }),
+    );
     expect(mutationCalls).toEqual([]);
     const dialog = within(screen.getByRole('dialog'));
     expect(dialog.getByText('山田花子さんの確定済み訪問を変更します')).toBeTruthy();
@@ -889,7 +918,11 @@ describe('ScheduleDayView', () => {
       <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '警告を確認して訪問開始' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*警告を確認して訪問開始/,
+      }),
+    );
 
     expect(push).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: '持参薬が未確定のままです' })).toBeTruthy();

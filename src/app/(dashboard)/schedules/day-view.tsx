@@ -874,6 +874,18 @@ export function ScheduleDayView({
       .join('、');
   }
 
+  function proposalActionLabel(proposal: Proposal, actionLabel: string) {
+    return `${proposal.case_.patient.name} ${format(parseISO(proposal.proposed_date), 'M/d', {
+      locale: ja,
+    })} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} の${actionLabel}`;
+  }
+
+  function scheduleActionLabel(schedule: VisitSchedule, actionLabel: string) {
+    return `${schedule.case_.patient.name} ${format(parseISO(schedule.scheduled_date), 'M/d', {
+      locale: ja,
+    })} ${timeLabel(schedule.time_window_start, schedule.time_window_end)} の${actionLabel}`;
+  }
+
   useEffect(() => {
     let active = true;
     void readScheduleDayCachedVisitBriefs({
@@ -2104,14 +2116,7 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
-                              aria-label={`${proposal.case_.patient.name} ${format(
-                                parseISO(proposal.proposed_date),
-                                'M/d',
-                                { locale: ja },
-                              )} ${timeLabel(
-                                proposal.time_window_start,
-                                proposal.time_window_end,
-                              )} の変更承認を確認`}
+                              aria-label={proposalActionLabel(proposal, '変更承認を確認')}
                               onClick={() => {
                                 const target =
                                   buildScheduleDayRescheduleApprovalTargetFromProposal(proposal);
@@ -2125,6 +2130,7 @@ export function ScheduleDayView({
                         {canApprove && (
                           <Button
                             size="sm"
+                            aria-label={proposalActionLabel(proposal, '承認して架電へ進める')}
                             onClick={() =>
                               proposalActionMutation.mutate({
                                 id: proposal.id,
@@ -2144,6 +2150,7 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
+                              aria-label={proposalActionLabel(proposal, '架電結果を記録')}
                               onClick={() => openContactLogDialog(proposal)}
                               disabled={proposalActionMutation.isPending}
                             >
@@ -2152,6 +2159,7 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
+                              aria-label={proposalActionLabel(proposal, '辞退として記録')}
                               onClick={() =>
                                 proposalActionMutation.mutate({
                                   id: proposal.id,
@@ -2168,6 +2176,7 @@ export function ScheduleDayView({
                             </Button>
                             <Button
                               size="sm"
+                              aria-label={proposalActionLabel(proposal, '日時を確定')}
                               onClick={() =>
                                 proposalActionMutation.mutate({
                                   id: proposal.id,
@@ -2184,6 +2193,7 @@ export function ScheduleDayView({
                           proposal.finalized_schedule && (
                             <Link
                               href={`/visits/${proposal.finalized_schedule.id}/record`}
+                              aria-label={proposalActionLabel(proposal, '確定予定を開く')}
                               className="inline-flex h-8 items-center rounded-lg border px-3 text-sm text-foreground hover:bg-muted/30"
                             >
                               確定予定を開く
@@ -2745,14 +2755,7 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
-                              aria-label={`${schedule.case_.patient.name} ${format(
-                                parseISO(schedule.scheduled_date),
-                                'M/d',
-                                { locale: ja },
-                              )} ${timeLabel(
-                                schedule.time_window_start,
-                                schedule.time_window_end,
-                              )} の変更承認を確認`}
+                              aria-label={scheduleActionLabel(schedule, '変更承認を確認')}
                               onClick={() =>
                                 setRescheduleApprovalTarget(
                                   buildScheduleDayRescheduleApprovalTargetFromSchedule(
@@ -2861,6 +2864,12 @@ export function ScheduleDayView({
                               variant={
                                 getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
                               }
+                              aria-label={scheduleActionLabel(
+                                schedule,
+                                getDepartureCarryWarning(schedule)
+                                  ? '警告を確認して訪問開始'
+                                  : '訪問開始',
+                              )}
                               onClick={() => handleVisitStart(schedule)}
                             >
                               <PlayCircle className="size-4" aria-hidden="true" />
@@ -2874,6 +2883,7 @@ export function ScheduleDayView({
                               <Button
                                 size="sm"
                                 variant="default"
+                                aria-label={scheduleActionLabel(schedule, '訪問完了記録を開く')}
                                 className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
                               >
                                 <CheckCircle2 className="size-4" aria-hidden="true" />
@@ -2884,6 +2894,7 @@ export function ScheduleDayView({
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={scheduleActionLabel(schedule, '訪問準備を開く')}
                             onClick={() => openPreparationDialog(schedule)}
                           >
                             訪問準備
@@ -2891,6 +2902,7 @@ export function ScheduleDayView({
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={scheduleActionLabel(schedule, 'リスケ候補を作る')}
                             onClick={() => openRescheduleDialog(schedule)}
                           >
                             リスケ候補を作る
