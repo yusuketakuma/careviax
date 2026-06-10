@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import NextAuth, { getServerSession, type NextAuthOptions } from 'next-auth';
 import { getToken } from 'next-auth/jwt';
 import CognitoProvider from 'next-auth/providers/cognito';
@@ -22,10 +21,6 @@ const authBaseUrl = getAuthBaseUrl();
 
 if (authBaseUrl && !process.env.NEXTAUTH_URL) {
   process.env.NEXTAUTH_URL = authBaseUrl;
-}
-
-function createOfflineEncryptionSecret(): string {
-  return randomBytes(32).toString('base64url');
 }
 
 export const authOptions: NextAuthOptions = {
@@ -154,13 +149,6 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      if (
-        (typeof token.cognitoSub === 'string' || typeof token.userId === 'string') &&
-        typeof token.offlineEncryptionSecret !== 'string'
-      ) {
-        token.offlineEncryptionSecret = createOfflineEncryptionSecret();
-      }
-
       // Refresh Cognito access token before it expires (credentials flow only)
       if (
         token.refreshToken &&
@@ -196,12 +184,6 @@ export const authOptions: NextAuthOptions = {
         session.error = token.error;
       }
       session.phosRole = normalizePhosRole(token.phosRole);
-      session.phosAccessToken =
-        typeof token.accessToken === 'string' ? token.accessToken : undefined;
-      session.offlineEncryptionSecret =
-        typeof token.offlineEncryptionSecret === 'string'
-          ? token.offlineEncryptionSecret
-          : undefined;
       return session;
     },
   },

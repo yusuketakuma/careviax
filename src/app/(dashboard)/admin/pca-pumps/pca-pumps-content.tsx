@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
@@ -203,9 +204,7 @@ const EMPTY_PUMP_FORM: PumpFormState = {
 };
 
 function todayDateKey() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.toISOString().slice(0, 10);
+  return formatDateKey(new Date());
 }
 
 function emptyRentalForm(pumpId = ''): RentalFormState {

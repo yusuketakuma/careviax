@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -476,6 +476,20 @@ describe('/api/visit-records GET', () => {
 });
 
 describe('/api/visit-records POST', () => {
+  const originalTimeZone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -642,6 +656,46 @@ describe('/api/visit-records POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問予定に紐づく患者と記録対象患者が一致しません',
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns existing conflict dates by the local pharmacy calendar day', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'record_existing',
+      version: 3,
+      patient_id: 'patient_1',
+      visit_date: new Date('2026-03-25T15:30:00.000Z'),
+      outcome_status: 'completed',
+      soap_subjective: '前回記録',
+      soap_objective: null,
+      soap_assessment: null,
+      soap_plan: null,
+      next_visit_suggestion_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        existing_record: {
+          id: 'record_existing',
+          visit_date: '2026-03-26',
+        },
+      },
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
   });
@@ -830,6 +884,46 @@ describe('/api/visit-records POST', () => {
         suggested_date: '2026-04-01',
         auto_generated: true,
         interval_days: 6,
+      },
+    });
+  });
+
+  it('returns auto-suggested visit dates by the local pharmacy calendar day', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=FR',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: new Date('2026-04-30T00:00:00.000Z'),
+      visit_deadline_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-25T15:30:00.000Z',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      suggestedSchedule: {
+        suggested_date: '2026-03-27',
+        auto_generated: true,
+        interval_days: 1,
       },
     });
   });

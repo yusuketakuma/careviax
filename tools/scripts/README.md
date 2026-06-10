@@ -1,6 +1,7 @@
 # Operational Scripts
 
 - `backup-recovery-check.ts` : バックアップ / 復旧手順の前提確認
+- `backfill-webhook-registration-secrets.ts` : WebhookRegistration signing-secret encrypted-field dry-run/backfill helper
 - `check-care-report-duplicates.ts` : CareReport unique-index migration precheck
 - `external-access-case-boundary-audit.ts` : legacy ExternalAccessGrant case-boundary audit/backfill
 - `link-prisma-client.mjs` : Prisma client の postinstall 補助

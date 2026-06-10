@@ -1,5 +1,6 @@
 import { subDays } from 'date-fns';
 import { prisma } from '@/lib/db';
+import { formatDateKey } from '@/lib/date-key';
 import { runJob } from './runner';
 
 function startOfDay(value: Date) {
@@ -14,24 +15,16 @@ function addDays(value: Date, days: number) {
   return normalized;
 }
 
-function toDateKey(value: Date) {
-  return startOfDay(value).toISOString().slice(0, 10);
-}
-
 function isWeekend(value: Date) {
   const day = value.getDay();
   return day === 0 || day === 6;
 }
 
-function resolveNextBusinessDay(
-  visitDate: Date,
-  holidayKeys: Set<string>,
-  orgId: string
-) {
+function resolveNextBusinessDay(visitDate: Date, holidayKeys: Set<string>, orgId: string) {
   for (let offset = 1; offset <= 7; offset += 1) {
     const candidate = addDays(startOfDay(visitDate), offset);
     if (isWeekend(candidate)) continue;
-    if (holidayKeys.has(`${orgId}:${toDateKey(candidate)}`)) continue;
+    if (holidayKeys.has(`${orgId}:${formatDateKey(candidate)}`)) continue;
     return candidate;
   }
   return addDays(startOfDay(visitDate), 1);
@@ -84,7 +77,7 @@ export async function checkUnsentReports() {
             },
           });
     const holidayKeys = new Set(
-      holidays.map((holiday) => `${holiday.org_id}:${toDateKey(holiday.date)}`)
+      holidays.map((holiday) => `${holiday.org_id}:${formatDateKey(holiday.date)}`),
     );
 
     const visitRecordIds = visitRecords.map((vr) => vr.id);
@@ -97,9 +90,7 @@ export async function checkUnsentReports() {
       },
       select: { visit_record_id: true },
     });
-    const reportedVisitIds = new Set(
-      existingReports.map((r) => r.visit_record_id).filter(Boolean)
-    );
+    const reportedVisitIds = new Set(existingReports.map((r) => r.visit_record_id).filter(Boolean));
 
     const dueUnreported = visitRecords.filter((vr) => {
       if (reportedVisitIds.has(vr.id)) return false;
@@ -115,7 +106,8 @@ export async function checkUnsentReports() {
           user_id: vr.pharmacist_id,
           type: 'reminder',
           title: '報告書未送付',
-          message: '訪問記録に対する報告書（居宅療養管理指導報告書等）が未送付です。作成・送付を行ってください。',
+          message:
+            '訪問記録に対する報告書（居宅療養管理指導報告書等）が未送付です。作成・送付を行ってください。',
           link: `/patients/${vr.patient_id}/reports`,
           dedupe_key: `unsent-report:${vr.id}`,
         },
@@ -136,7 +128,7 @@ export async function runNextDayOperations() {
 
     return {
       processedCount: results.reduce((total, r) => total + r.processedCount, 0),
-      errors: results.flatMap((r) => ('errors' in r ? r.errors ?? [] : [])),
+      errors: results.flatMap((r) => ('errors' in r ? (r.errors ?? []) : [])),
     };
   });
 }

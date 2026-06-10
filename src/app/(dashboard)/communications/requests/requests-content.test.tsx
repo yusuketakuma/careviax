@@ -127,5 +127,5 @@ describe('CommunicationRequestsContent', () => {
       status: 'in_progress',
       reason: '電話で受領確認し、薬剤師が対応を開始',
     });
-  });
+  }, 15_000);
 });

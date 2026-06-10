@@ -3,6 +3,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createPcaPumpSchema } from '@/lib/validations/pca-pump-rental';
+import { serializePcaPump, toPcaPumpDateKey } from '@/server/services/pca-pump-serialization';
 
 const pumpStatuses = ['available', 'rented', 'maintenance', 'retired'] as const;
 type PumpStatus = (typeof pumpStatuses)[number];
@@ -13,33 +14,6 @@ function parsePumpStatusParam(value: string | undefined) {
     return { ok: true as const, status: value as PumpStatus };
   }
   return { ok: false as const };
-}
-
-function serializePump<
-  T extends {
-    maintenance_due_at: Date | null;
-    created_at: Date;
-    updated_at: Date;
-    maintenance_events?: Array<{
-      performed_at: Date;
-      created_at: Date;
-      next_maintenance_due_at: Date | null;
-    }>;
-  },
->(item: T) {
-  return {
-    ...item,
-    maintenance_due_at: item.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
-    maintenance_events: item.maintenance_events?.map((event) => ({
-      ...event,
-      performed_at: event.performed_at.toISOString(),
-      created_at: event.created_at.toISOString(),
-      next_maintenance_due_at:
-        event.next_maintenance_due_at?.toISOString().slice(0, 10) ?? null,
-    })),
-    created_at: item.created_at.toISOString(),
-    updated_at: item.updated_at.toISOString(),
-  };
 }
 
 export const GET = withAuth(
@@ -95,7 +69,7 @@ export const GET = withAuth(
       { requestContext: req },
     );
 
-    return success({ data: pumps.map(serializePump) });
+    return success({ data: pumps.map(serializePcaPump) });
   },
   {
     permission: 'canReport',
@@ -142,7 +116,7 @@ export const POST = withAuth(
               serial_number: pump.serial_number,
               model_name: pump.model_name,
               status: pump.status,
-              maintenance_due_at: pump.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
+              maintenance_due_at: toPcaPumpDateKey(pump.maintenance_due_at),
             },
             ip_address: req.headers.get('x-forwarded-for') ?? null,
             user_agent: req.headers.get('user-agent') ?? null,
@@ -153,7 +127,7 @@ export const POST = withAuth(
       { requestContext: req },
     );
 
-    return success({ data: serializePump(created) }, 201);
+    return success({ data: serializePcaPump(created) }, 201);
   },
   {
     permission: 'canAdmin',

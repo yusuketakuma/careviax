@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { formatDateKey } from '@/lib/date-key';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
   buildVisitScheduleProposalAssignmentWhere,
@@ -531,11 +532,11 @@ export const POST = withAuth(
           plannerDiagnostics?.accepted.find(
             (item) =>
               item.pharmacist_id === draft.proposed_pharmacist_id &&
-              item.proposed_date === draft.proposed_date.toISOString().slice(0, 10),
+              item.proposed_date === formatDateKey(draft.proposed_date),
           )?.pharmacist_name ?? draft.proposed_pharmacist_id,
         site_id: draft.site_id ?? null,
         site_name: null,
-        proposed_date: draft.proposed_date.toISOString().slice(0, 10),
+        proposed_date: formatDateKey(draft.proposed_date),
         travel_mode: effectiveTravelMode,
         reason_code: 'billing_constraint' as const,
         reason_label: '算定制約',
@@ -569,7 +570,7 @@ export const POST = withAuth(
         validDrafts.some(
           (draft) =>
             draft.proposed_pharmacist_id === item.pharmacist_id &&
-            draft.proposed_date.toISOString().slice(0, 10) === item.proposed_date,
+            formatDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
 
@@ -603,7 +604,7 @@ export const POST = withAuth(
             acceptedDiagnostics.find(
               (item) =>
                 item.pharmacist_id === proposal.proposed_pharmacist_id &&
-                item.proposed_date === proposal.proposed_date.toISOString().slice(0, 10),
+                item.proposed_date === formatDateKey(proposal.proposed_date),
             ) ?? null;
 
           return tx.auditLog.create({

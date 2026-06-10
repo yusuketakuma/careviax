@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -79,6 +79,20 @@ function createMalformedPatchRequest() {
 }
 
 describe('care-reports/[id] route', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
@@ -195,6 +209,29 @@ describe('care-reports/[id] route', () => {
       },
     });
     expect(payload.data).not.toHaveProperty('org_id');
+  });
+
+  it('serializes patient birth date by the local pharmacy calendar day', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1940-01-01T15:30:00.000Z'),
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        patient_summary: {
+          birth_date: '1940-01-02',
+        },
+      },
+    });
   });
 
   it('rejects blank report ids before loading the report', async () => {

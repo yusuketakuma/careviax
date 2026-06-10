@@ -28,7 +28,7 @@ import type {
   TriageLane,
   VisitModeView,
 } from '@/phos/contracts/phos_contracts';
-import { createPhosApiClient } from '@/phos/api/client';
+import { createPhosApiClient, isSameOriginPhosProxyBaseUrl } from '@/phos/api/client';
 import {
   enqueuePhosOfflineEvidence,
   listPhosPendingEvidence,
@@ -278,7 +278,6 @@ export function BoardClient({
   offlineEvidenceQueue = defaultOfflineEvidenceQueue,
 }: BoardClientProps) {
   const { data: session } = useSession();
-  const phosAccessToken = session?.phosAccessToken;
   const currentUserName = session?.user?.name ?? undefined;
   const canViewCapacity = sessionHasCapacityRole(session?.phosRole, session?.cognitoGroups);
   const [items, setItems] = useState<CardBoardItemView[]>(initialItems);
@@ -314,25 +313,25 @@ export function BoardClient({
   const [capacityError, setCapacityError] = useState<string | undefined>();
   const urlSyncReady = useRef(false);
   const lastAppliedInitialSelectedCardId = useRef<string | undefined>(undefined);
-  const effectiveGetAccessToken = useMemo(() => {
-    if (getAccessToken) return getAccessToken;
-    if (!phosAccessToken) return undefined;
-    return () => phosAccessToken;
-  }, [getAccessToken, phosAccessToken]);
   const configurationError =
-    !client && initialItems.length === 0 && (!apiBaseUrl || !effectiveGetAccessToken)
-      ? !apiBaseUrl
-        ? 'PH-OS API Gateway base URL is not configured.'
-        : 'PH-OS access token provider is not configured.'
-      : undefined;
+    !client && initialItems.length === 0 && !apiBaseUrl
+      ? 'PH-OS API Gateway base URL is not configured.'
+      : !client &&
+          initialItems.length === 0 &&
+          apiBaseUrl &&
+          !getAccessToken &&
+          !isSameOriginPhosProxyBaseUrl(apiBaseUrl.trim().replace(/\/+$/, ''))
+        ? 'PH-OS access token provider is not configured.'
+        : undefined;
   const displayPhase: BoardPhase = configurationError ? 'ERROR' : phase;
   const displayErrorMessage = configurationError ?? errorMessage;
 
   const apiClient = useMemo(() => {
     if (client) return client;
-    if (!apiBaseUrl || !effectiveGetAccessToken) return undefined;
-    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken: effectiveGetAccessToken });
-  }, [apiBaseUrl, client, effectiveGetAccessToken]);
+    if (configurationError) return undefined;
+    if (!apiBaseUrl) return undefined;
+    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken });
+  }, [apiBaseUrl, client, configurationError, getAccessToken]);
 
   const action = usePhosAction(
     apiClient ?? {

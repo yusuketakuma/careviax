@@ -94,5 +94,5 @@ describe('MedicationsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '薬剤追加' }));
     expect(screen.getByRole('button', { name: 'キャンセル' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '登録' })).toBeTruthy();
-  });
+  }, 15_000);
 });

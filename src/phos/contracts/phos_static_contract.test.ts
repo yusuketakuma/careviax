@@ -52,19 +52,20 @@ describe('PH-OS static contract checks', () => {
     }
   });
 
-  it('does not call Next.js API routes from PH-OS UI or app files', () => {
+  it('does not call arbitrary Next.js API routes from PH-OS UI or app files', () => {
     const roots = [join(canonicalRoot, 'ui'), phosAppRoot].filter((root) => existsSync(root));
-    const forbiddenApiPatterns = [
-      /fetch\(\s*['"]\/api\//,
-      /['"]\/api\/phos/,
-      /baseUrl:\s*['"]\/api/,
-    ];
+    const forbiddenApiPatterns = [/fetch\(\s*['"]\/api\//, /baseUrl:\s*['"]\/api/];
+    const sameOriginProxyLiteral = /['"]\/api\/phos['"]/;
 
     for (const root of roots) {
       for (const file of listFiles(root)) {
         const content = readFileSync(file, 'utf8');
         for (const pattern of forbiddenApiPatterns) {
           expect(content, file).not.toMatch(pattern);
+        }
+        if (sameOriginProxyLiteral.test(content)) {
+          expect(file, file).toContain(phosAppRoot);
+          expect(content, file).toContain("const PHOS_PROXY_API_BASE_URL = '/api/phos';");
         }
       }
     }

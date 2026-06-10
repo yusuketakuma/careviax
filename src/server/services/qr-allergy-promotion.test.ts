@@ -1,9 +1,23 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   buildQrAllergyEntryFromMedicationIssue,
   extractQrAllergyDrugName,
   promoteResolvedQrAllergyIssueToPatient,
 } from './qr-allergy-promotion';
+
+const originalTimezone = process.env.TZ;
+
+beforeAll(() => {
+  process.env.TZ = 'Asia/Tokyo';
+});
+
+afterAll(() => {
+  if (originalTimezone === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = originalTimezone;
+  }
+});
 
 describe('extractQrAllergyDrugName', () => {
   it('extracts a drug name from QR allergy free text', () => {
@@ -50,6 +64,27 @@ describe('buildQrAllergyEntryFromMedicationIssue', () => {
       severity: 'unknown',
       confirmed_at: '2026-06-08',
       source: 'qr_supplemental:issue_1',
+    });
+  });
+
+  it('formats confirmed_at by the local pharmacy calendar day', () => {
+    expect(
+      buildQrAllergyEntryFromMedicationIssue({
+        confirmedAt: new Date('2026-06-08T15:30:00.000Z'),
+        issue: {
+          id: 'issue_1',
+          patient_id: 'patient_1',
+          category: 'side_effect',
+          title: 'QR由来のアレルギー・副作用歴確認候補: 患者等記入事項',
+          description: [
+            '[qr_supplemental:intake_1:601:7]',
+            'QR補助レコード 601 から自動起票したレビュー候補です。',
+            'ペニシリンで発疹あり',
+          ].join('\n'),
+        },
+      }),
+    ).toMatchObject({
+      confirmed_at: '2026-06-09',
     });
   });
 

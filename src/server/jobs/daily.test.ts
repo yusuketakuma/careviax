@@ -5,9 +5,19 @@ const {
   pcaPumpRentalFindManyMock,
   visitScheduleFindManyMock,
   visitScheduleContactLogFindManyMock,
+  businessHolidayFindManyMock,
+  pharmacistShiftFindManyMock,
   conferenceNoteFindManyMock,
   careCaseFindManyMock,
+  careCaseFindFirstMock,
+  visitRecordFindManyMock,
+  patientFindManyMock,
   membershipFindManyMock,
+  firstVisitDocumentFindManyMock,
+  patientSelfReportFindManyMock,
+  inquiryRecordFindManyMock,
+  facilityStandardRegistrationFindManyMock,
+  consentRecordFindManyMock,
   notificationCreateMock,
   dispatchNotificationEventMock,
   taskFindManyMock,
@@ -22,9 +32,19 @@ const {
   pcaPumpRentalFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
+  businessHolidayFindManyMock: vi.fn(),
+  pharmacistShiftFindManyMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
+  firstVisitDocumentFindManyMock: vi.fn(),
+  patientSelfReportFindManyMock: vi.fn(),
+  inquiryRecordFindManyMock: vi.fn(),
+  facilityStandardRegistrationFindManyMock: vi.fn(),
+  consentRecordFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   taskFindManyMock: vi.fn(),
@@ -50,11 +70,39 @@ vi.mock('@/lib/db', () => ({
     visitScheduleContactLog: {
       findMany: visitScheduleContactLogFindManyMock,
     },
+    businessHoliday: {
+      findMany: businessHolidayFindManyMock,
+    },
+    pharmacistShift: {
+      findMany: pharmacistShiftFindManyMock,
+    },
     conferenceNote: {
       findMany: conferenceNoteFindManyMock,
     },
     careCase: {
       findMany: careCaseFindManyMock,
+      findFirst: careCaseFindFirstMock,
+    },
+    firstVisitDocument: {
+      findMany: firstVisitDocumentFindManyMock,
+    },
+    patientSelfReport: {
+      findMany: patientSelfReportFindManyMock,
+    },
+    inquiryRecord: {
+      findMany: inquiryRecordFindManyMock,
+    },
+    facilityStandardRegistration: {
+      findMany: facilityStandardRegistrationFindManyMock,
+    },
+    consentRecord: {
+      findMany: consentRecordFindManyMock,
+    },
+    visitRecord: {
+      findMany: visitRecordFindManyMock,
+    },
+    patient: {
+      findMany: patientFindManyMock,
     },
     membership: {
       findMany: membershipFindManyMock,
@@ -122,25 +170,94 @@ vi.mock('@/server/services/billing-evidence', () => ({
 import { evaluateInitialHomeVisitAssessmentRequirement } from '@/server/services/billing-evidence';
 import {
   checkCallbackFollowups,
+  checkConsentExpiry,
   checkConferenceMeetingReminders,
+  checkEmergencyCoverageGaps,
+  checkFacilityStandardExpiry,
   checkInitialHomeVisitAssessmentBacklog,
   checkPcaPumpReturnInspectionPending,
   checkPcaPumpRentalOverdues,
+  checkPrescriptionExpiry,
+  checkVisitRecordRetention,
   cleanupAbandonedQrDrafts,
   cleanupTerminalQrDraftPayloads,
+  runDailyOperationTasks,
+  syncVisitSupportFeatureTasks,
 } from './daily';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
 
+function useTimezone(timezone: string) {
+  const originalTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+  return () => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  };
+}
+
+describe('runDailyOperationTasks', () => {
+  it('limits active task concurrency and preserves settled results', async () => {
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const releases: Array<() => void> = [];
+    const flushMicrotasks = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    const makeTask = (processedCount: number, reject = false) =>
+      vi.fn(async () => {
+        activeCount += 1;
+        maxActiveCount = Math.max(maxActiveCount, activeCount);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        activeCount -= 1;
+        if (reject) throw new Error(`task_${processedCount}_failed`);
+        return { processedCount };
+      });
+    const tasks = [makeTask(1), makeTask(2, true), makeTask(3)];
+
+    const settledPromise = runDailyOperationTasks(tasks, 2);
+    await flushMicrotasks();
+
+    expect(tasks[0]).toHaveBeenCalledOnce();
+    expect(tasks[1]).toHaveBeenCalledOnce();
+    expect(tasks[2]).not.toHaveBeenCalled();
+    expect(maxActiveCount).toBe(2);
+
+    releases[0]!();
+    await flushMicrotasks();
+
+    expect(tasks[2]).toHaveBeenCalledOnce();
+    expect(maxActiveCount).toBe(2);
+
+    releases[1]!();
+    releases[2]!();
+
+    await expect(settledPromise).resolves.toEqual([
+      { status: 'fulfilled', value: { processedCount: 1 } },
+      { status: 'rejected', reason: expect.any(Error) },
+      { status: 'fulfilled', value: { processedCount: 3 } },
+    ]);
+  });
+});
+
 describe('checkPcaPumpRentalOverdues', () => {
+  let restoreTimezone: (() => void) | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    restoreTimezone = useTimezone('Asia/Tokyo');
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-08T09:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
     taskFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    restoreTimezone?.();
   });
 
   it('marks due active rentals overdue and creates follow-up tasks', async () => {
@@ -152,8 +269,8 @@ describe('checkPcaPumpRentalOverdues', () => {
         org_id: 'org_1',
         pump_id: 'pump_1',
         institution_id: 'institution_1',
-        rented_at: new Date('2026-05-20T00:00:00.000Z'),
-        due_at: new Date('2026-06-01T00:00:00.000Z'),
+        rented_at: new Date('2026-05-19T15:30:00.000Z'),
+        due_at: new Date('2026-05-31T15:30:00.000Z'),
         rental_fee_yen: 12000,
         pump: {
           asset_code: 'PCA-001',
@@ -219,6 +336,7 @@ describe('checkPcaPumpRentalOverdues', () => {
           pump_asset_code: 'PCA-001',
           institution_id: 'institution_1',
           institution_name: 'サンプル在宅クリニック',
+          rented_at: '2026-05-20',
           due_at: '2026-06-01',
           overdue_days: 7,
           action_href: '/admin/pca-pumps',
@@ -239,14 +357,18 @@ describe('checkPcaPumpRentalOverdues', () => {
 });
 
 describe('checkPcaPumpReturnInspectionPending', () => {
+  let restoreTimezone: (() => void) | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    restoreTimezone = useTimezone('Asia/Tokyo');
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-08T09:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    restoreTimezone?.();
   });
 
   it('creates follow-up tasks for returned PCA rentals waiting for inspection', async () => {
@@ -256,9 +378,9 @@ describe('checkPcaPumpReturnInspectionPending', () => {
         org_id: 'org_1',
         pump_id: 'pump_1',
         institution_id: 'institution_1',
-        rented_at: new Date('2026-06-01T00:00:00.000Z'),
-        due_at: new Date('2026-06-07T00:00:00.000Z'),
-        returned_at: new Date('2026-06-06T00:00:00.000Z'),
+        rented_at: new Date('2026-05-31T15:30:00.000Z'),
+        due_at: new Date('2026-06-06T15:30:00.000Z'),
+        returned_at: new Date('2026-06-05T15:30:00.000Z'),
         pump: {
           asset_code: 'PCA-001',
           model_name: 'CADD Legacy',
@@ -309,6 +431,8 @@ describe('checkPcaPumpReturnInspectionPending', () => {
           pump_asset_code: 'PCA-001',
           institution_id: 'institution_1',
           institution_name: 'サンプル在宅クリニック',
+          rented_at: '2026-06-01',
+          due_at: '2026-06-07',
           returned_at: '2026-06-06',
           pending_days: 2,
           action_href: '/admin/pca-pumps',
@@ -371,6 +495,210 @@ describe('checkPcaPumpReturnInspectionPending', () => {
       },
     });
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('daily job local date keys', () => {
+  let restoreTimezone: (() => void) | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    restoreTimezone = useTimezone('Asia/Tokyo');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
+    notificationCreateMock.mockResolvedValue({});
+    taskFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        task: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreTimezone?.();
+  });
+
+  it('uses local-calendar expiry dates in prescription expiry notifications', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_1',
+        prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+    ]);
+
+    const result = await checkPrescriptionExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        user_id: 'pharmacist_1',
+        message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
+        dedupe_key: 'prescription-expiry:intake_1',
+      }),
+    });
+  });
+
+  it('uses local-calendar dates for emergency coverage gap task keys', async () => {
+    businessHolidayFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        site_id: 'site_1',
+        date: new Date('2026-06-09T15:30:00.000Z'),
+        name: '夜間対応日',
+        is_closed: true,
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
+
+    const result = await checkEmergencyCoverageGaps();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'emergency_coverage_gap',
+        title: '2026-06-10 の時間外・緊急対応体制が未設定です',
+        relatedEntityId: 'site_1:2026-06-10',
+        dedupeKey: 'emergency-coverage-gap:2026-06-10:site_1',
+      }),
+    );
+  });
+
+  it('groups facility visit batches by local-calendar schedule date', async () => {
+    careCaseFindManyMock.mockResolvedValue([]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([]);
+    patientSelfReportFindManyMock.mockResolvedValue([]);
+    inquiryRecordFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        pharmacist_id: 'pharmacist_1',
+        site_id: 'site_1',
+        scheduled_date: new Date('2026-06-11T15:30:00.000Z'),
+        priority: 'normal',
+        schedule_status: 'planned',
+        preparation: { offline_synced: true },
+        case_: {
+          id: 'case_1',
+          patient_id: 'patient_1',
+          patient: {
+            name: '山田 太郎',
+            residences: [{ building_id: '青葉レジデンス', address: '東京都港区1-1-1' }],
+          },
+        },
+      },
+      {
+        id: 'schedule_2',
+        org_id: 'org_1',
+        pharmacist_id: 'pharmacist_1',
+        site_id: 'site_1',
+        scheduled_date: new Date('2026-06-11T16:30:00.000Z'),
+        priority: 'normal',
+        schedule_status: 'planned',
+        preparation: { offline_synced: true },
+        case_: {
+          id: 'case_2',
+          patient_id: 'patient_2',
+          patient: {
+            name: '佐藤 花子',
+            residences: [{ building_id: '青葉レジデンス', address: '東京都港区1-1-1' }],
+          },
+        },
+      },
+    ]);
+
+    const result = await syncVisitSupportFeatureTasks();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'facility_batch_tracker',
+        title: '2026-06-12 の施設訪問バッチ確認',
+        relatedEntityId: '2026-06-12:site_1:pharmacist_1:青葉レジデンス',
+        dedupeKey: 'facility-batch-tracker:2026-06-12:site_1:pharmacist_1:青葉レジデンス',
+        metadata: expect.objectContaining({
+          facility_label: '青葉レジデンス',
+          patient_count: 2,
+        }),
+      }),
+    );
+  });
+
+  it('uses local-calendar dates in facility standard expiry task descriptions', async () => {
+    facilityStandardRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_standard_1',
+        org_id: 'org_1',
+        standard_type: '在宅患者訪問薬剤管理指導料',
+        expiry_date: new Date('2026-06-14T15:30:00.000Z'),
+        site: { name: '本店' },
+      },
+    ]);
+    membershipFindManyMock.mockResolvedValue([{ user_id: 'admin_1' }]);
+
+    const result = await checkFacilityStandardExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'facility_standard_expiry',
+        description: '本店 の 在宅患者訪問薬剤管理指導料 が 2026-06-15 に期限切れ',
+        dedupeKey: 'facility-standard-expiry:facility_standard_1',
+      }),
+    );
+  });
+
+  it('uses local-calendar dates in consent expiry notifications and tasks', async () => {
+    consentRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'consent_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        consent_type: '居宅療養管理指導',
+        expiry_date: new Date('2026-06-14T15:30:00.000Z'),
+        patient: { id: 'patient_1', name: '山田 太郎' },
+      },
+    ]);
+    careCaseFindFirstMock.mockResolvedValue({ primary_pharmacist_id: 'pharmacist_1' });
+
+    const result = await checkConsentExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_1',
+        message:
+          '山田 太郎 さんの 居宅療養管理指導 同意が 2026-06-15 に期限切れ。再取得が必要です。',
+      }),
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'consent_expiry',
+        description: '居宅療養管理指導 の同意が 2026-06-15 に期限切れ',
+        dedupeKey: 'consent-expiry:consent_1',
+      }),
+    );
   });
 });
 
@@ -480,6 +808,59 @@ describe('checkPrescriptionOriginalRetention', () => {
     );
   });
 
+  it('creates retention tasks with local-calendar retention dates in the description', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+    prescriptionIntakeFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'intake_original_1',
+          org_id: 'org_1',
+          source_type: 'paper',
+          prescribed_date: new Date('2021-04-25T15:30:00.000Z'),
+          original_document_url: 's3://bucket/original.pdf',
+          cycle: {
+            patient_id: 'patient_1',
+            case_: {
+              patient_id: 'patient_1',
+              primary_pharmacist_id: 'pharmacist_1',
+              patient: {
+                name: '山田 太郎',
+              },
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    try {
+      const result = await checkPrescriptionOriginalRetention();
+
+      expect(result).toMatchObject({ processedCount: 2 });
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          orgId: 'org_1',
+          taskType: 'prescription_original_retention',
+          title: '処方箋原本保存期限確認: 山田 太郎',
+          description:
+            '原本スキャンが 2026-04-26 に5年保存期限を迎えます。Object Lock と保全状況を確認してください。',
+          assignedTo: 'pharmacist_1',
+          relatedEntityType: 'prescription_intake',
+          relatedEntityId: 'intake_original_1',
+          dedupeKey: 'prescription-original-retention:intake_original_1',
+          metadata: expect.objectContaining({
+            patient_id: 'patient_1',
+            source_type: 'paper',
+          }),
+        }),
+      );
+    } finally {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   it('clears stale fax follow-up tasks when nothing is overdue', async () => {
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     taskFindManyMock.mockResolvedValue([
@@ -568,6 +949,72 @@ describe('checkPrescriptionOriginalRetention', () => {
         },
       }),
     );
+  });
+});
+
+describe('checkVisitRecordRetention', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+    membershipFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        user_id: 'admin_1',
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '山田 太郎' }]);
+    notificationCreateMock.mockResolvedValue({});
+    taskFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        task: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('creates retention tasks with local-calendar visit retention dates in the description', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_record_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        visit_date: new Date('2021-04-25T15:30:00.000Z'),
+      },
+    ]);
+
+    try {
+      const result = await checkVisitRecordRetention();
+
+      expect(result).toMatchObject({ processedCount: 1 });
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          orgId: 'org_1',
+          taskType: 'visit_record_retention',
+          title: '薬歴保存期限確認: 山田 太郎',
+          description:
+            '訪問記録が 2026-04-26 に5年保存期限を迎えます。PDF出力・保全状況を確認してください。',
+          relatedEntityType: 'visit_record',
+          relatedEntityId: 'visit_record_1',
+          dedupeKey: 'visit-record-retention:visit_record_1',
+          metadata: expect.objectContaining({
+            patient_id: 'patient_1',
+          }),
+        }),
+      );
+    } finally {
+      process.env.TZ = originalTimezone;
+    }
   });
 });
 

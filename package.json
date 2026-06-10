@@ -45,6 +45,7 @@
     "db:external-access-case-boundary-audit": "tsx tools/scripts/external-access-case-boundary-audit.ts",
     "db:verify-migration-preconditions": "tsx tools/scripts/verify-migration-preconditions.ts",
     "db:verify-ph-os-audit-migration": "tsx tools/scripts/verify-ph-os-audit-migration.ts",
+    "db:webhook-secrets:backfill": "tsx tools/scripts/backfill-webhook-registration-secrets.ts",
     "db:import:mhlw-price": "tsx tools/scripts/import-mhlw-price-master.ts",
     "db:e2e:check-care-report-duplicates": "DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public tsx tools/scripts/check-care-report-duplicates.ts",
     "db:e2e:verify-migration-preconditions": "DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public tsx tools/scripts/verify-migration-preconditions.ts",
@@ -59,7 +60,10 @@
     "db:migrate": "prisma migrate dev --schema=prisma/schema/",
     "db:seed": "prisma db seed",
     "db:generate": "prisma generate --schema=prisma/schema/ && node tools/scripts/link-prisma-client.mjs",
-    "format": "prettier --write ."
+    "format": "git ls-files -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' '*.json' '*.md' '*.yml' '*.yaml' '*.css' | grep -v '^.codex/medical-ui-ux-completion-audit.md$' | xargs -n 50 prettier --write",
+    "format:check": "node tools/scripts/check-format-changed-files.mjs",
+    "date-slices:check": "node tools/scripts/check-date-slices.mjs",
+    "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1050.0",
@@ -125,7 +129,6 @@
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/react": "^16.3.2",
-    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.14",

@@ -21,6 +21,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
+import { formatDateKey } from '@/lib/date-key';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
 import {
@@ -594,7 +595,7 @@ function deriveBirthDate(rawBirthDate: string | undefined, reportedAge?: number)
   if (rawBirthDate) return rawBirthDate;
   if (typeof reportedAge === 'number' && Number.isFinite(reportedAge)) {
     const today = new Date();
-    return new Date(today.getFullYear() - reportedAge, 0, 1).toISOString().slice(0, 10);
+    return formatDateKey(new Date(today.getFullYear() - reportedAge, 0, 1));
   }
   return undefined;
 }

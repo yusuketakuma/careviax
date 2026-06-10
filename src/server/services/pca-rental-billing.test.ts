@@ -73,6 +73,12 @@ describe('generatePcaRentalBillingCandidatesForMonth', () => {
         calculation_breakdown: expect.objectContaining({
           calculation_unit: 'yen',
           amount_yen: 12000,
+          rental_month: '2026-06-01',
+          rental_period: {
+            rented_at: '2026-06-01',
+            due_at: '2026-06-30',
+            returned_at: null,
+          },
         }),
         source_snapshot: expect.objectContaining({
           source_type: 'pca_pump_rental',

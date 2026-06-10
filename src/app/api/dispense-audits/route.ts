@@ -3,7 +3,9 @@ import { ADMIN_MEMBER_ROLES, DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES } from '@/lib/
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -13,7 +15,6 @@ import {
   VersionConflictError,
 } from '@/lib/db/cycle-transition';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 export const GET = withAuth(
@@ -314,7 +315,7 @@ export const POST = withAuth(
             },
           });
         } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          if (isPrismaUniqueConstraintError(err)) {
             return { error: 'already_audited' as const };
           }
           throw err;
@@ -413,7 +414,7 @@ export const POST = withAuth(
           eventType: 'dispense_audit_rejected',
           type: 'urgent',
           title: '調剤鑑査で差戻しが発生しました',
-          message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${task.due_date.toISOString().slice(0, 10)}）` : ''}`,
+          message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${formatDateKey(task.due_date)}）` : ''}`,
           link: `/dispensing/${task.id}`,
           metadata: {
             task_id,

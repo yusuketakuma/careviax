@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -44,6 +44,20 @@ function createRequest(body: unknown) {
 }
 
 describe('/api/pca-pumps/[id] PATCH', () => {
+  const originalTimeZone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
@@ -148,6 +162,33 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         target_id: 'pump_1',
         changes: { status: 'maintenance' },
       }),
+    });
+  });
+
+  it('serializes updated maintenance due dates by the local pharmacy calendar day', async () => {
+    pcaPumpUpdateMock.mockResolvedValue({
+      id: 'pump_1',
+      asset_code: 'PCA-001',
+      serial_number: null,
+      model_name: 'CADD Legacy PCA',
+      manufacturer: null,
+      status: 'maintenance',
+      maintenance_due_at: new Date('2026-03-02T15:30:00.000Z'),
+      notes: null,
+      created_at: new Date('2026-06-10T00:00:00.000Z'),
+      updated_at: new Date('2026-06-10T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(createRequest({ maintenance_due_at: '2026-03-03' }), {
+      params: Promise.resolve({ id: 'pump_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'pump_1',
+        maintenance_due_at: '2026-03-03',
+      },
     });
   });
 

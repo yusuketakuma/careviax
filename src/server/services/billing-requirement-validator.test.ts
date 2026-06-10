@@ -1,22 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  findActiveVisitConsentMock,
-  findCurrentManagementPlanMock,
-  prismaMock,
-} = vi.hoisted(() => ({
-  findActiveVisitConsentMock: vi.fn(),
-  findCurrentManagementPlanMock: vi.fn(),
-  prismaMock: {
-    visitSchedule: {
-      findMany: vi.fn(),
-      count: vi.fn(),
+const { findActiveVisitConsentMock, findCurrentManagementPlanMock, prismaMock } = vi.hoisted(
+  () => ({
+    findActiveVisitConsentMock: vi.fn(),
+    findCurrentManagementPlanMock: vi.fn(),
+    prismaMock: {
+      visitSchedule: {
+        findMany: vi.fn(),
+        count: vi.fn(),
+      },
+      user: {
+        findFirst: vi.fn(),
+      },
     },
-    user: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
+  }),
+);
 
 vi.mock('./management-plans', () => ({
   findActiveVisitConsent: findActiveVisitConsentMock,
@@ -171,9 +169,7 @@ describe('validateBillingRequirements', () => {
       ...baseArgs,
       visitType: 'emergency',
     });
-    const concurrentAlert = alerts.find(
-      (a) => a.type === 'emergency_regular_concurrent',
-    );
+    const concurrentAlert = alerts.find((a) => a.type === 'emergency_regular_concurrent');
     expect(concurrentAlert).toBeDefined();
     expect(concurrentAlert!.severity).toBe('warning');
     expect(concurrentAlert!.details.regular_count).toBe(3);
@@ -186,9 +182,7 @@ describe('validateBillingRequirements', () => {
       .mockResolvedValueOnce(5); // weekly pharmacist
 
     const alerts = await validateBillingRequirements(baseArgs);
-    const concurrentAlert = alerts.find(
-      (a) => a.type === 'emergency_regular_concurrent',
-    );
+    const concurrentAlert = alerts.find((a) => a.type === 'emergency_regular_concurrent');
     expect(concurrentAlert).toBeUndefined();
   });
 
@@ -237,9 +231,7 @@ describe('validateBillingRequirements', () => {
     findActiveVisitConsentMock.mockResolvedValue(null);
 
     const alerts = await validateBillingRequirements(baseArgs);
-    const consentAlert = alerts.find(
-      (a) => a.type === 'consent_expired_or_missing',
-    );
+    const consentAlert = alerts.find((a) => a.type === 'consent_expired_or_missing');
     expect(consentAlert).toBeDefined();
     expect(consentAlert!.severity).toBe('warning');
     expect(consentAlert!.details.consent_exists).toBe(false);
@@ -252,9 +244,7 @@ describe('validateBillingRequirements', () => {
     });
 
     const alerts = await validateBillingRequirements(baseArgs);
-    const consentAlert = alerts.find(
-      (a) => a.type === 'consent_expired_or_missing',
-    );
+    const consentAlert = alerts.find((a) => a.type === 'consent_expired_or_missing');
     expect(consentAlert).toBeDefined();
     expect(consentAlert!.details.consent_exists).toBe(true);
   });
@@ -269,9 +259,7 @@ describe('validateBillingRequirements', () => {
       ...baseArgs,
       proposedDate: new Date('2026-04-15T09:00:00.000Z'),
     });
-    const consentAlert = alerts.find(
-      (a) => a.type === 'consent_expired_or_missing',
-    );
+    const consentAlert = alerts.find((a) => a.type === 'consent_expired_or_missing');
     expect(consentAlert).toBeDefined();
     expect(consentAlert!.message).toContain('訪問予定日時点');
     expect(consentAlert!.details.proposed_date).toBe('2026-04-15T09:00:00.000Z');
@@ -284,9 +272,7 @@ describe('validateBillingRequirements', () => {
     });
 
     const alerts = await validateBillingRequirements(baseArgs);
-    const consentAlert = alerts.find(
-      (a) => a.type === 'consent_expired_or_missing',
-    );
+    const consentAlert = alerts.find((a) => a.type === 'consent_expired_or_missing');
     expect(consentAlert).toBeUndefined();
   });
 
@@ -303,9 +289,7 @@ describe('validateBillingRequirements', () => {
       ...baseArgs,
       specialCapEligible: true,
     });
-    const weeklyAlert = alerts.find(
-      (a) => a.type === 'special_patient_weekly_cap',
-    );
+    const weeklyAlert = alerts.find((a) => a.type === 'special_patient_weekly_cap');
     expect(weeklyAlert).toBeDefined();
     expect(weeklyAlert!.severity).toBe('warning');
     expect(weeklyAlert!.details.cap).toBe(2);
@@ -313,9 +297,7 @@ describe('validateBillingRequirements', () => {
 
   it('does not check weekly cap for non-special patients', async () => {
     const alerts = await validateBillingRequirements(baseArgs);
-    const weeklyAlert = alerts.find(
-      (a) => a.type === 'special_patient_weekly_cap',
-    );
+    const weeklyAlert = alerts.find((a) => a.type === 'special_patient_weekly_cap');
     expect(weeklyAlert).toBeUndefined();
   });
 

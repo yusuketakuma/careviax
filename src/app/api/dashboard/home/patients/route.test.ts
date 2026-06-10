@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -73,6 +73,20 @@ function createRequest(url: string, headers?: Record<string, string>) {
 }
 
 describe('/api/dashboard/home/patients GET', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     derivePatientStatusIconMock.mockReturnValue('stable');
@@ -569,5 +583,90 @@ describe('/api/dashboard/home/patients GET', () => {
         }),
       }),
     );
+  });
+
+  it('formats visit dates by local calendar day for patient cards', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1' }]).mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        birth_date: new Date('1945-01-01T15:30:00Z'),
+        phone: null,
+        contacts: [{ id: 'contact_1' }],
+        residences: [],
+      },
+    ]);
+    careCaseFindManyMock
+      .mockResolvedValueOnce([{ id: 'case_1', patient_id: 'patient_1' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'case_1',
+          patient_id: 'patient_1',
+          status: 'active',
+          care_team_links: [{ id: 'team_1' }],
+        },
+      ]);
+    listPatientRiskSummariesMock.mockResolvedValue([
+      {
+        patient_id: 'patient_1',
+        patient_name: '山田 太郎',
+        score: 2,
+        level: 'stable',
+        reasons: [],
+        unresolved_self_reports: 0,
+        open_issues: 0,
+        disrupted_visits_30d: 0,
+        pending_reports: 0,
+        open_tasks: 0,
+        missing_visit_consent: false,
+        missing_management_plan: false,
+      },
+    ]);
+    visitScheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          scheduled_date: new Date(2026, 3, 9, 0, 0, 0),
+          visit_type: 'regular',
+          case_: { patient_id: 'patient_1', id: 'case_1' },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          scheduled_date: new Date(2026, 2, 30, 0, 0, 0),
+          case_: { patient_id: 'patient_1' },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        patient_id: 'patient_1',
+        created_at: new Date('2026-04-05T15:30:00.000Z'),
+        overall_status: 'dispensing',
+        exception_status: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/home/patients?sort=risk&page=1', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        patients: [
+          expect.objectContaining({
+            patient_id: 'patient_1',
+            birth_date: '1945-01-02',
+            last_prescription_date: '2026-04-06',
+            next_prescription_date: '2026-04-06',
+            next_visit_date: '2026-04-09',
+            last_visit_date: '2026-03-30',
+          }),
+        ],
+      },
+    });
   });
 });

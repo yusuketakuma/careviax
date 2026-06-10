@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   generateVisitBriefAiSummaryMock,
@@ -27,6 +27,20 @@ import {
   getScheduleVisitBriefsForPatients,
   getScheduleVisitBriefsForSchedules,
 } from './visit-brief';
+
+const originalTimezone = process.env.TZ;
+
+beforeAll(() => {
+  process.env.TZ = 'Asia/Tokyo';
+});
+
+afterAll(() => {
+  if (originalTimezone === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = originalTimezone;
+  }
+});
 
 describe('getPatientVisitBrief', () => {
   beforeEach(() => {
@@ -188,8 +202,8 @@ describe('getPatientVisitBrief', () => {
       setPlan: {
         findFirst: vi.fn().mockResolvedValue({
           set_method: 'facility_calendar',
-          target_period_start: new Date('2026-03-26T00:00:00Z'),
-          target_period_end: new Date('2026-04-01T00:00:00Z'),
+          target_period_start: new Date('2026-03-26T15:30:00Z'),
+          target_period_end: new Date('2026-04-01T15:30:00Z'),
           notes: '昼は別包',
           audits: [{ result: 'approved' }],
         }),
@@ -438,6 +452,7 @@ describe('getPatientVisitBrief', () => {
         expect.objectContaining({
           drug_name: 'アムロジピン錠',
           dispensing_method: '一包化',
+          set_period_label: '2026-03-27 - 2026-04-02',
         }),
       ]),
     );

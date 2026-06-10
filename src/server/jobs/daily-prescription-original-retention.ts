@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import {
   buildFaxOriginalFollowupTaskKey,
   buildPrescriptionOriginalRetentionTaskKey,
+  formatDateKey,
   startOfDay,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
@@ -73,12 +74,15 @@ export async function checkPrescriptionOriginalRetention() {
     });
 
     if (expiring.length === 0 && overdueFaxOriginals.length === 0) {
-      await syncGeneratedOperationalTasks([], ['prescription_original_retention', 'fax_original_followup']);
+      await syncGeneratedOperationalTasks(
+        [],
+        ['prescription_original_retention', 'fax_original_followup'],
+      );
       return { processedCount: 0 };
     }
 
     const orgIds = Array.from(
-      new Set([...expiring, ...overdueFaxOriginals].map((intake) => intake.org_id))
+      new Set([...expiring, ...overdueFaxOriginals].map((intake) => intake.org_id)),
     );
     const admins = await prisma.membership.findMany({
       where: {
@@ -104,11 +108,12 @@ export async function checkPrescriptionOriginalRetention() {
     for (const intake of expiring) {
       const retentionUntil = startOfDay(addYears(intake.prescribed_date, 5));
       const daysUntilExpiry = Math.ceil(
-        (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
-      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
-      const patientName = intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
+      const patientName =
+        intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
       const notificationTargets = new Set<string>(adminsByOrg.get(intake.org_id) ?? []);
       if (intake.cycle?.case_?.primary_pharmacist_id) {
         notificationTargets.add(intake.cycle.case_.primary_pharmacist_id);
@@ -134,7 +139,7 @@ export async function checkPrescriptionOriginalRetention() {
         taskType: 'prescription_original_retention',
         dedupeKey: buildPrescriptionOriginalRetentionTaskKey(intake.id),
         title: `処方箋原本保存期限確認: ${patientName}`,
-        description: `原本スキャンが ${retentionUntil.toISOString().slice(0, 10)} に5年保存期限を迎えます。Object Lock と保全状況を確認してください。`,
+        description: `原本スキャンが ${formatDateKey(retentionUntil)} に5年保存期限を迎えます。Object Lock と保全状況を確認してください。`,
         priority,
         assignedTo: intake.cycle?.case_?.primary_pharmacist_id ?? null,
         dueDate: retentionUntil,
@@ -149,16 +154,19 @@ export async function checkPrescriptionOriginalRetention() {
     }
 
     for (const intake of overdueFaxOriginals) {
-      const patientName = intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
+      const patientName =
+        intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
       const notificationTargets = new Set<string>(adminsByOrg.get(intake.org_id) ?? []);
       if (intake.cycle?.case_?.primary_pharmacist_id) {
         notificationTargets.add(intake.cycle.case_.primary_pharmacist_id);
       }
       const overdueDays = Math.max(
         1,
-        Math.ceil((now.getTime() - startOfDay(intake.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        Math.ceil(
+          (now.getTime() - startOfDay(intake.created_at).getTime()) / (1000 * 60 * 60 * 24),
+        ),
       );
-      const priority = overdueDays >= 5 ? 'urgent' as const : 'high' as const;
+      const priority = overdueDays >= 5 ? ('urgent' as const) : ('high' as const);
       const dueDate = startOfDay(addDays(intake.created_at, 3));
       const patientId = intake.cycle?.case_?.patient_id ?? intake.cycle?.patient_id ?? null;
 

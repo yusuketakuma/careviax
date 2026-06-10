@@ -15,23 +15,10 @@ import type { PhosApiClient } from '@/phos/api/types';
 import { HandoffsPageClient } from './HandoffsPageClient';
 
 const routerPushMock = vi.hoisted(() => vi.fn());
-const sessionMock = vi.hoisted(() => ({
-  value: {
-    phosAccessToken: 'session-access-token',
-    user: { name: '薬剤師A' },
-  } as { phosAccessToken?: string; user?: { name?: string | null } } | null,
-}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: routerPushMock,
-  }),
-}));
-
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({
-    data: sessionMock.value,
-    status: sessionMock.value ? 'authenticated' : 'unauthenticated',
   }),
 }));
 
@@ -111,10 +98,6 @@ function client(overrides: Partial<PhosApiClient> = {}): PhosApiClient {
 describe('HandoffsPageClient', () => {
   beforeEach(() => {
     routerPushMock.mockReset();
-    sessionMock.value = {
-      phosAccessToken: 'session-access-token',
-      user: { name: '薬剤師A' },
-    };
     vi.unstubAllGlobals();
   });
 
@@ -207,8 +190,6 @@ describe('HandoffsPageClient', () => {
   });
 
   it('renders inline configuration errors instead of pretending the route loaded', () => {
-    sessionMock.value = null;
-
     render(<HandoffsPageClient />);
 
     expect(screen.getByText('PH-OS API Gateway base URL is not configured.')).toBeTruthy();

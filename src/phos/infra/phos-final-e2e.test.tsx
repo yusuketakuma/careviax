@@ -64,11 +64,9 @@ import { BoardClient } from '@/phos/ui/board/BoardClient';
 
 const sessionMock = vi.hoisted(() => ({
   value: {
-    phosAccessToken: 'session-access-token',
     phosRole: 'PHARMACIST',
     user: { name: '薬剤師A' },
   } as {
-    phosAccessToken?: string;
     phosRole?: UserRole;
     cognitoGroups?: unknown;
     user?: { name?: string | null };
@@ -747,7 +745,6 @@ describe('PH-OS final review executable E2E coverage', () => {
   it('E2E-10 displays CapacityBar only for manager-grade users', async () => {
     const managerClient = boardClient();
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.MANAGER,
       user: { name: '管理薬剤師A' },
     };
@@ -759,7 +756,6 @@ describe('PH-OS final review executable E2E coverage', () => {
 
     const clerkClient = boardClient();
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.PHARMACY_CLERK,
       user: { name: '事務員A' },
     };

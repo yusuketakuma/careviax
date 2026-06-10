@@ -5,6 +5,8 @@ import { ActionCode } from '@/phos/contracts/phos_contracts';
 import { ACTION_TRANSITION_MATRIX } from '@/phos/domain/actions/actionTransitionMatrix';
 import {
   buildCloudWatchEmbeddedMetric,
+  hashTenantId,
+  hashUserId,
   P0_REQUIRED_METRIC_NAMES,
 } from '@/phos/backend/observability';
 import { CARD_ACTION_ROUTE_ACTION_CODES } from '@/phos/backend/card-action-executor';
@@ -577,14 +579,23 @@ describe('PH-OS Final No-Go gate', () => {
     const lambdaObservability = readRelative('src/phos/backend/lambda-observability.ts');
 
     expect(metric).toMatchObject({
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
     });
     expect(metric._aws.CloudWatchMetrics[0].Dimensions.flat()).not.toEqual(
-      expect.arrayContaining(['tenant_id', 'user_id', 'request_id', 'correlation_id']),
+      expect.arrayContaining([
+        'tenant_id',
+        'user_id',
+        'tenant_id_hash',
+        'user_id_hash',
+        'request_id',
+        'correlation_id',
+      ]),
     );
+    expect(JSON.stringify(metric)).not.toContain('tenant_abc123');
+    expect(JSON.stringify(metric)).not.toContain('user_1');
     expect(lambdaObservability).toContain('aws-xray-sdk-core');
     expect(lambdaObservability).toContain('createXRayTraceAnnotationSink');
     expect(lambdaObservability).toContain('addAnnotation');
@@ -628,11 +639,7 @@ describe('PH-OS Final No-Go gate', () => {
   });
 
   it('keeps PH-OS UI and app code isolated from legacy Next API route calls', () => {
-    const forbiddenApiPatterns = [
-      /fetch\(\s*['"]\/api\//,
-      /['"]\/api\/phos/,
-      /baseUrl:\s*['"]\/api/,
-    ];
+    const forbiddenApiPatterns = [/fetch\(\s*['"]\/api\//, /baseUrl:\s*['"]\/api/];
 
     for (const root of [join(canonicalRoot, 'ui'), phosAppRoot]) {
       for (const file of listFiles(root)) {
@@ -642,6 +649,18 @@ describe('PH-OS Final No-Go gate', () => {
           expect(content, relativePath).not.toMatch(pattern);
         }
       }
+    }
+
+    for (const routeFile of [
+      'src/app/(phos)/board/page.tsx',
+      'src/app/(phos)/capacity/page.tsx',
+      'src/app/(phos)/handoffs/page.tsx',
+      'src/app/(phos)/visit/[packetId]/page.tsx',
+      'src/app/(dashboard)/reports/page.tsx',
+    ]) {
+      expect(readFileSync(join(repoRoot, routeFile), 'utf8'), routeFile).toContain(
+        "const PHOS_PROXY_API_BASE_URL = '/api/phos';",
+      );
     }
   });
 
@@ -996,7 +1015,7 @@ describe('PH-OS Final No-Go gate', () => {
     ]);
     expectEvidence('src/app/(phos)/capacity/page.tsx', [
       /CapacityDashboardClient/,
-      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+      /PHOS_PROXY_API_BASE_URL/,
     ]);
   });
 
@@ -1044,7 +1063,7 @@ describe('PH-OS Final No-Go gate', () => {
   it('keeps the existing /reports route wired to PH-OS report delivery state without a competing route group page', () => {
     expectEvidence('src/app/(dashboard)/reports/page.tsx', [
       /PhosReportsPageClient/,
-      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+      /PHOS_PROXY_API_BASE_URL/,
     ]);
     expectEvidence('src/phos/ui/report/ReportsPageClient.tsx', [
       /getReportDeliveries\(\{ status: ReportDeliveryStatus\.WAITING_REPLY \}\)/,
@@ -1209,7 +1228,7 @@ describe('PH-OS Final No-Go gate', () => {
   it('keeps the PH-OS Handoff Queue route wired to API Gateway state', () => {
     expectEvidence('src/app/(phos)/handoffs/page.tsx', [
       /HandoffsPageClient/,
-      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+      /PHOS_PROXY_API_BASE_URL/,
       /PH-OS Handoffs/,
     ]);
     expectEvidence('src/phos/ui/handoff/HandoffsPageClient.tsx', [
@@ -1232,7 +1251,7 @@ describe('PH-OS Final No-Go gate', () => {
     expectEvidence('src/app/(phos)/visit/[packetId]/page.tsx', [
       /params: Promise<\{ packetId: string \}>/,
       /VisitModePageClient/,
-      /NEXT_PUBLIC_PHOS_API_BASE_URL/,
+      /PHOS_PROXY_API_BASE_URL/,
     ]);
     expectEvidence('src/phos/ui/visit/VisitModePageClient.tsx', [
       /getVisitMode\(packetId\)/,

@@ -4,6 +4,8 @@ import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
+export { formatDateKey } from '@/lib/date-key';
+
 export type GeneratedTaskSpec = {
   orgId: string;
   taskType: string;
@@ -51,13 +53,6 @@ export function parseDateFromConferenceText(body?: string) {
   if (Number.isNaN(parsed.getTime())) return null;
   parsed.setHours(0, 0, 0, 0);
   return parsed;
-}
-
-export function formatDateKey(value: Date) {
-  const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, '0');
-  const day = `${value.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 export function hasAnyKeyword(

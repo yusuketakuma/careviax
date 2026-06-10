@@ -1,3 +1,4 @@
+import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { Prisma, type LabAnalyteCode } from '@prisma/client';
@@ -718,6 +719,7 @@ async function checkTransitionalExpiry(
   for (const drug of drugs) {
     if (!drug.transitional_expiry_date) continue;
 
+    const expiryDateKey = formatDateKey(drug.transitional_expiry_date);
     const daysUntilExpiry = Math.floor(
       (drug.transitional_expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
     );
@@ -726,7 +728,7 @@ async function checkTransitionalExpiry(
       alerts.push({
         type: 'transitional_expiry',
         severity: 'critical',
-        message: `経過措置期限切れ: ${drug.drug_name}（${drug.transitional_expiry_date.toISOString().slice(0, 10)}に失効済み）`,
+        message: `経過措置期限切れ: ${drug.drug_name}（${expiryDateKey}に失効済み）`,
         details: {
           drug_code: drug.yj_code,
           expiry_date: drug.transitional_expiry_date.toISOString(),
@@ -736,7 +738,7 @@ async function checkTransitionalExpiry(
       alerts.push({
         type: 'transitional_expiry',
         severity: 'warning',
-        message: `経過措置期限接近: ${drug.drug_name}（残${daysUntilExpiry}日、${drug.transitional_expiry_date.toISOString().slice(0, 10)}）`,
+        message: `経過措置期限接近: ${drug.drug_name}（残${daysUntilExpiry}日、${expiryDateKey}）`,
         details: {
           drug_code: drug.yj_code,
           expiry_date: drug.transitional_expiry_date.toISOString(),

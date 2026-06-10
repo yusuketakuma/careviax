@@ -333,15 +333,18 @@ describe('/api/care-reports GET', () => {
     expect(careReportFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns 400 for an invalid date filter', async () => {
-    const response = await GET(
-      createAuthenticatedRequest('http://localhost/api/care-reports?sent_from=2026-03-99'),
-    );
+  it.each(['2026-03-99', '2026-02-29'])(
+    'returns 400 for an invalid date filter: %s',
+    async (sentFrom) => {
+      const response = await GET(
+        createAuthenticatedRequest(`http://localhost/api/care-reports?sent_from=${sentFrom}`),
+      );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    expect(careReportFindManyMock).not.toHaveBeenCalled();
-  });
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expect(careReportFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('/api/care-reports POST', () => {

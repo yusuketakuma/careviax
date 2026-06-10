@@ -712,10 +712,34 @@ describe('createPhosApiClient', () => {
     );
   });
 
-  it('rejects Next.js /api base URLs for PH-OS business operations', () => {
-    expect(() => createPhosApiClient({ baseUrl: '/api/phos' })).toThrow(
-      'PH-OS API baseUrl must be an absolute http(s) URL',
+  it('uses same-origin credentials without a bearer token for the local PH-OS proxy', async () => {
+    const searchResponse = {
+      items: [{ card: readyCard, next_action: nextAction }],
+      next_cursor: 'cursor_2',
+      server_time: '2026-06-09T00:00:00.000Z',
+    } satisfies CardSearchResponse;
+    const fetchImpl = vi.fn(async () => jsonResponse(searchResponse));
+    const client = createPhosApiClient({
+      baseUrl: '/api/phos',
+      fetchImpl,
+    });
+
+    await expect(client.getCards({ limit: 10 })).resolves.toEqual(searchResponse);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://localhost/api/phos/cards?limit=10',
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'same-origin',
+        redirect: 'error',
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
     );
+  });
+
+  it('rejects non-proxy Next.js /api base URLs for PH-OS business operations', () => {
     expect(() => createPhosApiClient({ baseUrl: 'https://app.example.com/api' })).toThrow(
       'PH-OS business API must not use Next.js /api routes',
     );

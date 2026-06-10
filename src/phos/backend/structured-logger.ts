@@ -9,8 +9,8 @@ export type PhosLogEntry = {
   message: string;
   result?: 'SUCCESS' | 'ERROR';
   status_code?: number;
-  tenant_id: string;
-  user_id: string;
+  tenant_id_hash: string;
+  user_id_hash: string;
   request_id: string;
   correlation_id: string;
   route_key: string;
@@ -73,8 +73,8 @@ export function buildLogEntry(input: {
     message: input.message,
     ...(input.result ? { result: input.result } : {}),
     ...(input.status_code != null ? { status_code: input.status_code } : {}),
-    tenant_id: input.ctx.tenant_id,
-    user_id: input.ctx.user_id,
+    tenant_id_hash: hashLogIdentifier(input.ctx.tenant_id),
+    user_id_hash: hashLogIdentifier(input.ctx.user_id),
     request_id: input.ctx.request_id,
     correlation_id: input.ctx.correlation_id,
     route_key: input.route_key,

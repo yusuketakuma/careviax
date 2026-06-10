@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
@@ -90,6 +90,20 @@ const rentalRecord = {
 };
 
 describe('/api/pca-pump-rentals', () => {
+  const originalTimeZone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
@@ -205,6 +219,12 @@ describe('/api/pca-pump-rentals', () => {
   });
 
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {
+    pcaPumpRentalCreateMock.mockResolvedValue({
+      ...rentalRecord,
+      rented_at: new Date('2026-06-09T15:30:00.000Z'),
+      due_at: new Date('2026-06-19T15:30:00.000Z'),
+    });
+
     const response = await POST(
       createRequest('http://localhost/api/pca-pump-rentals', {
         pump_id: 'pump_1',
@@ -273,6 +293,9 @@ describe('/api/pca-pump-rentals', () => {
           pump_id: 'pump_1',
           institution_id: 'institution_1',
           status: 'active',
+          rented_at: '2026-06-10',
+          due_at: '2026-06-20',
+          returned_at: null,
         }),
       }),
     });
@@ -303,7 +326,9 @@ describe('/api/pca-pump-rentals', () => {
     pcaPumpRentalCreateMock.mockResolvedValue({
       ...rentalRecord,
       status: 'returned',
-      returned_at: new Date('2026-06-18T00:00:00.000Z'),
+      rented_at: new Date('2026-06-09T15:30:00.000Z'),
+      due_at: null,
+      returned_at: new Date('2026-06-17T15:30:00.000Z'),
       return_inspection_status: 'pending',
       pump: { ...rentalRecord.pump, status: 'maintenance' },
     });
@@ -337,6 +362,15 @@ describe('/api/pca-pump-rentals', () => {
         pump: true,
         institution: true,
       },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          rented_at: '2026-06-10',
+          due_at: null,
+          returned_at: '2026-06-18',
+        }),
+      }),
     });
   });
 

@@ -4,6 +4,7 @@ import { forbiddenResponse, notFound, validationError } from '@/lib/api/response
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
@@ -120,10 +121,10 @@ export const GET = withAuthContext(
             patient.id,
             patient.name,
             intake.id,
-            intake.prescribed_date?.toISOString().slice(0, 10),
+            formatNullableDateKey(intake.prescribed_date),
             intake.prescriber_name,
             intake.prescriber_institution,
-            intake.prescription_expiry_date?.toISOString().slice(0, 10),
+            formatNullableDateKey(intake.prescription_expiry_date),
             intake.source_type,
             '',
             '',
@@ -145,10 +146,10 @@ export const GET = withAuthContext(
               patient.id,
               patient.name,
               intake.id,
-              intake.prescribed_date?.toISOString().slice(0, 10),
+              formatNullableDateKey(intake.prescribed_date),
               intake.prescriber_name,
               intake.prescriber_institution,
-              intake.prescription_expiry_date?.toISOString().slice(0, 10),
+              formatNullableDateKey(intake.prescription_expiry_date),
               intake.source_type,
               String(line.line_number),
               line.drug_name,
@@ -168,7 +169,7 @@ export const GET = withAuthContext(
     }
 
     const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
-    const filename = `prescriptions_${patient.name}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `prescriptions_${patient.name}_${formatDateKey(new Date())}.csv`;
     const truncated = intakes.length === EXPORT_LIMIT;
 
     await recordDataExportAudit(prisma, {

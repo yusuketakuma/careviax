@@ -6,11 +6,8 @@ const { pharmacySiteFindManyMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
-  ) => {
-    return (req: NextRequest) =>
-      handler(Object.assign(req, { orgId: 'org_1' }));
+  withAuth: (handler: (req: NextRequest & { orgId: string }) => Promise<Response>) => {
+    return (req: NextRequest) => handler(Object.assign(req, { orgId: 'org_1' }));
   },
 }));
 
@@ -104,6 +101,57 @@ describe('/api/pharmacy-sites', () => {
       ],
       summary: expect.objectContaining({
         total_sites: 1,
+      }),
+    });
+  });
+
+  it('matches holiday emergency coverage by local calendar date', async () => {
+    pharmacySiteFindManyMock.mockResolvedValue([
+      {
+        id: 'site_1',
+        name: '本店',
+        address: '東京都千代田区',
+        phone: '03-0000-0000',
+        lat: 35.0,
+        lng: 139.0,
+        is_health_support_pharmacy: true,
+        is_regional_support: false,
+        facility_standards: [],
+        pharmacist_shifts: [
+          {
+            date: new Date(2026, 3, 9, 13, 0, 0),
+            available: true,
+            user: {
+              can_accept_emergency: true,
+              visit_specialties: [],
+            },
+          },
+        ],
+        business_holidays: [
+          {
+            id: 'holiday_1',
+            date: new Date(2026, 3, 9, 0, 0, 0),
+            name: '臨時休業',
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(
+      new NextRequest('http://localhost/api/pharmacy-sites?view=resource_map'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'site_1',
+          emergency_capable_shift_count: 1,
+          holiday_gap_dates: [],
+        }),
+      ],
+      summary: expect.objectContaining({
+        holiday_gap_sites: 0,
       }),
     });
   });

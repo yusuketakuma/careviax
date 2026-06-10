@@ -105,6 +105,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'HandoffItem',
     'PushSubscription',
     'WebhookRegistration',
+    'WebhookDelivery',
     'User',
     'Membership',
     'FacilityStandardRegistration',

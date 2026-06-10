@@ -60,4 +60,56 @@ describe('enrichSchedulesWithHints', () => {
       },
     });
   });
+
+  it('groups visits on the same local calendar date when one starts at local midnight', () => {
+    const schedules: ScheduleFixture[] = [
+      {
+        id: 'schedule_midnight',
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date(2026, 2, 31, 0, 0, 0),
+        priority: 'normal',
+        assignment_mode: 'primary',
+        site: { id: 'site_1' },
+        facility_batch: null,
+        override_request: null,
+        applied_override: null,
+        preparation: { prepared_at: new Date(2026, 2, 30, 9, 0, 0) },
+        case_: {
+          patient: {
+            name: '患者A',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+      {
+        id: 'schedule_daytime',
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date(2026, 2, 31, 13, 0, 0),
+        priority: 'urgent',
+        assignment_mode: 'primary',
+        site: { id: 'site_1' },
+        facility_batch: null,
+        override_request: null,
+        applied_override: null,
+        preparation: { prepared_at: new Date(2026, 2, 30, 9, 0, 0) },
+        case_: {
+          patient: {
+            name: '患者B',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+    ];
+
+    const enriched = enrichSchedulesWithHints(schedules);
+
+    expect(enriched[0]?.facility_hint).toMatchObject({
+      label: 'facility_alpha',
+      patient_count: 2,
+    });
+    expect(enriched[0]?.workload_hint).toEqual({
+      daily_visit_count: 2,
+      urgent_visit_count: 1,
+    });
+  });
 });

@@ -72,6 +72,57 @@ type JobExecutionContext = {
   orgId?: string;
 };
 
+type DailyOperationResult = {
+  processedCount: number;
+  errors?: string[];
+};
+
+type DailyOperationTask = () => Promise<DailyOperationResult>;
+
+const DEFAULT_DAILY_OPERATION_CONCURRENCY = 4;
+const MAX_DAILY_OPERATION_CONCURRENCY = 8;
+
+function resolveDailyOperationConcurrency(value: string | undefined) {
+  const parsed = Number(value ?? DEFAULT_DAILY_OPERATION_CONCURRENCY);
+  if (!Number.isFinite(parsed)) return DEFAULT_DAILY_OPERATION_CONCURRENCY;
+  const normalized = Math.trunc(parsed);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
+    return DEFAULT_DAILY_OPERATION_CONCURRENCY;
+  }
+  return Math.min(normalized, MAX_DAILY_OPERATION_CONCURRENCY);
+}
+
+export async function runDailyOperationTasks(
+  tasks: readonly DailyOperationTask[],
+  concurrency = DEFAULT_DAILY_OPERATION_CONCURRENCY,
+): Promise<PromiseSettledResult<DailyOperationResult>[]> {
+  if (tasks.length === 0) return [];
+
+  const workerCount = Math.min(
+    tasks.length,
+    Math.max(1, Math.trunc(concurrency) || DEFAULT_DAILY_OPERATION_CONCURRENCY),
+  );
+  const settled = new Array<PromiseSettledResult<DailyOperationResult>>(tasks.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < tasks.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        const task = tasks[currentIndex]!;
+        try {
+          settled[currentIndex] = { status: 'fulfilled', value: await task() };
+        } catch (reason) {
+          settled[currentIndex] = { status: 'rejected', reason };
+        }
+      }
+    }),
+  );
+
+  return settled;
+}
+
 /**
  * 服用最終日接近チェック（3日以内）
  */
@@ -230,8 +281,8 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
               pump_asset_code: rental.pump.asset_code,
               institution_id: rental.institution_id,
               institution_name: rental.institution.name,
-              rented_at: rental.rented_at.toISOString().slice(0, 10),
-              due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
+              rented_at: formatDateKey(rental.rented_at),
+              due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
               overdue_days: overdueDays,
               rental_fee_yen: rental.rental_fee_yen,
               action_href: '/admin/pca-pumps',
@@ -307,9 +358,9 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
             pump_asset_code: rental.pump.asset_code,
             institution_id: rental.institution_id,
             institution_name: rental.institution.name,
-            rented_at: rental.rented_at.toISOString().slice(0, 10),
-            due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
-            returned_at: rental.returned_at?.toISOString().slice(0, 10) ?? null,
+            rented_at: formatDateKey(rental.rented_at),
+            due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
+            returned_at: rental.returned_at ? formatDateKey(rental.returned_at) : null,
             pending_days: pendingDays,
             action_href: '/admin/pca-pumps',
             action_label: '返却検品を確認',
@@ -496,7 +547,7 @@ export async function checkPrescriptionExpiry() {
             user_id: caseRecord.primary_pharmacist_id,
             type: 'urgent',
             title: '処方箋有効期限切れ間近',
-            message: `処方箋の有効期限が ${intake.prescription_expiry_date?.toISOString().slice(0, 10) ?? '不明'} です。早急に対応してください。`,
+            message: `処方箋の有効期限が ${intake.prescription_expiry_date ? formatDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
             link: `/patients/${caseRecord.patient_id}`,
             dedupe_key: `prescription-expiry:${intake.id}`,
           },
@@ -600,7 +651,7 @@ export async function checkVisitRecordRetention() {
         taskType: 'visit_record_retention',
         dedupeKey: buildVisitRecordRetentionTaskKey(record.id),
         title: `薬歴保存期限確認: ${patientName}`,
-        description: `訪問記録が ${retentionUntil.toISOString().slice(0, 10)} に5年保存期限を迎えます。PDF出力・保全状況を確認してください。`,
+        description: `訪問記録が ${formatDateKey(retentionUntil)} に5年保存期限を迎えます。PDF出力・保全状況を確認してください。`,
         priority,
         dueDate: retentionUntil,
         relatedEntityType: 'visit_record',
@@ -1469,14 +1520,13 @@ export async function checkEmergencyCoverageGaps() {
 
     const shiftCoverage = new Set(
       shifts.map(
-        (shift) =>
-          `${shift.org_id}:${shift.site_id ?? 'org'}:${shift.date.toISOString().slice(0, 10)}`,
+        (shift) => `${shift.org_id}:${shift.site_id ?? 'org'}:${formatDateKey(shift.date)}`,
       ),
     );
 
     let processedCount = 0;
     for (const holiday of holidays.filter((item) => item.is_closed)) {
-      const dateKey = holiday.date.toISOString().slice(0, 10);
+      const dateKey = formatDateKey(holiday.date);
       const coverageKey = `${holiday.org_id}:${holiday.site_id ?? 'org'}:${dateKey}`;
       if (shiftCoverage.has(coverageKey)) continue;
 
@@ -1740,7 +1790,7 @@ export async function syncVisitSupportFeatureTasks() {
       const locationKey = deriveFacilityLabel(residence ?? null);
       if (!locationKey) continue;
 
-      const dateKey = schedule.scheduled_date.toISOString().slice(0, 10);
+      const dateKey = formatDateKey(schedule.scheduled_date);
       const groupId = [
         dateKey,
         schedule.site_id ?? 'site:none',
@@ -1883,7 +1933,7 @@ export async function checkFacilityStandardExpiry() {
         taskType: 'facility_standard_expiry',
         dedupeKey: buildFacilityStandardExpiryTaskKey(reg.id),
         title: `施設基準更新: ${reg.standard_type}`,
-        description: `${reg.site?.name ?? '不明'} の ${reg.standard_type} が ${reg.expiry_date.toISOString().slice(0, 10)} に期限切れ`,
+        description: `${reg.site?.name ?? '不明'} の ${reg.standard_type} が ${formatDateKey(reg.expiry_date)} に期限切れ`,
         priority: threshold.priority,
         dueDate: reg.expiry_date,
         relatedEntityType: 'facility_standard_registration',
@@ -2023,7 +2073,7 @@ export async function checkConsentExpiry() {
             user_id: pharmacistId,
             type: priority === 'urgent' ? 'urgent' : 'business',
             title: '同意書の有効期限',
-            message: `${patientName} さんの ${consent.consent_type} 同意が ${consent.expiry_date.toISOString().slice(0, 10)} に期限切れ。再取得が必要です。`,
+            message: `${patientName} さんの ${consent.consent_type} 同意が ${formatDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
             link: `/patients/${consent.patient_id}`,
             dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
           },
@@ -2036,7 +2086,7 @@ export async function checkConsentExpiry() {
         taskType: 'consent_expiry',
         dedupeKey: buildConsentExpiryTaskKey(consent.id),
         title: `同意書更新: ${patientName}`,
-        description: `${consent.consent_type} の同意が ${consent.expiry_date.toISOString().slice(0, 10)} に期限切れ`,
+        description: `${consent.consent_type} の同意が ${formatDateKey(consent.expiry_date)} に期限切れ`,
         priority,
         assignedTo: pharmacistId,
         dueDate: consent.expiry_date,
@@ -2147,37 +2197,40 @@ export async function cleanupTerminalQrDraftPayloads() {
 
 export async function runDailyOperations() {
   return runJob('daily', async () => {
-    const settled = await Promise.allSettled([
-      checkMedicationDeadlines(),
-      checkRefillPrescriptions(),
-      checkPcaPumpRentalOverdues(),
-      checkPcaPumpReturnInspectionPending(),
-      checkIntakeToVisitLinkage(),
-      checkPrescriptionExpiry(),
-      checkVisitRecordRetention(),
-      checkPrescriptionOriginalRetention(),
-      generateVisitDemands(),
-      checkManagementPlanReviews(),
-      checkCallbackFollowups(),
-      checkResidenceGeocodeQuality(),
-      checkPreparationBacklog(),
-      checkInitialHomeVisitAssessmentBacklog(),
-      generateBillingEvidenceDaily(),
-      checkSelfReportFollowups(),
-      checkCommunityFollowups(),
-      checkConferenceMeetingReminders(),
-      checkReportDeliveryBacklog(),
-      checkCarryItemReadiness(),
-      checkEmergencyCoverageGaps(),
-      syncVisitSupportFeatureTasks(),
-      checkFacilityStandardExpiry(),
-      checkCredentialExpiry(),
-      checkConsentExpiry(),
-      trackAllOrgPatientStatuses(),
-      cleanupAbandonedQrDrafts(),
-      cleanupTerminalQrDraftPayloads(),
-      checkDrugMasterFreshness(),
-    ]);
+    const settled = await runDailyOperationTasks(
+      [
+        checkMedicationDeadlines,
+        checkRefillPrescriptions,
+        checkPcaPumpRentalOverdues,
+        checkPcaPumpReturnInspectionPending,
+        checkIntakeToVisitLinkage,
+        checkPrescriptionExpiry,
+        checkVisitRecordRetention,
+        checkPrescriptionOriginalRetention,
+        generateVisitDemands,
+        checkManagementPlanReviews,
+        checkCallbackFollowups,
+        checkResidenceGeocodeQuality,
+        checkPreparationBacklog,
+        checkInitialHomeVisitAssessmentBacklog,
+        generateBillingEvidenceDaily,
+        checkSelfReportFollowups,
+        checkCommunityFollowups,
+        checkConferenceMeetingReminders,
+        checkReportDeliveryBacklog,
+        checkCarryItemReadiness,
+        checkEmergencyCoverageGaps,
+        syncVisitSupportFeatureTasks,
+        checkFacilityStandardExpiry,
+        checkCredentialExpiry,
+        checkConsentExpiry,
+        trackAllOrgPatientStatuses,
+        cleanupAbandonedQrDrafts,
+        cleanupTerminalQrDraftPayloads,
+        checkDrugMasterFreshness,
+      ],
+      resolveDailyOperationConcurrency(process.env.DAILY_OPERATION_CONCURRENCY),
+    );
 
     let processedCount = 0;
     const errors: string[] = [];

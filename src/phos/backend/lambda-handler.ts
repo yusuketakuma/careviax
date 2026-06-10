@@ -4,6 +4,7 @@ import type { PhosLambdaResponse } from './error-response';
 import {
   createConsoleObservabilitySink,
   hashTenantId,
+  hashUserId,
   type PhosObservabilitySink,
 } from './observability';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
@@ -216,8 +217,8 @@ async function flushObservability(input: {
     console.error(
       JSON.stringify({
         type: 'PHOS_OBSERVABILITY_FLUSH_FAILED',
-        tenant_id: input.ctx?.tenant_id ?? 'UNKNOWN',
-        user_id: input.ctx?.user_id ?? 'UNKNOWN',
+        tenant_id_hash: input.ctx ? hashTenantId(input.ctx.tenant_id) : 'UNKNOWN',
+        user_id_hash: input.ctx ? hashUserId(input.ctx.user_id) : 'UNKNOWN',
         request_id: input.request_id,
         correlation_id: input.correlation_id,
         route_key: routeKey(input.event),
@@ -352,8 +353,8 @@ function logBoundaryError(input: {
     message: 'PH-OS lambda boundary failed before tenant context',
     result: 'ERROR',
     status_code: input.status_code,
-    tenant_id: 'UNKNOWN',
-    user_id: 'UNKNOWN',
+    tenant_id_hash: 'UNKNOWN',
+    user_id_hash: 'UNKNOWN',
     request_id: input.request_id,
     correlation_id: input.correlation_id,
     route_key: routeKey(input.event),

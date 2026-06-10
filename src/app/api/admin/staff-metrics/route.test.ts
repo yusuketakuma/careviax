@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -54,6 +54,20 @@ function createRequest(url: string) {
 }
 
 describe('/api/admin/staff-metrics GET', () => {
+  const originalTimeZone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     membershipFindManyMock.mockResolvedValue([
@@ -189,6 +203,48 @@ describe('/api/admin/staff-metrics GET', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         month: '2026-03',
+      },
+    });
+  });
+
+  it('counts shift days by the local pharmacy calendar day', async () => {
+    visitRecordFindManyMock.mockResolvedValue([]);
+    careReportFindManyMock.mockResolvedValue([]);
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      {
+        user_id: 'user_1',
+        date: new Date('2026-03-02T15:30:00.000Z'),
+        available_from: new Date('2026-03-03T00:00:00.000Z'),
+        available_to: new Date('2026-03-03T01:00:00.000Z'),
+      },
+      {
+        user_id: 'user_1',
+        date: new Date('2026-03-03T14:00:00.000Z'),
+        available_from: new Date('2026-03-03T04:00:00.000Z'),
+        available_to: new Date('2026-03-03T05:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        items: [
+          expect.objectContaining({
+            id: 'user_1',
+            shift_days: 1,
+            shift_hours: 2,
+          }),
+          expect.objectContaining({
+            id: 'user_2',
+            shift_days: 0,
+            shift_hours: 0,
+          }),
+        ],
       },
     });
   });

@@ -5,6 +5,7 @@ import { conflict, forbiddenResponse, success, validationError } from '@/lib/api
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
+import { formatDateKey } from '@/lib/date-key';
 import {
   createVisitRecordSchema,
   type CreateVisitRecordInput,
@@ -149,7 +150,7 @@ async function loadExistingVisitRecordConflict(
     id: existing.id,
     version: existing.version,
     patient_id: existing.patient_id,
-    visit_date: existing.visit_date.toISOString().slice(0, 10),
+    visit_date: formatDateKey(existing.visit_date),
     outcome_status: existing.outcome_status,
     soap_subjective: existing.soap_subjective,
     soap_objective: existing.soap_objective,
@@ -1183,7 +1184,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (nextVisitSuggestionDateInput) {
       const intervalDays = differenceInCalendarDays(nextVisitSuggestionDateInput, visitRecordedAt);
       suggestedSchedule = {
-        suggested_date: nextVisitSuggestionDateInput.toISOString().slice(0, 10),
+        suggested_date: formatDateKey(nextVisitSuggestionDateInput),
         auto_generated: !next_visit_suggestion_date,
         interval_days: intervalDays,
         message: '次回訪問日の作成を検討してください',

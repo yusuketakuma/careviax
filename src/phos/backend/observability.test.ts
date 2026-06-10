@@ -6,6 +6,7 @@ import {
   createConsoleObservabilitySink,
   createInMemoryObservabilitySink,
   hashTenantId,
+  hashUserId,
   P0_REQUIRED_METRIC_NAMES,
   PHOS_METRICS_NAMESPACE,
 } from './observability';
@@ -74,13 +75,15 @@ describe('PH-OS observability', () => {
     });
     expect(metric).toMatchObject({
       route_key: 'POST /cards/{card_id}/actions',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       error_code: 'TENANT_ID_IN_PAYLOAD_FORBIDDEN',
       TenantBoundaryRejectedCount: 1,
     });
+    expect(JSON.stringify(metric)).not.toContain('tenant_abc123');
+    expect(JSON.stringify(metric)).not.toContain('user_1');
   });
 
   it('keeps correlation fields on CloudWatch EMF log events without using them as dimensions', () => {
@@ -97,8 +100,8 @@ describe('PH-OS observability', () => {
 
     expect(metric).toMatchObject({
       route_key: 'GET /cards',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       RequestLatencyMs: 12,
@@ -115,8 +118,8 @@ describe('PH-OS observability', () => {
     });
 
     expect(metric).toMatchObject({
-      tenant_id: 'UNKNOWN',
-      user_id: 'UNKNOWN',
+      tenant_id_hash: 'UNKNOWN',
+      user_id_hash: 'UNKNOWN',
       request_id: 'UNKNOWN',
       correlation_id: 'UNKNOWN',
     });
@@ -145,11 +148,13 @@ describe('PH-OS observability', () => {
     expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
       type: 'PHOS_TRACE_ANNOTATION',
       route_key: 'POST /cards/{card_id}/actions',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
     });
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('tenant_abc123');
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('user_1');
   });
 
   it('keeps CloudWatch trace logs correlated even before tenant context exists', () => {
@@ -164,8 +169,8 @@ describe('PH-OS observability', () => {
     expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
       type: 'PHOS_TRACE_ANNOTATION',
       route_key: 'GET /cards',
-      tenant_id: 'UNKNOWN',
-      user_id: 'UNKNOWN',
+      tenant_id_hash: 'UNKNOWN',
+      user_id_hash: 'UNKNOWN',
       request_id: 'UNKNOWN',
       correlation_id: 'UNKNOWN',
       error_code: 'TENANT_CONTEXT_MISSING',
@@ -232,11 +237,14 @@ describe('PH-OS observability', () => {
     expect(logged).toMatchObject({
       type: 'PHOS_SECURITY_EVENT',
       tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       details: {
         patient_name: '[REDACTED]',
         missing_scopes: ['phos/cards.read'],
       },
     });
     expect(JSON.stringify(logged)).not.toContain('患者 山田太郎');
+    expect(JSON.stringify(logged)).not.toContain('tenant_abc123');
+    expect(JSON.stringify(logged)).not.toContain('user_1');
   });
 });

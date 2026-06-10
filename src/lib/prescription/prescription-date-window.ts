@@ -1,3 +1,5 @@
+import { formatUtcDateKey } from '@/lib/date-key';
+
 export const DEFAULT_PRESCRIPTION_TIME_ZONE = 'Asia/Tokyo';
 export const PRESCRIPTION_VALID_DAYS_AFTER_ISSUE = 4;
 
@@ -25,7 +27,7 @@ function formatDateKeyInTimeZone(date: Date, timeZone: string) {
 function addDaysToDateKey(dateKey: string, days: number) {
   const [year, month, day] = dateKey.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
+  return formatUtcDateKey(date);
 }
 
 export function validatePrescriptionDateWindow(

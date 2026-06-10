@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
+import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 
 const KPI_ROLES = ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'] as const;
@@ -208,7 +209,7 @@ export const GET = withAuth(
     for (const shift of shifts) {
       const current = stats.get(shift.user_id);
       if (!current) continue;
-      current.shiftDays.add(shift.date.toISOString().slice(0, 10));
+      current.shiftDays.add(formatDateKey(shift.date));
       const minutes = diffMinutes(shift.available_from ?? null, shift.available_to ?? null);
       if (minutes != null) {
         current.totalShiftMinutes += minutes;

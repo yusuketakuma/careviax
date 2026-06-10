@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import {
@@ -105,8 +106,7 @@ export const PATCH = withAuth(
       const routeCellByKey = dedupedUpdates.reduce((map, item) => {
         const schedule = scheduleById.get(item.schedule_id);
         if (!schedule) return map;
-        const targetDate =
-          item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+        const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
         const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
         const key = `${targetPharmacistId}:${targetDate}:${item.route_order}`;
         const current = map.get(key);
@@ -143,10 +143,10 @@ export const PATCH = withAuth(
       const confirmedDateMoves = dedupedUpdates.find((item) => {
         const schedule = scheduleById.get(item.schedule_id);
         if (!schedule?.confirmed_at) return false;
-        const nextDate = item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+        const nextDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
         const nextPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
         return (
-          nextDate !== schedule.scheduled_date.toISOString().slice(0, 10) ||
+          nextDate !== formatDateKey(schedule.scheduled_date) ||
           nextPharmacistId !== schedule.pharmacist_id
         );
       });
@@ -158,11 +158,10 @@ export const PATCH = withAuth(
         .map((item) => {
           const schedule = scheduleById.get(item.schedule_id);
           if (!schedule) return null;
-          const targetDate =
-            item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+          const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
           const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
           const isMove =
-            targetDate !== schedule.scheduled_date.toISOString().slice(0, 10) ||
+            targetDate !== formatDateKey(schedule.scheduled_date) ||
             targetPharmacistId !== schedule.pharmacist_id;
           return isMove ? { schedule, targetDate, targetPharmacistId } : null;
         })
@@ -194,10 +193,7 @@ export const PATCH = withAuth(
               },
             });
       const shiftByTarget = new Map(
-        targetShifts.map((shift) => [
-          `${shift.user_id}:${shift.date.toISOString().slice(0, 10)}`,
-          shift,
-        ]),
+        targetShifts.map((shift) => [`${shift.user_id}:${formatDateKey(shift.date)}`, shift]),
       );
       const shiftConflict = moveTargets.find((item) => {
         const shift = shiftByTarget.get(`${item.targetPharmacistId}:${item.targetDate}`) ?? null;
@@ -226,7 +222,7 @@ export const PATCH = withAuth(
         dedupedUpdates.map((item) => {
           const schedule = scheduleById.get(item.schedule_id);
           const targetDate =
-            item.scheduled_date ?? schedule?.scheduled_date.toISOString().slice(0, 10);
+            item.scheduled_date ?? (schedule ? formatDateKey(schedule.scheduled_date) : undefined);
           const targetPharmacistId = item.pharmacist_id ?? schedule?.pharmacist_id;
           const targetShift =
             targetDate && targetPharmacistId

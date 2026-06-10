@@ -5,23 +5,15 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { updatePcaPumpSchema } from '@/lib/validations/pca-pump-rental';
-
-function serializePump(item: {
-  maintenance_due_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-}) {
-  return {
-    ...item,
-    maintenance_due_at: item.maintenance_due_at?.toISOString().slice(0, 10) ?? null,
-    created_at: item.created_at.toISOString(),
-    updated_at: item.updated_at.toISOString(),
-  };
-}
+import { serializePcaPump } from '@/server/services/pca-pump-serialization';
 
 function inferMaintenanceEvent(payload: {
   status?: 'available' | 'rented' | 'maintenance' | 'retired';
-  maintenance_event_type?: 'manual_status_change' | 'return_inspection' | 'maintenance_completed' | 'repair_required';
+  maintenance_event_type?:
+    | 'manual_status_change'
+    | 'return_inspection'
+    | 'maintenance_completed'
+    | 'repair_required';
   maintenance_result?: 'available' | 'maintenance_continues' | 'retired';
 }) {
   if (!payload.status || payload.status === 'rented') return null;
@@ -37,7 +29,10 @@ function inferMaintenanceEvent(payload: {
     return { event_type: 'maintenance_completed' as const, result: 'available' as const };
   }
   if (payload.status === 'maintenance') {
-    return { event_type: 'manual_status_change' as const, result: 'maintenance_continues' as const };
+    return {
+      event_type: 'manual_status_change' as const,
+      result: 'maintenance_continues' as const,
+    };
   }
   return { event_type: 'manual_status_change' as const, result: 'retired' as const };
 }
@@ -132,7 +127,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                   : null,
               }
             : {}),
-          ...(pumpUpdatePayload.notes !== undefined ? { notes: pumpUpdatePayload.notes || null } : {}),
+          ...(pumpUpdatePayload.notes !== undefined
+            ? { notes: pumpUpdatePayload.notes || null }
+            : {}),
         },
       });
       if (shouldCreateMaintenanceEvent) {
@@ -186,7 +183,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('返却検品が未完了のPCAポンプは利用可能にできません');
   }
 
-  return success({ data: serializePump(result.pump) });
+  return success({ data: serializePcaPump(result.pump) });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

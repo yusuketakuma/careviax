@@ -290,6 +290,95 @@ describe('/api/facility-visit-batches POST', () => {
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
   });
 
+  it('groups schedules by local calendar date before creating a facility batch', async () => {
+    const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_local_day' });
+    const scheduleUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_midnight',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date(2026, 2, 28, 0, 0, 0),
+              facility_batch_id: null,
+              case_id: 'case_1',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_1',
+                  name: '山田 太郎',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '201',
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              id: 'schedule_daytime',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date(2026, 2, 28, 13, 0, 0),
+              facility_batch_id: null,
+              case_id: 'case_2',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_2',
+                  name: '山田 花子',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '105',
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+          count: visitScheduleCountMock,
+          update: scheduleUpdateMock,
+        },
+        facilityVisitBatch: {
+          create: batchCreateMock,
+          update: vi.fn(),
+        },
+        visitPreparation: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_midnight', 'schedule_daytime'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      batch_id: 'batch_local_day',
+      facility_label: 'facility_a',
+      patient_count: 2,
+    });
+    expect(batchCreateMock).toHaveBeenCalledTimes(1);
+    expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'facility_visit_batches_upsert' },
+    });
+  });
+
   it('rejects schedules that span multiple facility units', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({

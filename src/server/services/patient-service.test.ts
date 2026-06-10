@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
 vi.mock('@/server/services/patient-risk', () => ({
@@ -17,7 +17,7 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: vi.fn(),
 }));
 
-import { listPatients } from './patient-service';
+import { deriveBirthDate, listPatients } from './patient-service';
 
 function makeDb() {
   return {
@@ -69,5 +69,32 @@ describe('listPatients', () => {
         take: 251,
       }),
     );
+  });
+});
+
+describe('deriveBirthDate', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T12:00:00.000Z'));
+  });
+
+  afterAll(() => {
+    vi.useRealTimers();
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
+  it('keeps an explicitly supplied birth date unchanged', () => {
+    expect(deriveBirthDate('1950-03-15', 76)).toBe('1950-03-15');
+  });
+
+  it('derives the local pharmacy calendar birth date from reported age', () => {
+    expect(deriveBirthDate(undefined, 76)).toBe('1950-01-01');
   });
 });

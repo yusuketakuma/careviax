@@ -5,6 +5,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { Prisma, ReportStatus, ReportType } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
@@ -73,14 +74,7 @@ const careReportSelect = {
 
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
-const optionalDateParamSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-  .refine((value) => {
-    const parsed = new Date(`${value}T00:00:00.000Z`);
-    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  }, '日付が不正です')
-  .optional();
+const optionalDateParamSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
 const careReportQuerySchema = z.object({
   patient_id: z.string().trim().min(1).optional(),
   visit_record_id: z.string().trim().min(1).optional(),

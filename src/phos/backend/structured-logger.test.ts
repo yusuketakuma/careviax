@@ -45,8 +45,8 @@ describe('PH-OS structured logger', () => {
     ).toEqual({
       level: 'INFO',
       message: 'Action executed',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashLogIdentifier('tenant_abc123'),
+      user_id_hash: hashLogIdentifier('user_001'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       route_key: 'POST /cards/{card_id}/actions',
@@ -81,6 +81,8 @@ describe('PH-OS structured logger', () => {
     logPhosEvent(entry);
 
     expect(spy).toHaveBeenCalledWith(JSON.stringify(entry));
+    expect(String(spy.mock.calls[0]?.[0])).not.toContain('tenant_abc123');
+    expect(String(spy.mock.calls[0]?.[0])).not.toContain('user_001');
     spy.mockRestore();
   });
 });

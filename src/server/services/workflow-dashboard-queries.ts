@@ -18,6 +18,7 @@ import {
   buildDashboardTaskAssignmentWhere,
   type DashboardAssignmentScope,
 } from './dashboard-assignment-scope';
+import { formatDateKey } from '@/lib/date-key';
 
 export type WorkflowCoreData = {
   cycleCounts: Array<{ overall_status: string; _count: { id: number } }>;
@@ -928,7 +929,7 @@ export async function fetchWorkflowCoreData(
     upcomingSchedules.map((schedule) => ({
       key: schedule.id,
       caseId: schedule.case_id,
-      proposedDate: schedule.scheduled_date.toISOString().slice(0, 10),
+      proposedDate: formatDateKey(schedule.scheduled_date),
       pharmacistId: schedule.pharmacist_id,
       siteId: schedule.site?.id ?? null,
       visitType: schedule.visit_type,

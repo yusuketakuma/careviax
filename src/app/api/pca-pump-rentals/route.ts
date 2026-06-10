@@ -4,6 +4,8 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 import { createDefaultPcaRentalAccessories } from '@/server/services/pca-rental-accessories';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
+import { serializePcaPumpRental, toDateKey } from '@/server/services/pca-pump-rental-serialization';
 
 const rentalStatuses = ['scheduled', 'active', 'overdue', 'returned', 'cancelled'] as const;
 const openRentalStatuses = ['scheduled', 'active', 'overdue'] as const;
@@ -30,31 +32,6 @@ function parseReturnInspectionStatusParam(value: string | undefined) {
     return { ok: true as const, status: value as ReturnInspectionStatus };
   }
   return { ok: false as const };
-}
-
-function isUniqueConstraintFailure(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
-}
-
-function serializeRental<
-  T extends {
-    rented_at: Date;
-    due_at: Date | null;
-    returned_at: Date | null;
-    inspected_at?: Date | null;
-    created_at: Date;
-    updated_at: Date;
-  },
->(item: T) {
-  return {
-    ...item,
-    rented_at: item.rented_at.toISOString().slice(0, 10),
-    due_at: item.due_at?.toISOString().slice(0, 10) ?? null,
-    returned_at: item.returned_at?.toISOString().slice(0, 10) ?? null,
-    inspected_at: item.inspected_at?.toISOString() ?? null,
-    created_at: item.created_at.toISOString(),
-    updated_at: item.updated_at.toISOString(),
-  };
 }
 
 export const GET = withAuth(
@@ -113,7 +90,7 @@ export const GET = withAuth(
       { requestContext: req },
     );
 
-    return success({ data: rentals.map(serializeRental) });
+    return success({ data: rentals.map(serializePcaPumpRental) });
   },
   {
     permission: 'canReport',
@@ -213,9 +190,9 @@ export const POST = withAuth(
                 pump_id: rental.pump_id,
                 institution_id: rental.institution_id,
                 status: rental.status,
-                rented_at: rental.rented_at.toISOString().slice(0, 10),
-                due_at: rental.due_at?.toISOString().slice(0, 10) ?? null,
-                returned_at: rental.returned_at?.toISOString().slice(0, 10) ?? null,
+                rented_at: toDateKey(rental.rented_at),
+                due_at: toDateKey(rental.due_at),
+                returned_at: toDateKey(rental.returned_at),
                 return_inspection_status: rental.return_inspection_status,
                 rental_fee_yen: rental.rental_fee_yen,
               },
@@ -229,7 +206,7 @@ export const POST = withAuth(
         { requestContext: req },
       );
     } catch (error) {
-      if (isUniqueConstraintFailure(error)) {
+      if (isPrismaUniqueConstraintError(error)) {
         return validationError('このPCAポンプには未完了の貸出があるため登録できません');
       }
       throw error;
@@ -238,7 +215,7 @@ export const POST = withAuth(
       return validationError('利用可能なPCAポンプだけ貸出登録できます');
     }
 
-    return success({ data: serializeRental(created.rental) }, 201);
+    return success({ data: serializePcaPumpRental(created.rental) }, 201);
   },
   {
     permission: 'canAdmin',

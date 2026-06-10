@@ -8,6 +8,8 @@
 import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { readJsonObject } from '@/lib/db/json';
+import { readWebhookSigningSecret } from './webhook-secret-encryption';
 
 export const WEBHOOK_EVENT_TYPES = [
   'prescription.created',
@@ -29,7 +31,12 @@ export type WebhookRegistration = {
   id: string;
   orgId: string;
   url: string;
-  secret: string;
+  secret: string | null;
+  secretCiphertext?: string | null;
+  secretIv?: string | null;
+  secretTag?: string | null;
+  secretKeyId?: string | null;
+  secretAlgorithm?: string | null;
   events: WebhookEventType[];
   isActive: boolean;
   createdAt: Date;
@@ -51,6 +58,61 @@ export type WebhookDeliveryResult = {
   success: boolean;
   error?: string;
 };
+
+export type WebhookDeliveryRetrySummary = {
+  processedCount: number;
+  scannedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  blockedCount: number;
+  errors?: string[];
+};
+
+type WebhookDeliveryRetryRecord = {
+  id: string;
+  org_id: string;
+  webhook_registration_id: string;
+  delivery_id: string;
+  event: string;
+  payload: unknown;
+  url: string;
+  attempt_count: number;
+  registration: {
+    id: string;
+    org_id: string;
+    url: string;
+    secret: string | null;
+    secret_ciphertext: string | null;
+    secret_iv: string | null;
+    secret_tag: string | null;
+    secret_key_id: string | null;
+    secret_algorithm: string | null;
+    events: string[];
+    is_active: boolean;
+    created_at: Date;
+  } | null;
+};
+
+type WebhookDeliveryRetryAttempt = WebhookDeliveryResult & {
+  deliveryStatus: 'succeeded' | 'failed' | 'blocked';
+};
+
+type WebhookDeliveryStore = {
+  findMany?(args: unknown): Promise<WebhookDeliveryRetryRecord[]>;
+  upsert(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
+};
+
+type WebhookDeliveryPersistenceClient = {
+  webhookDelivery?: WebhookDeliveryStore;
+};
+
+const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
+const DEFAULT_WEBHOOK_RETRY_LIMIT = 50;
+const MAX_WEBHOOK_RETRY_LIMIT = 100;
+const DEFAULT_WEBHOOK_RETRY_CONCURRENCY = 4;
+const MAX_WEBHOOK_RETRY_CONCURRENCY = 8;
+const WEBHOOK_MAX_DELIVERY_ATTEMPTS = 8;
 
 function normalizeHostname(hostname: string) {
   return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
@@ -217,7 +279,12 @@ function toWebhookRegistration(record: {
   id: string;
   org_id: string;
   url: string;
-  secret: string;
+  secret: string | null;
+  secret_ciphertext?: string | null;
+  secret_iv?: string | null;
+  secret_tag?: string | null;
+  secret_key_id?: string | null;
+  secret_algorithm?: string | null;
   events: string[];
   is_active: boolean;
   created_at: Date;
@@ -227,6 +294,11 @@ function toWebhookRegistration(record: {
     orgId: record.org_id,
     url: record.url,
     secret: record.secret,
+    secretCiphertext: record.secret_ciphertext ?? null,
+    secretIv: record.secret_iv ?? null,
+    secretTag: record.secret_tag ?? null,
+    secretKeyId: record.secret_key_id ?? null,
+    secretAlgorithm: record.secret_algorithm ?? null,
     events: record.events.filter(isWebhookEventType),
     isActive: record.is_active,
     createdAt: record.created_at,
@@ -242,6 +314,11 @@ async function loadWebhookRegistrationsForOrg(orgId: string) {
       org_id: true,
       url: true,
       secret: true,
+      secret_ciphertext: true,
+      secret_iv: true,
+      secret_tag: true,
+      secret_key_id: true,
+      secret_algorithm: true,
       events: true,
       is_active: true,
       created_at: true,
@@ -249,6 +326,278 @@ async function loadWebhookRegistrationsForOrg(orgId: string) {
   });
 
   return records.map(toWebhookRegistration);
+}
+
+async function loadWebhookDeliveryPersistenceClient() {
+  const { prisma } = await import('@/lib/db/client');
+  return prisma as unknown as WebhookDeliveryPersistenceClient;
+}
+
+function deliveryWhere(registration: WebhookRegistration, payload: WebhookPayload) {
+  return {
+    delivery_id_webhook_registration_id: {
+      delivery_id: payload.id,
+      webhook_registration_id: registration.id,
+    },
+  };
+}
+
+function truncateWebhookDeliveryError(error: string | undefined) {
+  if (!error) return undefined;
+  return error.length > 500 ? `${error.slice(0, 497)}...` : error;
+}
+
+function normalizeWebhookRetryLimit(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_WEBHOOK_RETRY_LIMIT;
+  const normalized = Math.trunc(value);
+  if (normalized <= 0) return DEFAULT_WEBHOOK_RETRY_LIMIT;
+  return Math.min(normalized, MAX_WEBHOOK_RETRY_LIMIT);
+}
+
+function normalizeWebhookRetryConcurrency(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_WEBHOOK_RETRY_CONCURRENCY;
+  const normalized = Math.trunc(value);
+  if (normalized <= 0) return DEFAULT_WEBHOOK_RETRY_CONCURRENCY;
+  return Math.min(normalized, MAX_WEBHOOK_RETRY_CONCURRENCY);
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(items.length, concurrency) }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index]!);
+      }
+    }),
+  );
+
+  return results;
+}
+
+function readStoredWebhookPayload(record: WebhookDeliveryRetryRecord): WebhookPayload | null {
+  const payload = readJsonObject(record.payload);
+  if (!payload) return null;
+
+  const id = typeof payload.id === 'string' ? payload.id : null;
+  const event = typeof payload.event === 'string' ? payload.event : null;
+  const orgId = typeof payload.orgId === 'string' ? payload.orgId : null;
+  const occurredAt = typeof payload.occurredAt === 'string' ? payload.occurredAt : null;
+  const data = readJsonObject(payload.data);
+
+  if (
+    id !== record.delivery_id ||
+    event !== record.event ||
+    orgId !== record.org_id ||
+    !occurredAt ||
+    !data ||
+    !isWebhookEventType(event)
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    event,
+    orgId,
+    occurredAt,
+    data,
+  };
+}
+
+async function blockStoredWebhookDelivery(record: WebhookDeliveryRetryRecord, error: string) {
+  const db = await loadWebhookDeliveryPersistenceClient();
+  if (!db.webhookDelivery) return;
+
+  await db.webhookDelivery.update({
+    where: { id: record.id },
+    data: {
+      status: 'blocked',
+      status_code: null,
+      error: truncateWebhookDeliveryError(error) ?? null,
+      attempt_count: { increment: 1 },
+      last_attempt_at: new Date(),
+      next_attempt_at: null,
+    },
+  });
+}
+
+async function listDueWebhookDeliveries(args: {
+  orgId?: string;
+  limit: number;
+  now: Date;
+}): Promise<WebhookDeliveryRetryRecord[]> {
+  const db = await loadWebhookDeliveryPersistenceClient();
+  if (!db.webhookDelivery?.findMany) return [];
+
+  return db.webhookDelivery.findMany({
+    where: {
+      status: 'failed',
+      attempt_count: { lt: WEBHOOK_MAX_DELIVERY_ATTEMPTS },
+      next_attempt_at: { lte: args.now },
+      ...(args.orgId ? { org_id: args.orgId } : {}),
+    },
+    orderBy: [{ next_attempt_at: 'asc' }, { created_at: 'asc' }],
+    take: args.limit,
+    select: {
+      id: true,
+      org_id: true,
+      webhook_registration_id: true,
+      delivery_id: true,
+      event: true,
+      payload: true,
+      url: true,
+      attempt_count: true,
+      registration: {
+        select: {
+          id: true,
+          org_id: true,
+          url: true,
+          secret: true,
+          secret_ciphertext: true,
+          secret_iv: true,
+          secret_tag: true,
+          secret_key_id: true,
+          secret_algorithm: true,
+          events: true,
+          is_active: true,
+          created_at: true,
+        },
+      },
+    },
+  });
+}
+
+async function retryStoredWebhookDelivery(
+  record: WebhookDeliveryRetryRecord,
+): Promise<WebhookDeliveryRetryAttempt> {
+  const payload = readStoredWebhookPayload(record);
+  const registrationRecord = record.registration;
+  const blockedBase = {
+    webhookId: record.webhook_registration_id,
+    event: isWebhookEventType(record.event) ? record.event : 'patient.created',
+    url: record.url,
+    statusCode: null,
+    success: false,
+  } satisfies WebhookDeliveryResult;
+
+  if (!payload) {
+    const error = 'Malformed persisted webhook payload';
+    await blockStoredWebhookDelivery(record, error);
+    return { ...blockedBase, error, deliveryStatus: 'blocked' };
+  }
+
+  if (!registrationRecord || registrationRecord.org_id !== record.org_id) {
+    const error = 'Webhook registration is unavailable';
+    await blockStoredWebhookDelivery(record, error);
+    return { ...blockedBase, event: payload.event, error, deliveryStatus: 'blocked' };
+  }
+
+  const registration = toWebhookRegistration(registrationRecord);
+  if (!registration.isActive) {
+    const error = 'Webhook registration is inactive';
+    await blockStoredWebhookDelivery(record, error);
+    return {
+      ...blockedBase,
+      event: payload.event,
+      url: registration.url,
+      error,
+      deliveryStatus: 'blocked',
+    };
+  }
+
+  if (!registration.events.includes(payload.event)) {
+    const error = 'Webhook registration no longer accepts this event';
+    await blockStoredWebhookDelivery(record, error);
+    return {
+      ...blockedBase,
+      event: payload.event,
+      url: registration.url,
+      error,
+      deliveryStatus: 'blocked',
+    };
+  }
+
+  const result = await dispatchToEndpoint(registration, payload);
+  return {
+    ...result,
+    deliveryStatus: result.success
+      ? 'succeeded'
+      : result.error === 'Blocked unsafe webhook destination'
+        ? 'blocked'
+        : 'failed',
+  };
+}
+
+async function recordWebhookDeliveryPending(
+  registration: WebhookRegistration,
+  payload: WebhookPayload,
+) {
+  try {
+    const db = await loadWebhookDeliveryPersistenceClient();
+    if (!db.webhookDelivery) return;
+    const now = new Date();
+    await db.webhookDelivery.upsert({
+      where: deliveryWhere(registration, payload),
+      create: {
+        org_id: payload.orgId,
+        webhook_registration_id: registration.id,
+        delivery_id: payload.id,
+        event: payload.event,
+        payload,
+        url: registration.url,
+        status: 'pending',
+        next_attempt_at: now,
+      },
+      update: {
+        event: payload.event,
+        payload,
+        url: registration.url,
+        status: 'pending',
+        status_code: null,
+        error: null,
+        next_attempt_at: now,
+      },
+    });
+  } catch (error) {
+    console.error('[webhook] Failed to persist pending delivery:', error);
+  }
+}
+
+async function recordWebhookDeliveryResult(
+  registration: WebhookRegistration,
+  payload: WebhookPayload,
+  result: WebhookDeliveryResult,
+  status: 'succeeded' | 'failed' | 'blocked',
+) {
+  try {
+    const db = await loadWebhookDeliveryPersistenceClient();
+    if (!db.webhookDelivery) return;
+    const retryAt =
+      status === 'succeeded' || status === 'blocked'
+        ? null
+        : new Date(Date.now() + WEBHOOK_RETRY_DELAY_MS);
+    await db.webhookDelivery.update({
+      where: deliveryWhere(registration, payload),
+      data: {
+        status,
+        status_code: result.statusCode,
+        error: truncateWebhookDeliveryError(result.error) ?? null,
+        attempt_count: { increment: 1 },
+        last_attempt_at: new Date(),
+        next_attempt_at: retryAt,
+      },
+    });
+  } catch (error) {
+    console.error('[webhook] Failed to persist delivery result:', error);
+  }
 }
 
 /**
@@ -276,12 +625,25 @@ async function dispatchToEndpoint(
   };
 
   try {
+    await recordWebhookDeliveryPending(registration, payload);
+
     if (!(await isAllowedWebhookUrl(registration.url))) {
-      return {
+      const blocked = {
         ...base,
         error: 'Blocked unsafe webhook destination',
       };
+      await recordWebhookDeliveryResult(registration, payload, blocked, 'blocked');
+      return blocked;
     }
+
+    const signingSecret = await readWebhookSigningSecret({
+      secret: registration.secret,
+      secret_ciphertext: registration.secretCiphertext,
+      secret_iv: registration.secretIv,
+      secret_tag: registration.secretTag,
+      secret_key_id: registration.secretKeyId,
+      secret_algorithm: registration.secretAlgorithm,
+    });
 
     const response = await fetch(registration.url, {
       method: 'POST',
@@ -289,19 +651,70 @@ async function dispatchToEndpoint(
         'Content-Type': 'application/json',
         'X-PH-OS-Event': payload.event,
         'X-PH-OS-Delivery': payload.id,
-        'X-PH-OS-Signature': buildSignatureHeader(registration.secret, body),
+        'X-PH-OS-Signature': buildSignatureHeader(signingSecret, body),
       },
       body,
       signal: AbortSignal.timeout(10_000),
     });
 
-    return { ...base, statusCode: response.status, success: response.ok };
+    const result = { ...base, statusCode: response.status, success: response.ok };
+    await recordWebhookDeliveryResult(
+      registration,
+      payload,
+      result,
+      result.success ? 'succeeded' : 'failed',
+    );
+    return result;
   } catch (err) {
-    return {
+    const result = {
       ...base,
       error: err instanceof Error ? err.message : String(err),
     };
+    await recordWebhookDeliveryResult(registration, payload, result, 'failed');
+    return result;
   }
+}
+
+export async function retryDueWebhookDeliveries(
+  options: {
+    orgId?: string;
+    limit?: number;
+    concurrency?: number;
+    now?: Date;
+  } = {},
+): Promise<WebhookDeliveryRetrySummary> {
+  const now = options.now ?? new Date();
+  const deliveries = await listDueWebhookDeliveries({
+    orgId: options.orgId,
+    limit: normalizeWebhookRetryLimit(options.limit),
+    now,
+  });
+
+  if (deliveries.length === 0) {
+    return {
+      processedCount: 0,
+      scannedCount: 0,
+      succeededCount: 0,
+      failedCount: 0,
+      blockedCount: 0,
+    };
+  }
+
+  const attempts = await mapWithConcurrency(
+    deliveries,
+    normalizeWebhookRetryConcurrency(options.concurrency),
+    retryStoredWebhookDelivery,
+  );
+  const errors = attempts.flatMap((attempt) => (attempt.error ? [attempt.error] : []));
+
+  return {
+    processedCount: attempts.length,
+    scannedCount: deliveries.length,
+    succeededCount: attempts.filter((attempt) => attempt.deliveryStatus === 'succeeded').length,
+    failedCount: attempts.filter((attempt) => attempt.deliveryStatus === 'failed').length,
+    blockedCount: attempts.filter((attempt) => attempt.deliveryStatus === 'blocked').length,
+    ...(errors.length > 0 ? { errors } : {}),
+  };
 }
 
 /**

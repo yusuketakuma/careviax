@@ -6,6 +6,7 @@ import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
+import { formatDateKey } from '@/lib/date-key';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import {
   PrescriberInstitutionReferenceValidationError,
@@ -143,7 +144,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const effectiveSplitNextDate =
     split_next_dispense_date !== undefined
       ? (split_next_dispense_date ?? undefined)
-      : (existing.split_next_dispense_date?.toISOString().slice(0, 10) ?? undefined);
+      : existing.split_next_dispense_date
+        ? formatDateKey(existing.split_next_dispense_date)
+        : undefined;
   const effectivePrescriptionCategory =
     rest.prescription_category ?? existing.prescription_category ?? 'regular';
   const effectiveEmergencyCategory =

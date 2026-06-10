@@ -4,6 +4,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -24,7 +25,7 @@ class ManagementPlanMutationConflictError extends Error {}
 function dateOnlyString(value: Date | string | null | undefined) {
   if (!value) return null;
   if (typeof value === 'string') return value.slice(0, 10);
-  return value.toISOString().slice(0, 10);
+  return formatDateKey(value);
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

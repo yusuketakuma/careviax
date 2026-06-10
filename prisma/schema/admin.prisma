@@ -318,16 +318,48 @@ model PushSubscription {
 }
 
 model WebhookRegistration {
-  id         String   @id @default(cuid())
-  org_id     String
-  url        String
-  secret     String
-  events     String[]
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id                String   @id @default(cuid())
+  org_id            String
+  url               String
+  secret            String?
+  secret_ciphertext String?
+  secret_iv         String?
+  secret_tag        String?
+  secret_key_id     String?
+  secret_algorithm  String   @default("aes-256-gcm")
+  events            String[]
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
-  organization Organization @relation(fields: [org_id], references: [id])
+  organization Organization      @relation(fields: [org_id], references: [id])
+  deliveries   WebhookDelivery[]
 
   @@index([org_id])
+}
+
+model WebhookDelivery {
+  id                      String    @id @default(cuid())
+  org_id                  String
+  webhook_registration_id String
+  delivery_id             String
+  event                   String
+  payload                 Json
+  url                     String
+  status                  String    @default("pending")
+  status_code             Int?
+  error                   String?
+  attempt_count           Int       @default(0)
+  next_attempt_at         DateTime?
+  last_attempt_at         DateTime?
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+
+  organization Organization        @relation(fields: [org_id], references: [id])
+  registration WebhookRegistration @relation(fields: [webhook_registration_id], references: [id])
+
+  @@unique([delivery_id, webhook_registration_id])
+  @@index([org_id, created_at])
+  @@index([status, next_attempt_at])
+  @@index([webhook_registration_id])
 }

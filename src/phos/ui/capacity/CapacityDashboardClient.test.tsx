@@ -13,7 +13,6 @@ import { CapacityDashboardClient } from './CapacityDashboardClient';
 
 const sessionMock = vi.hoisted(() => ({
   value: {
-    phosAccessToken: 'session-access-token',
     phosRole: 'MANAGER' as UserRole | undefined,
     cognitoGroups: [] as string[],
   },
@@ -60,7 +59,6 @@ function capacity(overrides: Partial<CapacityResponse> = {}): CapacityResponse {
 describe('CapacityDashboardClient', () => {
   beforeEach(() => {
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.MANAGER,
       cognitoGroups: [],
     };
@@ -85,7 +83,6 @@ describe('CapacityDashboardClient', () => {
 
   it('does not fetch capacity for non-manager sessions', async () => {
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.PHARMACY_CLERK,
       cognitoGroups: [],
     };

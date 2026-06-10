@@ -192,6 +192,27 @@
       "state": "ENABLED"
     },
     {
+      "name": "ph-os-webhook-delivery-retry",
+      "description": "Retry failed outbound webhook deliveries from the durable delivery outbox",
+      "scheduleExpression": "cron(0/5 * * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "Every 5 minutes UTC to retry due failed webhook deliveries without relying on request-time dispatch",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/webhook-delivery-retry",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 1,
+        "maximumEventAgeInSeconds": 1800
+      },
+      "state": "ENABLED"
+    },
+    {
       "name": "ph-os-bulk-export-artifact-cleanup",
       "description": "Delete expired medication-history ZIP export artifacts and metadata",
       "scheduleExpression": "cron(30 3 * * ? *)",

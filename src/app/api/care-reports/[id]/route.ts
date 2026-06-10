@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { formatNullableDateKey } from '@/lib/date-key';
 import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
@@ -23,7 +24,7 @@ import {
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
 
 function toDateOnlyString(value: Date | null | undefined) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableDateKey(value);
 }
 
 const updateCareReportSchema = z.object({

@@ -122,6 +122,10 @@ describe('/api/jobs GET', () => {
           job_type: 'daily-prescription-original-retention',
           endpoint: '/api/jobs/daily-prescription-original-retention',
         }),
+        expect.objectContaining({
+          job_type: 'webhook-delivery-retry',
+          endpoint: '/api/jobs/webhook-delivery-retry',
+        }),
       ]),
     );
 

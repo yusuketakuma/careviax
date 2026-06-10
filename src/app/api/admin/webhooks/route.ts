@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
 import { isAllowedWebhookUrl, WEBHOOK_EVENT_TYPES } from '@/server/services/outbound-webhook';
+import { encryptWebhookSecret } from '@/server/services/webhook-secret-encryption';
 import { randomBytes } from 'node:crypto';
 
 const createWebhookSchema = z.object({
@@ -63,13 +64,23 @@ export const POST = withAuth(
     }
 
     const secret = generateWebhookSecret();
+    let encryptedSecret;
+    try {
+      encryptedSecret = await encryptWebhookSecret(secret);
+    } catch {
+      return NextResponse.json(
+        { error: 'Webhook secret encryption key is not configured' },
+        { status: 503 },
+      );
+    }
 
     const registration = await withOrgContext(req.orgId, async (tx) => {
-      return tx.webhookRegistration.create({
+      const created = await tx.webhookRegistration.create({
         data: {
           org_id: req.orgId,
           url,
-          secret,
+          secret: null,
+          ...encryptedSecret,
           events,
         },
         select: {
@@ -78,10 +89,13 @@ export const POST = withAuth(
           events: true,
           is_active: true,
           created_at: true,
-          // Return secret once at creation so caller can store it
-          secret: true,
         },
       });
+      return {
+        ...created,
+        // Return secret once at creation so caller can store it.
+        secret,
+      };
     });
 
     return NextResponse.json({ data: registration }, { status: 201 });

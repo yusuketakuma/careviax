@@ -6,6 +6,7 @@ import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-acce
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { formatNullableDateKey } from '@/lib/date-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
@@ -266,7 +267,7 @@ function summarizePrescriptionChanges(
 }
 
 function toDateString(value: Date | null | undefined) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableDateKey(value);
 }
 
 function countPreparationBlockers(preparation: FacilityParallelSchedule['preparation']) {

@@ -38,6 +38,7 @@ const {
   communicationQueueMock,
   patientRiskQueueMock,
   homeCareFeatureSummaryMock,
+  billingPreviewBatchMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -74,6 +75,7 @@ const {
   communicationQueueMock: vi.fn(),
   patientRiskQueueMock: vi.fn(),
   homeCareFeatureSummaryMock: vi.fn(),
+  billingPreviewBatchMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -171,6 +173,10 @@ vi.mock('@/server/services/patient-risk', () => ({
 
 vi.mock('@/server/services/home-care-ops', () => ({
   getHomeCareFeatureSummary: homeCareFeatureSummaryMock,
+}));
+
+vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
+  buildVisitScheduleBillingPreviewBatch: billingPreviewBatchMock,
 }));
 
 import {
@@ -337,7 +343,8 @@ describe('/api/dashboard/workflow GET', () => {
           schedule_status: 'postponed',
           priority: 'normal',
         },
-      ]);
+      ])
+      .mockResolvedValue([]);
     consentRecordFindManyMock.mockResolvedValue([{ patient_id: 'patient_1' }]);
     managementPlanFindManyMock.mockResolvedValue([{ case_id: 'case_1' }]);
     visitScheduleProposalFindManyMock.mockResolvedValue([
@@ -476,6 +483,7 @@ describe('/api/dashboard/workflow GET', () => {
         missing_management_plan: false,
       },
     ]);
+    billingPreviewBatchMock.mockResolvedValue({});
     homeCareFeatureSummaryMock.mockResolvedValue({
       totals: { blocked: 1, attention: 1, monitoring: 1, ready: 17 },
       features: [],
@@ -692,6 +700,64 @@ describe('/api/dashboard/workflow GET', () => {
       candidateLimit: expect.any(Number),
     });
     expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('passes upcoming schedule local calendar dates to billing previews', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    visitScheduleFindManyMock.mockReset();
+    visitScheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_local_midnight',
+          case_id: 'case_1',
+          visit_type: 'regular',
+          scheduled_date: new Date(2026, 2, 28, 0, 0, 0),
+          time_window_start: new Date('1970-01-01T09:00:00Z'),
+          time_window_end: new Date('1970-01-01T10:00:00Z'),
+          confirmed_at: null,
+          schedule_status: 'planned',
+          priority: 'normal',
+          pharmacist_id: 'user_1',
+          assignment_mode: 'primary',
+          carry_items_status: null,
+          route_order: 1,
+          escalation_reason: null,
+          preparation: null,
+          override_request: null,
+          applied_override: null,
+          case_: {
+            patient: {
+              id: 'patient_1',
+              name: '山田 太郎',
+              residences: [
+                {
+                  address: '東京都港区1-1-1',
+                  building_id: 'facility_a',
+                },
+              ],
+            },
+          },
+          site: {
+            id: 'site_1',
+            name: '本店',
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect(response.status).toBe(200);
+    expect(billingPreviewBatchMock).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          key: 'schedule_local_midnight',
+          proposedDate: '2026-03-28',
+        }),
+      ],
+      'org_1',
+    );
   });
 
   it('keeps patient-level issue cycle fallback inside assigned cases', async () => {

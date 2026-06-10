@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withTenantContext } from './lambda-handler';
-import { createInMemoryObservabilitySink, hashTenantId } from './observability';
+import { createInMemoryObservabilitySink, hashTenantId, hashUserId } from './observability';
 
 const validEvent = {
   routeKey: 'GET /cards',
@@ -117,8 +117,8 @@ describe('withTenantContext', () => {
       .find((entry) => entry.RequestLatencyMs === 17);
     expect(metric).toMatchObject({
       route_key: 'GET /cards',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       RequestLatencyMs: 17,
@@ -131,8 +131,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda request completed',
       result: 'SUCCESS',
       status_code: 200,
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       route_key: 'GET /cards',
@@ -186,15 +186,15 @@ describe('withTenantContext', () => {
     expect(metrics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          tenant_id: 'tenant_abc123',
-          user_id: 'user_001',
+          tenant_id_hash: hashTenantId('tenant_abc123'),
+          user_id_hash: hashUserId('user_001'),
           request_id: 'req_1',
           correlation_id: 'corr_1',
           TenantBoundaryRejectedCount: 1,
         }),
         expect.objectContaining({
-          tenant_id: 'tenant_abc123',
-          user_id: 'user_001',
+          tenant_id_hash: hashTenantId('tenant_abc123'),
+          user_id_hash: hashUserId('user_001'),
           request_id: 'req_1',
           correlation_id: 'corr_1',
           CrossTenantAttemptCount: 1,
@@ -234,8 +234,8 @@ describe('withTenantContext', () => {
         message: 'PH-OS lambda boundary failed',
         result: 'ERROR',
         status_code: 400,
-        tenant_id: 'tenant_abc123',
-        user_id: 'user_001',
+        tenant_id_hash: hashTenantId('tenant_abc123'),
+        user_id_hash: hashUserId('user_001'),
         request_id: 'req_1',
         correlation_id: 'req_1',
         route_key: 'GET /cards',
@@ -400,8 +400,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda request completed',
       result: 'ERROR',
       status_code: 403,
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',
@@ -432,8 +432,8 @@ describe('withTenantContext', () => {
       .find((entry) => entry.type === 'PHOS_OBSERVABILITY_FLUSH_FAILED');
     expect(flushFailure).toMatchObject({
       type: 'PHOS_OBSERVABILITY_FLUSH_FAILED',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',
@@ -470,8 +470,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda boundary failed',
       result: 'ERROR',
       status_code: 504,
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',
@@ -504,8 +504,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda boundary failed before tenant context',
       result: 'ERROR',
       status_code: 401,
-      tenant_id: 'UNKNOWN',
-      user_id: 'UNKNOWN',
+      tenant_id_hash: 'UNKNOWN',
+      user_id_hash: 'UNKNOWN',
       request_id: 'req_2',
       correlation_id: 'req_2',
       route_key: 'UNKNOWN_ROUTE',
@@ -529,8 +529,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda boundary failed',
       result: 'ERROR',
       status_code: 400,
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',
@@ -561,8 +561,8 @@ describe('withTenantContext', () => {
       message: 'PH-OS lambda boundary failed',
       result: 'ERROR',
       status_code: 500,
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_001',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_001'),
       request_id: 'req_1',
       correlation_id: 'req_1',
       route_key: 'GET /cards',

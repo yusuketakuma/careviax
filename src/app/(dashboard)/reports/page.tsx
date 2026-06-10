@@ -14,6 +14,8 @@ import { readReportsState } from './reports-query-state';
 
 export const metadata: Metadata = { title: '報告書一覧 — CareViaX' };
 
+const PHOS_PROXY_API_BASE_URL = '/api/phos';
+
 type ReportsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -52,7 +54,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
-      <PhosReportsPageClient apiBaseUrl={process.env.NEXT_PUBLIC_PHOS_API_BASE_URL} />
+      <PhosReportsPageClient apiBaseUrl={PHOS_PROXY_API_BASE_URL} />
       <Suspense fallback={<Loading />}>
         <ReportsTable
           initialDeliveryStatus={initialState.initialDeliveryStatus}

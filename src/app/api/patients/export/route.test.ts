@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, patientFindManyMock, recordDataExportAuditMock } = vi.hoisted(
@@ -32,7 +32,23 @@ function createRequest(url: string) {
 }
 
 describe('/api/patients/export GET', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    vi.useRealTimers();
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -46,12 +62,12 @@ describe('/api/patients/export GET', () => {
         id: 'patient_1',
         name: '青葉 花子',
         name_kana: 'アオバ ハナコ',
-        birth_date: new Date('1950-01-01T00:00:00.000Z'),
+        birth_date: new Date('1950-01-01T15:30:00.000Z'),
         gender: 'female',
         phone: '090-0000-0000',
         medical_insurance_number: 'med-1',
         care_insurance_number: 'care-1',
-        created_at: new Date('2026-04-01T00:00:00.000Z'),
+        created_at: new Date('2026-04-01T15:30:00.000Z'),
         residences: [{ address: '東京都新宿区1-1-1' }],
         cases: [{ status: 'active' }],
       },
@@ -122,6 +138,20 @@ describe('/api/patients/export GET', () => {
     );
     const csv = await response.text();
     expect(csv).toContain('active');
+    expect(csv).toContain('1950-01-02');
+    expect(csv).toContain('2026-04-02');
+  });
+
+  it('uses the local pharmacy calendar day in the export filename', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T15:30:00.000Z'));
+
+    const response = await GET(createRequest('http://localhost/api/patients/export'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="patients_2026-04-02.csv"',
+    );
   });
 
   it('does not add assignment filtering for admin export', async () => {

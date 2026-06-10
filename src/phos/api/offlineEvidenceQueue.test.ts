@@ -93,7 +93,7 @@ describe('PH-OS offline evidence queue', () => {
     });
     await indexedDB.deleteDatabase('ph-os-offline-keys');
     await indexedDB.deleteDatabase('PH-OSEvidenceOfflineQueue');
-    await initOfflineEncryptionKey('user_1', 'session-secret');
+    await initOfflineEncryptionKey('user_1');
     await phosOfflineEvidenceDb.open();
   });
 

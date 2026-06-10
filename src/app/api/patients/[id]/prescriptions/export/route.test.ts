@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -51,7 +51,23 @@ function createRequest() {
 }
 
 describe('/api/patients/[id]/prescriptions/export GET', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    vi.useRealTimers();
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
@@ -103,14 +119,16 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
   });
 
   it('emits CSV with BOM and audit log on success', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T15:30:00.000Z'));
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
         id: 'intake_1',
         source_type: 'paper',
-        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        prescribed_date: new Date('2026-04-20T15:30:00.000Z'),
         prescriber_name: '医師A',
         prescriber_institution: '病院X',
-        prescription_expiry_date: null,
+        prescription_expiry_date: new Date('2026-04-24T15:30:00.000Z'),
         lines: [
           {
             line_number: 1,
@@ -135,8 +153,13 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(response.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="${encodeURIComponent('prescriptions_山田 太郎_2026-04-02.csv')}"`,
+    );
     const body = await response.text();
     expect(body).toContain('アスピリン');
+    expect(body).toContain('2026-04-21');
+    expect(body).toContain('2026-04-25');
     expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
   });
 });

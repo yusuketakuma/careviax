@@ -1,6 +1,6 @@
 import { PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createInMemoryObservabilitySink } from './observability';
+import { createInMemoryObservabilitySink, hashTenantId, hashUserId } from './observability';
 import {
   createLambdaObservabilitySink,
   createXRayTraceAnnotationSink,
@@ -103,12 +103,14 @@ describe('createLambdaObservabilitySink', () => {
       type: 'PHOS_SECURITY_EVENT_PERSIST_FAILED',
       event_type: 'TENANT_BOUNDARY_REJECTED',
       route_key: 'POST /cards/{card_id}/actions',
-      tenant_id: 'tenant_abc123',
-      user_id: 'user_1',
+      tenant_id_hash: hashTenantId('tenant_abc123'),
+      user_id_hash: hashUserId('user_1'),
       request_id: 'req_1',
       correlation_id: 'corr_1',
       error: 'ddb unavailable',
     });
+    expect(JSON.stringify(logged)).not.toContain('tenant_abc123');
+    expect(JSON.stringify(logged)).not.toContain('user_1');
   });
 
   it('bounds flush latency when security event persistence does not resolve', async () => {

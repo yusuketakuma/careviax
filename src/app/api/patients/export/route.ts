@@ -8,6 +8,7 @@ import {
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { CASE_STATUSES } from '@/lib/patient/case-status';
 import { validationError } from '@/lib/api/response';
+import { formatDateKey } from '@/lib/date-key';
 import { z } from 'zod';
 
 const BOM = '\uFEFF';
@@ -118,14 +119,14 @@ export async function GET(req: NextRequest) {
       patient.id,
       patient.name,
       patient.name_kana,
-      patient.birth_date.toISOString().slice(0, 10),
+      formatDateKey(patient.birth_date),
       patient.gender,
       patient.phone,
       patient.medical_insurance_number,
       patient.care_insurance_number,
       residence?.address,
       latestCase?.status,
-      patient.created_at.toISOString().slice(0, 10),
+      formatDateKey(patient.created_at),
     ]);
   });
 
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="patients_${new Date().toISOString().slice(0, 10)}.csv"`,
+      'Content-Disposition': `attachment; filename="patients_${formatDateKey(new Date())}.csv"`,
       'Cache-Control': 'no-store',
       ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
     },

@@ -80,6 +80,39 @@ type DetailArgs = {
 };
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+const PATIENT_DETAIL_QUERY_CONCURRENCY = 4;
+
+type PatientDetailTasks = Record<string, () => Promise<unknown>>;
+type PatientDetailTaskResults<TTasks extends PatientDetailTasks> = {
+  [K in keyof TTasks]: Awaited<ReturnType<TTasks[K]>>;
+};
+
+export async function runPatientDetailTasks<const TTasks extends PatientDetailTasks>(
+  tasks: TTasks,
+  concurrency = PATIENT_DETAIL_QUERY_CONCURRENCY,
+): Promise<PatientDetailTaskResults<TTasks>> {
+  const entries = Object.entries(tasks) as Array<[keyof TTasks, TTasks[keyof TTasks]]>;
+  if (entries.length === 0) {
+    return {} as PatientDetailTaskResults<TTasks>;
+  }
+
+  const workerCount = Math.min(entries.length, Math.max(1, Math.trunc(concurrency) || 1));
+  const results: Partial<PatientDetailTaskResults<TTasks>> = {};
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < entries.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        const [key, task] = entries[currentIndex]!;
+        results[key] = (await task()) as PatientDetailTaskResults<TTasks>[keyof TTasks];
+      }
+    }),
+  );
+
+  return results as PatientDetailTaskResults<TTasks>;
+}
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -887,7 +920,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
   const caseIds = patient.cases.map((item) => item.id);
   const billingRefs = await listBillingCaseRefs(db, args, caseIds);
 
-  const [
+  const {
     visitSchedules,
     visitRecords,
     careReports,
@@ -901,324 +934,336 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     firstVisitDocuments,
     conferenceNotes,
     billingCandidates,
-  ] = await Promise.all([
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.visitSchedule.findMany({
-          where: {
-            org_id: args.orgId,
-            case_id: { in: caseIds },
-          },
-          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-          take: 12,
-          select: {
-            id: true,
-            visit_type: true,
-            scheduled_date: true,
-            schedule_status: true,
-            priority: true,
-            pharmacist_id: true,
-            confirmed_at: true,
-            route_order: true,
-            created_at: true,
-            updated_at: true,
-            visit_record: {
-              select: {
-                id: true,
-                outcome_status: true,
+  } = await runPatientDetailTasks({
+    visitSchedules: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.visitSchedule.findMany({
+            where: {
+              org_id: args.orgId,
+              case_id: { in: caseIds },
+            },
+            orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+            take: 12,
+            select: {
+              id: true,
+              visit_type: true,
+              scheduled_date: true,
+              schedule_status: true,
+              priority: true,
+              pharmacist_id: true,
+              confirmed_at: true,
+              route_order: true,
+              created_at: true,
+              updated_at: true,
+              visit_record: {
+                select: {
+                  id: true,
+                  outcome_status: true,
+                },
               },
             },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.visitRecord.findMany({
-          where: {
-            org_id: args.orgId,
-            patient_id: args.patientId,
-            ...buildVisitRecordCaseScope(caseIds),
-          },
-          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
-          take: 12,
-          select: {
-            id: true,
-            schedule_id: true,
-            pharmacist_id: true,
-            visit_date: true,
-            outcome_status: true,
-            next_visit_suggestion_date: true,
-            cancellation_reason: true,
-            postpone_reason: true,
-            revisit_reason: true,
-            created_at: true,
-          },
-        }),
-    db.careReport.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        ...buildCareReportCaseScope(caseIds),
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        report_type: true,
-        status: true,
-        created_by: true,
-        created_at: true,
-        delivery_records: {
-          orderBy: [{ created_at: 'desc' }],
-          take: 4,
-          select: {
-            id: true,
-            channel: true,
-            recipient_name: true,
-            status: true,
-            sent_at: true,
-            confirmed_at: true,
-            created_at: true,
+          }),
+    visitRecords: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.visitRecord.findMany({
+            where: {
+              org_id: args.orgId,
+              patient_id: args.patientId,
+              ...buildVisitRecordCaseScope(caseIds),
+            },
+            orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+            take: 12,
+            select: {
+              id: true,
+              schedule_id: true,
+              pharmacist_id: true,
+              visit_date: true,
+              outcome_status: true,
+              next_visit_suggestion_date: true,
+              cancellation_reason: true,
+              postpone_reason: true,
+              revisit_reason: true,
+              created_at: true,
+            },
+          }),
+    careReports: () =>
+      db.careReport.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+          ...buildCareReportCaseScope(caseIds),
+        },
+        orderBy: [{ created_at: 'desc' }],
+        take: 8,
+        select: {
+          id: true,
+          report_type: true,
+          status: true,
+          created_by: true,
+          created_at: true,
+          delivery_records: {
+            orderBy: [{ created_at: 'desc' }],
+            take: 4,
+            select: {
+              id: true,
+              channel: true,
+              recipient_name: true,
+              status: true,
+              sent_at: true,
+              confirmed_at: true,
+              created_at: true,
+            },
           },
         },
-      },
-    }),
-    db.communicationEvent.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        event_type: { not: 'patient_self_report' },
-        ...buildNullableCaseScope(caseIds),
-      },
-      orderBy: [{ occurred_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        event_type: true,
-        channel: true,
-        direction: true,
-        subject: true,
-        counterpart_name: true,
-        occurred_at: true,
-      },
-    }),
-    db.patientSelfReport.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        subject: true,
-        category: true,
-        content: true,
-        relation: true,
-        status: true,
-        reported_by_name: true,
-        requested_callback: true,
-        preferred_contact_time: true,
-        created_at: true,
-      },
-    }),
-    listVisibleTimelineExternalShares(db, args, caseIds),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.inquiryRecord.findMany({
-          where: {
-            org_id: args.orgId,
-            cycle: {
+      }),
+    communicationEvents: () =>
+      db.communicationEvent.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+          event_type: { not: 'patient_self_report' },
+          ...buildNullableCaseScope(caseIds),
+        },
+        orderBy: [{ occurred_at: 'desc' }],
+        take: 8,
+        select: {
+          id: true,
+          event_type: true,
+          channel: true,
+          direction: true,
+          subject: true,
+          counterpart_name: true,
+          occurred_at: true,
+        },
+      }),
+    selfReports: () =>
+      db.patientSelfReport.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+        },
+        orderBy: [{ created_at: 'desc' }],
+        take: 8,
+        select: {
+          id: true,
+          subject: true,
+          category: true,
+          content: true,
+          relation: true,
+          status: true,
+          reported_by_name: true,
+          requested_callback: true,
+          preferred_contact_time: true,
+          created_at: true,
+        },
+      }),
+    externalShares: () => listVisibleTimelineExternalShares(db, args, caseIds),
+    inquiryRecords: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.inquiryRecord.findMany({
+            where: {
+              org_id: args.orgId,
+              cycle: {
+                patient_id: args.patientId,
+                case_id: { in: caseIds },
+              },
+            },
+            orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+            take: 8,
+            select: {
+              id: true,
+              reason: true,
+              inquiry_to_physician: true,
+              inquiry_content: true,
+              result: true,
+              proposal_origin: true,
+              residual_adjustment: true,
+              change_detail: true,
+              inquired_at: true,
+              resolved_at: true,
+              created_at: true,
+              line: {
+                select: {
+                  intake: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+    prescriptionIntakes: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.prescriptionIntake.findMany({
+            where: {
+              org_id: args.orgId,
+              cycle: {
+                patient_id: args.patientId,
+                case_id: { in: caseIds },
+              },
+            },
+            orderBy: [{ created_at: 'desc' }],
+            take: 10,
+            select: {
+              id: true,
+              source_type: true,
+              prescribed_date: true,
+              prescriber_name: true,
+              prescriber_institution: true,
+              original_collected_by: true,
+              created_at: true,
+              cycle: {
+                select: {
+                  overall_status: true,
+                },
+              },
+              lines: {
+                take: 3,
+                select: {
+                  id: true,
+                },
+              },
+            },
+          }),
+    dispenseResults: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.dispenseResult.findMany({
+            where: {
+              org_id: args.orgId,
+              line: {
+                intake: {
+                  cycle: {
+                    patient_id: args.patientId,
+                    case_id: { in: caseIds },
+                  },
+                },
+              },
+            },
+            orderBy: [{ dispensed_at: 'desc' }],
+            take: 12,
+            select: {
+              id: true,
+              actual_drug_name: true,
+              actual_quantity: true,
+              actual_unit: true,
+              carry_type: true,
+              dispensed_by: true,
+              dispensed_at: true,
+              task: {
+                select: {
+                  cycle: {
+                    select: {
+                      overall_status: true,
+                    },
+                  },
+                },
+              },
+              line: {
+                select: {
+                  intake: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+    managementPlans: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.managementPlan.findMany({
+            where: {
+              org_id: args.orgId,
+              case_id: {
+                in: caseIds,
+              },
+            },
+            orderBy: [{ updated_at: 'desc' }],
+            take: 6,
+            select: {
+              id: true,
+              status: true,
+              title: true,
+              effective_from: true,
+              next_review_date: true,
+              created_by: true,
+              approved_by: true,
+              approved_at: true,
+              reviewed_by: true,
+              reviewed_at: true,
+              created_at: true,
+            },
+          }),
+    firstVisitDocuments: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.firstVisitDocument.findMany({
+            where: {
+              org_id: args.orgId,
               patient_id: args.patientId,
               case_id: { in: caseIds },
             },
-          },
-          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
-          take: 8,
-          select: {
-            id: true,
-            reason: true,
-            inquiry_to_physician: true,
-            inquiry_content: true,
-            result: true,
-            proposal_origin: true,
-            residual_adjustment: true,
-            change_detail: true,
-            inquired_at: true,
-            resolved_at: true,
-            created_at: true,
-            line: {
-              select: {
-                intake: {
-                  select: {
-                    id: true,
-                  },
-                },
-              },
+            orderBy: [{ created_at: 'desc' }],
+            select: {
+              id: true,
+              document_url: true,
+              delivered_at: true,
+              delivered_to: true,
+              created_at: true,
             },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.prescriptionIntake.findMany({
-          where: {
-            org_id: args.orgId,
-            cycle: {
-              patient_id: args.patientId,
-              case_id: { in: caseIds },
+          }),
+    conferenceNotes: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.conferenceNote.findMany({
+            where: {
+              org_id: args.orgId,
+              OR: [{ patient_id: args.patientId, case_id: null }, { case_id: { in: caseIds } }],
+              note_type: { in: ['pre_discharge', 'service_manager'] },
             },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 10,
-          select: {
-            id: true,
-            source_type: true,
-            prescribed_date: true,
-            prescriber_name: true,
-            prescriber_institution: true,
-            original_collected_by: true,
-            created_at: true,
-            cycle: {
-              select: {
-                overall_status: true,
-              },
+            orderBy: [{ conference_date: 'desc' }],
+            take: 8,
+            select: {
+              id: true,
+              note_type: true,
+              title: true,
+              conference_date: true,
+              follow_up_date: true,
+              follow_up_completed: true,
+              generated_report_id: true,
+              action_items: true,
             },
-            lines: {
-              take: 3,
-              select: {
-                id: true,
-              },
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.dispenseResult.findMany({
-          where: {
-            org_id: args.orgId,
-            line: {
-              intake: {
-                cycle: {
-                  patient_id: args.patientId,
-                  case_id: { in: caseIds },
-                },
-              },
-            },
-          },
-          orderBy: [{ dispensed_at: 'desc' }],
-          take: 12,
-          select: {
-            id: true,
-            actual_drug_name: true,
-            actual_quantity: true,
-            actual_unit: true,
-            carry_type: true,
-            dispensed_by: true,
-            dispensed_at: true,
-            task: {
-              select: {
-                cycle: {
-                  select: {
-                    overall_status: true,
-                  },
-                },
-              },
-            },
-            line: {
-              select: {
-                intake: {
-                  select: {
-                    id: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.managementPlan.findMany({
-          where: {
-            org_id: args.orgId,
-            case_id: {
-              in: caseIds,
-            },
-          },
-          orderBy: [{ updated_at: 'desc' }],
-          take: 6,
-          select: {
-            id: true,
-            status: true,
-            title: true,
-            effective_from: true,
-            next_review_date: true,
-            created_by: true,
-            approved_by: true,
-            approved_at: true,
-            reviewed_by: true,
-            reviewed_at: true,
-            created_at: true,
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.firstVisitDocument.findMany({
-          where: {
-            org_id: args.orgId,
-            patient_id: args.patientId,
-            case_id: { in: caseIds },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          select: {
-            id: true,
-            document_url: true,
-            delivered_at: true,
-            delivered_to: true,
-            created_at: true,
-          },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.conferenceNote.findMany({
-          where: {
-            org_id: args.orgId,
-            OR: [{ patient_id: args.patientId, case_id: null }, { case_id: { in: caseIds } }],
-            note_type: { in: ['pre_discharge', 'service_manager'] },
-          },
-          orderBy: [{ conference_date: 'desc' }],
-          take: 8,
-          select: {
-            id: true,
-            note_type: true,
-            title: true,
-            conference_date: true,
-            follow_up_date: true,
-            follow_up_completed: true,
-            generated_report_id: true,
-            action_items: true,
-          },
-        }),
-    db.billingCandidate.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        ...(billingRefs.cycleIds.length === 0
-          ? { id: { in: [] } }
-          : { cycle_id: { in: billingRefs.cycleIds } }),
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        billing_month: true,
-        billing_code: true,
-        billing_name: true,
-        points: true,
-        status: true,
-        exclusion_reason: true,
-        updated_at: true,
-      },
-    }),
-  ]);
+          }),
+    billingCandidates: () =>
+      db.billingCandidate.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+          ...(billingRefs.cycleIds.length === 0
+            ? { id: { in: [] } }
+            : { cycle_id: { in: billingRefs.cycleIds } }),
+        },
+        orderBy: [{ updated_at: 'desc' }],
+        take: 8,
+        select: {
+          id: true,
+          billing_month: true,
+          billing_code: true,
+          billing_name: true,
+          points: true,
+          status: true,
+          exclusion_reason: true,
+          updated_at: true,
+        },
+      }),
+  });
 
   const actorNameMap = await batchResolveNames(
     db,

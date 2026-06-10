@@ -668,6 +668,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacy-sites/:id',
   '/api/pharmacy-sites/:id/insurance-configs',
   '/api/pharmacy-sites/:id/insurance-configs/:id',
+  '/api/phos/:path*',
   '/api/prescriber-institutions',
   '/api/prescriber-institutions/:id',
   '/api/prescriber-institutions/suggestion',

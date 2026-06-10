@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { formatUtcDateKey, formatNullableUtcDateKey } from '@/lib/date-key';
 import { normalizeJsonInput } from '@/lib/db/json';
 import {
   japanMonthRangeForBillingMonth,
@@ -57,10 +58,6 @@ function toInputJsonObject(value: unknown): Prisma.InputJsonObject {
     : {};
 }
 
-function dateKey(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 export async function generatePcaRentalBillingCandidatesForMonth(
   tx: Tx,
   args: { orgId: string; billingMonth: Date },
@@ -76,7 +73,7 @@ export async function generatePcaRentalBillingCandidatesForMonth(
   const db = tx as PcaRentalBillingTx;
   const billingMonth = startOfMonth(args.billingMonth);
   const monthRange = japanMonthRangeForBillingMonth(billingMonth);
-  const monthKey = dateKey(billingMonth);
+  const monthKey = formatUtcDateKey(billingMonth);
 
   const rentals = await db.pcaPumpRental.findMany({
     where: {
@@ -154,9 +151,9 @@ export async function generatePcaRentalBillingCandidatesForMonth(
       amount_yen: rental.rental_fee_yen,
       rental_month: monthKey,
       rental_period: {
-        rented_at: dateKey(rental.rented_at),
-        due_at: rental.due_at ? dateKey(rental.due_at) : null,
-        returned_at: rental.returned_at ? dateKey(rental.returned_at) : null,
+        rented_at: formatUtcDateKey(rental.rented_at),
+        due_at: formatNullableUtcDateKey(rental.due_at),
+        returned_at: formatNullableUtcDateKey(rental.returned_at),
       },
     });
     const sourceSnapshot = writeBillingCandidateWorkflowState(

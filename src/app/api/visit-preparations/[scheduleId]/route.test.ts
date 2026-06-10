@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -165,6 +165,20 @@ const completePreparationBody = {
 };
 
 describe('/api/visit-preparations/[scheduleId] GET', () => {
+  const originalTimeZone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
@@ -654,6 +668,32 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         }),
       }),
     );
+  });
+
+  it('summarizes previous visit dates by the local pharmacy calendar day', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'record_1',
+      visit_date: new Date('2026-03-19T15:30:00.000Z'),
+      outcome_status: 'completed',
+      soap_plan: '残薬確認を強化する',
+      next_visit_suggestion_date: new Date('2026-04-02T15:30:00.000Z'),
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          previous_visit: expect.objectContaining({
+            summary: expect.stringMatching(/前回 2026-03-20.*次回提案: 2026-04-03/),
+          }),
+        },
+      },
+    });
   });
 
   it('rejects blank schedule ids before schedule lookup', async () => {

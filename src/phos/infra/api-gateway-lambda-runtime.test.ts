@@ -57,6 +57,7 @@ import {
   createRegisterReportReplyLambdaHandler,
   createReportDeliverySearchLambdaHandler,
 } from '@/phos/backend/report-deliveries-lambda';
+import { hashTenantId, hashUserId } from '@/phos/backend/observability';
 import {
   createGetVisitModeLambdaHandler,
   createUpdateVisitStepLambdaHandler,
@@ -73,6 +74,10 @@ type RuntimeSuccessCase = {
 };
 
 const serverTime = '2026-06-09T00:00:00.000Z';
+const runtimeTenantId = 'tenant_abc123';
+const runtimeUserId = 'user_1';
+const runtimeTenantIdHash = hashTenantId(runtimeTenantId);
+const runtimeUserIdHash = hashUserId(runtimeUserId);
 
 const nextAction: NextActionView = {
   code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
@@ -628,8 +633,8 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
         expect.arrayContaining([
           expect.objectContaining({
             route_key: route.route_key,
-            tenant_id: 'tenant_abc123',
-            user_id: 'user_1',
+            tenant_id_hash: runtimeTenantIdHash,
+            user_id_hash: runtimeUserIdHash,
             RequestLatencyMs: expect.any(Number),
           }),
           expect.objectContaining({
@@ -637,8 +642,8 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
             message: 'PH-OS lambda request completed',
             result: 'SUCCESS',
             status_code: 200,
-            tenant_id: 'tenant_abc123',
-            user_id: 'user_1',
+            tenant_id_hash: runtimeTenantIdHash,
+            user_id_hash: runtimeUserIdHash,
             route_key: route.route_key,
           }),
         ]),
@@ -716,8 +721,8 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
               message: 'PH-OS lambda boundary failed',
               result: 'ERROR',
               status_code: 400,
-              tenant_id: 'tenant_abc123',
-              user_id: 'user_1',
+              tenant_id_hash: runtimeTenantIdHash,
+              user_id_hash: runtimeUserIdHash,
               request_id: `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
               correlation_id: 'corr_runtime',
               route_key: route.route_key,
@@ -730,14 +735,14 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
           expect.arrayContaining([
             expect.objectContaining({
               route_key: route.route_key,
-              tenant_id: 'tenant_abc123',
-              user_id: 'user_1',
+              tenant_id_hash: runtimeTenantIdHash,
+              user_id_hash: runtimeUserIdHash,
               TenantBoundaryRejectedCount: 1,
             }),
             expect.objectContaining({
               route_key: route.route_key,
-              tenant_id: 'tenant_abc123',
-              user_id: 'user_1',
+              tenant_id_hash: runtimeTenantIdHash,
+              user_id_hash: runtimeUserIdHash,
               CrossTenantAttemptCount: 1,
             }),
           ]),
@@ -822,8 +827,8 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
             message: 'PH-OS lambda request completed',
             result: 'ERROR',
             status_code: 403,
-            tenant_id: 'tenant_abc123',
-            user_id: 'user_1',
+            tenant_id_hash: runtimeTenantIdHash,
+            user_id_hash: runtimeUserIdHash,
             route_key: route.route_key,
             error_code: 'FORBIDDEN',
           }),
@@ -862,8 +867,8 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
             message: 'PH-OS lambda request completed',
             result: 'ERROR',
             status_code: 403,
-            tenant_id: 'tenant_abc123',
-            user_id: 'user_1',
+            tenant_id_hash: runtimeTenantIdHash,
+            user_id_hash: runtimeUserIdHash,
             route_key: route.route_key,
             error_code: 'FORBIDDEN',
           }),

@@ -10,33 +10,8 @@ import {
   updatePcaPumpRentalSchema,
 } from '@/lib/validations/pca-pump-rental';
 import { syncPcaRentalAccessoriesFromReturnInspection } from '@/server/services/pca-rental-accessories';
-
-function serializeRental(item: {
-  rented_at: Date;
-  due_at: Date | null;
-  returned_at: Date | null;
-  inspected_at?: Date | null;
-  created_at: Date;
-  updated_at: Date;
-}) {
-  return {
-    ...item,
-    rented_at: item.rented_at.toISOString().slice(0, 10),
-    due_at: item.due_at?.toISOString().slice(0, 10) ?? null,
-    returned_at: item.returned_at?.toISOString().slice(0, 10) ?? null,
-    inspected_at: item.inspected_at?.toISOString() ?? null,
-    created_at: item.created_at.toISOString(),
-    updated_at: item.updated_at.toISOString(),
-  };
-}
-
-function toDateKey(value: Date | null) {
-  return value?.toISOString().slice(0, 10) ?? null;
-}
-
-function isUniqueConstraintFailure(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
-}
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
+import { serializePcaPumpRental, toDateKey } from '@/server/services/pca-pump-rental-serialization';
 
 function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -356,7 +331,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       { requestContext: ctx },
     );
   } catch (error) {
-    if (isUniqueConstraintFailure(error)) {
+    if (isPrismaUniqueConstraintError(error)) {
       return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');
     }
     throw error;
@@ -366,5 +341,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('このPCAポンプには未完了の貸出があるため状態を変更できません');
   }
 
-  return success({ data: serializeRental(updated.rental) });
+  return success({ data: serializePcaPumpRental(updated.rental) });
 }

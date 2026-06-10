@@ -193,6 +193,50 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     });
   });
 
+  it('checks duplicate route orders by local calendar date', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_midnight',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date(2026, 3, 9, 0, 0, 0),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: null,
+      },
+      {
+        id: 'schedule_daytime',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date(2026, 3, 9, 13, 0, 0),
+        time_window_start: new Date('1970-01-01T13:00:00'),
+        time_window_end: new Date('1970-01-01T14:00:00'),
+        confirmed_at: null,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_midnight',
+            route_order: 1,
+          },
+          {
+            schedule_id: 'schedule_daytime',
+            route_order: 1,
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同一セル内で route_order は重複できません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
   it('denies batches containing unassigned schedules before update, audit, or notify', async () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {

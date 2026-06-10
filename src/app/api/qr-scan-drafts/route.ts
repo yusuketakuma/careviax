@@ -5,6 +5,7 @@ import { success, validationError, conflict } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import { Prisma } from '@prisma/client';
 import {
@@ -41,10 +42,6 @@ const createQrDraftSchema = z.object({
   site_id: z.string().trim().min(1),
   session_id: optionalTrimmedStringSchema,
 });
-
-function isUniqueConstraintError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
 
 type QrDraftResponse = {
   raw_qr_texts?: unknown;
@@ -433,7 +430,7 @@ export const POST = withAuth(
         return created;
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) {
+      if (isPrismaUniqueConstraintError(error)) {
         return conflict('同じQRスキャン下書きが既に存在します');
       }
       throw error;

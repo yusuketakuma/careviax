@@ -85,7 +85,7 @@ describe('authOptions jwt callback', () => {
     expect(token.phosRole).toBe('MANAGER');
     expect(token.accessToken).toBe('oauth-access-token');
     expect(token.accessTokenExpiry).toBe(1_900_000_000_000);
-    expect(token.offlineEncryptionSecret).toEqual(expect.any(String));
+    expect(token).not.toHaveProperty('offlineEncryptionSecret');
     expect(resolveLocalUserByIdentity).toHaveBeenCalledWith({
       cognitoSub: 'sub_1',
       email: 'user@example.com',
@@ -112,7 +112,6 @@ describe('authOptions session callback', () => {
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
         idToken: 'id-token',
-        offlineEncryptionSecret: 'offline-secret',
         cognitoGroups: ['admin'],
         phosRole: 'ADMIN',
       },
@@ -131,8 +130,8 @@ describe('authOptions session callback', () => {
     expect(clientSession.user?.cognitoSub).toBe('sub_1');
     expect(clientSession.cognitoGroups).toEqual(['admin']);
     expect(clientSession.phosRole).toBe('ADMIN');
-    expect(clientSession.phosAccessToken).toBe('access-token');
-    expect(clientSession.offlineEncryptionSecret).toBe('offline-secret');
+    expect(clientSession).not.toHaveProperty('phosAccessToken');
+    expect(clientSession).not.toHaveProperty('offlineEncryptionSecret');
     expect(clientSession).not.toHaveProperty('accessToken');
     expect(clientSession).not.toHaveProperty('refreshToken');
     expect(clientSession).not.toHaveProperty('idToken');

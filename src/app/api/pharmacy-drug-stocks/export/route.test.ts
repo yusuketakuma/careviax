@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
@@ -28,7 +28,23 @@ function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/export?s
 }
 
 describe('/api/pharmacy-drug-stocks/export', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    vi.useRealTimers();
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
@@ -37,12 +53,14 @@ describe('/api/pharmacy-drug-stocks/export', () => {
   });
 
   it('exports stocked formulary rows as BOM-prefixed CSV and records audit log', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T15:30:00.000Z'));
     prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
       {
         is_stocked: true,
         reorder_point: 10,
         adoption_note: '棚卸確認済み',
-        last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
+        last_reviewed_at: new Date('2026-05-20T15:30:00.000Z'),
         drug_master: {
           yj_code: '123456789012',
           receipt_code: '123456789',
@@ -68,7 +86,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/csv');
-    expect(response.headers.get('content-disposition')).toContain('formulary-operations-site_1-');
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="formulary-operations-site_1-2026-04-02.csv"',
+    );
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = Buffer.from(bytes.slice(3)).toString('utf8');
@@ -76,7 +96,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(csv).toContain('"メーカー","安全属性","採用"');
     expect(csv).toContain('"123456789012","123456789","アムロジピン錠5mg"');
     expect(csv).toContain('"PH-OS製薬","ハイリスク / LASA","採用"');
-    expect(csv).toContain('"123456789099","アムロジピン後発錠5mg","2026-05-20"');
+    expect(csv).toContain('"123456789099","アムロジピン後発錠5mg","2026-05-21"');
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { org_id: 'org_1', site_id: 'site_1', is_stocked: true },
@@ -126,7 +146,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     ]);
 
     const response = await GET(
-      createRequest('http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=posting'),
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=posting',
+      ),
       { params: Promise.resolve({}) },
     );
 
@@ -135,7 +157,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(response.headers.get('content-disposition')).toContain('formulary-posting-site_1-');
     const csv = await response.text();
     expect(csv).toContain('"医薬品名","一般名","剤形","単位","メーカー","備考"');
-    expect(csv).toContain('"アムロジピン錠5mg","アムロジピン","内用薬","錠","PH-OS製薬","在宅向け採用"');
+    expect(csv).toContain(
+      '"アムロジピン錠5mg","アムロジピン","内用薬","錠","PH-OS製薬","在宅向け採用"',
+    );
     expect(csv).not.toContain('"YJコード","レセ電コード"');
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -155,8 +179,8 @@ describe('/api/pharmacy-drug-stocks/export', () => {
         last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
         follow_up_status: 'monitoring',
         follow_up_reason: '安全性確認',
-        follow_up_due_date: new Date('2026-06-01T00:00:00.000Z'),
-        updated_at: new Date('2026-05-21T00:00:00.000Z'),
+        follow_up_due_date: new Date('2026-06-01T15:30:00.000Z'),
+        updated_at: new Date('2026-05-21T15:30:00.000Z'),
         drug_master: {
           yj_code: '987654321098',
           receipt_code: '987654321',
@@ -177,7 +201,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     ]);
 
     const response = await GET(
-      createRequest('http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=audit'),
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=audit',
+      ),
       { params: Promise.resolve({}) },
     );
 
@@ -186,7 +212,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     const csv = await response.text();
     expect(csv).toContain('"メーカー","安全属性","採用"');
     expect(csv).toContain('"PH-OS製薬","麻薬 / 向精神薬 / ハイリスク","採用"');
-    expect(csv).toContain('"monitoring","安全性確認","2026-06-01","2026-05-21"');
+    expect(csv).toContain('"monitoring","安全性確認","2026-06-02","2026-05-22"');
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

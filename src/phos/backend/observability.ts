@@ -84,8 +84,16 @@ export type PhosObservabilitySink = {
   flush?(): Promise<void>;
 };
 
+function hashObservabilityIdentifier(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
 export function hashTenantId(tenant_id: string): string {
-  return createHash('sha256').update(tenant_id).digest('hex').slice(0, 16);
+  return hashObservabilityIdentifier(tenant_id);
+}
+
+export function hashUserId(user_id: string): string {
+  return hashObservabilityIdentifier(user_id);
 }
 
 export function lowCardinalityTraceAnnotation(
@@ -122,8 +130,8 @@ export function buildCloudWatchEmbeddedMetric(metric: PhosMetric) {
       ],
     },
     ...dimensions,
-    tenant_id: metric.tenant_id ?? 'UNKNOWN',
-    user_id: metric.user_id ?? 'UNKNOWN',
+    tenant_id_hash: metric.tenant_id ? hashTenantId(metric.tenant_id) : 'UNKNOWN',
+    user_id_hash: metric.user_id ? hashUserId(metric.user_id) : 'UNKNOWN',
     request_id: metric.request_id ?? 'UNKNOWN',
     correlation_id: metric.correlation_id ?? 'UNKNOWN',
     [metric.name]: metric.value,
@@ -140,27 +148,30 @@ export function createConsoleObservabilitySink(
       console.log(JSON.stringify(buildCloudWatchEmbeddedMetric(metric)));
     },
     annotateTrace(annotation) {
-      options.trace_annotation_sink?.annotateTrace(lowCardinalityTraceAnnotation(annotation));
+      const lowCardinality = lowCardinalityTraceAnnotation(annotation);
+      options.trace_annotation_sink?.annotateTrace(lowCardinality);
       console.log(
         JSON.stringify({
           type: 'PHOS_TRACE_ANNOTATION',
-          ...lowCardinalityTraceAnnotation(annotation),
-          tenant_id: annotation.tenant_id ?? 'UNKNOWN',
-          user_id: annotation.user_id ?? 'UNKNOWN',
+          ...lowCardinality,
+          tenant_id_hash:
+            lowCardinality.tenant_id_hash ??
+            (annotation.tenant_id ? hashTenantId(annotation.tenant_id) : 'UNKNOWN'),
+          user_id_hash: annotation.user_id ? hashUserId(annotation.user_id) : 'UNKNOWN',
           request_id: annotation.request_id ?? 'UNKNOWN',
           correlation_id: annotation.correlation_id ?? 'UNKNOWN',
         }),
       );
     },
     recordSecurityEvent(event) {
+      const { tenant_id, user_id, details, ...safeEvent } = event;
       console.error(
         JSON.stringify({
           type: 'PHOS_SECURITY_EVENT',
-          ...event,
-          ...(event.tenant_id ? { tenant_id_hash: hashTenantId(event.tenant_id) } : {}),
-          ...(event.details
-            ? { details: sanitizeLogDetails(event.details) as Record<string, unknown> }
-            : {}),
+          ...safeEvent,
+          ...(tenant_id ? { tenant_id_hash: hashTenantId(tenant_id) } : {}),
+          ...(user_id ? { user_id_hash: hashUserId(user_id) } : {}),
+          ...(details ? { details: sanitizeLogDetails(details) as Record<string, unknown> } : {}),
         }),
       );
     },

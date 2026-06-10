@@ -5,6 +5,8 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { formatDateKey } from '@/lib/date-key';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
@@ -12,14 +14,8 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const updateSetPlanSchema = z.object({
-  target_period_start: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
-  target_period_end: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  target_period_start: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+  target_period_end: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   set_method: z
     .enum(['facility_calendar', 'four_times_daily', 'bedtime_only', 'custom'], {
       error: 'セット方式を選択してください',
@@ -287,9 +283,9 @@ export const PATCH = withAuthContext<{ id: string }>(
       }
 
       const resolvedPeriodStart =
-        updates.target_period_start ?? existing.target_period_start.toISOString().slice(0, 10);
+        updates.target_period_start ?? formatDateKey(existing.target_period_start);
       const resolvedPeriodEnd =
-        updates.target_period_end ?? existing.target_period_end.toISOString().slice(0, 10);
+        updates.target_period_end ?? formatDateKey(existing.target_period_end);
       if (resolvedPeriodEnd < resolvedPeriodStart) {
         return {
           kind: 'error' as const,

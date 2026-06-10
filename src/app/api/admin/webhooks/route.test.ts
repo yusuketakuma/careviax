@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -61,8 +61,15 @@ function createMalformedJsonRequest() {
 }
 
 describe('/api/admin/webhooks', () => {
+  let originalEncryptionKey: string | undefined;
+  let originalWebhookEncryptionKey: string | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    originalEncryptionKey = process.env.ENCRYPTION_KEY;
+    originalWebhookEncryptionKey = process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY = 'webhook-route-test-encryption-key';
+    delete process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
     requireAuthContextMock.mockResolvedValue({
       ctx: { userId: 'user_1', orgId: 'org_1', role: 'admin' },
     });
@@ -82,7 +89,6 @@ describe('/api/admin/webhooks', () => {
       events: ['patient.created'],
       is_active: true,
       created_at: new Date('2026-05-01T00:00:00.000Z'),
-      secret: 'secret_1',
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -93,6 +99,19 @@ describe('/api/admin/webhooks', () => {
       }),
     );
     isAllowedWebhookUrlMock.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    if (originalEncryptionKey === undefined) {
+      delete process.env.ENCRYPTION_KEY;
+    } else {
+      process.env.ENCRYPTION_KEY = originalEncryptionKey;
+    }
+    if (originalWebhookEncryptionKey === undefined) {
+      delete process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
+    } else {
+      process.env.WEBHOOK_SECRET_ENCRYPTION_KEY = originalWebhookEncryptionKey;
+    }
   });
 
   it('returns webhook registrations without exposing secrets', async () => {
@@ -134,6 +153,12 @@ describe('/api/admin/webhooks', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         url: 'https://partner.example.com/hooks/careviax',
+        secret: null,
+        secret_ciphertext: expect.any(String),
+        secret_iv: expect.any(String),
+        secret_tag: expect.any(String),
+        secret_key_id: 'app:ENCRYPTION_KEY:v1',
+        secret_algorithm: 'aes-256-gcm',
         events: ['patient.created'],
       }),
       select: {
@@ -142,9 +167,32 @@ describe('/api/admin/webhooks', () => {
         events: true,
         is_active: true,
         created_at: true,
-        secret: true,
       },
     });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'webhook_2',
+        secret: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
+    });
+  });
+
+  it('fails closed when webhook secret encryption is not configured', async () => {
+    delete process.env.ENCRYPTION_KEY;
+
+    const response = await POST(
+      createRequest('POST', {
+        url: 'https://partner.example.com/hooks/careviax',
+        events: ['patient.created'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Webhook secret encryption key is not configured',
+    });
+    expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before URL checks or writes', async () => {

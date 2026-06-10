@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, History, Info, MessageSquarePlus } from 'lucide-react';
 import { z } from 'zod';
+import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
 import { StageTimeline } from '@/components/features/workflow/stage-timeline';
@@ -776,7 +777,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
   const inquiryMutation = useMutation({
     mutationFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatDateKey(new Date());
       const res = await fetch('/api/inquiry-records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },

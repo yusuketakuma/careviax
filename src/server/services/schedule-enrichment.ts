@@ -1,3 +1,4 @@
+import { formatDateKey } from '@/lib/date-key';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 
 type Residence = {
@@ -43,13 +44,14 @@ type EnrichmentHints = {
 };
 
 export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
-  schedules: T[]
+  schedules: T[],
 ): (T & EnrichmentHints)[] {
   const dailyWorkload = new Map<string, { count: number; urgentCount: number }>();
   const facilityGroups = new Map<string, { label: string; patientNames: string[] }>();
 
   for (const schedule of schedules) {
-    const workloadKey = `${schedule.pharmacist_id}:${schedule.scheduled_date.toISOString().slice(0, 10)}`;
+    const scheduleDateKey = formatDateKey(schedule.scheduled_date);
+    const workloadKey = `${schedule.pharmacist_id}:${scheduleDateKey}`;
     const existingWorkload = dailyWorkload.get(workloadKey);
     if (existingWorkload) {
       existingWorkload.count += 1;
@@ -65,7 +67,7 @@ export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
     const visitPlaceGroup = deriveVisitPlaceGroup(residence ?? null);
     if (!visitPlaceGroup) continue;
     const facilityKey = [
-      schedule.scheduled_date.toISOString().slice(0, 10),
+      scheduleDateKey,
       schedule.pharmacist_id,
       schedule.site?.id ?? 'site:none',
       visitPlaceGroup.key,
@@ -82,12 +84,13 @@ export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
   }
 
   return schedules.map((schedule) => {
-    const workloadKey = `${schedule.pharmacist_id}:${schedule.scheduled_date.toISOString().slice(0, 10)}`;
+    const scheduleDateKey = formatDateKey(schedule.scheduled_date);
+    const workloadKey = `${schedule.pharmacist_id}:${scheduleDateKey}`;
     const residence = schedule.case_.patient.residences[0];
     const visitPlaceGroup = deriveVisitPlaceGroup(residence ?? null);
     const facilityKey = visitPlaceGroup
       ? [
-          schedule.scheduled_date.toISOString().slice(0, 10),
+          scheduleDateKey,
           schedule.pharmacist_id,
           schedule.site?.id ?? 'site:none',
           visitPlaceGroup.key,
@@ -96,9 +99,7 @@ export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
     const facilityGroup = facilityKey ? facilityGroups.get(facilityKey) : null;
     const handoffReasons = [
       ...(schedule.assignment_mode === 'fallback' ? ['代替担当での訪問です'] : []),
-      ...(schedule.override_request?.status === 'pending'
-        ? ['確定予定の変更承認待ちです']
-        : []),
+      ...(schedule.override_request?.status === 'pending' ? ['確定予定の変更承認待ちです'] : []),
       ...(schedule.applied_override ? ['例外変更から再構成された予定です'] : []),
       ...(!schedule.preparation?.prepared_at ? ['訪問準備が未完了です'] : []),
     ];

@@ -587,7 +587,7 @@ describe('/api/visit-schedule-proposals', () => {
           org_id: 'org_1',
           case_id: 'case_1',
           proposed_pharmacist_id: 'user_2',
-          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          proposed_date: new Date(2026, 3, 3, 0, 0, 0),
         },
       ],
       diagnostics: {
@@ -632,6 +632,9 @@ describe('/api/visit-schedule-proposals', () => {
         ],
       },
     });
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_2', ...data }),
+    );
 
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedule-proposals', {
@@ -651,6 +654,27 @@ describe('/api/visit-schedule-proposals', () => {
         ],
       },
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: {
+            diagnostics: {
+              accepted: [
+                expect.objectContaining({
+                  pharmacist_id: 'user_2',
+                  proposed_date: '2026-04-03',
+                }),
+              ],
+              rejected: [
+                expect.objectContaining({
+                  reason_code: 'daily_capacity',
+                }),
+              ],
+            },
+          },
+        }),
+      }),
+    );
   });
 
   it('passes locked slot constraints to the planner when provided', async () => {

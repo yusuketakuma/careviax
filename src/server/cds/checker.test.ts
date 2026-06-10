@@ -530,4 +530,60 @@ describe('checkDispenseAlerts', () => {
 
     expect(alerts.find((alert) => alert.type === 'do_prescription')).toBeUndefined();
   });
+
+  it('formats transitional-expiry alert messages with the local calendar day', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T00:00:00+09:00'));
+
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_transitional_1',
+        drug_name: '経過措置薬錠10mg',
+        drug_code: '9999002',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_transitional_1',
+        yj_code: '9999002',
+        drug_name: '経過措置薬錠10mg',
+        tall_man_name: null,
+        therapeutic_category: '9999',
+        max_administration_days: null,
+        transitional_expiry_date: new Date('2026-03-30T15:30:00.000Z'),
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+
+    try {
+      const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+      expect(alerts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'transitional_expiry',
+            severity: 'warning',
+            message: '経過措置期限接近: 経過措置薬錠10mg（残30日、2026-03-31）',
+            details: expect.objectContaining({
+              drug_code: '9999002',
+              expiry_date: '2026-03-30T15:30:00.000Z',
+              days_remaining: 30,
+            }),
+          }),
+        ]),
+      );
+    } finally {
+      vi.useRealTimers();
+      process.env.TZ = originalTimezone;
+    }
+  });
 });

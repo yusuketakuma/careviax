@@ -5,6 +5,7 @@ import { describeOperationalTask } from '@/server/services/operational-tasks';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { DASHBOARD_PIPELINE_STEPS } from '@/lib/dashboard/home-config';
+import { formatDateKey } from '@/lib/date-key';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -207,7 +208,7 @@ export const GET = withAuth(
       upcomingSchedules.map((schedule) => ({
         key: schedule.id,
         caseId: schedule.case_id,
-        proposedDate: schedule.scheduled_date.toISOString().slice(0, 10),
+        proposedDate: formatDateKey(schedule.scheduled_date),
         pharmacistId: schedule.pharmacist_id,
         visitType: schedule.visit_type,
       })),

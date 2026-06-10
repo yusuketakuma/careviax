@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
+import { formatDateKey } from '@/lib/date-key';
 import type { SoapVoiceField } from '@/lib/voice-recognition';
 
 const STEPS = [
@@ -72,8 +73,7 @@ export function SoapStepWizard({
   const steps = STEPS;
 
   const visitDate =
-    useWatch({ control: form.control, name: 'visit_date' }) ??
-    new Date().toISOString().slice(0, 10);
+    useWatch({ control: form.control, name: 'visit_date' }) ?? formatDateKey(new Date());
   const receiptPersonRelation =
     useWatch({ control: form.control, name: 'receipt_person_relation' }) ?? '';
   const receiptAt = useWatch({ control: form.control, name: 'receipt_at' }) ?? `${visitDate}T00:00`;

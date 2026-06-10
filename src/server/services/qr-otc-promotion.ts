@@ -1,3 +1,5 @@
+import { formatUtcDateKey } from '@/lib/date-key';
+
 type MedicationIssueForQrOtc = {
   id: string;
   patient_id: string;
@@ -66,7 +68,7 @@ function parseDate(value: string | undefined) {
   const [, year, month, day] = match;
   const dateKey = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   const date = new Date(`${dateKey}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateKey ? null : date;
+  return Number.isNaN(date.getTime()) || formatUtcDateKey(date) !== dateKey ? null : date;
 }
 
 function extractLabeledValue(lines: string[], labels: string[]) {

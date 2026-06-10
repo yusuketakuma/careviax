@@ -67,11 +67,11 @@ describe('offline PHI encryption guard', () => {
     }
   });
 
-  it('does not initialize encryption from user identity alone', async () => {
+  it('does not initialize encryption without an authenticated user identity', async () => {
     installBrowserCryptoEnvironment();
     const plaintextPhi = '患者名 山田太郎 SOAP S: 強い眠気あり';
 
-    await initOfflineEncryptionKey('user-1', '');
+    await initOfflineEncryptionKey('');
 
     await expect(
       encryptOfflinePayloadRequired(plaintextPhi, 'SOAP draft structuredSoap'),
@@ -85,7 +85,7 @@ describe('offline PHI encryption guard', () => {
     const openSpy = vi.spyOn(indexedDB, 'open');
     const plaintextPhi = '患者名 山田太郎 SOAP S: 強い眠気あり';
 
-    await initOfflineEncryptionKey('user-1', 'session-secret');
+    await initOfflineEncryptionKey('user-1');
     const openCallsAfterInit = openSpy.mock.calls.length;
 
     const encrypted = await encryptOfflinePayloadRequired(
@@ -98,7 +98,7 @@ describe('offline PHI encryption guard', () => {
     expect(encrypted).not.toContain(plaintextPhi);
     expect(decrypted).toBe(plaintextPhi);
     expect(openSpy.mock.calls.length).toBe(openCallsAfterInit);
-    expect(JSON.stringify(localStorageMock.setItem.mock.calls)).not.toContain('session-secret');
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
     expect(JSON.stringify(localStorageMock.setItem.mock.calls)).not.toContain('user-1');
   });
 });

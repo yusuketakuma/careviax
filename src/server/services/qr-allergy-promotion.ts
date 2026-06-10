@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { formatDateKey } from '@/lib/date-key';
 import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
 
 type MedicationIssueForQrAllergy = {
@@ -90,7 +91,7 @@ export function buildQrAllergyEntryFromMedicationIssue(args: {
   const drugName = extractQrAllergyDrugName(issue.description);
   if (!drugName) return null;
 
-  const dateKey = confirmedAt.toISOString().slice(0, 10);
+  const dateKey = formatDateKey(confirmedAt);
   const entry = {
     drug_name: drugName,
     category: 'drug',

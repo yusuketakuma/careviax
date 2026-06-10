@@ -5,6 +5,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { forbidden, success, validationError } from '@/lib/api/response';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { formatDateKey } from '@/lib/date-key';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const upsertFacilityVisitBatchSchema = z
@@ -194,9 +195,7 @@ export const POST = withAuth(
 
       const siteIds = new Set(schedules.map((schedule) => schedule.site_id ?? 'site:none'));
       const pharmacistIds = new Set(schedules.map((schedule) => schedule.pharmacist_id));
-      const dateKeys = new Set(
-        schedules.map((schedule) => schedule.scheduled_date.toISOString().slice(0, 10)),
-      );
+      const dateKeys = new Set(schedules.map((schedule) => formatDateKey(schedule.scheduled_date)));
       const facilityLabels = new Set(
         schedules
           .map((schedule) => buildFacilityLabel(schedule))

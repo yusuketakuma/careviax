@@ -106,4 +106,31 @@ describe('checkUnsentReports', () => {
     });
     expect(notificationCreateMock).not.toHaveBeenCalled();
   });
+
+  it('matches holidays stored at local midnight without shifting the date key', async () => {
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'vr_friday',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        schedule_id: 'schedule_1',
+        visit_date: new Date('2026-03-27T03:00:00.000Z'),
+      },
+    ]);
+    businessHolidayFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        date: new Date(2026, 2, 30),
+      },
+    ]);
+
+    const result = await checkUnsentReports();
+
+    expect(result).toMatchObject({
+      processedCount: 0,
+      overdueVisitRecordIds: [],
+    });
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+  });
 });

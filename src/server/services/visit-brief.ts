@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { isoOrNull } from '@/lib/utils/date';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { formatDateKey } from '@/lib/date-key';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type { BillingEvidenceBlockersReader } from '@/server/services/billing-evidence';
@@ -533,7 +534,7 @@ function buildDispensingItems(args: {
     : null;
   const setPeriodLabel =
     args.latestSetPlan?.target_period_start && args.latestSetPlan?.target_period_end
-      ? `${args.latestSetPlan.target_period_start.toISOString().slice(0, 10)} - ${args.latestSetPlan.target_period_end.toISOString().slice(0, 10)}`
+      ? `${formatDateKey(args.latestSetPlan.target_period_start)} - ${formatDateKey(args.latestSetPlan.target_period_end)}`
       : null;
 
   const items = args.currentLines

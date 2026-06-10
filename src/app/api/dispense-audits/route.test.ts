@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 type AuthenticatedTestRequest = NextRequest & {
@@ -178,6 +178,16 @@ describe('/api/dispense-audits GET', () => {
 });
 
 describe('/api/dispense-audits POST', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    process.env.TZ = originalTimezone;
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -225,7 +235,7 @@ describe('/api/dispense-audits POST', () => {
             id: 'task_1',
             cycle_id: 'cycle_1',
             assigned_to: 'user_dispense',
-            due_date: new Date('2026-03-29T00:00:00.000Z'),
+            due_date: new Date('2026-03-29T15:30:00.000Z'),
             priority: 'urgent',
             cycle: {
               patient_id: 'patient_1',
@@ -298,6 +308,7 @@ describe('/api/dispense-audits POST', () => {
       expect.objectContaining({
         eventType: 'dispense_audit_rejected',
         link: '/dispensing/task_1',
+        message: '山田 太郎 の調剤結果が差戻しになりました（期限 2026-03-30）',
         explicitUserIds: expect.arrayContaining(['user_dispense', 'pharmacist_1', 'admin_1']),
       }),
     );

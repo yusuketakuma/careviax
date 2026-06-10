@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { createPhosApiClient } from '@/phos/api/client';
+import { createPhosApiClient, isSameOriginPhosProxyBaseUrl } from '@/phos/api/client';
 import type { PhosApiClient } from '@/phos/api/types';
 import { CapacityScope, UserRole, type CapacityResponse } from '@/phos/contracts/phos_contracts';
 import { warningFeedbackStyle } from '@/phos/ui/feedback/feedbackStyles';
@@ -39,22 +39,26 @@ export function CapacityDashboardClient({
   initialCapacity,
 }: CapacityDashboardClientProps) {
   const { data: session } = useSession();
-  const phosAccessToken = session?.phosAccessToken;
   const canView = sessionHasCapacityRole(session?.phosRole, session?.cognitoGroups);
   const [capacity, setCapacity] = useState<CapacityResponse | undefined>(initialCapacity);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-
-  const effectiveGetAccessToken = useMemo(() => {
-    if (getAccessToken) return getAccessToken;
-    if (!phosAccessToken) return undefined;
-    return () => phosAccessToken;
-  }, [getAccessToken, phosAccessToken]);
+  const configurationError =
+    !client && !apiBaseUrl
+      ? 'PH-OS API Gateway base URL is not configured.'
+      : !client &&
+          apiBaseUrl &&
+          !getAccessToken &&
+          !isSameOriginPhosProxyBaseUrl(apiBaseUrl.trim().replace(/\/+$/, ''))
+        ? 'PH-OS access token provider is not configured.'
+        : undefined;
+  const displayErrorMessage = configurationError ?? errorMessage;
 
   const apiClient = useMemo(() => {
     if (client) return client;
+    if (configurationError) return undefined;
     if (!apiBaseUrl) return undefined;
-    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken: effectiveGetAccessToken });
-  }, [apiBaseUrl, client, effectiveGetAccessToken]);
+    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken });
+  }, [apiBaseUrl, client, configurationError, getAccessToken]);
 
   useEffect(() => {
     if (!canView || !apiClient || initialCapacity) return;
@@ -77,9 +81,9 @@ export function CapacityDashboardClient({
 
   return (
     <div className="space-y-3">
-      {errorMessage ? (
+      {canView && displayErrorMessage ? (
         <p className="rounded-md border px-3 py-2 text-sm" style={warningFeedbackStyle}>
-          {errorMessage}
+          {displayErrorMessage}
         </p>
       ) : null}
       <CapacityDashboard canView={canView} capacity={capacity} />

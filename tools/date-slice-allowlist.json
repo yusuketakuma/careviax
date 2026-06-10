@@ -1,0 +1,54 @@
+{
+  "description": "Classified direct toISOString().slice(0, 10) usages. Remove entries as code moves to formatDateKey/formatUtcDateKey or a stronger domain helper.",
+  "entries": [
+    {
+      "path": "tools/scripts/backup-recovery-check.ts",
+      "needle": "new Date().toISOString().slice(0, 10)",
+      "classification": "utc_audit_log_date",
+      "reason": "Backup drill markdown rows currently use a UTC run date; revisit if operator-local reporting is required.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/runner.ts",
+      "needle": "job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}",
+      "classification": "utc_job_dedupe_key",
+      "reason": "Job failure notifications are coalesced by UTC process date until product chooses pharmacy-local notification dates.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/drug-master.ts",
+      "needle": "now.toISOString().slice(0, 10)",
+      "classification": "utc_job_dedupe_key",
+      "reason": "Drug-master freshness job dedupe currently uses UTC process date; revisit if local operator-day dedupe is required.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/services/billing-evidence/batch.ts",
+      "needle": "monthStart.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_month_key",
+      "reason": "Billing month dedupe is derived from canonical monthStart; keep UTC unless billing-month semantics change.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/services/conference-sync.ts",
+      "needle": "billingMonth.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_month_key",
+      "reason": "Conference sync billing month is canonical month data; keep UTC unless billing-month semantics change.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/phos/backend/aurora-fee-rules-repository.ts",
+      "needle": "value.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_contract_date",
+      "reason": "PH-OS fee-rule repository serializes backend canonical contract dates; keep UTC unless contract changes.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/billing-candidates/billing-month.ts",
+      "needle": "start.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_month_key",
+      "reason": "Billing month parser validates canonical YYYY-MM-01 month keys through UTC round-trip.",
+      "expectedCount": 1
+    }
+  ]
+}

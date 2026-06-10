@@ -107,6 +107,11 @@ const JOB_DEFINITIONS = [
     schedule_hint: '毎日',
     endpoint: '/api/jobs/bulk-export-artifact-cleanup',
   },
+  {
+    job_type: 'webhook-delivery-retry',
+    schedule_hint: '5分毎 + 要求時',
+    endpoint: '/api/jobs/webhook-delivery-retry',
+  },
   { job_type: 'evening', schedule_hint: '毎夕', endpoint: '/api/jobs/evening' },
   {
     job_type: 'evening-unrecorded-visits',

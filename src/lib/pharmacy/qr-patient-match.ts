@@ -1,3 +1,5 @@
+import { formatUtcDateKey } from '@/lib/date-key';
+
 type QrPatientIdentity = {
   name?: string | null;
   nameKana?: string | null;
@@ -35,10 +37,7 @@ function normalizeIdentityText(value: string | null | undefined) {
 
 function formatDateKey(value: Date | string) {
   if (value instanceof Date) {
-    const year = value.getUTCFullYear();
-    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(value.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatUtcDateKey(value);
   }
 
   return value.slice(0, 10);

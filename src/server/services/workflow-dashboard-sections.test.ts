@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAfterHoursReadiness,
   buildFacilityVisibility,
   buildRemediationGuidance,
   buildUnifiedWorkbench,
@@ -96,6 +97,98 @@ describe('workflow-dashboard-sections', () => {
         route_window: '1-3',
       },
     ]);
+  });
+
+  it('groups facility visibility by local calendar date', () => {
+    const upcomingSchedules: UpcomingScheduleFixture[] = [
+      {
+        id: 'schedule_midnight',
+        case_id: 'case_1',
+        scheduled_date: new Date(2026, 2, 31, 0, 0, 0),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: 1,
+        escalation_reason: null,
+        preparation: null,
+        override_request: null,
+        applied_override: null,
+        site: { id: 'site_1', name: '本店' },
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+      {
+        id: 'schedule_daytime',
+        case_id: 'case_2',
+        scheduled_date: new Date(2026, 2, 31, 13, 0, 0),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: 2,
+        escalation_reason: null,
+        preparation: null,
+        override_request: null,
+        applied_override: null,
+        site: { id: 'site_1', name: '本店' },
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '患者B',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+    ];
+
+    const result = buildFacilityVisibility(upcomingSchedules, new Map([['user_1', '佐藤 薬剤師']]));
+
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0]).toMatchObject({
+      label: 'facility_alpha',
+      patient_count: 2,
+      route_window: '1-2',
+    });
+  });
+
+  it('matches after-hours coverage by local calendar date', () => {
+    const result = buildAfterHoursReadiness(
+      [
+        {
+          date: new Date(2026, 4, 6, 0, 0, 0),
+          site_id: null,
+          user_id: 'user_1',
+        },
+      ],
+      [
+        {
+          id: 'holiday_1',
+          date: new Date(2026, 4, 6, 13, 0, 0),
+          name: '休日',
+          site_id: null,
+        },
+      ],
+    );
+
+    expect(result).toMatchObject({
+      emergency_capable_shift_count: 1,
+      holiday_gap_count: 0,
+      holiday_gaps: [],
+    });
   });
 
   it('builds remediation cards for missing workflow gates and self reports', () => {

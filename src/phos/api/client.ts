@@ -62,9 +62,14 @@ const MAX_PHOS_API_REQUEST_TIMEOUT_MS = 60_000;
 const DEFAULT_PHOS_API_RESPONSE_MAX_BYTES = 1024 * 1024;
 const MAX_PHOS_API_RESPONSE_MAX_BYTES = 5 * 1024 * 1024;
 
+export function isSameOriginPhosProxyBaseUrl(baseUrl: string): boolean {
+  return baseUrl === '/api/phos' || baseUrl.startsWith('/api/phos/');
+}
+
 function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
   if (!trimmed) throw new Error('PH-OS API baseUrl is required');
+  if (isSameOriginPhosProxyBaseUrl(trimmed)) return trimmed;
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
@@ -92,12 +97,21 @@ function normalizeBaseUrl(baseUrl: string): string {
   return trimmed;
 }
 
+function resolveRequestBaseUrl(baseUrl: string): string {
+  if (!isSameOriginPhosProxyBaseUrl(baseUrl)) return baseUrl;
+  const origin =
+    typeof globalThis.location?.origin === 'string'
+      ? globalThis.location.origin
+      : 'http://localhost';
+  return new URL(baseUrl, origin).toString().replace(/\/+$/, '');
+}
+
 function buildUrl(
   baseUrl: string,
   path: string,
   query?: Record<string, string | number | undefined>,
 ) {
-  const url = new URL(`${baseUrl}${path}`);
+  const url = new URL(`${resolveRequestBaseUrl(baseUrl)}${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined && value !== '') url.searchParams.set(key, String(value));
   }
@@ -774,6 +788,7 @@ export function isValidResponseContract(value: unknown, contract: ResponseContra
 
 export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosApiClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
+  const usesSameOriginPhosProxy = isSameOriginPhosProxyBaseUrl(baseUrl);
   const fetchImpl = options.fetchImpl ?? fetch;
   const requestTimeoutMs = normalizePositiveTimeoutMs(options.requestTimeoutMs, {
     fallbackMs: DEFAULT_PHOS_API_REQUEST_TIMEOUT_MS,
@@ -813,7 +828,7 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
         method: input.method,
         headers,
-        credentials: 'omit',
+        credentials: usesSameOriginPhosProxy ? 'same-origin' : 'omit',
         redirect: 'error',
         signal: requestAbort.signal,
         ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),

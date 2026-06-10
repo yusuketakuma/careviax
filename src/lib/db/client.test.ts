@@ -31,7 +31,8 @@ async function loadClientWithPool(poolSize: string | undefined) {
     process.env.DATABASE_POOL_SIZE = poolSize;
   }
 
-  await import('./client');
+  const { prisma } = await import('./client');
+  void (prisma as unknown as { clientArgs: unknown }).clientArgs;
 
   return prismaMocks.PrismaPg.mock.calls.at(-1)?.[0] as {
     connectionString: string;
@@ -50,8 +51,12 @@ describe('db client', () => {
     delete process.env.DATABASE_POOL_SIZE;
   });
 
-  it('requires DATABASE_URL before creating Prisma Client', async () => {
-    await expect(import('./client')).rejects.toThrow(
+  it('defers DATABASE_URL validation until the Prisma Client is used', async () => {
+    const { prisma } = await import('./client');
+
+    expect(prismaMocks.PrismaPg).not.toHaveBeenCalled();
+    expect(prismaMocks.PrismaClient).not.toHaveBeenCalled();
+    expect(() => (prisma as unknown as { user: unknown }).user).toThrow(
       'DATABASE_URL is required to initialize Prisma Client',
     );
     expect(prismaMocks.PrismaPg).not.toHaveBeenCalled();

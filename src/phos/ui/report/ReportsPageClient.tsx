@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import { createPhosApiClient } from '@/phos/api/client';
+import { createPhosApiClient, isSameOriginPhosProxyBaseUrl } from '@/phos/api/client';
 import type { PhosApiClient } from '@/phos/api/types';
 import {
   ReportDeliveryStatus,
@@ -54,24 +53,21 @@ function actionErrorMessage(error: unknown): string {
 
 export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: ReportsPageClientProps) {
   const router = useRouter();
-  const { data: session } = useSession();
-  const phosAccessToken = session?.phosAccessToken;
-  const effectiveGetAccessToken = useMemo(() => {
-    if (getAccessToken) return getAccessToken;
-    if (!phosAccessToken) return undefined;
-    return () => phosAccessToken;
-  }, [getAccessToken, phosAccessToken]);
+  const configurationError =
+    !client && !apiBaseUrl
+      ? PhosReportsPageCopy.API_BASE_URL_MISSING
+      : !client &&
+          apiBaseUrl &&
+          !getAccessToken &&
+          !isSameOriginPhosProxyBaseUrl(apiBaseUrl.trim().replace(/\/+$/, ''))
+        ? 'PH-OS access token provider is not configured.'
+        : undefined;
   const apiClient = useMemo(() => {
     if (client) return client;
-    if (!apiBaseUrl || !effectiveGetAccessToken) return undefined;
-    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken: effectiveGetAccessToken });
-  }, [apiBaseUrl, client, effectiveGetAccessToken]);
-  const configurationError =
-    !apiClient && (!apiBaseUrl || !effectiveGetAccessToken)
-      ? !apiBaseUrl
-        ? PhosReportsPageCopy.API_BASE_URL_MISSING
-        : PhosReportsPageCopy.ACCESS_TOKEN_MISSING
-      : undefined;
+    if (configurationError) return undefined;
+    if (!apiBaseUrl) return undefined;
+    return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken });
+  }, [apiBaseUrl, client, configurationError, getAccessToken]);
   const [deliveries, setDeliveries] = useState<ReportDeliveryView[]>([]);
   const [phase, setPhase] = useState<ReportsPagePhase>(apiClient ? 'LOADING' : 'ERROR');
   const [errorMessage, setErrorMessage] = useState<string | undefined>(configurationError);

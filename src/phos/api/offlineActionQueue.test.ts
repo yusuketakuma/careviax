@@ -86,7 +86,7 @@ describe('PH-OS offline action queue', () => {
     installBrowserCryptoEnvironment();
     await indexedDB.deleteDatabase('ph-os-offline-keys');
     await indexedDB.deleteDatabase('PH-OSActionOfflineQueue');
-    await initOfflineEncryptionKey('user-1', 'session-secret');
+    await initOfflineEncryptionKey('user-1');
     await phosOfflineActionDb.open();
   });
 

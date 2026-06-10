@@ -12,6 +12,7 @@
  */
 
 import type { ScheduleStatus } from '@prisma/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { findActiveVisitConsent, findCurrentManagementPlan } from './management-plans';
@@ -86,10 +87,6 @@ function endOfWeekMonday(value: Date) {
   return endOfWeek(value, { weekStartsOn: 1 });
 }
 
-function formatDateKey(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 export async function getBillingCadencePreview(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingCadencePreview> {
@@ -123,7 +120,7 @@ export async function getBillingCadencePreview(
     .filter(
       (schedule) => schedule.scheduled_date >= monthStart && schedule.scheduled_date <= monthEnd,
     )
-    .map((schedule) => formatDateKey(schedule.scheduled_date));
+    .map((schedule) => formatUtcDateKey(schedule.scheduled_date));
 
   const currentMonthCount = scheduledDatesCurrentMonth.length;
   const currentWeekStart = startOfWeekMonday(args.proposedDate);
@@ -158,7 +155,7 @@ export async function getBillingCadencePreview(
     const weeklyAvailable = weeklyCap == null || candidateWeekCount < weeklyCap;
     if (monthlyAvailable && weeklyAvailable) {
       if (!nextBillableDate) nextBillableDate = candidate;
-      if (suggestedDates.length < 3) suggestedDates.push(formatDateKey(candidate));
+      if (suggestedDates.length < 3) suggestedDates.push(formatUtcDateKey(candidate));
     }
     if (nextBillableDate && suggestedDates.length >= 3) break;
   }
@@ -169,7 +166,7 @@ export async function getBillingCadencePreview(
       ? '120日以内に算定可能日を提案できませんでした'
       : nextBillableDate.toDateString() === args.proposedDate.toDateString()
         ? '本日以降で算定可能です'
-        : `次回算定可能日は ${formatDateKey(nextBillableDate)} です`;
+        : `次回算定可能日は ${formatUtcDateKey(nextBillableDate)} です`;
 
   return {
     monthly_cap: monthlyCap,
@@ -178,7 +175,7 @@ export async function getBillingCadencePreview(
     weekly_cap: weeklyCap,
     current_week_count: currentWeekCount,
     scheduled_dates_current_month: scheduledDatesCurrentMonth,
-    next_billable_date: nextBillableDate ? formatDateKey(nextBillableDate) : null,
+    next_billable_date: nextBillableDate ? formatUtcDateKey(nextBillableDate) : null,
     suggested_dates: suggestedDates,
     reason,
   };
@@ -370,7 +367,7 @@ export async function validateBillingRequirements(
     alerts.push({
       type: 'consent_expired_or_missing',
       severity: 'warning',
-      message: `訪問予定日時点で同意書が${consent.expiry_date.toISOString().slice(0, 10)}に期限切れです。更新が必要です`,
+      message: `訪問予定日時点で同意書が${formatUtcDateKey(consent.expiry_date)}に期限切れです。更新が必要です`,
       details: {
         consent_exists: true,
         consent_id: consent.id,

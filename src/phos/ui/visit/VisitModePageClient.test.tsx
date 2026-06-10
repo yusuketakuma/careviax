@@ -11,20 +11,6 @@ import {
 import type { PhosApiClient, PhosOfflineEvidenceQueue } from '@/phos/api/types';
 import { VisitModePageClient } from './VisitModePageClient';
 
-const sessionMock = vi.hoisted(() => ({
-  value: {
-    phosAccessToken: 'session-access-token',
-    user: { name: '薬剤師A' },
-  } as { phosAccessToken?: string; user?: { name?: string | null } } | null,
-}));
-
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({
-    data: sessionMock.value,
-    status: sessionMock.value ? 'authenticated' : 'unauthenticated',
-  }),
-}));
-
 const allIncomplete = Object.fromEntries(
   Object.values(VisitStep).map((step) => [step, false]),
 ) as Record<VisitStep, boolean>;
@@ -110,10 +96,6 @@ function offlineEvidenceQueue(): PhosOfflineEvidenceQueue {
 
 describe('VisitModePageClient', () => {
   beforeEach(() => {
-    sessionMock.value = {
-      phosAccessToken: 'session-access-token',
-      user: { name: '薬剤師A' },
-    };
     vi.unstubAllGlobals();
   });
 

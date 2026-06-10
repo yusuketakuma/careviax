@@ -3,6 +3,8 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PhosVisitModePageCopy } from '@/phos/contracts/phos_copy.ja';
 import { VisitModePageClient } from '@/phos/ui/visit/VisitModePageClient';
 
+const PHOS_PROXY_API_BASE_URL = '/api/phos';
+
 type PhosVisitPageProps = {
   params: Promise<{ packetId: string }>;
 };
@@ -17,10 +19,7 @@ export default async function PhosVisitPage({ params }: PhosVisitPageProps) {
         title={PhosVisitModePageCopy.TITLE}
         description={PhosVisitModePageCopy.DESCRIPTION}
       />
-      <VisitModePageClient
-        packetId={packetId}
-        apiBaseUrl={process.env.NEXT_PUBLIC_PHOS_API_BASE_URL}
-      />
+      <VisitModePageClient packetId={packetId} apiBaseUrl={PHOS_PROXY_API_BASE_URL} />
     </PageScaffold>
   );
 }

@@ -4,6 +4,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { notFound, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
 
 const exportQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -17,7 +18,7 @@ function safeCsvCell(value: unknown): string {
 }
 
 function formatDate(value: Date | null | undefined): string | null {
-  return value?.toISOString().slice(0, 10) ?? null;
+  return formatNullableDateKey(value);
 }
 
 function formatSafetyFlags(drug: {
@@ -231,7 +232,7 @@ export const GET = withAuthContext(
     const header = exportRows.header;
     const rows = exportRows.rows;
     const csv = [header, ...rows].map((row) => row.map(safeCsvCell).join(',')).join('\n');
-    const fileName = `formulary-${parsed.data.purpose}-${site.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = `formulary-${parsed.data.purpose}-${site.id}-${formatDateKey(new Date())}.csv`;
 
     return new NextResponse(`\uFEFF${csv}`, {
       status: 200,

@@ -1,4 +1,5 @@
 import { addDays, startOfDay } from 'date-fns';
+import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
@@ -13,6 +14,28 @@ import type {
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
 type FeatureTaskCountMap = Record<string, number>;
+
+type HomeCareScheduleResidence = {
+  facility_id?: string | null;
+  facility_unit_id?: string | null;
+  building_id?: string | null;
+  address?: string | null;
+  unit_name?: string | null;
+};
+
+type HomeCareFacilityClusterSchedule = {
+  scheduled_date: Date;
+  case_: {
+    patient: {
+      residences: HomeCareScheduleResidence[];
+    };
+  };
+};
+
+type HomeCareCoverageDate = {
+  date: Date;
+  site_id: string | null;
+};
 
 const ACTIVE_CASE_STATUSES = ['assessment', 'active', 'on_hold'] as const;
 const OPEN_TASK_STATUSES = ['pending', 'in_progress'] as const;
@@ -224,7 +247,7 @@ function toTaskCountMap(
   grouped: Array<{
     task_type: string;
     _count: { id: number };
-  }>
+  }>,
 ): FeatureTaskCountMap {
   return grouped.reduce<FeatureTaskCountMap>((acc, row) => {
     acc[row.task_type] = row._count.id;
@@ -262,8 +285,7 @@ function buildFeatureState(args: {
 }): HomeCareFeatureState {
   const definition = findDefinition(args.key);
   const count = Math.max(args.count, 0);
-  const status =
-    args.status ?? (count > 0 ? 'attention' : 'ready');
+  const status = args.status ?? (count > 0 ? 'attention' : 'ready');
   const severity =
     args.severity ??
     (status === 'blocked'
@@ -295,7 +317,7 @@ function summarizeTotals(features: HomeCareFeatureState[]): HomeCareFeatureSumma
       attention: 0,
       monitoring: 0,
       ready: 0,
-    } satisfies HomeCareFeatureSummary['totals']
+    } satisfies HomeCareFeatureSummary['totals'],
   );
 }
 
@@ -315,8 +337,34 @@ function sortFeatures(features: HomeCareFeatureState[]) {
   });
 }
 
+export function countHomeCareFacilityClusters(schedules: HomeCareFacilityClusterSchedule[]) {
+  const clusterCounts = schedules.reduce<Map<string, number>>((acc, schedule) => {
+    const residence = schedule.case_.patient.residences[0] ?? null;
+    const locationKey = deriveFacilityLabel(residence) ?? 'unknown';
+    const key = `${formatDateKey(schedule.scheduled_date)}:${locationKey}`;
+    acc.set(key, (acc.get(key) ?? 0) + 1);
+    return acc;
+  }, new Map());
+
+  return Array.from(clusterCounts.values()).filter((count) => count > 1).length;
+}
+
+export function countHomeCareHolidayCoverageGaps(
+  emergencyShifts: HomeCareCoverageDate[],
+  holidays: HomeCareCoverageDate[],
+) {
+  const holidayCoverage = new Set(
+    emergencyShifts.map((shift) => `${shift.site_id ?? 'org'}:${formatDateKey(shift.date)}`),
+  );
+
+  return holidays.filter((holiday) => {
+    const key = `${holiday.site_id ?? 'org'}:${formatDateKey(holiday.date)}`;
+    return !holidayCoverage.has(key);
+  }).length;
+}
+
 export function finalizeHomeCareFeatureSummary(
-  features: HomeCareFeatureState[]
+  features: HomeCareFeatureState[],
 ): HomeCareFeatureSummary {
   const sorted = sortFeatures(features);
   return {
@@ -327,7 +375,7 @@ export function finalizeHomeCareFeatureSummary(
 
 export async function getHomeCareFeatureSummary(
   db: DbClient,
-  args: { orgId: string }
+  args: { orgId: string },
 ): Promise<HomeCareFeatureSummary> {
   const today = startOfDay(new Date());
   const upcomingWindow = addDays(today, 7);
@@ -634,7 +682,7 @@ export async function getHomeCareFeatureSummary(
   const sharedPatientIds = new Set(activeShares.map((item) => item.patient_id));
   const polypharmacyCount = currentMedicationCounts.filter((item) => item._count.id >= 6).length;
   const urgentScheduleCount = upcomingSchedules.filter(
-    (schedule) => schedule.priority !== 'normal' || schedule.visit_type === 'emergency'
+    (schedule) => schedule.priority !== 'normal' || schedule.visit_type === 'emergency',
   ).length;
   const preparationPendingCount = upcomingSchedules.filter((schedule) => {
     const preparation = schedule.preparation;
@@ -647,64 +695,49 @@ export async function getHomeCareFeatureSummary(
     );
   }).length;
   const carryFallbackCount = upcomingSchedules.filter((schedule) =>
-    ['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
+    ['blocked', 'partial'].includes(schedule.carry_items_status ?? ''),
   ).length;
   const offlinePendingCount = upcomingSchedules.filter(
-    (schedule) => !schedule.preparation?.offline_synced
+    (schedule) => !schedule.preparation?.offline_synced,
   ).length;
   const missingEmergencyContactCount = activeCases.filter(
     (careCase) =>
       !careCase.patient.contacts.some(
-        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff'
-      )
+        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff',
+      ),
   ).length;
   const missingFirstVisitDocumentCount = activeCases.filter(
-    (careCase) => !firstVisitCaseIds.has(careCase.id)
+    (careCase) => !firstVisitCaseIds.has(careCase.id),
   ).length;
   const adherenceSignalCount = openSelfReports.filter((report) =>
-    hasAnyKeyword(
-      [report.category, report.subject, report.content],
-      ADHERENCE_KEYWORDS
-    )
+    hasAnyKeyword([report.category, report.subject, report.content], ADHERENCE_KEYWORDS),
   ).length;
   const dosageSupportSignalCount = openSelfReports.filter((report) =>
-    hasAnyKeyword(
-      [report.category, report.subject, report.content],
-      DOSAGE_SUPPORT_KEYWORDS
-    )
+    hasAnyKeyword([report.category, report.subject, report.content], DOSAGE_SUPPORT_KEYWORDS),
   ).length;
-  const shareGapCount = activeCases.filter((careCase) => !sharedPatientIds.has(careCase.patient_id)).length;
-  const facilityClusterCount = Array.from(
-    upcomingSchedules.reduce<Map<string, number>>((acc, schedule) => {
-      const residence = schedule.case_.patient.residences[0] ?? null;
-      const locationKey = deriveFacilityLabel(residence ?? null) ?? 'unknown';
-      const key = `${schedule.scheduled_date.toISOString().slice(0, 10)}:${locationKey}`;
-      acc.set(key, (acc.get(key) ?? 0) + 1);
-      return acc;
-    }, new Map())
-  ).filter(([, count]) => count > 1).length;
+  const shareGapCount = activeCases.filter(
+    (careCase) => !sharedPatientIds.has(careCase.patient_id),
+  ).length;
+  const facilityClusterCount = countHomeCareFacilityClusters(upcomingSchedules);
   const consentHuddleCount =
-    upcomingSchedules.filter((schedule) => !consentedPatientIds.has(activeCases.find((careCase) => careCase.id === schedule.case_id)?.patient_id ?? '')).length +
-    countTask(taskCounts, 'management_plan_review');
-  const holidayCoverage = new Set(
-    emergencyShifts.map(
-      (shift) => `${shift.site_id ?? 'org'}:${shift.date.toISOString().slice(0, 10)}`
-    )
-  );
-  const holidayGapCount = holidays.filter((holiday) => {
-    const key = `${holiday.site_id ?? 'org'}:${holiday.date.toISOString().slice(0, 10)}`;
-    return !holidayCoverage.has(key);
-  }).length;
+    upcomingSchedules.filter(
+      (schedule) =>
+        !consentedPatientIds.has(
+          activeCases.find((careCase) => careCase.id === schedule.case_id)?.patient_id ?? '',
+        ),
+    ).length + countTask(taskCounts, 'management_plan_review');
+  const holidayGapCount = countHomeCareHolidayCoverageGaps(emergencyShifts, holidays);
   const siteGapCount = sites.filter(
-    (site) => site.lat == null || site.lng == null || !site.is_regional_support || !site.is_health_support_pharmacy
+    (site) =>
+      site.lat == null ||
+      site.lng == null ||
+      !site.is_regional_support ||
+      !site.is_health_support_pharmacy,
   ).length;
   const changeSignalCount =
     pendingOverrides +
     openSelfReports.filter((report) =>
-      hasAnyKeyword(
-        [report.category, report.subject, report.content],
-        CHANGE_KEYWORDS
-      )
+      hasAnyKeyword([report.category, report.subject, report.content], CHANGE_KEYWORDS),
     ).length;
 
   const features = [
@@ -816,10 +849,7 @@ export async function getHomeCareFeatureSummary(
         shareGapCount + openSelfReports.length > 0
           ? '家族/施設からの入力導線を強化する余地があります。'
           : 'セルフ報告導線は回っています。',
-      evidence: [
-        `共有未展開患者 ${shareGapCount}名`,
-        `自己申告 ${openSelfReports.length}件`,
-      ],
+      evidence: [`共有未展開患者 ${shareGapCount}名`, `自己申告 ${openSelfReports.length}件`],
       status: shareGapCount > 0 ? 'monitoring' : openSelfReports.length > 0 ? 'attention' : 'ready',
     }),
     buildFeatureState({
@@ -838,10 +868,7 @@ export async function getHomeCareFeatureSummary(
         stalledReports.length + openRequests.length > 0
           ? '報告送達または連携依頼に滞留があります。'
           : '多職種共有の滞留は少ない状態です。',
-      evidence: [
-        `報告滞留 ${stalledReports.length}件`,
-        `連携依頼 ${openRequests.length}件`,
-      ],
+      evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${openRequests.length}件`],
     }),
     buildFeatureState({
       key: 'inquiry_workbench',
@@ -882,9 +909,7 @@ export async function getHomeCareFeatureSummary(
         consentHuddleCount > 0
           ? '同意・計画書起因の訪問前ブロックがあります。'
           : '同意・計画書の前提は満たされています。',
-      evidence: [
-        `前提不足 ${consentHuddleCount}件`,
-      ],
+      evidence: [`前提不足 ${consentHuddleCount}件`],
       status: consentHuddleCount > 0 ? 'blocked' : 'ready',
     }),
     buildFeatureState({
@@ -912,9 +937,7 @@ export async function getHomeCareFeatureSummary(
         changeSignalCount > 0
           ? '前回からの差分確認が必要な患者や予定があります。'
           : '大きな差分シグナルは出ていません。',
-      evidence: [
-        `変更シグナル ${changeSignalCount}件`,
-      ],
+      evidence: [`変更シグナル ${changeSignalCount}件`],
       status: changeSignalCount > 0 ? 'monitoring' : 'ready',
       severity: changeSignalCount > 0 ? 'normal' : 'low',
     }),
@@ -927,7 +950,8 @@ export async function getHomeCareFeatureSummary(
       summary:
         countTask(taskCounts, 'billing_evidence_review') +
           countTask(taskCounts, 'initial_home_visit_assessment') +
-          consentHuddleCount > 0
+          consentHuddleCount >
+        0
           ? '算定前に確認すべきブロッカーがあります。'
           : '算定前ブロッカーは目立っていません。',
       evidence: [
@@ -947,14 +971,8 @@ export async function getHomeCareFeatureSummary(
         `座標レビュー ${countTask(taskCounts, 'geocode_review')}件`,
         `拠点不足 ${siteGapCount}件`,
       ],
-      status:
-        countTask(taskCounts, 'geocode_review') + siteGapCount > 0
-          ? 'monitoring'
-          : 'ready',
-      severity:
-        countTask(taskCounts, 'geocode_review') + siteGapCount > 0
-          ? 'normal'
-          : 'low',
+      status: countTask(taskCounts, 'geocode_review') + siteGapCount > 0 ? 'monitoring' : 'ready',
+      severity: countTask(taskCounts, 'geocode_review') + siteGapCount > 0 ? 'normal' : 'low',
     }),
     buildFeatureState({
       key: 'mobile_visit_mode',
@@ -975,7 +993,7 @@ export async function getHomeCareFeatureSummary(
 
 export async function getPatientHomeCareFeatureSummary(
   db: DbClient,
-  args: { orgId: string; patientId: string }
+  args: { orgId: string; patientId: string },
 ): Promise<HomeCareFeatureSummary> {
   const today = startOfDay(new Date());
   const activeCases = await db.careCase.findMany({
@@ -1169,11 +1187,11 @@ export async function getPatientHomeCareFeatureSummary(
     activeCases.length > 0 &&
     !activeCases.some((careCase) =>
       careCase.patient.contacts.some(
-        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff'
-      )
+        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff',
+      ),
     );
   const urgentSchedules = upcomingSchedules.filter(
-    (schedule) => schedule.priority !== 'normal' || schedule.visit_type === 'emergency'
+    (schedule) => schedule.priority !== 'normal' || schedule.visit_type === 'emergency',
   ).length;
   const preparationPending = upcomingSchedules.filter((schedule) => {
     const preparation = schedule.preparation;
@@ -1186,18 +1204,20 @@ export async function getPatientHomeCareFeatureSummary(
     );
   }).length;
   const adherenceSignals = selfReports.filter((report) =>
-    hasAnyKeyword([report.category, report.subject, report.content], ADHERENCE_KEYWORDS)
+    hasAnyKeyword([report.category, report.subject, report.content], ADHERENCE_KEYWORDS),
   ).length;
   const dosageSignals = selfReports.filter((report) =>
-    hasAnyKeyword([report.category, report.subject, report.content], DOSAGE_SUPPORT_KEYWORDS)
+    hasAnyKeyword([report.category, report.subject, report.content], DOSAGE_SUPPORT_KEYWORDS),
   ).length;
   const changeSignals = selfReports.filter((report) =>
-    hasAnyKeyword([report.category, report.subject, report.content], CHANGE_KEYWORDS)
+    hasAnyKeyword([report.category, report.subject, report.content], CHANGE_KEYWORDS),
   ).length;
   const carryFallback = upcomingSchedules.filter((schedule) =>
-    ['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
+    ['blocked', 'partial'].includes(schedule.carry_items_status ?? ''),
   ).length;
-  const mobilePending = upcomingSchedules.filter((schedule) => !schedule.preparation?.offline_synced).length;
+  const mobilePending = upcomingSchedules.filter(
+    (schedule) => !schedule.preparation?.offline_synced,
+  ).length;
 
   const features = [
     buildFeatureState({
@@ -1207,10 +1227,7 @@ export async function getPatientHomeCareFeatureSummary(
         urgentSchedules + carryFallback > 0
           ? 'この患者では緊急時の薬剤供給確認が必要です。'
           : '緊急供給のシグナルはありません。',
-      evidence: [
-        `緊急/至急訪問 ${urgentSchedules}件`,
-        `持参物不足 ${carryFallback}件`,
-      ],
+      evidence: [`緊急/至急訪問 ${urgentSchedules}件`, `持参物不足 ${carryFallback}件`],
     }),
     buildFeatureState({
       key: 'after_hours_rotation_board',
@@ -1226,18 +1243,21 @@ export async function getPatientHomeCareFeatureSummary(
         countTask(taskCounts, 'visit_demand') + countTask(taskCounts, 'visit_intake_linkage') > 0
           ? '訪問導線の未接続があります。'
           : '訪問導線は接続済みです。',
-      evidence: [`導線ギャップ ${countTask(taskCounts, 'visit_demand') + countTask(taskCounts, 'visit_intake_linkage')}件`],
+      evidence: [
+        `導線ギャップ ${countTask(taskCounts, 'visit_demand') + countTask(taskCounts, 'visit_intake_linkage')}件`,
+      ],
     }),
     buildFeatureState({
       key: 'previsit_preparation_pack',
       count: preparationPending,
-      summary:
-        preparationPending > 0 ? '訪問前準備が未完了です。' : '訪問前準備は整っています。',
+      summary: preparationPending > 0 ? '訪問前準備が未完了です。' : '訪問前準備は整っています。',
       evidence: [`準備未完了 ${preparationPending}件`],
     }),
     buildFeatureState({
       key: 'emergency_contact_template',
-      count: Number(missingEmergencyContact) + (firstVisitDocs.length === 0 && activeCases.length > 0 ? 1 : 0),
+      count:
+        Number(missingEmergencyContact) +
+        (firstVisitDocs.length === 0 && activeCases.length > 0 ? 1 : 0),
       summary:
         missingEmergencyContact || (firstVisitDocs.length === 0 && activeCases.length > 0)
           ? '緊急連絡先または初回文書を整備してください。'
@@ -1254,22 +1274,19 @@ export async function getPatientHomeCareFeatureSummary(
         adherenceSignals + selfReports.length > 0
           ? '残薬・飲み忘れの triage が必要です。'
           : '残薬/飲み忘れのシグナルはありません。',
-      evidence: [
-        `自己申告 ${selfReports.length}件`,
-        `アドヒアランス該当 ${adherenceSignals}件`,
-      ],
+      evidence: [`自己申告 ${selfReports.length}件`, `アドヒアランス該当 ${adherenceSignals}件`],
     }),
     buildFeatureState({
       key: 'medication_safety_prioritizer',
-      count: issues.length + inquiries.length + Number(activeCases[0]?.patient.medication_profiles.length >= 6),
+      count:
+        issues.length +
+        inquiries.length +
+        Number(activeCases[0]?.patient.medication_profiles.length >= 6),
       summary:
         issues.length + inquiries.length > 0
           ? '薬学安全の優先確認があります。'
           : '薬学安全の滞留は少ない状態です。',
-      evidence: [
-        `薬学的課題 ${issues.length}件`,
-        `照会 ${inquiries.length}件`,
-      ],
+      evidence: [`薬学的課題 ${issues.length}件`, `照会 ${inquiries.length}件`],
     }),
     buildFeatureState({
       key: 'dosage_form_support',
@@ -1280,13 +1297,8 @@ export async function getPatientHomeCareFeatureSummary(
           : '剤形支援の候補は出ていません。',
       evidence: [`シグナル ${dosageSignals}件`],
       status:
-        dosageSignals + countTask(taskCounts, 'dosage_form_support') > 0
-          ? 'monitoring'
-          : 'ready',
-      severity:
-        dosageSignals + countTask(taskCounts, 'dosage_form_support') > 0
-          ? 'normal'
-          : 'low',
+        dosageSignals + countTask(taskCounts, 'dosage_form_support') > 0 ? 'monitoring' : 'ready',
+      severity: dosageSignals + countTask(taskCounts, 'dosage_form_support') > 0 ? 'normal' : 'low',
     }),
     buildFeatureState({
       key: 'caregiver_self_report_intake',
@@ -1300,13 +1312,16 @@ export async function getPatientHomeCareFeatureSummary(
         `自己申告 ${selfReports.length}件`,
       ],
       status:
-        shares.length === 0 && activeCases.length > 0 ? 'monitoring' : selfReports.length > 0 ? 'attention' : 'ready',
+        shares.length === 0 && activeCases.length > 0
+          ? 'monitoring'
+          : selfReports.length > 0
+            ? 'attention'
+            : 'ready',
     }),
     buildFeatureState({
       key: 'carry_item_fallback',
       count: carryFallback,
-      summary:
-        carryFallback > 0 ? '持参物の代替確認が必要です。' : '持参物不足はありません。',
+      summary: carryFallback > 0 ? '持参物の代替確認が必要です。' : '持参物不足はありません。',
       evidence: [`不足 ${carryFallback}件`],
     }),
     buildFeatureState({
@@ -1316,10 +1331,7 @@ export async function getPatientHomeCareFeatureSummary(
         stalledReports.length + requests.length > 0
           ? '多職種共有に滞留があります。'
           : '多職種共有は回っています。',
-      evidence: [
-        `報告滞留 ${stalledReports.length}件`,
-        `連携依頼 ${requests.length}件`,
-      ],
+      evidence: [`報告滞留 ${stalledReports.length}件`, `連携依頼 ${requests.length}件`],
     }),
     buildFeatureState({
       key: 'inquiry_workbench',
@@ -1332,26 +1344,37 @@ export async function getPatientHomeCareFeatureSummary(
     }),
     buildFeatureState({
       key: 'facility_batch_tracker',
-      count: upcomingSchedules.filter((schedule) => schedule.carry_items_status != null).length > 1 ? 1 : 0,
+      count:
+        upcomingSchedules.filter((schedule) => schedule.carry_items_status != null).length > 1
+          ? 1
+          : 0,
       summary: '施設訪問はスケジュール単位で確認できます。',
       status: 'monitoring',
       severity: 'low',
     }),
     buildFeatureState({
       key: 'consent_plan_huddle',
-      count: Number(consents.length === 0 && activeCases.length > 0) + Number(activeCases.length > 0 && activeCases.every((careCase) => careCase.management_plans.length === 0)),
+      count:
+        Number(consents.length === 0 && activeCases.length > 0) +
+        Number(
+          activeCases.length > 0 &&
+            activeCases.every((careCase) => careCase.management_plans.length === 0),
+        ),
       summary:
-        consents.length === 0 || activeCases.every((careCase) => careCase.management_plans.length === 0)
+        consents.length === 0 ||
+        activeCases.every((careCase) => careCase.management_plans.length === 0)
           ? '同意または計画書の整備が必要です。'
           : '同意・計画書は整っています。',
       evidence: [
         consents.length === 0 && activeCases.length > 0 ? '有効同意なし' : null,
-        activeCases.length > 0 && activeCases.every((careCase) => careCase.management_plans.length === 0)
+        activeCases.length > 0 &&
+        activeCases.every((careCase) => careCase.management_plans.length === 0)
           ? '承認済み計画書なし'
           : null,
       ],
       status:
-        consents.length === 0 || activeCases.every((careCase) => careCase.management_plans.length === 0)
+        consents.length === 0 ||
+        activeCases.every((careCase) => careCase.management_plans.length === 0)
           ? 'blocked'
           : 'ready',
     }),
@@ -1389,7 +1412,8 @@ export async function getPatientHomeCareFeatureSummary(
         countTask(taskCounts, 'initial_home_visit_assessment'),
       summary:
         countTask(taskCounts, 'billing_evidence_review') +
-          countTask(taskCounts, 'initial_home_visit_assessment') > 0
+          countTask(taskCounts, 'initial_home_visit_assessment') >
+        0
           ? '算定前レビューが必要です。'
           : '算定レビューの滞留はありません。',
       evidence: [
@@ -1418,9 +1442,7 @@ export async function getPatientHomeCareFeatureSummary(
   return finalizeHomeCareFeatureSummary(features);
 }
 
-export function selectScheduleHomeCareFeatureHighlights(
-  summary: HomeCareFeatureSummary
-) {
+export function selectScheduleHomeCareFeatureHighlights(summary: HomeCareFeatureSummary) {
   const scheduleKeys = new Set<HomeCareFeatureKey>([
     'emergency_medication_playbook',
     'previsit_preparation_pack',

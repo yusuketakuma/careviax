@@ -27,6 +27,7 @@ const {
   checkDrugMasterFreshnessMock,
   drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifactsMock,
+  retryWebhookDeliveriesMock,
   checkFacilityStandardExpiryMock,
   checkCredentialExpiryMock,
   checkConsentExpiryMock,
@@ -60,6 +61,7 @@ const {
   checkDrugMasterFreshnessMock: vi.fn(),
   drainMedicationHistoryBulkExportJobsMock: vi.fn(),
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
+  retryWebhookDeliveriesMock: vi.fn(),
   checkFacilityStandardExpiryMock: vi.fn(),
   checkCredentialExpiryMock: vi.fn(),
   checkConsentExpiryMock: vi.fn(),
@@ -105,6 +107,7 @@ vi.mock('@/server/jobs', () => ({
   checkDrugMasterFreshness: checkDrugMasterFreshnessMock,
   drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
+  retryWebhookDeliveries: retryWebhookDeliveriesMock,
   checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
   checkCredentialExpiry: checkCredentialExpiryMock,
   checkConsentExpiry: checkConsentExpiryMock,
@@ -143,6 +146,13 @@ describe('/api/jobs/[jobType] POST', () => {
     refreshPmdaPackageInsertsDeltaMock.mockResolvedValue({ processedCount: 42 });
     refreshSskDrugMasterMock.mockResolvedValue({ processedCount: 12 });
     drainMedicationHistoryBulkExportJobsMock.mockResolvedValue({ processedCount: 25 });
+    retryWebhookDeliveriesMock.mockResolvedValue({
+      processedCount: 2,
+      scannedCount: 2,
+      succeededCount: 1,
+      failedCount: 1,
+      blockedCount: 0,
+    });
     cleanupExpiredBulkExportArtifactsMock.mockResolvedValue({
       processedCount: 3,
       scannedCount: 12,
@@ -373,6 +383,37 @@ describe('/api/jobs/[jobType] POST', () => {
       processedCount: 2,
       errors: ['storage unavailable'],
     });
+  });
+
+  it('allows api key webhook delivery retries across organizations', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'webhook-delivery-retry' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(retryWebhookDeliveriesMock).toHaveBeenCalledWith(undefined);
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'webhook-delivery-retry',
+      processedCount: 2,
+      scannedCount: 2,
+      succeededCount: 1,
+      failedCount: 1,
+      blockedCount: 0,
+    });
+  });
+
+  it('scopes authenticated webhook delivery retries to the admin organization', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'webhook-delivery-retry' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(retryWebhookDeliveriesMock).toHaveBeenCalledWith({ orgId: 'org_1' });
   });
 
   it('returns 200 when admin executes visit record retention checks', async () => {

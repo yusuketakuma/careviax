@@ -269,7 +269,7 @@ describe('/api/dashboard/home/actions GET', () => {
       {
         id: 'schedule_1',
         case_id: 'case_1',
-        scheduled_date: new Date('2026-04-05T00:00:00.000Z'),
+        scheduled_date: new Date(2026, 3, 5, 0, 0, 0),
         pharmacist_id: 'user_2',
         visit_type: 'regular',
       },
@@ -290,6 +290,15 @@ describe('/api/dashboard/home/actions GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(buildVisitScheduleBillingPreviewBatchMock).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          key: 'schedule_1',
+          proposedDate: '2026-04-05',
+        }),
+      ],
+      'org_1',
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         actions: expect.arrayContaining([

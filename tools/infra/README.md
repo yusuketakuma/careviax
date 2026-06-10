@@ -12,3 +12,23 @@
 - `cognito-advanced-security.json` : Cognito advanced security settings
 - `rate-limit-dynamodb.json` : DynamoDB table / TTL / IAM contract for production distributed rate limiting
 - `websocket/template.yaml` : API Gateway WebSocket, Lambda, and DynamoDB collaboration sync stack
+
+## EventBridge Schedule Drift
+
+Validate the checked-in schedule definition:
+
+```bash
+pnpm eventbridge-schedules:check
+```
+
+Compare against an exported normalized/AWS schedule JSON:
+
+```bash
+pnpm eventbridge-schedules:check --actual artifacts/eventbridge-schedules.actual.json
+```
+
+Compare read-only against live EventBridge Scheduler using AWS CLI credentials:
+
+```bash
+pnpm eventbridge-schedules:check --aws --group-name ph-os-jobs --region ap-northeast-1
+```

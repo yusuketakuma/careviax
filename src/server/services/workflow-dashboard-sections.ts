@@ -1,4 +1,5 @@
 import { isoOrNull } from '@/lib/utils/date';
+import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { WORKBENCH_MAX_ITEMS } from '@/lib/constants/workflow';
 import { readJsonObject } from '@/lib/db/json';
@@ -215,8 +216,9 @@ export function buildFacilityVisibility(
     const residence = schedule.case_.patient.residences[0];
     const facilityLabel = deriveFacilityLabel(residence ?? null);
     if (!facilityLabel) continue;
+    const scheduleDateKey = formatDateKey(schedule.scheduled_date);
     const groupKey = [
-      schedule.scheduled_date.toISOString().slice(0, 10),
+      scheduleDateKey,
       schedule.site?.id ?? 'site:none',
       schedule.pharmacist_id,
       facilityLabel,
@@ -734,14 +736,11 @@ export function buildAfterHoursReadiness(
 ) {
   const emergencyCoverageByDate = new Map<string, number>();
   for (const shift of upcomingEmergencyShifts) {
-    const dateKey = shift.date.toISOString().slice(0, 10);
+    const dateKey = formatDateKey(shift.date);
     emergencyCoverageByDate.set(dateKey, (emergencyCoverageByDate.get(dateKey) ?? 0) + 1);
   }
   const holidayGaps = upcomingHolidays
-    .filter(
-      (holiday) =>
-        (emergencyCoverageByDate.get(holiday.date.toISOString().slice(0, 10)) ?? 0) === 0,
-    )
+    .filter((holiday) => (emergencyCoverageByDate.get(formatDateKey(holiday.date)) ?? 0) === 0)
     .slice(0, 6)
     .map((holiday) => ({
       id: holiday.id,

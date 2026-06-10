@@ -3,17 +3,29 @@ import { prisma } from '@/lib/db';
 import { toPrismaJsonInput } from '@/lib/db/json';
 
 const MAX_RETRIES = 3;
+const DEFAULT_JOB_STALE_LOCK_MS = 6 * 60 * 60 * 1000;
+const MAX_JOB_STALE_LOCK_MS = 24 * 60 * 60 * 1000;
+
+function resolveJobStaleLockMs(value: string | undefined = process.env.JOB_STALE_LOCK_MS) {
+  const parsed = Number(value ?? DEFAULT_JOB_STALE_LOCK_MS);
+  if (!Number.isFinite(parsed)) return DEFAULT_JOB_STALE_LOCK_MS;
+  const normalized = Math.trunc(parsed);
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) return DEFAULT_JOB_STALE_LOCK_MS;
+  return Math.min(normalized, MAX_JOB_STALE_LOCK_MS);
+}
 
 /**
  * Concurrency guard: ensure only one job of the same type runs at a time.
  * Returns true if a running job already exists (caller should skip/abort).
  */
 async function isJobAlreadyRunning(jobType: string, orgId?: string): Promise<boolean> {
+  const lockedAfter = new Date(Date.now() - resolveJobStaleLockMs());
   const existing = await prisma.integrationJob.findFirst({
     where: {
       job_type: jobType,
       status: 'running',
       ...(orgId ? { org_id: orgId } : {}),
+      OR: [{ locked_at: null }, { locked_at: { gt: lockedAfter } }],
     },
     select: { id: true },
   });
@@ -24,7 +36,7 @@ export async function runJob(
   jobType: string,
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
   orgId?: string,
-  dedupeKey?: string
+  dedupeKey?: string,
 ) {
   // Skip if the same job type is already in progress
   if (await isJobAlreadyRunning(jobType, orgId)) {
@@ -113,11 +125,7 @@ export async function runJob(
 /**
  * Create notifications for all admin users when a job permanently fails.
  */
-async function notifyAdminsOfJobFailure(
-  jobType: string,
-  errorMessage: string,
-  orgId?: string
-) {
+async function notifyAdminsOfJobFailure(jobType: string, errorMessage: string, orgId?: string) {
   try {
     const membershipFilter: Prisma.MembershipWhereInput = {
       role: { in: ['admin', 'owner'] },

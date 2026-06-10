@@ -35,12 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import {
-  formatOfflineCacheUpdatedAt,
-  isOfflineCacheFresh,
-  OFFLINE_CACHE_TTL_HOURS,
-} from '@/lib/offline/cache-policy';
-import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { OFFLINE_CACHE_TTL_HOURS } from '@/lib/offline/cache-policy';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import {
@@ -49,10 +44,7 @@ import {
 } from '@/lib/visits/facility-visit-context';
 import { buildHomeVisit2026ReadinessItems } from '@/lib/visits/home-visit-2026-evidence';
 import { extractConferenceProposalOrigin } from '@/lib/visits/visit-workflow-projection';
-import {
-  parseCachedVisitBriefCardPayload,
-  type CachedVisitBriefCard,
-} from '@/lib/visits/visit-brief-cache';
+import { type CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
 import {
   discardSyncQueueItem,
   overwriteVisitRecordConflict,
@@ -65,18 +57,63 @@ import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
-import { applyVisitScheduleRouteUpdates } from './visit-route-client';
 import { useRouteOrderDraft } from './route-order-draft';
-import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
 import {
-  buildOrderedFacilityScheduleIds,
-  formatEtaLabel,
-  formatMinutesLabel,
-  minutesFromTimestamp,
-  roundDownToSlot,
-  roundUpToSlot,
-} from './calendar-view.helpers';
+  handleScheduleDayFacilityBatchSuccess,
+  saveScheduleDayFacilityBatch,
+} from './schedule-day-facility-batch';
+import {
+  handleScheduleDayFacilityVisitDaySuccess,
+  saveScheduleDayFacilityVisitDay,
+} from './schedule-day-facility-visit-day';
+import {
+  generateScheduleDayRescheduleProposals,
+  handleScheduleDayRescheduleSuccess,
+} from './schedule-day-reschedule';
+import {
+  applyScheduleDayRouteOrderDraft,
+  handleScheduleDayRouteOrderApplySuccess,
+} from './schedule-day-route-order-apply';
+import {
+  applyScheduleDayPlannerBillingRecommendations,
+  applyScheduleDayPlannerCaseSelection,
+  applyScheduleDayPlannerCandidateCount,
+  applyScheduleDayPlannerPreferredTimeFrom,
+  applyScheduleDayPlannerPreferredTimeTo,
+  applyScheduleDayPlannerPriority,
+  applyScheduleDayPlannerStartDate,
+  applyScheduleDayPlannerVehicleResourceSelection,
+  applyScheduleDayPlannerVisitType,
+  buildScheduleDaySelectedDateProposals,
+  filterScheduleDayPlannerCases,
+  generateScheduleDayProposals,
+  getDefaultScheduleDayPlannerForm,
+  getScheduleDayEffectivePlannerCandidateCount,
+  handleScheduleDayProposalGenerationSuccess,
+  resolveScheduleDayPlannerVehicleRouteTravelMode,
+  type ScheduleDayRouteTravelMode,
+} from './schedule-day-planner';
+import { useScheduleDayPlannerQueries } from './schedule-day-planner-hooks';
+import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
+import { buildOrderedFacilityScheduleIds, formatMinutesLabel } from './calendar-view.helpers';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
+import {
+  buildScheduleDayContactAttemptRequest,
+  closeScheduleDayContactLogDialog,
+  getDefaultScheduleDayContactLogForm,
+  handleScheduleDayProposalActionSuccess,
+  openScheduleDayContactLogDialog,
+  updateScheduleDayProposalAction,
+  type ScheduleDayContactLogForm,
+  type ScheduleDayProposalActionRequest,
+} from './schedule-day-proposal-action';
+import {
+  buildScheduleDayPreparationForm,
+  fetchScheduleDayPreparationDetails,
+  handleScheduleDayPreparationSuccess,
+  saveScheduleDayPreparation,
+  type ScheduleDayPreparationForm,
+} from './schedule-day-preparation';
 import {
   addressOfPatient,
   CONTACT_STATUS_LABELS,
@@ -106,15 +143,19 @@ import {
   type VisitVehicleResourceSummary,
   type VisitSchedule,
   type VisitType,
-  type BillingRequirementAlert,
   type VisitScheduleBillingPreview,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
 import { OnboardingWarningBadges, ScheduleBoardSkeleton } from './schedule-day-view.chrome';
 import {
+  buildProposalBillingPreviewRequests,
+  buildScheduleDayGanttViewModel,
+  buildScheduleDayOfflineStatus,
+  buildScheduleDayRouteMapPoints,
+  buildScheduleDayRouteMapSite,
+  buildScheduleDayViewModel,
+  buildScheduleBillingPreviewRequests,
   buildWeekProposalStats,
-  buildFacilityRouteDefaults,
-  buildFacilityTracker,
   buildDirectionsUrl,
   buildMapEmbedUrl,
   type FacilityTrackerGroup,
@@ -130,8 +171,15 @@ import {
   ScheduleBoardMetrics,
   WeeklyScheduleControls,
 } from './schedule-day-view.sections';
+import {
+  createScheduleDayVisitBriefCacheRepository,
+  fetchMissingScheduleDayVisitBriefCards,
+  mergeScheduleDayCachedVisitBriefCards,
+  readScheduleDayCachedVisitBriefs,
+  saveScheduleDayVisitBriefCards,
+} from './schedule-day-visit-brief-cache';
 
-type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+type RouteTravelMode = ScheduleDayRouteTravelMode;
 
 type VisitRoutePlan = {
   status: 'ok' | 'unavailable';
@@ -155,14 +203,6 @@ type VisitRoutePlan = {
   }>;
 };
 
-type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
-  available: boolean;
-  site: {
-    id: string;
-    name: string;
-  } | null;
-};
-
 const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
 
 const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
@@ -174,10 +214,6 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 6, label: '土' },
   { value: 0, label: '日' },
 ];
-
-const GANTT_SLOT_MINUTES = 30;
-const GANTT_DEFAULT_START_MINUTES = 8 * 60;
-const GANTT_DEFAULT_END_MINUTES = 18 * 60;
 
 function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
   if (!vehicle) return '自動割当';
@@ -222,16 +258,9 @@ export function ScheduleDayView({
   const [selectedDate, setSelectedDate] = useState(
     () => initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd'),
   );
-  const [plannerForm, setPlannerForm] = useState({
-    case_id: '',
-    visit_type: 'regular' as VisitType,
-    priority: 'normal' as VisitPriority,
-    start_date: format(new Date(), 'yyyy-MM-dd'),
-    preferred_time_from: '09:00',
-    preferred_time_to: '12:00',
-    vehicle_resource_id: '',
-    candidate_count: '3',
-  });
+  const [plannerForm, setPlannerForm] = useState(() =>
+    getDefaultScheduleDayPlannerForm(format(new Date(), 'yyyy-MM-dd')),
+  );
   const [rescheduleTarget, setRescheduleTarget] = useState<VisitSchedule | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState({
     reason: '',
@@ -248,19 +277,9 @@ export function ScheduleDayView({
     priority: 'normal' as VisitPriority,
   });
   const [contactLogTarget, setContactLogTarget] = useState<Proposal | null>(null);
-  const [contactLogForm, setContactLogForm] = useState({
-    outcome: 'attempted' as
-      | 'attempted'
-      | 'unreachable'
-      | 'declined'
-      | 'change_requested'
-      | 'confirmed',
-    contact_method: 'phone' as 'phone' | 'fax' | 'email',
-    contact_name: '',
-    contact_phone: '',
-    note: '',
-    callback_due_at: '',
-  });
+  const [contactLogForm, setContactLogForm] = useState<ScheduleDayContactLogForm>(() =>
+    getDefaultScheduleDayContactLogForm(),
+  );
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
   const [preparationDetails, setPreparationDetails] = useState<{
@@ -268,13 +287,9 @@ export function ScheduleDayView({
     pack: VisitPreparationPack | null;
   } | null>(null);
   const [preparationLoading, setPreparationLoading] = useState(false);
-  const [preparationForm, setPreparationForm] = useState({
-    medication_changes_reviewed: false,
-    carry_items_confirmed: false,
-    previous_issues_reviewed: false,
-    route_confirmed: false,
-    offline_synced: false,
-  });
+  const [preparationForm, setPreparationForm] = useState<ScheduleDayPreparationForm>(() =>
+    buildScheduleDayPreparationForm(null),
+  );
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [facilityRouteOverrides, setFacilityRouteOverrides] = useState<
     Record<string, Record<string, string>>
@@ -310,6 +325,10 @@ export function ScheduleDayView({
   const syncConflicts = useOfflineStore((state) => state.syncConflicts);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
+  const visitBriefCacheRepository = useMemo(
+    () => createScheduleDayVisitBriefCacheRepository(offlineDb.visitBriefCache),
+    [],
+  );
 
   const selectedDay = useMemo(() => parseISO(selectedDate), [selectedDate]);
   const weekStart = useMemo(() => startOfWeek(selectedDay, { weekStartsOn: 1 }), [selectedDay]);
@@ -418,13 +437,7 @@ export function ScheduleDayView({
     invalidateOn: ['workflow_refresh'],
   });
 
-  const cases = useMemo(
-    () =>
-      (casesData?.data ?? []).filter(
-        (careCase) => !['discharged', 'terminated'].includes(careCase.status),
-      ),
-    [casesData],
-  );
+  const cases = useMemo(() => filterScheduleDayPlannerCases(casesData?.data ?? []), [casesData]);
   const pharmacists = useMemo(() => pharmacistsData?.data ?? [], [pharmacistsData]);
   const proposals = useMemo(() => proposalsData?.data ?? [], [proposalsData]);
   const schedules = useMemo(() => schedulesData?.data ?? [], [schedulesData]);
@@ -436,35 +449,20 @@ export function ScheduleDayView({
       ),
     [callbackTasksData],
   );
-  const resolvedPlannerCaseId = plannerForm.case_id || cases[0]?.id || '';
-  const selectedCase = cases.find((careCase) => careCase.id === resolvedPlannerCaseId) ?? null;
-  const selectedPlannerPharmacistId = selectedCase?.primary_pharmacist_id ?? '';
-  const pharmacistNameById = useMemo(
-    () => new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.name])),
-    [pharmacists],
-  );
-  const pharmacistSiteIdById = useMemo(
-    () => new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.site_id])),
-    [pharmacists],
-  );
-  const selectedPlannerSiteId = pharmacistSiteIdById.get(selectedPlannerPharmacistId) ?? null;
-  const { data: vehicleResourcesData, isLoading: vehicleResourcesLoading } = useQuery({
-    queryKey: ['visit-vehicle-resources', orgId, 'schedule-planner', selectedPlannerSiteId],
-    queryFn: async () => {
-      const params = new URLSearchParams({ available: 'true' });
-      if (selectedPlannerSiteId) params.set('site_id', selectedPlannerSiteId);
-      const res = await fetch(`/api/visit-vehicle-resources?${params}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('社用車リソースの取得に失敗しました');
-      return res.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
-    },
-    enabled: !!orgId,
+  const {
+    pharmacistNameById,
+    resolvedPlannerCaseId,
+    selectedCase,
+    vehicleResourcesLoading,
+    plannerVehicleResources,
+    selectedPlannerVehicle,
+    billingPreviewData,
+  } = useScheduleDayPlannerQueries({
+    orgId,
+    plannerForm,
+    cases,
+    pharmacists,
   });
-  const plannerVehicleResources = vehicleResourcesData?.data ?? [];
-  const selectedPlannerVehicle =
-    plannerVehicleResources.find((vehicle) => vehicle.id === plannerForm.vehicle_resource_id) ??
-    null;
   const proposalById = useMemo(
     () => new Map(proposals.map((proposal) => [proposal.id, proposal])),
     [proposals],
@@ -473,32 +471,6 @@ export function ScheduleDayView({
     () => new Map(schedules.map((schedule) => [schedule.id, schedule])),
     [schedules],
   );
-  const { data: billingPreviewData } = useQuery({
-    queryKey: [
-      'visit-schedule-billing-preview',
-      orgId,
-      resolvedPlannerCaseId,
-      plannerForm.start_date,
-      plannerForm.visit_type,
-      selectedPlannerPharmacistId,
-      selectedPlannerSiteId,
-    ],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        case_id: resolvedPlannerCaseId,
-        proposed_date: plannerForm.start_date,
-      });
-      if (plannerForm.visit_type) params.set('visit_type', plannerForm.visit_type);
-      if (selectedPlannerPharmacistId) params.set('pharmacist_id', selectedPlannerPharmacistId);
-      if (selectedPlannerSiteId) params.set('site_id', selectedPlannerSiteId);
-      const res = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('算定プレビューの取得に失敗しました');
-      return res.json() as Promise<VisitScheduleBillingPreview>;
-    },
-    enabled: !!orgId && !!resolvedPlannerCaseId && !!plannerForm.start_date,
-  });
   const billingCadence = billingPreviewData?.cadence ?? null;
   const billingAlerts = billingPreviewData?.alerts ?? [];
   const billingPreviewWarnings = billingPreviewData?.warnings ?? [];
@@ -510,24 +482,12 @@ export function ScheduleDayView({
     () => new Set(billingCadence?.suggested_dates ?? []),
     [billingCadence],
   );
-  const selectedDateProposals = proposals
-    .filter((proposal) => toDateKey(proposal.proposed_date) === selectedDate)
-    .sort((left, right) => {
-      if (left.route_order == null && right.route_order == null) return 0;
-      if (left.route_order == null) return 1;
-      if (right.route_order == null) return -1;
-      return left.route_order - right.route_order;
-    });
+  const selectedDateProposals = useMemo(
+    () => buildScheduleDaySelectedDateProposals(proposals, selectedDate),
+    [proposals, selectedDate],
+  );
   const proposalPreviewRequests = useMemo(
-    () =>
-      selectedDateProposals.map((proposal) => ({
-        proposalId: proposal.id,
-        caseId: proposal.case_id,
-        proposedDate: proposal.proposed_date.slice(0, 10),
-        pharmacistId: proposal.proposed_pharmacist_id,
-        siteId: proposal.site?.id ?? null,
-        visitType: proposal.visit_type,
-      })),
+    () => buildProposalBillingPreviewRequests(selectedDateProposals),
     [selectedDateProposals],
   );
   const { data: proposalBillingPreviewMap } = useQuery({
@@ -611,31 +571,38 @@ export function ScheduleDayView({
     };
   }, [orgId, refreshSyncState]);
 
-  const selectedDateSchedules = useMemo(
+  const {
+    selectedDateSchedules,
+    facilityTracker,
+    facilityRouteDefaults,
+    activeFacilityFilter,
+    visibleSchedules,
+    mobileVisitSchedules,
+    mobileFacilityGroups,
+    routePharmacistOptions,
+    resolvedRoutePharmacistId,
+    routeMapSchedules,
+    currentOrderedRouteScheduleIds,
+    routeDepartureTime,
+    routeSelectionLabel,
+  } = useMemo(
     () =>
-      schedules
-        .filter((schedule) => toDateKey(schedule.scheduled_date) === selectedDate)
-        .sort((left, right) => {
-          const leftTime = left.time_window_start ?? '';
-          const rightTime = right.time_window_start ?? '';
-          return leftTime.localeCompare(rightTime);
-        }),
-    [schedules, selectedDate],
+      buildScheduleDayViewModel({
+        schedules,
+        selectedDate,
+        facilityFilter,
+        pharmacistNameById,
+        selectedRoutePharmacistId,
+      }),
+    [facilityFilter, pharmacistNameById, schedules, selectedDate, selectedRoutePharmacistId],
   );
-  const effectivePlannerCandidateCount =
-    !plannerCandidateCountManual && billingPreviewData?.suggested_schedule_slot_count
-      ? String(billingPreviewData.suggested_schedule_slot_count)
-      : plannerForm.candidate_count;
+  const effectivePlannerCandidateCount = getScheduleDayEffectivePlannerCandidateCount({
+    plannerForm,
+    billingPreview: billingPreviewData,
+    isManual: plannerCandidateCountManual,
+  });
   const schedulePreviewRequests = useMemo(
-    () =>
-      selectedDateSchedules.map((schedule) => ({
-        scheduleId: schedule.id,
-        caseId: schedule.case_id,
-        proposedDate: schedule.scheduled_date.slice(0, 10),
-        pharmacistId: schedule.pharmacist_id,
-        siteId: schedule.site?.id ?? null,
-        visitType: schedule.visit_type,
-      })),
+    () => buildScheduleBillingPreviewRequests(selectedDateSchedules),
     [selectedDateSchedules],
   );
   const { data: scheduleBillingPreviewMap } = useQuery({
@@ -666,14 +633,6 @@ export function ScheduleDayView({
     },
     enabled: !!orgId && schedulePreviewRequests.length > 0,
   });
-  const facilityTracker = useMemo(
-    () => buildFacilityTracker(selectedDateSchedules),
-    [selectedDateSchedules],
-  );
-  const facilityRouteDefaults = useMemo(
-    () => buildFacilityRouteDefaults(facilityTracker),
-    [facilityTracker],
-  );
   const isScheduleBoardLoading =
     isBootstrappingOrg ||
     ((casesLoading ||
@@ -688,11 +647,6 @@ export function ScheduleDayView({
       !schedulesData &&
       !tasksData &&
       !callbackTasksData);
-  const activeFacilityFilter =
-    facilityFilter && facilityTracker.some((group) => group.key === facilityFilter)
-      ? facilityFilter
-      : null;
-
   function reorderFacilityPatients(
     group: FacilityTrackerGroup,
     draggedScheduleId: string,
@@ -721,39 +675,27 @@ export function ScheduleDayView({
     }));
   }
 
-  const visibleSchedules = useMemo(() => {
-    if (!activeFacilityFilter) return selectedDateSchedules;
-    return selectedDateSchedules.filter((schedule) => {
-      return getFacilityTrackerGrouping(schedule)?.key === activeFacilityFilter;
-    });
-  }, [activeFacilityFilter, selectedDateSchedules]);
   const cachedVisitBriefByScheduleId = useMemo(
     () => new Map(cachedVisitBriefs.map((item) => [item.scheduleId, item])),
     [cachedVisitBriefs],
   );
-  const mobileVisitSchedules = useMemo(
+  const offlineStatus = useMemo(
     () =>
-      [...visibleSchedules].sort((left, right) => {
-        if (left.route_order != null || right.route_order != null) {
-          if (left.route_order == null) return 1;
-          if (right.route_order == null) return -1;
-          if (left.route_order !== right.route_order) {
-            return left.route_order - right.route_order;
-          }
-        }
-
-        const leftTime = left.time_window_start ?? '';
-        const rightTime = right.time_window_start ?? '';
-        return leftTime.localeCompare(rightTime);
+      buildScheduleDayOfflineStatus({
+        isOffline,
+        pendingSyncCount,
+        syncConflictCount: syncConflicts.length,
+        cachedVisitBriefCount: cachedVisitBriefs.length,
+        cachedVisitBriefUpdatedAt,
+        cacheTtlHours: OFFLINE_CACHE_TTL_HOURS,
       }),
-    [visibleSchedules],
-  );
-  const mobileFacilityGroups = useMemo(
-    () =>
-      activeFacilityFilter
-        ? facilityTracker.filter((group) => group.key === activeFacilityFilter)
-        : facilityTracker,
-    [activeFacilityFilter, facilityTracker],
+    [
+      cachedVisitBriefs.length,
+      cachedVisitBriefUpdatedAt,
+      isOffline,
+      pendingSyncCount,
+      syncConflicts.length,
+    ],
   );
 
   function createVisitRecordHref(schedule: VisitSchedule) {
@@ -785,54 +727,6 @@ export function ScheduleDayView({
     router.push(createVisitRecordHref(schedule));
   }
 
-  const routePharmacistOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          visibleSchedules.map((schedule) => [
-            schedule.pharmacist_id,
-            {
-              id: schedule.pharmacist_id,
-              name: pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
-              siteName: schedule.site?.name ?? null,
-            },
-          ]),
-        ).values(),
-      ),
-    [pharmacistNameById, visibleSchedules],
-  );
-  const resolvedRoutePharmacistId = routePharmacistOptions.some(
-    (option) => option.id === selectedRoutePharmacistId,
-  )
-    ? selectedRoutePharmacistId
-    : (routePharmacistOptions[0]?.id ?? '');
-  const routeMapSchedules = useMemo(
-    () =>
-      visibleSchedules.filter((schedule) => schedule.pharmacist_id === resolvedRoutePharmacistId),
-    [resolvedRoutePharmacistId, visibleSchedules],
-  );
-  const currentOrderedRouteScheduleIds = useMemo(
-    () =>
-      [...routeMapSchedules]
-        .sort((left, right) => {
-          if (left.route_order != null || right.route_order != null) {
-            if (left.route_order == null) return 1;
-            if (right.route_order == null) return -1;
-            if (left.route_order !== right.route_order) {
-              return left.route_order - right.route_order;
-            }
-          }
-          const leftTime = left.time_window_start ?? '';
-          const rightTime = right.time_window_start ?? '';
-          return leftTime.localeCompare(rightTime);
-        })
-        .map((schedule) => schedule.id),
-    [routeMapSchedules],
-  );
-  const routeDepartureTime =
-    routeMapSchedules
-      .map((schedule) => schedule.time_window_start)
-      .find((value): value is string => Boolean(value)) ?? null;
   const { data: routePlanData, isFetching: routePlanLoading } = useQuery({
     queryKey: [
       'visit-route-plan',
@@ -873,201 +767,42 @@ export function ScheduleDayView({
     optimizedIds: routePlanData?.orderedScheduleIds ?? currentOrderedRouteScheduleIds,
     currentIds: currentOrderedRouteScheduleIds,
   });
-  const routeMapPoints = useMemo(() => {
-    const schedulesById = new Map(routeMapSchedules.map((schedule) => [schedule.id, schedule]));
-    const orderedIds = routeOrderDraft.draftIds;
-
-    return orderedIds
-      .map((scheduleId, index) => {
-        const schedule = schedulesById.get(scheduleId);
-        const residence = schedule?.case_.patient.residences[0];
-        if (!schedule || residence?.lat == null || residence.lng == null) return null;
-        return {
-          scheduleId,
-          patientName: schedule.case_.patient.name,
-          address: residence.address,
-          lat: residence.lat,
-          lng: residence.lng,
-          orderLabel: String(index + 1),
-          status: schedule.schedule_status,
-          priority: schedule.priority,
-          pointKind: 'schedule' as const,
-          timeLabel: timeLabel(schedule.time_window_start, schedule.time_window_end),
-          etaLabel: routeOrderDraft.manualDirty
-            ? null
-            : formatEtaLabel(
-                selectedDate,
-                routeDepartureTime,
-                routePlanByScheduleId.get(scheduleId)?.arrivalOffsetSeconds ?? null,
-                schedule.time_window_start,
-              ),
-        };
-      })
-      .filter((point): point is NonNullable<typeof point> => point !== null);
-  }, [
-    routeMapSchedules,
-    routeOrderDraft.draftIds,
-    routeOrderDraft.manualDirty,
-    routeDepartureTime,
-    routePlanByScheduleId,
-    selectedDate,
-  ]);
-  const routeMapSite = useMemo(() => {
-    const site = routeMapSchedules[0]?.site;
-    if (!site || site.lat == null || site.lng == null) return null;
-    return {
-      name: site.name,
-      lat: site.lat,
-      lng: site.lng,
-    };
-  }, [routeMapSchedules]);
-  const routeSelectionLabel = routePharmacistOptions.find(
-    (option) => option.id === resolvedRoutePharmacistId,
-  )
-    ? `${routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)?.name ?? resolvedRoutePharmacistId} / ${selectedDate}`
-    : null;
-  const routeOptimizationDirty = routeOrderDraft.differsFromCurrent;
-  const ganttWindow = useMemo(() => {
-    if (visibleSchedules.length === 0) {
-      return {
-        startMinutes: GANTT_DEFAULT_START_MINUTES,
-        endMinutes: GANTT_DEFAULT_END_MINUTES,
-      };
-    }
-
-    let earliest = GANTT_DEFAULT_END_MINUTES;
-    let latest = GANTT_DEFAULT_START_MINUTES;
-
-    for (const schedule of visibleSchedules) {
-      const startMinutes = minutesFromTimestamp(
-        schedule.time_window_start,
-        GANTT_DEFAULT_START_MINUTES,
-      );
-      const endMinutes = minutesFromTimestamp(schedule.time_window_end, startMinutes + 60);
-      earliest = Math.min(earliest, startMinutes);
-      latest = Math.max(latest, endMinutes);
-    }
-
-    return {
-      startMinutes: Math.max(
-        6 * 60,
-        roundDownToSlot(earliest - GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES),
-      ),
-      endMinutes: Math.min(22 * 60, roundUpToSlot(latest + GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)),
-    };
-  }, [visibleSchedules]);
-  const ganttSlots = useMemo(() => {
-    const slots: number[] = [];
-    for (
-      let minutes = ganttWindow.startMinutes;
-      minutes < ganttWindow.endMinutes;
-      minutes += GANTT_SLOT_MINUTES
-    ) {
-      slots.push(minutes);
-    }
-    return slots;
-  }, [ganttWindow.endMinutes, ganttWindow.startMinutes]);
-  const ganttColumns = useMemo(() => {
-    const columns = new Map<
-      string,
-      {
-        pharmacistId: string;
-        pharmacistName: string;
-        siteName: string | null;
-        schedules: Array<
-          VisitSchedule & {
-            blockStartMinutes: number;
-            blockEndMinutes: number;
-          }
-        >;
-      }
-    >();
-
-    for (const schedule of visibleSchedules) {
-      const existing = columns.get(schedule.pharmacist_id) ?? {
-        pharmacistId: schedule.pharmacist_id,
-        pharmacistName: pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
-        siteName: schedule.site?.name ?? null,
-        schedules: [],
-      };
-
-      const blockStartMinutes = minutesFromTimestamp(
-        schedule.time_window_start,
-        ganttWindow.startMinutes,
-      );
-      const blockEndMinutes = Math.max(
-        blockStartMinutes + GANTT_SLOT_MINUTES,
-        minutesFromTimestamp(schedule.time_window_end, blockStartMinutes + GANTT_SLOT_MINUTES * 2),
-      );
-
-      existing.schedules.push({
-        ...schedule,
-        blockStartMinutes,
-        blockEndMinutes,
-      });
-      columns.set(schedule.pharmacist_id, existing);
-    }
-
-    return Array.from(columns.values())
-      .map((column) => ({
-        ...column,
-        schedules: column.schedules.sort((left, right) => {
-          if (left.route_order != null || right.route_order != null) {
-            if (left.route_order == null) return 1;
-            if (right.route_order == null) return -1;
-            if (left.route_order !== right.route_order) {
-              return left.route_order - right.route_order;
-            }
-          }
-          return left.blockStartMinutes - right.blockStartMinutes;
-        }),
-      }))
-      .sort((left, right) => left.pharmacistName.localeCompare(right.pharmacistName, 'ja'));
-  }, [ganttWindow.startMinutes, pharmacistNameById, visibleSchedules]);
-  const ganttTableColumns = useMemo(
+  const routeMapPoints = useMemo(
     () =>
-      ganttColumns.map((column) => {
-        const scheduleStarts = new Map<
-          number,
-          {
-            schedule: VisitSchedule & {
-              blockStartMinutes: number;
-              blockEndMinutes: number;
-            };
-            span: number;
-          }
-        >();
-        const coveredSlots = new Set<number>();
-
-        for (const schedule of column.schedules) {
-          const startIndex = Math.max(
-            0,
-            Math.floor(
-              (schedule.blockStartMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES,
-            ),
-          );
-          const endIndex = Math.min(
-            ganttSlots.length,
-            Math.max(
-              startIndex + 1,
-              Math.ceil((schedule.blockEndMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES),
-            ),
-          );
-          const span = Math.max(1, endIndex - startIndex);
-
-          scheduleStarts.set(startIndex, { schedule, span });
-          for (let index = startIndex + 1; index < startIndex + span; index += 1) {
-            coveredSlots.add(index);
-          }
-        }
-
-        return {
-          ...column,
-          scheduleStarts,
-          coveredSlots,
-        };
+      buildScheduleDayRouteMapPoints({
+        routeMapSchedules,
+        draftScheduleIds: routeOrderDraft.draftIds,
+        manualDirty: routeOrderDraft.manualDirty,
+        selectedDate,
+        routeDepartureTime,
+        routePlanByScheduleId,
       }),
-    [ganttColumns, ganttSlots.length, ganttWindow.startMinutes],
+    [
+      routeMapSchedules,
+      routeOrderDraft.draftIds,
+      routeOrderDraft.manualDirty,
+      routeDepartureTime,
+      routePlanByScheduleId,
+      selectedDate,
+    ],
+  );
+  const routeMapSite = useMemo(
+    () => buildScheduleDayRouteMapSite(routeMapSchedules),
+    [routeMapSchedules],
+  );
+  const routeOptimizationDirty = routeOrderDraft.differsFromCurrent;
+  const {
+    window: ganttWindow,
+    slots: ganttSlots,
+    columns: ganttColumns,
+    tableColumns: ganttTableColumns,
+  } = useMemo(
+    () =>
+      buildScheduleDayGanttViewModel({
+        visibleSchedules,
+        pharmacistNameById,
+      }),
+    [pharmacistNameById, visibleSchedules],
   );
 
   function ganttBlockClass(
@@ -1096,65 +831,26 @@ export function ScheduleDayView({
 
   useEffect(() => {
     let active = true;
-    void offlineDb.visitBriefCache
-      .where('scheduledDate')
-      .equals(selectedDate)
-      .toArray()
-      .then(async (rows) => {
+    void readScheduleDayCachedVisitBriefs({
+      selectedDate,
+      repository: visitBriefCacheRepository,
+    })
+      .then((result) => {
         if (!active) return;
-        const freshRows = rows.filter((row) => isOfflineCacheFresh(row.updatedAt));
-        const staleRows = rows.filter((row) => !isOfflineCacheFresh(row.updatedAt));
-
-        await Promise.all(
-          staleRows.map((row) => row.id && offlineDb.visitBriefCache.delete(row.id)),
-        );
-
-        const decoded = await Promise.all(
-          freshRows.map(async (row) => {
-            const payload = await decryptOfflinePayload(row.payload);
-            const parsed = parseCachedVisitBriefCardPayload(payload);
-            return {
-              row,
-              payload: parsed,
-            };
-          }),
-        );
-
-        await Promise.all(
-          decoded.map((item) =>
-            item.payload === null && item.row.id
-              ? offlineDb.visitBriefCache.delete(item.row.id)
-              : Promise.resolve(),
-          ),
-        );
-
-        const usableRows = decoded.filter(
-          (
-            item,
-          ): item is {
-            row: import('@/lib/stores/offline-db').OfflineVisitBriefCache;
-            payload: CachedVisitBriefCard;
-          } => item.payload !== null,
-        );
-        setCachedVisitBriefs(
-          usableRows
-            .map((item) => item.payload)
-            .sort((left, right) =>
-              (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
-            ),
-        );
-        const latestUpdatedAt = usableRows.reduce<Date | null>(
-          (latest, item) => (!latest || item.row.updatedAt > latest ? item.row.updatedAt : latest),
-          null,
-        );
-        setCachedVisitBriefUpdatedAt(formatOfflineCacheUpdatedAt(latestUpdatedAt));
-        setCachedVisitBriefLoadedDate(selectedDate);
+        setCachedVisitBriefs(result.cards);
+        setCachedVisitBriefUpdatedAt(result.updatedAt);
+        setCachedVisitBriefLoadedDate(result.loadedDate);
+      })
+      .catch((error) => {
+        if (active) {
+          console.warn('[visit-brief-cache] Failed to load schedule brief cache', error);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [selectedDate]);
+  }, [selectedDate, visitBriefCacheRepository]);
 
   useEffect(() => {
     if (!orgId || selectedDateSchedules.length === 0) return;
@@ -1167,97 +863,28 @@ export function ScheduleDayView({
 
     let cancelled = false;
     void (async () => {
-      const res = await fetch('/api/visit-preparations/brief-batch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          schedule_ids: schedulesNeedingBriefs.map((schedule) => schedule.id),
-        }),
+      const filtered = await fetchMissingScheduleDayVisitBriefCards({
+        orgId,
+        selectedDate,
+        schedules: schedulesNeedingBriefs,
+        cachedVisitBriefByScheduleId,
       });
-      if (!res.ok) return;
-
-      const payload = (await res.json()) as {
-        data: Record<
-          string,
-          {
-            ai_summary: {
-              headline: string;
-              must_check_today: string[];
-              source_refs: string[];
-              generated_at: string;
-              provider: 'rule' | 'openai';
-              is_fallback: boolean;
-            };
-          }
-        >;
-      };
-      const items = await Promise.all(
-        schedulesNeedingBriefs.map(async (schedule): Promise<CachedVisitBriefCard | null> => {
-          const brief = payload.data[schedule.id];
-          if (!brief) return null;
-
-          return {
-            scheduleId: schedule.id,
-            patientId: schedule.case_.patient.id,
-            patientName: schedule.case_.patient.name,
-            scheduledDate: selectedDate,
-            timeWindowStart: schedule.time_window_start,
-            timeWindowEnd: schedule.time_window_end,
-            priority: schedule.priority,
-            facilityLabel:
-              schedule.facility_hint?.label ??
-              schedule.case_.patient.residences[0]?.address ??
-              null,
-            siteName: schedule.site?.name ?? null,
-            headline: brief.ai_summary.headline,
-            mustCheckToday: brief.ai_summary.must_check_today,
-            sourceRefs: brief.ai_summary.source_refs,
-            generatedAt: brief.ai_summary.generated_at,
-            provider: brief.ai_summary.provider,
-            isFallback: brief.ai_summary.is_fallback,
-          };
-        }),
-      );
       if (cancelled) return;
-      const filtered = items.filter((item): item is CachedVisitBriefCard => Boolean(item));
       if (filtered.length > 0) {
-        await Promise.all(
-          filtered.map(async (item) => {
-            await offlineDb.visitBriefCache
-              .where('scheduleId')
-              .equals(item.scheduleId)
-              .and((row) => row.scheduledDate === selectedDate)
-              .delete();
-            await offlineDb.visitBriefCache.add({
-              scheduleId: item.scheduleId,
-              patientId: item.patientId,
-              scheduledDate: selectedDate,
-              payload: await encryptOfflinePayloadRequired(
-                JSON.stringify(item),
-                'visit brief cache payload',
-              ),
-              updatedAt: new Date(),
-            });
-          }),
-        );
+        const updatedAt = await saveScheduleDayVisitBriefCards({
+          selectedDate,
+          cards: filtered,
+          repository: visitBriefCacheRepository,
+        });
         if (cancelled) return;
         setCachedVisitBriefs((previous) => {
-          const nextByScheduleId = new Map(
-            previous
-              .filter((item) => item.scheduledDate === selectedDate)
-              .map((item) => [item.scheduleId, item]),
-          );
-          for (const item of filtered) {
-            nextByScheduleId.set(item.scheduleId, item);
-          }
-          return Array.from(nextByScheduleId.values()).sort((left, right) =>
-            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
-          );
+          return mergeScheduleDayCachedVisitBriefCards({
+            previous,
+            selectedDate,
+            incoming: filtered,
+          });
         });
-        setCachedVisitBriefUpdatedAt(new Date().toISOString());
+        setCachedVisitBriefUpdatedAt(updatedAt);
       }
     })().catch((error) => {
       if (!cancelled) {
@@ -1274,6 +901,7 @@ export function ScheduleDayView({
     orgId,
     selectedDate,
     selectedDateSchedules,
+    visitBriefCacheRepository,
   ]);
 
   function openRescheduleDialog(schedule: VisitSchedule) {
@@ -1307,30 +935,15 @@ export function ScheduleDayView({
   }
 
   function openContactLogDialog(proposal: Proposal) {
-    setContactLogTarget(proposal);
-    const latestLog = proposal.contact_logs[0] ?? null;
-    setContactLogForm({
-      outcome:
-        proposal.patient_contact_status === 'confirmed'
-          ? 'confirmed'
-          : proposal.patient_contact_status === 'declined'
-            ? 'declined'
-            : proposal.patient_contact_status === 'change_requested'
-              ? 'change_requested'
-              : proposal.patient_contact_status === 'unreachable'
-                ? 'unreachable'
-                : 'attempted',
-      contact_method:
-        latestLog?.contact_method === 'fax' || latestLog?.contact_method === 'email'
-          ? latestLog.contact_method
-          : 'phone',
-      contact_name: latestLog?.contact_name ?? '',
-      contact_phone: latestLog?.contact_phone ?? '',
-      note: '',
-      callback_due_at: latestLog?.callback_due_at
-        ? format(parseISO(latestLog.callback_due_at), "yyyy-MM-dd'T'HH:mm")
-        : '',
-    });
+    const dialogState = openScheduleDayContactLogDialog(proposal);
+    setContactLogTarget(dialogState.target);
+    setContactLogForm(dialogState.form);
+  }
+
+  function closeContactLogDialog() {
+    const dialogState = closeScheduleDayContactLogDialog();
+    setContactLogTarget(dialogState.target);
+    setContactLogForm(dialogState.form);
   }
 
   function openPreparationDialog(schedule: VisitSchedule) {
@@ -1342,41 +955,19 @@ export function ScheduleDayView({
       preparation: initialPreparation,
       pack: null,
     });
-    setPreparationForm({
-      medication_changes_reviewed: initialPreparation?.medication_changes_reviewed ?? false,
-      carry_items_confirmed: initialPreparation?.carry_items_confirmed ?? false,
-      previous_issues_reviewed: initialPreparation?.previous_issues_reviewed ?? false,
-      route_confirmed: initialPreparation?.route_confirmed ?? false,
-      offline_synced: initialPreparation?.offline_synced ?? false,
-    });
+    setPreparationForm(buildScheduleDayPreparationForm(initialPreparation));
 
     if (!orgId) return;
 
     setPreparationLoading(true);
-    void fetch(`/api/visit-preparations/${scheduleId}`, {
-      headers: { 'x-org-id': orgId },
+    void fetchScheduleDayPreparationDetails({
+      orgId,
+      scheduleId,
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-        return (
-          res.json() as Promise<{
-            data: {
-              preparation: VisitPreparation | null;
-              pack: VisitPreparationPack | null;
-            };
-          }>
-        ).then((payload) => payload.data);
-      })
       .then((payload) => {
         if (preparationRequestIdRef.current !== scheduleId) return;
         setPreparationDetails(payload);
-        setPreparationForm({
-          medication_changes_reviewed: payload.preparation?.medication_changes_reviewed ?? false,
-          carry_items_confirmed: payload.preparation?.carry_items_confirmed ?? false,
-          previous_issues_reviewed: payload.preparation?.previous_issues_reviewed ?? false,
-          route_confirmed: payload.preparation?.route_confirmed ?? false,
-          offline_synced: payload.preparation?.offline_synced ?? false,
-        });
+        setPreparationForm(buildScheduleDayPreparationForm(payload.preparation));
       })
       .catch((error) => {
         if (preparationRequestIdRef.current !== scheduleId) return;
@@ -1388,46 +979,33 @@ export function ScheduleDayView({
       });
   }
 
+  function closePreparationDialog() {
+    preparationRequestIdRef.current = null;
+    setPreparationLoading(false);
+    setPreparationDetails(null);
+    setPreparationTarget(null);
+  }
+
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/visit-schedule-proposals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          case_id: resolvedPlannerCaseId,
-          visit_type: plannerForm.visit_type,
-          priority: plannerForm.priority,
-          travel_mode: routeTravelMode,
-          start_date: plannerForm.start_date,
-          preferred_time_from: plannerForm.preferred_time_from || undefined,
-          preferred_time_to: plannerForm.preferred_time_to || undefined,
-          vehicle_resource_id: plannerForm.vehicle_resource_id || undefined,
-          candidate_count: Number(effectivePlannerCandidateCount),
-        }),
+      return generateScheduleDayProposals({
+        orgId,
+        resolvedCaseId: resolvedPlannerCaseId,
+        plannerForm,
+        routeTravelMode,
+        effectiveCandidateCount: effectivePlannerCandidateCount,
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '候補生成に失敗しました');
-      }
-      return res.json() as Promise<{ data: Proposal[]; alerts?: BillingRequirementAlert[] }>;
     },
     onSuccess: async (data) => {
-      toast.success(`${data.data.length}件の訪問候補を生成しました`);
-      if ((data.alerts?.length ?? 0) > 0) {
-        const warningMessages =
-          data.alerts?.filter((alert) => alert.severity !== 'info').map((alert) => alert.message) ??
-          [];
-        if (warningMessages.length > 0) {
-          toast.warning('算定アラート', {
-            description: warningMessages.slice(0, 2).join(' / '),
-          });
-        }
-      }
-      await queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] });
-      setSelectedDate(plannerForm.start_date);
+      await handleScheduleDayProposalGenerationSuccess({
+        data,
+        orgId,
+        plannerStartDate: plannerForm.start_date,
+        notifySuccess: toast.success,
+        notifyWarning: toast.warning,
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+        setSelectedDate,
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '候補生成に失敗しました');
@@ -1435,69 +1013,20 @@ export function ScheduleDayView({
   });
 
   const proposalActionMutation = useMutation({
-    mutationFn: async ({
-      id,
-      payload,
-    }: {
-      id: string;
-      payload:
-        | { action: 'approve' }
-        | { action: 'confirm' }
-        | { action: 'reject' }
-        | {
-            action: 'contact_attempt';
-            outcome: 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
-            contact_method: 'phone' | 'fax' | 'email';
-            contact_name?: string;
-            contact_phone?: string;
-            note?: string;
-            callback_due_at?: string;
-          };
-    }) => {
-      const res = await fetch(`/api/visit-schedule-proposals/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify(payload),
+    mutationFn: async (request: ScheduleDayProposalActionRequest) => {
+      return updateScheduleDayProposalAction({
+        orgId,
+        request,
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '候補更新に失敗しました');
-      }
-      return res.json();
     },
     onSuccess: async (_data, variables) => {
-      const message =
-        variables.payload.action === 'approve'
-          ? '候補を承認して架電待ちへ移しました'
-          : variables.payload.action === 'confirm'
-            ? '電話確認が完了し、訪問予定を確定しました'
-            : variables.payload.action === 'reject'
-              ? '候補を却下しました'
-              : variables.payload.outcome === 'change_requested'
-                ? '変更希望として記録しました'
-                : variables.payload.outcome === 'declined'
-                  ? '患者辞退として記録しました'
-                  : variables.payload.outcome === 'unreachable'
-                    ? '不通として記録しました'
-                    : variables.payload.outcome === 'confirmed'
-                      ? '患者確認済みとして記録しました'
-                      : '架電状況を更新しました';
-
-      toast.success(message);
-      if (variables.payload.action === 'contact_attempt') {
-        setContactLogTarget(null);
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
-        queryClient.invalidateQueries({
-          queryKey: ['tasks', 'visit-contact-followup', orgId],
-        }),
-      ]);
+      await handleScheduleDayProposalActionSuccess({
+        orgId,
+        payload: variables.payload,
+        notifySuccess: toast.success,
+        closeContactLogDialog,
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '候補更新に失敗しました');
@@ -1574,53 +1103,23 @@ export function ScheduleDayView({
 
   const preparationMutation = useMutation({
     mutationFn: async ({ scheduleId, markReady }: { scheduleId: string; markReady: boolean }) => {
-      const preparationRes = await fetch(`/api/visit-preparations/${scheduleId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      return saveScheduleDayPreparation({
+        orgId,
+        request: {
+          scheduleId,
+          form: preparationForm,
+          markReady,
         },
-        body: JSON.stringify({
-          checklist: preparationForm,
-          ...preparationForm,
-        }),
       });
-      if (!preparationRes.ok) {
-        const error = await preparationRes.json().catch(() => ({}));
-        throw new Error(error.message ?? '訪問準備の保存に失敗しました');
-      }
-
-      if (markReady) {
-        const readyRes = await fetch(`/api/visit-schedules/${scheduleId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
-          body: JSON.stringify({
-            schedule_status: 'ready',
-          }),
-        });
-        if (!readyRes.ok) {
-          const error = await readyRes.json().catch(() => ({}));
-          throw new Error(error.message ?? '訪問予定を ready に更新できませんでした');
-        }
-      }
-
-      return preparationRes.json();
     },
     onSuccess: async (_data, variables) => {
-      toast.success(
-        variables.markReady ? '訪問準備を保存し、ready へ進めました' : '訪問準備を保存しました',
-      );
-      preparationRequestIdRef.current = null;
-      setPreparationLoading(false);
-      setPreparationDetails(null);
-      setPreparationTarget(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['tasks', orgId] }),
-      ]);
+      await handleScheduleDayPreparationSuccess({
+        orgId,
+        markReady: variables.markReady,
+        notifySuccess: toast.success,
+        closeDialog: closePreparationDialog,
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '訪問準備の保存に失敗しました');
@@ -1635,46 +1134,22 @@ export function ScheduleDayView({
       groupKey: string;
       carryItemsConfirmed: boolean;
     }) => {
-      const group = facilityTracker.find((candidate) => candidate.key === groupKey);
-      if (!group) {
-        throw new Error('訪問先グループが見つかりません');
-      }
-
-      const routeDraft = {
-        ...(facilityRouteDefaults[group.key] ?? {}),
-        ...(facilityRouteOverrides[group.key] ?? {}),
-      };
-      const orderedScheduleIds = buildOrderedFacilityScheduleIds(group, routeDraft);
-
-      const res = await fetch('/api/facility-visit-batches', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          schedule_ids: group.scheduleIds,
-          ordered_schedule_ids: orderedScheduleIds,
-          carry_items_confirmed: carryItemsConfirmed,
-          allow_mixed_unit: true,
-        }),
+      return saveScheduleDayFacilityBatch({
+        orgId,
+        groupKey,
+        facilityTracker,
+        facilityRouteDefaults,
+        facilityRouteOverrides,
+        carryItemsConfirmed,
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '同時訪問グループの保存に失敗しました');
-      }
-      return res.json();
     },
     onSuccess: async (_data, variables) => {
-      toast.success(
-        variables.carryItemsConfirmed
-          ? '同時訪問グループの順序と持参確認を保存しました'
-          : '同時訪問グループの順序を保存しました',
-      );
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] }),
-      ]);
+      await handleScheduleDayFacilityBatchSuccess({
+        orgId,
+        carryItemsConfirmed: variables.carryItemsConfirmed,
+        notifySuccess: toast.success,
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '同時訪問グループの保存に失敗しました');
@@ -1683,43 +1158,19 @@ export function ScheduleDayView({
 
   const facilityVisitDayMutation = useMutation({
     mutationFn: async () => {
-      if (!facilityVisitDayTarget) {
-        throw new Error('訪問先グループが選択されていません');
-      }
-
-      const res = await fetch('/api/facility-visit-batches/visit-days', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          facility_label: facilityVisitDayTarget.label,
-          schedule_ids: facilityVisitDayTarget.scheduleIds,
-          preferred_weekdays: facilityVisitDayForm.preferred_weekdays,
-          preferred_time_from: facilityVisitDayForm.preferred_time_from || null,
-          preferred_time_to: facilityVisitDayForm.preferred_time_to || null,
-          facility_time_from: facilityVisitDayForm.facility_time_from || null,
-          facility_time_to: facilityVisitDayForm.facility_time_to || null,
-          visit_buffer_minutes: facilityVisitDayForm.visit_buffer_minutes
-            ? Number(facilityVisitDayForm.visit_buffer_minutes)
-            : null,
-          notes: facilityVisitDayForm.notes || null,
-        }),
+      return saveScheduleDayFacilityVisitDay({
+        orgId,
+        target: facilityVisitDayTarget,
+        form: facilityVisitDayForm,
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '訪問先グループの定期訪問日の保存に失敗しました');
-      }
-      return res.json();
     },
     onSuccess: async () => {
-      toast.success('訪問先グループの定期訪問日を保存しました');
-      setFacilityVisitDayTarget(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
-      ]);
+      await handleScheduleDayFacilityVisitDaySuccess({
+        orgId,
+        notifySuccess: toast.success,
+        closeDialog: () => setFacilityVisitDayTarget(null),
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(
@@ -1730,29 +1181,19 @@ export function ScheduleDayView({
 
   const rescheduleMutation = useMutation({
     mutationFn: async () => {
-      if (!rescheduleTarget) throw new Error('リスケ対象が選択されていません');
-
-      const res = await fetch(`/api/visit-schedules/${rescheduleTarget.id}/reschedule`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify(rescheduleForm),
+      return generateScheduleDayRescheduleProposals({
+        orgId,
+        target: rescheduleTarget,
+        form: rescheduleForm,
       });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? 'リスケ候補の生成に失敗しました');
-      }
-      return res.json();
     },
     onSuccess: async () => {
-      toast.success('リスケ候補を生成しました');
-      setRescheduleTarget(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-      ]);
+      await handleScheduleDayRescheduleSuccess({
+        orgId,
+        notifySuccess: toast.success,
+        closeDialog: () => setRescheduleTarget(null),
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'リスケ候補の生成に失敗しました');
@@ -1779,24 +1220,18 @@ export function ScheduleDayView({
 
   const applyOptimizedRouteMutation = useMutation({
     mutationFn: async () => {
-      if (!routePlanData || routeOrderDraft.draftIds.length === 0) {
-        throw new Error('反映できる最適ルートがありません');
-      }
-
-      await applyVisitScheduleRouteUpdates({
+      await applyScheduleDayRouteOrderDraft({
         orgId,
-        updates: routeOrderDraft.draftIds.map((scheduleId, index) => ({
-          scheduleId,
-          route_order: index + 1,
-        })),
+        hasRoutePlan: Boolean(routePlanData),
+        draftScheduleIds: routeOrderDraft.draftIds,
       });
     },
     onSuccess: async () => {
-      toast.success('Google Routes API の順序を route_order に反映しました');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
-      ]);
+      await handleScheduleDayRouteOrderApplySuccess({
+        orgId,
+        notifySuccess: toast.success,
+        invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '最適順序の反映に失敗しました');
@@ -2013,7 +1448,7 @@ export function ScheduleDayView({
         )}
       </section>
 
-      {(isOffline || pendingSyncCount > 0 || cachedVisitBriefs.length > 0) && (
+      {offlineStatus.visible && (
         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <Card>
             <CardHeader>
@@ -2027,19 +1462,12 @@ export function ScheduleDayView({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap gap-2 text-xs">
-                <Badge
-                  variant="outline"
-                  className={
-                    isOffline
-                      ? 'border-amber-200 bg-amber-50 text-amber-700'
-                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  }
-                >
-                  {isOffline ? 'オフライン' : 'オンライン'}
+                <Badge variant="outline" className={offlineStatus.networkBadgeClassName}>
+                  {offlineStatus.networkBadgeLabel}
                 </Badge>
-                <Badge variant="outline">同期待ち {pendingSyncCount} 件</Badge>
-                <Badge variant="outline">競合 {syncConflicts.length} 件</Badge>
-                <Badge variant="outline">読取専用 TTL {OFFLINE_CACHE_TTL_HOURS}h</Badge>
+                <Badge variant="outline">{offlineStatus.pendingSyncLabel}</Badge>
+                <Badge variant="outline">{offlineStatus.conflictLabel}</Badge>
+                <Badge variant="outline">{offlineStatus.ttlLabel}</Badge>
               </div>
               <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">朝の事前同期</p>
@@ -2047,23 +1475,18 @@ export function ScheduleDayView({
                   当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 /
                   持参チェック対象を read-only で参照できます。
                 </p>
-                <p className="mt-1">
-                  最終同期:{' '}
-                  {cachedVisitBriefUpdatedAt
-                    ? format(parseISO(cachedVisitBriefUpdatedAt), 'M/d HH:mm', { locale: ja })
-                    : '未実施'}
-                </p>
+                <p className="mt-1">最終同期: {offlineStatus.lastSyncLabel}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => manualSyncMutation.mutate()}
-                  disabled={manualSyncMutation.isPending || pendingSyncCount === 0}
+                  disabled={manualSyncMutation.isPending || !offlineStatus.canManualSync}
                 >
                   {manualSyncMutation.isPending ? '同期中...' : '今すぐ同期'}
                 </Button>
-                {syncConflicts.length > 0 && (
+                {offlineStatus.showConflictResolutionHint && (
                   <span className="text-xs text-amber-700">409 競合は下のカードで解決します</span>
                 )}
               </div>
@@ -2199,10 +1622,7 @@ export function ScheduleDayView({
                 value={resolvedPlannerCaseId}
                 onValueChange={(value) => {
                   setPlannerCandidateCountManual(false);
-                  setPlannerForm((current) => ({
-                    ...current,
-                    case_id: value ?? current.case_id,
-                  }));
+                  setPlannerForm((current) => applyScheduleDayPlannerCaseSelection(current, value));
                 }}
               >
                 <SelectTrigger id="planner-case" className="w-full">
@@ -2239,10 +1659,12 @@ export function ScheduleDayView({
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            setPlannerForm((current) => ({
-                              ...current,
-                              start_date: billingCadence.next_billable_date ?? current.start_date,
-                            }))
+                            setPlannerForm((current) =>
+                              applyScheduleDayPlannerStartDate(
+                                current,
+                                billingCadence.next_billable_date,
+                              ),
+                            )
                           }
                         >
                           次回算定可能日に設定
@@ -2253,18 +1675,15 @@ export function ScheduleDayView({
                           size="sm"
                           onClick={() => {
                             setPlannerCandidateCountManual(false);
-                            setPlannerForm((current) => ({
-                              ...current,
-                              start_date: billingCadence.next_billable_date ?? current.start_date,
-                              visit_type:
-                                billingPreviewData?.recommended_visit_type ?? current.visit_type,
-                              priority:
-                                billingPreviewData?.recommended_priority ?? current.priority,
-                              candidate_count: String(
-                                billingPreviewData?.suggested_schedule_slot_count ??
-                                  Number(current.candidate_count),
-                              ),
-                            }));
+                            setPlannerForm((current) =>
+                              applyScheduleDayPlannerBillingRecommendations({
+                                current: applyScheduleDayPlannerStartDate(
+                                  current,
+                                  billingCadence.next_billable_date,
+                                ),
+                                billingPreview: billingPreviewData,
+                              }),
+                            );
                           }}
                         >
                           推奨値を適用
@@ -2347,10 +1766,9 @@ export function ScheduleDayView({
                 <Select
                   value={plannerForm.visit_type}
                   onValueChange={(value) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      visit_type: (value as VisitType | null) ?? current.visit_type,
-                    }))
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerVisitType(current, value as VisitType | null),
+                    )
                   }
                 >
                   <SelectTrigger id="planner-visit-type" className="w-full">
@@ -2370,10 +1788,9 @@ export function ScheduleDayView({
                 <Select
                   value={plannerForm.priority}
                   onValueChange={(value) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      priority: (value as VisitPriority | null) ?? current.priority,
-                    }))
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerPriority(current, value as VisitPriority | null),
+                    )
                   }
                 >
                   <SelectTrigger id="planner-priority" className="w-full">
@@ -2398,10 +1815,9 @@ export function ScheduleDayView({
                   type="date"
                   value={plannerForm.start_date}
                   onChange={(event) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      start_date: event.target.value,
-                    }))
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerStartDate(current, event.target.value),
+                    )
                   }
                 />
               </div>
@@ -2411,10 +1827,9 @@ export function ScheduleDayView({
                   value={effectivePlannerCandidateCount}
                   onValueChange={(value) => {
                     setPlannerCandidateCountManual(true);
-                    setPlannerForm((current) => ({
-                      ...current,
-                      candidate_count: value ?? current.candidate_count,
-                    }));
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerCandidateCount(current, value),
+                    );
                   }}
                 >
                   <SelectTrigger id="planner-candidate-count" className="w-full">
@@ -2433,18 +1848,21 @@ export function ScheduleDayView({
                 <Select
                   value={plannerForm.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
                   onValueChange={(value) => {
-                    const selectedVehicleResourceId =
-                      value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
-                    const selectedVehicle = plannerVehicleResources.find(
-                      (vehicle) => vehicle.id === selectedVehicleResourceId,
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerVehicleResourceSelection(
+                        current,
+                        value,
+                        AUTO_VEHICLE_RESOURCE_VALUE,
+                      ),
                     );
-                    setPlannerForm((current) => ({
-                      ...current,
-                      vehicle_resource_id: selectedVehicleResourceId,
-                    }));
-                    if (selectedVehicle) {
-                      setRouteTravelMode(selectedVehicle.travel_mode);
-                    }
+                    setRouteTravelMode((currentRouteTravelMode) =>
+                      resolveScheduleDayPlannerVehicleRouteTravelMode({
+                        selectedValue: value,
+                        autoValue: AUTO_VEHICLE_RESOURCE_VALUE,
+                        vehicleResources: plannerVehicleResources,
+                        currentRouteTravelMode,
+                      }),
+                    );
                   }}
                 >
                   <SelectTrigger id="planner-vehicle-resource" className="w-full">
@@ -2480,10 +1898,9 @@ export function ScheduleDayView({
                   type="time"
                   value={plannerForm.preferred_time_from}
                   onChange={(event) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      preferred_time_from: event.target.value,
-                    }))
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerPreferredTimeFrom(current, event.target.value),
+                    )
                   }
                 />
               </div>
@@ -2494,10 +1911,9 @@ export function ScheduleDayView({
                   type="time"
                   value={plannerForm.preferred_time_to}
                   onChange={(event) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      preferred_time_to: event.target.value,
-                    }))
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerPreferredTimeTo(current, event.target.value),
+                    )
                   }
                 />
               </div>
@@ -3407,45 +2823,54 @@ export function ScheduleDayView({
                                   rowSpan={scheduleCell.span}
                                   className="w-56 min-w-56 align-top"
                                 >
-                                  <div
-                                    className={[
-                                      'flex h-full min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
-                                      ganttBlockClass(scheduleCell.schedule),
-                                    ].join(' ')}
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <p className="truncate text-sm font-medium">
-                                          {scheduleCell.schedule.case_.patient.name}
-                                        </p>
-                                        <p className="text-[11px] opacity-80">
-                                          {timeLabel(
-                                            scheduleCell.schedule.time_window_start,
-                                            scheduleCell.schedule.time_window_end,
-                                          )}
+                                  <div className="space-y-2">
+                                    {scheduleCell.schedules.length > 1 ? (
+                                      <Badge variant="outline" className="bg-background/90">
+                                        {scheduleCell.overlapKind === 'same_start'
+                                          ? '同時刻'
+                                          : '重なり'}{' '}
+                                        {scheduleCell.schedules.length}件
+                                      </Badge>
+                                    ) : null}
+                                    {scheduleCell.schedules.map((schedule) => (
+                                      <div
+                                        key={schedule.id}
+                                        className={[
+                                          'flex min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
+                                          ganttBlockClass(schedule),
+                                        ].join(' ')}
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium">
+                                              {schedule.case_.patient.name}
+                                            </p>
+                                            <p className="text-[11px] opacity-80">
+                                              {timeLabel(
+                                                schedule.time_window_start,
+                                                schedule.time_window_end,
+                                              )}
+                                            </p>
+                                          </div>
+                                          <Badge variant="outline" className="shrink-0 bg-white/70">
+                                            #{schedule.route_order ?? '-'}
+                                          </Badge>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-1">
+                                          <Badge variant="outline" className="bg-white/70">
+                                            {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
+                                          </Badge>
+                                          <Badge variant="outline" className="bg-white/70">
+                                            {schedule.preparation?.prepared_at
+                                              ? '準備完了'
+                                              : '準備未了'}
+                                          </Badge>
+                                        </div>
+                                        <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
+                                          {addressOfPatient(schedule)}
                                         </p>
                                       </div>
-                                      <Badge variant="outline" className="shrink-0 bg-white/70">
-                                        #{scheduleCell.schedule.route_order ?? '-'}
-                                      </Badge>
-                                    </div>
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                      <Badge variant="outline" className="bg-white/70">
-                                        {
-                                          SCHEDULE_STATUS_LABELS[
-                                            scheduleCell.schedule.schedule_status
-                                          ]
-                                        }
-                                      </Badge>
-                                      <Badge variant="outline" className="bg-white/70">
-                                        {scheduleCell.schedule.preparation?.prepared_at
-                                          ? '準備完了'
-                                          : '準備未了'}
-                                      </Badge>
-                                    </div>
-                                    <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
-                                      {addressOfPatient(scheduleCell.schedule)}
-                                    </p>
+                                    ))}
                                   </div>
                                 </td>
                               );
@@ -3994,7 +3419,7 @@ export function ScheduleDayView({
 
       <Dialog
         open={contactLogTarget !== null}
-        onOpenChange={(open) => !open && setContactLogTarget(null)}
+        onOpenChange={(open) => !open && closeContactLogDialog()}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -4129,7 +3554,7 @@ export function ScheduleDayView({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setContactLogTarget(null)}
+              onClick={closeContactLogDialog}
               disabled={proposalActionMutation.isPending}
             >
               閉じる
@@ -4137,20 +3562,12 @@ export function ScheduleDayView({
             <Button
               onClick={() => {
                 if (!contactLogTarget) return;
-                proposalActionMutation.mutate({
-                  id: contactLogTarget.id,
-                  payload: {
-                    action: 'contact_attempt',
-                    outcome: contactLogForm.outcome,
-                    contact_method: contactLogForm.contact_method,
-                    contact_name: contactLogForm.contact_name || undefined,
-                    contact_phone: contactLogForm.contact_phone || undefined,
-                    note: contactLogForm.note || undefined,
-                    callback_due_at: contactLogForm.callback_due_at
-                      ? new Date(contactLogForm.callback_due_at).toISOString()
-                      : undefined,
-                  },
-                });
+                proposalActionMutation.mutate(
+                  buildScheduleDayContactAttemptRequest({
+                    proposalId: contactLogTarget.id,
+                    form: contactLogForm,
+                  }),
+                );
               }}
               disabled={proposalActionMutation.isPending}
             >
@@ -4332,10 +3749,7 @@ export function ScheduleDayView({
         open={preparationTarget !== null}
         onOpenChange={(open) => {
           if (open) return;
-          preparationRequestIdRef.current = null;
-          setPreparationLoading(false);
-          setPreparationDetails(null);
-          setPreparationTarget(null);
+          closePreparationDialog();
         }}
       >
         <DialogContent className="sm:max-w-lg">
@@ -4788,12 +4202,7 @@ export function ScheduleDayView({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => {
-                preparationRequestIdRef.current = null;
-                setPreparationLoading(false);
-                setPreparationDetails(null);
-                setPreparationTarget(null);
-              }}
+              onClick={closePreparationDialog}
               disabled={preparationMutation.isPending}
             >
               閉じる

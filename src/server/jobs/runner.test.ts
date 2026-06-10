@@ -36,6 +36,8 @@ describe('runJob', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T10:00:00.000Z'));
     vi.clearAllMocks();
     integrationJobFindFirstMock.mockResolvedValue(null);
     integrationJobCreateMock.mockResolvedValue({ id: 'job_1' });
@@ -47,6 +49,7 @@ describe('runJob', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it('returns the job result on first-attempt success and marks the row completed', async () => {
@@ -72,6 +75,25 @@ describe('runJob', () => {
     expect(fn).not.toHaveBeenCalled();
     expect(result).toEqual({ processedCount: 0, skipped: true });
     expect(integrationJobCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not skip execution for stale running job locks', async () => {
+    integrationJobFindFirstMock.mockResolvedValue(null);
+
+    const fn = vi.fn().mockResolvedValue({ processedCount: 1 });
+    const result = await runJob('test_job', fn);
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(integrationJobFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        job_type: 'test_job',
+        status: 'running',
+        OR: [{ locked_at: null }, { locked_at: { gt: new Date('2026-06-10T04:00:00.000Z') } }],
+      },
+      select: { id: true },
+    });
+    expect(integrationJobCreateMock).toHaveBeenCalled();
   });
 
   it('throws the original error after exhausting retries and marks the row failed', async () => {
@@ -101,9 +123,7 @@ describe('runJob', () => {
     await expect(runJob('test_job', fn)).rejects.toBe(original);
 
     // Verify the operator-facing log fired with both errors for triage.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('CRITICAL'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CRITICAL'));
     expect(consoleErrorSpy.mock.calls.flat().join(' ')).toContain('db-down-during-cleanup');
     expect(consoleErrorSpy.mock.calls.flat().join(' ')).toContain('upstream-failure');
   });

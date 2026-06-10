@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type Holiday = {
@@ -93,7 +94,7 @@ function getFirstDayOfWeek(year: number, month: number) {
 
 function dateKey(d: Date | string) {
   const date = typeof d === 'string' ? new Date(d) : d;
-  return date.toISOString().slice(0, 10);
+  return formatDateKey(date);
 }
 
 export function BusinessHolidaysContent() {
@@ -245,12 +246,16 @@ export function BusinessHolidaysContent() {
   });
 
   function prevMonth() {
-    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
-    else setViewMonth((m) => m - 1);
+    if (viewMonth === 0) {
+      setViewYear((y) => y - 1);
+      setViewMonth(11);
+    } else setViewMonth((m) => m - 1);
   }
   function nextMonth() {
-    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
-    else setViewMonth((m) => m + 1);
+    if (viewMonth === 11) {
+      setViewYear((y) => y + 1);
+      setViewMonth(0);
+    } else setViewMonth((m) => m + 1);
   }
 
   function openEdit(holiday: Holiday) {
@@ -318,14 +323,19 @@ export function BusinessHolidaysContent() {
                 <SelectContent>
                   <SelectItem value="__all">全店舗</SelectItem>
                   {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Button
                 size="sm"
                 variant={bulkMode ? 'default' : 'outline'}
-                onClick={() => { setBulkMode(!bulkMode); setBulkDates(new Set()); }}
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  setBulkDates(new Set());
+                }}
               >
                 {bulkMode ? '一括モード中' : '一括登録'}
               </Button>
@@ -379,7 +389,10 @@ export function BusinessHolidaysContent() {
                               ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                           }`}
-                          onClick={(e) => { e.stopPropagation(); openEdit(h); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(h);
+                          }}
                           title={`${h.name} (${HOLIDAY_TYPE_LABELS[h.holiday_type] ?? h.holiday_type})`}
                         >
                           {h.name}
@@ -402,9 +415,13 @@ export function BusinessHolidaysContent() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-1">
-              {Array.from(bulkDates).sort().map((d) => (
-                <Badge key={d} variant="secondary">{d}</Badge>
-              ))}
+              {Array.from(bulkDates)
+                .sort()
+                .map((d) => (
+                  <Badge key={d} variant="secondary">
+                    {d}
+                  </Badge>
+                ))}
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="休日名">
@@ -421,7 +438,9 @@ export function BusinessHolidaysContent() {
                   </SelectTrigger>
                   <SelectContent>
                     {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -434,14 +453,22 @@ export function BusinessHolidaysContent() {
                   <SelectContent>
                     <SelectItem value="__all">全店舗共通</SelectItem>
                     {sites.map((site) => (
-                      <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setBulkMode(false); setBulkDates(new Set()); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBulkMode(false);
+                  setBulkDates(new Set());
+                }}
+              >
                 キャンセル
               </Button>
               <Button
@@ -469,7 +496,9 @@ export function BusinessHolidaysContent() {
                 <div className="flex items-center gap-3">
                   <div className="text-sm font-medium">{dateKey(h.date)}</div>
                   <div className="text-sm">{h.name}</div>
-                  <Badge variant="outline">{HOLIDAY_TYPE_LABELS[h.holiday_type] ?? h.holiday_type}</Badge>
+                  <Badge variant="outline">
+                    {HOLIDAY_TYPE_LABELS[h.holiday_type] ?? h.holiday_type}
+                  </Badge>
                   {h.is_closed ? (
                     <Badge variant="destructive">休業</Badge>
                   ) : (
@@ -494,7 +523,16 @@ export function BusinessHolidaysContent() {
       </Card>
 
       {/* Add/Edit Form Sheet */}
-      <Sheet open={showForm} onOpenChange={(open) => { if (!open) { setShowForm(false); setForm(EMPTY_FORM); setEditingId(null); } }}>
+      <Sheet
+        open={showForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowForm(false);
+            setForm(EMPTY_FORM);
+            setEditingId(null);
+          }
+        }}
+      >
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle>{editingId ? '休日を編集' : '休日を追加'}</SheetTitle>
@@ -525,7 +563,9 @@ export function BusinessHolidaysContent() {
                 </SelectTrigger>
                 <SelectContent>
                   {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -533,7 +573,9 @@ export function BusinessHolidaysContent() {
             <Field label="対象店舗">
               <Select
                 value={form.site_id}
-                onValueChange={(v) => setForm((f) => ({ ...f, site_id: v === '__all' ? '' : (v ?? '') }))}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, site_id: v === '__all' ? '' : (v ?? '') }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="全店舗共通" />
@@ -541,7 +583,9 @@ export function BusinessHolidaysContent() {
                 <SelectContent>
                   <SelectItem value="__all">全店舗共通</SelectItem>
                   {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -554,7 +598,14 @@ export function BusinessHolidaysContent() {
               休業日として扱う
             </label>
             <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => { setShowForm(false); setForm(EMPTY_FORM); setEditingId(null); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowForm(false);
+                  setForm(EMPTY_FORM);
+                  setEditingId(null);
+                }}
+              >
                 キャンセル
               </Button>
               <Button
@@ -574,7 +625,8 @@ export function BusinessHolidaysContent() {
           <DialogHeader>
             <DialogTitle>休日を削除</DialogTitle>
             <DialogDescription>
-              {deleteTarget?.name}（{deleteTarget ? dateKey(deleteTarget.date) : ''}）を削除しますか？
+              {deleteTarget?.name}（{deleteTarget ? dateKey(deleteTarget.date) : ''}
+              ）を削除しますか？
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

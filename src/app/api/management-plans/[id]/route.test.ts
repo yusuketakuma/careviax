@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -72,6 +72,20 @@ function createMalformedJsonPatchRequest() {
 }
 
 describe('/api/management-plans/[id]', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
@@ -362,6 +376,45 @@ describe('/api/management-plans/[id]', () => {
       createPatchRequest({
         action: 'update',
         next_review_date: '2026-06-01',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
+      },
+    });
+    expect(managementPlanFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+  });
+
+  it('validates existing effective dates by the local pharmacy calendar day', async () => {
+    managementPlanFindFirstMock.mockResolvedValue({
+      id: 'plan_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      status: 'draft',
+      effective_from: new Date('2026-06-30T15:30:00.000Z'),
+      next_review_date: null,
+      case_: {
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'user_2',
+      },
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        action: 'update',
+        next_review_date: '2026-06-30',
       }),
       {
         params: Promise.resolve({ id: 'plan_1' }),

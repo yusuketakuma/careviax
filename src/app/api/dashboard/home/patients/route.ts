@@ -4,6 +4,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { formatDateKey } from '@/lib/date-key';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientCard, DashboardPatientsResponse } from '@/types/dashboard-home';
 import { derivePatientStatusIcon } from '@/lib/patient/status-icon';
@@ -346,7 +347,7 @@ export const GET = withAuth(
       const pid = v.case_.patient_id;
       if (!nextVisitMap.has(pid)) {
         nextVisitMap.set(pid, {
-          date: v.scheduled_date.toISOString().slice(0, 10),
+          date: formatDateKey(v.scheduled_date),
           type: v.visit_type,
           caseId: v.case_.id,
         });
@@ -357,7 +358,7 @@ export const GET = withAuth(
     for (const v of lastVisits) {
       const pid = v.case_.patient_id;
       if (!lastVisitMap.has(pid)) {
-        lastVisitMap.set(pid, v.scheduled_date.toISOString().slice(0, 10));
+        lastVisitMap.set(pid, formatDateKey(v.scheduled_date));
       }
     }
 
@@ -384,10 +385,10 @@ export const GET = withAuth(
     for (const rx of lastPrescriptions) {
       const pid = rx.patient_id;
       if (!lastRxMap.has(pid)) {
-        lastRxMap.set(pid, rx.created_at.toISOString().slice(0, 10));
+        lastRxMap.set(pid, formatDateKey(rx.created_at));
       }
       if (!nextRxMap.has(pid) && !['reported', 'cancelled'].includes(rx.overall_status)) {
-        nextRxMap.set(pid, rx.created_at.toISOString().slice(0, 10));
+        nextRxMap.set(pid, formatDateKey(rx.created_at));
       }
       if (rx.exception_status && !exceptionMap.has(pid)) {
         exceptionMap.set(pid, rx.exception_status);
@@ -417,7 +418,7 @@ export const GET = withAuth(
       return {
         patient_id: p.patient_id,
         patient_name: p.patient_name,
-        birth_date: detail?.birth_date.toISOString().slice(0, 10) ?? '',
+        birth_date: detail?.birth_date ? formatDateKey(detail.birth_date) : '',
         address: addr,
         phone: detail?.phone ?? null,
         conditions: (conditionMap.get(p.patient_id) ?? []).slice(0, 3),

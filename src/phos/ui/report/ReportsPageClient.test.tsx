@@ -13,23 +13,10 @@ import type { PhosApiClient } from '@/phos/api/types';
 import { ReportsPageClient } from './ReportsPageClient';
 
 const routerPushMock = vi.hoisted(() => vi.fn());
-const sessionMock = vi.hoisted(() => ({
-  value: {
-    phosAccessToken: 'session-access-token',
-    user: { name: '薬剤師A' },
-  } as { phosAccessToken?: string; user?: { name?: string | null } } | null,
-}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: routerPushMock,
-  }),
-}));
-
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({
-    data: sessionMock.value,
-    status: sessionMock.value ? 'authenticated' : 'unauthenticated',
   }),
 }));
 
@@ -114,10 +101,6 @@ function client(overrides: Partial<PhosApiClient> = {}): PhosApiClient {
 describe('ReportsPageClient', () => {
   beforeEach(() => {
     routerPushMock.mockReset();
-    sessionMock.value = {
-      phosAccessToken: 'session-access-token',
-      user: { name: '薬剤師A' },
-    };
     vi.unstubAllGlobals();
   });
 
@@ -223,8 +206,6 @@ describe('ReportsPageClient', () => {
   });
 
   it('renders inline configuration errors without adding a competing /reports route', () => {
-    sessionMock.value = null;
-
     render(<ReportsPageClient />);
 
     expect(screen.getByText('PH-OS API Gateway base URL is not configured.')).toBeTruthy();

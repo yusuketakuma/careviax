@@ -1,0 +1,3 @@
+.codex/*.log
+.codex/medical-ui-ux-completion-audit.md
+.codex/postgres-e2e/

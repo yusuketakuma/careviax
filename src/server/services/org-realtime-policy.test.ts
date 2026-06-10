@@ -19,6 +19,15 @@ const ORG_CHANNEL_CONSTRUCTION_PATTERNS = [
   /buildOrgRealtimeChannel/,
   /\[\s*["']org["']\s*,[\s\S]{0,120}\]\.join\(\s*["']:["']\s*\)/,
 ];
+const POLICY_SCAN_TIMEOUT_MS = 20_000;
+
+type SourceFileSnapshot = {
+  filePath: string;
+  repoPath: string;
+  source: string;
+};
+
+let sourceFileSnapshots: SourceFileSnapshot[] | null = null;
 
 function listSourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -44,40 +53,54 @@ function toRepoPath(filePath: string) {
   return path.relative(process.cwd(), filePath).split(path.sep).join('/');
 }
 
+function getSourceFileSnapshots() {
+  sourceFileSnapshots ??= listSourceFiles(path.join(process.cwd(), 'src')).map((filePath) => ({
+    filePath,
+    repoPath: toRepoPath(filePath),
+    source: readFileSync(filePath, 'utf8'),
+  }));
+
+  return sourceFileSnapshots;
+}
+
 describe('org realtime publisher policy', () => {
-  it('keeps realtime adapter usage behind reviewed helpers and subscribers', () => {
-    const violations = listSourceFiles(path.join(process.cwd(), 'src'))
-      .map((filePath) => {
-        const repoPath = toRepoPath(filePath);
-        const source = readFileSync(filePath, 'utf8');
-        const usesRealtimeAdapter =
-          source.includes('getRealtimeAdapter') ||
-          source.includes('@/server/adapters/realtime') ||
-          source.includes('broadcastStatusUpdate');
+  it(
+    'keeps realtime adapter usage behind reviewed helpers and subscribers',
+    () => {
+      const violations = getSourceFileSnapshots()
+        .map(({ repoPath, source }) => {
+          const usesRealtimeAdapter =
+            source.includes('getRealtimeAdapter') ||
+            source.includes('@/server/adapters/realtime') ||
+            source.includes('broadcastStatusUpdate');
 
-        if (!usesRealtimeAdapter || ALLOWED_REALTIME_ADAPTER_USERS.has(repoPath)) return null;
-        return `${repoPath}: use broadcastOrgRealtimeEvent for org-wide events; add a reviewed exception for non-org realtime channels.`;
-      })
-      .filter(Boolean);
+          if (!usesRealtimeAdapter || ALLOWED_REALTIME_ADAPTER_USERS.has(repoPath)) return null;
+          return `${repoPath}: use broadcastOrgRealtimeEvent for org-wide events; add a reviewed exception for non-org realtime channels.`;
+        })
+        .filter(Boolean);
 
-    expect(violations).toEqual([]);
-  });
+      expect(violations).toEqual([]);
+    },
+    POLICY_SCAN_TIMEOUT_MS,
+  );
 
-  it('does not allow raw org:* publish calls outside the central helper', () => {
-    const violations = listSourceFiles(path.join(process.cwd(), 'src'))
-      .map((filePath) => {
-        const repoPath = toRepoPath(filePath);
-        const source = readFileSync(filePath, 'utf8');
-        if (repoPath === 'src/server/services/org-realtime.ts') return null;
-        if (!source.includes('broadcastStatusUpdate') || !ORG_CHANNEL_PATTERN.test(source)) {
-          return null;
-        }
-        return `${repoPath}: raw org:* broadcastStatusUpdate is forbidden; use broadcastOrgRealtimeEvent.`;
-      })
-      .filter(Boolean);
+  it(
+    'does not allow raw org:* publish calls outside the central helper',
+    () => {
+      const violations = getSourceFileSnapshots()
+        .map(({ repoPath, source }) => {
+          if (repoPath === 'src/server/services/org-realtime.ts') return null;
+          if (!source.includes('broadcastStatusUpdate') || !ORG_CHANNEL_PATTERN.test(source)) {
+            return null;
+          }
+          return `${repoPath}: raw org:* broadcastStatusUpdate is forbidden; use broadcastOrgRealtimeEvent.`;
+        })
+        .filter(Boolean);
 
-    expect(violations).toEqual([]);
-  });
+      expect(violations).toEqual([]);
+    },
+    POLICY_SCAN_TIMEOUT_MS,
+  );
 
   it('keeps allowed direct realtime adapter users constrained to reviewed channel families', () => {
     const presenceSource = readFileSync('src/app/api/presence/route.ts', 'utf8');
@@ -99,21 +122,24 @@ describe('org realtime publisher policy', () => {
     expect(presenceViolations).toEqual([]);
   });
 
-  it('keeps org channel construction inside the central org realtime helper or stream subscriber', () => {
-    const allowedOrgChannelFiles = new Set([
-      'src/app/api/notifications/stream/route.ts',
-      'src/server/services/org-realtime.ts',
-    ]);
-    const violations = listSourceFiles(path.join(process.cwd(), 'src'))
-      .map((filePath) => {
-        const repoPath = toRepoPath(filePath);
-        if (allowedOrgChannelFiles.has(repoPath)) return null;
-        const source = readFileSync(filePath, 'utf8');
-        if (!ORG_CHANNEL_CONSTRUCTION_PATTERNS.some((pattern) => pattern.test(source))) return null;
-        return `${repoPath}: org channel construction must stay in org-realtime.ts or the stream subscriber.`;
-      })
-      .filter(Boolean);
+  it(
+    'keeps org channel construction inside the central org realtime helper or stream subscriber',
+    () => {
+      const allowedOrgChannelFiles = new Set([
+        'src/app/api/notifications/stream/route.ts',
+        'src/server/services/org-realtime.ts',
+      ]);
+      const violations = getSourceFileSnapshots()
+        .map(({ repoPath, source }) => {
+          if (allowedOrgChannelFiles.has(repoPath)) return null;
+          if (!ORG_CHANNEL_CONSTRUCTION_PATTERNS.some((pattern) => pattern.test(source)))
+            return null;
+          return `${repoPath}: org channel construction must stay in org-realtime.ts or the stream subscriber.`;
+        })
+        .filter(Boolean);
 
-    expect(violations).toEqual([]);
-  });
+      expect(violations).toEqual([]);
+    },
+    POLICY_SCAN_TIMEOUT_MS,
+  );
 });

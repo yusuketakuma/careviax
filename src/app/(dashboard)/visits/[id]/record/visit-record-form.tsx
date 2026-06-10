@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
+import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
@@ -824,9 +825,7 @@ export function VisitRecordForm({
           ['pt_inr', labValues.pt_inr],
         ];
         const measuredAt =
-          typeof values.visit_date === 'string'
-            ? values.visit_date
-            : new Date().toISOString().slice(0, 10);
+          typeof values.visit_date === 'string' ? values.visit_date : formatDateKey(new Date());
         void Promise.allSettled(
           analyteMap
             .filter((entry): entry is [string, number] => entry[1] != null)

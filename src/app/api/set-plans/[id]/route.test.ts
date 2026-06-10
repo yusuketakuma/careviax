@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
@@ -63,6 +63,20 @@ function createMalformedPatchRequest() {
 }
 
 describe('/api/set-plans/[id]', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
@@ -269,5 +283,60 @@ describe('/api/set-plans/[id]', () => {
       message: '終了日は開始日以降を指定してください',
     });
     expect(txMock.setPlan.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects impossible target period dates before transaction side effects', async () => {
+    const response = await PATCH(
+      createRequest({
+        target_period_start: '2026-04-31',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('validates existing target period dates by the local pharmacy calendar day', async () => {
+    txMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      target_period_start: new Date('2026-04-01T15:30:00.000Z'),
+      target_period_end: new Date('2026-04-07T00:00:00.000Z'),
+      set_method: 'custom',
+      notes: null,
+      packaging_method_id: null,
+      cycle: {
+        case_: {
+          patient: {
+            packaging_profile: null,
+          },
+        },
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        target_period_end: '2026-04-01',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '終了日は開始日以降を指定してください',
+    });
+    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

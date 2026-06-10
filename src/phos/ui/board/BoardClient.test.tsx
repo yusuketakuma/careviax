@@ -48,11 +48,9 @@ import { BoardClient } from './BoardClient';
 
 const sessionMock = vi.hoisted(() => ({
   value: {
-    phosAccessToken: 'session-access-token',
     phosRole: undefined as UserRole | undefined,
     user: { name: '薬剤師A' },
   } as {
-    phosAccessToken?: string;
     phosRole?: UserRole;
     cognitoGroups?: unknown;
     user?: { name?: string | null };
@@ -323,7 +321,6 @@ function client(overrides: Partial<PhosApiClient> = {}): PhosApiClient {
 describe('BoardClient', () => {
   beforeEach(() => {
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: undefined,
       user: { name: '薬剤師A' },
     };
@@ -381,7 +378,6 @@ describe('BoardClient', () => {
 
   it('loads and renders CapacityBar only for manager or admin sessions', async () => {
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.MANAGER,
       user: { name: '管理薬剤師' },
     };
@@ -400,7 +396,6 @@ describe('BoardClient', () => {
 
   it('does not fetch capacity for non-manager sessions', async () => {
     sessionMock.value = {
-      phosAccessToken: 'session-access-token',
       phosRole: UserRole.PHARMACIST,
       user: { name: '薬剤師A' },
     };
@@ -653,7 +648,7 @@ describe('BoardClient', () => {
     await waitFor(() => expect(screen.queryByText('薬剤師確認が必要です。')).toBeNull());
   });
 
-  it('uses the session PH-OS access token when loading from API Gateway', async () => {
+  it('uses an explicit PH-OS access token provider when loading directly from API Gateway', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
       if (url.includes('/report-deliveries')) {
@@ -666,14 +661,19 @@ describe('BoardClient', () => {
     });
     vi.stubGlobal('fetch', fetchImpl);
 
-    render(<BoardClient apiBaseUrl="https://api.example.com/prod" />);
+    render(
+      <BoardClient
+        apiBaseUrl="https://api.example.com/prod"
+        getAccessToken={() => 'provided-access-token'}
+      />,
+    );
 
     await waitFor(() => expect(screen.getByText('患者 山田太郎')).toBeTruthy());
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.example.com/prod/cards?sort=VISIT_TIME',
       expect.objectContaining({
         headers: expect.objectContaining({
-          Authorization: 'Bearer session-access-token',
+          Authorization: 'Bearer provided-access-token',
         }),
       }),
     );

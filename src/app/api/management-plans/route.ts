@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -16,10 +16,6 @@ function readOptionalTrimmedSearchParam(value: string | null): OptionalTrimmedSe
   const trimmed = value.trim();
   if (!trimmed) return { error: 'case_id は空にできません' };
   return { value: trimmed };
-}
-
-function isUniqueConstraintError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 export async function GET(req: NextRequest) {
@@ -122,7 +118,7 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch (error) {
-        if (isUniqueConstraintError(error)) {
+        if (isPrismaUniqueConstraintError(error)) {
           return {
             conflict: true as const,
             message:

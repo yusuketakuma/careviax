@@ -50,6 +50,7 @@ describe('proxy', () => {
     resetRateLimitStoreForTests();
     process.env.AUTH_SECRET = 'test-secret';
     logSecurityEventMock.mockReset();
+    getTokenMock.mockReset();
     getTokenMock.mockImplementation(async ({ req }: { req: NextRequest }) => {
       const userId = req.headers.get('x-rate-limit-user');
       return userId ? { userId } : null;
@@ -101,6 +102,35 @@ describe('proxy', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self' 'nonce-");
+  });
+
+  it('fails closed for protected app routes when the auth secret is missing in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.AUTH_SECRET;
+    delete process.env.NEXTAUTH_SECRET;
+
+    const response = await proxy(
+      createRequest({
+        pathname: '/patients',
+        method: 'GET',
+        headers: {
+          'x-forwarded-for': '203.0.113.50',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_CONFIGURATION_ERROR',
+    });
+    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'auth_failure',
+        path: '/patients',
+        details: { reason: 'auth_secret_missing' },
+      }),
+    );
   });
 
   it('allows safe API methods without origin validation and returns rate-limit headers', async () => {

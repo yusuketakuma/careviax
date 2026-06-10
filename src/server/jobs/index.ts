@@ -37,4 +37,5 @@ export {
   cleanupExpiredBulkExportArtifacts,
   drainMedicationHistoryBulkExportJobs,
 } from './pdf-bulk-export';
+export { retryWebhookDeliveries } from './webhook';
 export { runJob } from './runner';

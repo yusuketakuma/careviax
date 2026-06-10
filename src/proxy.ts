@@ -139,6 +139,24 @@ function isRateLimitStoreUnavailable(reason: unknown) {
   return reason === 'store_misconfigured' || reason === 'store_unavailable';
 }
 
+function buildMissingAuthSecretResponse(request: NextRequest) {
+  logSecurityEvent({
+    event_type: 'auth_failure',
+    ip_address: getClientIp(request),
+    path: normalizeProxyPathname(request.nextUrl.pathname),
+    method: request.method,
+    details: { reason: 'auth_secret_missing' },
+  });
+
+  return NextResponse.json(
+    {
+      code: 'AUTH_CONFIGURATION_ERROR',
+      message: '認証設定を利用できません',
+    },
+    { status: 503 },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main proxy export — called by Next.js on every matched request
 // ---------------------------------------------------------------------------
@@ -281,6 +299,9 @@ export async function proxy(request: NextRequest) {
   // --- Step 2: Non-API routes — nonce + security headers only ---
   if (isProtectedAppRoute(request.nextUrl.pathname)) {
     const secret = getAuthSecret();
+    if (!secret && isProductionLikeRuntime()) {
+      return buildMissingAuthSecretResponse(request);
+    }
     if (secret) {
       try {
         const token = await getToken({ req: request, secret });

@@ -34,20 +34,17 @@ function SessionStateBridge() {
     if (status === 'loading') return;
 
     const offlineIdentity = session?.user?.cognitoSub ?? session?.user?.id ?? null;
-    const offlineSecret = session?.offlineEncryptionSecret ?? null;
-    const offlineKeyId =
-      offlineIdentity && offlineSecret ? `${offlineIdentity}:${offlineSecret}` : null;
-    if (offlineIdentity && offlineSecret && lastOfflineKeyRef.current !== offlineKeyId) {
-      lastOfflineKeyRef.current = offlineKeyId;
-      void initOfflineEncryptionKey(offlineIdentity, offlineSecret);
+    if (offlineIdentity && lastOfflineKeyRef.current !== offlineIdentity) {
+      lastOfflineKeyRef.current = offlineIdentity;
+      void initOfflineEncryptionKey(offlineIdentity);
       return;
     }
 
-    if (!offlineIdentity || !offlineSecret) {
+    if (!offlineIdentity) {
       lastOfflineKeyRef.current = null;
       void clearOfflineEncryptionKey();
     }
-  }, [session?.offlineEncryptionSecret, session?.user?.cognitoSub, session?.user?.id, status]);
+  }, [session?.user?.cognitoSub, session?.user?.id, status]);
 
   return null;
 }

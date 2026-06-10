@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { HelpPopover } from '@/components/ui/help-popover';
+import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Loading } from '@/components/ui/loading';
 import { toast } from 'sonner';
@@ -212,7 +213,7 @@ function computeEndDate(line: PrescriptionLine, prescribedDate: string): string 
   if (!start || !line.days) return null;
   const d = new Date(start);
   d.setDate(d.getDate() + line.days - 1);
-  return d.toISOString().slice(0, 10);
+  return formatDateKey(d);
 }
 
 function fmtDate(dateStr: string | null | undefined): string {
