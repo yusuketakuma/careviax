@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-014515
+
+- current task: run the production build gate after the schedule UI/UX slices.
+- files inspected: `git status --short`, recent git log, and production build output.
+- files changed: `.codex/ralph-state.md`.
+- bugs found: none in this validation pass.
+- security risks found: no product code changed in this pass.
+- performance issues found: no product code changed in this pass.
+- validation commands: `pnpm build`.
+- validation results: production `next build --webpack` passed. Compilation succeeded, TypeScript finished, and static generation completed for 235 pages.
+- remaining work: browser-level proof with a confirmed schedule fixture is still useful for the surfaced confirmed-card action rail, because the current local E2E 2026-04-09 seed has 0 confirmed schedules.
+- next action: continue with a focused confirmed-schedule browser fixture/proof or the next ScheduleDayView hierarchy polish task.
+
 ### 20260611-014219
 
 - current task: capture browser proof for the schedule UI/UX slices after the grouped mobile list and surfaced confirmed actions changes.
