@@ -13,6 +13,7 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const routerReplaceMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const toastSuccessMock = vi.hoisted(() => vi.fn());
 const toastWarningMock = vi.hoisted(() => vi.fn());
@@ -179,10 +180,37 @@ function expectToastMessagesExcludeSensitiveDetails() {
     toastWarningMock.mock.calls,
     toastErrorMock.mock.calls,
   ]);
-  expect(toastText).not.toContain('東京都港区2-2-2');
-  expect(toastText).not.toContain('090-1234-5678');
-  expect(toastText).not.toContain('アムロジピン');
-  expect(toastText).not.toContain('処方詳細');
+  expectTextExcludesSensitiveDetails(toastText);
+  expect(toastText).not.toContain('proposal_');
+}
+
+function expectTextExcludesSensitiveDetails(text: string | null | undefined) {
+  expect(text ?? '').not.toContain('東京都港区2-2-2');
+  expect(text ?? '').not.toContain('090-1234-5678');
+  expect(text ?? '').not.toContain('アムロジピン');
+  expect(text ?? '').not.toContain('処方詳細');
+}
+
+function expectElementTextExcludesSensitiveDetails(element: HTMLElement) {
+  expectTextExcludesSensitiveDetails(element.textContent);
+}
+
+function failedProposalDetailButtonName(patientName: string, timePattern: string) {
+  return new RegExp(`${patientName}.*2026\\/04\\/09.*${timePattern}.*未更新候補を詳細で確認`);
+}
+
+function expectRouterReplacedWithSearchParam(key: string, value: string) {
+  expect(
+    routerReplaceMock.mock.calls.some(([url]) => {
+      const query = String(url).split('?')[1] ?? '';
+      return new URLSearchParams(query).get(key) === value;
+    }),
+  ).toBe(true);
+}
+
+function expectAlertExcludesSensitiveDetails(alert: HTMLElement) {
+  expectElementTextExcludesSensitiveDetails(alert);
+  expect(alert.textContent ?? '').not.toContain('proposal_');
 }
 
 describe('ScheduleProposalsContent', () => {
@@ -190,7 +218,7 @@ describe('ScheduleProposalsContent', () => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
-    useRouterMock.mockReturnValue({ replace: vi.fn() });
+    useRouterMock.mockReturnValue({ replace: routerReplaceMock });
     usePathnameMock.mockReturnValue('/schedules/proposals');
     useSearchParamsMock.mockReturnValue(new URLSearchParams('workspace=dashboard'));
     useQueryClientMock.mockReturnValue({
@@ -396,6 +424,8 @@ describe('ScheduleProposalsContent', () => {
       buildProposal({
         id: 'proposal_2',
         case_id: 'case_2',
+        time_window_start: '2026-04-09T09:00:00',
+        time_window_end: '2026-04-09T10:00:00',
         case_: {
           patient: {
             id: 'patient_2',
@@ -448,7 +478,17 @@ describe('ScheduleProposalsContent', () => {
     expect(within(partialAlert).getByText(/2026\/04\/09/)).toBeTruthy();
     expect(within(partialAlert).getByText(/薬剤師A/)).toBeTruthy();
     expect(within(partialAlert).getByText(/社用車A/)).toBeTruthy();
-    expect(within(partialAlert).getByText(/勤務枠が埋まりました/)).toBeTruthy();
+    expect(
+      within(partialAlert).getByText(
+        '未更新理由: サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。',
+      ),
+    ).toBeTruthy();
+    expectAlertExcludesSensitiveDetails(partialAlert);
+    expect(
+      within(partialAlert).getByRole('button', {
+        name: '佐藤太郎 2026/04/09 09:00 - 10:00 の未更新候補を詳細で確認',
+      }),
+    ).toBeTruthy();
     expect(
       screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
     ).toBe('false');
@@ -466,6 +506,83 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen.getByRole('button', { name: '承認できる訪問候補を選択して一括承認' }),
     ).toBeTruthy();
+  });
+
+  it('opens the exact failed proposal from the bulk failure summary', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/proposal_2')) {
+        return new Response(JSON.stringify({ message: '候補はすでに更新済みです' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ message: '勤務枠が埋まりました' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+        time_window_start: '2026-04-09T09:00:00',
+        time_window_end: '2026-04-09T10:00:00',
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        time_window_start: '2026-04-09T10:30:00',
+        time_window_end: '2026-04-09T11:30:00',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '選択中2件の訪問候補を一括承認',
+      }),
+    );
+    const approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括承認しますか',
+    });
+    fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
+
+    const partialAlert = await screen.findByTestId('proposal-bulk-partial-failure');
+    expect(
+      within(partialAlert).getAllByRole('button', {
+        name: /未更新候補を詳細で確認/,
+      }),
+    ).toHaveLength(2);
+    fireEvent.click(
+      within(partialAlert).getByRole('button', {
+        name: failedProposalDetailButtonName('佐藤太郎', '10:30 - 11:30'),
+      }),
+    );
+
+    expect(
+      within(screen.getByTestId('schedule-proposal-active-row')).getByText('佐藤太郎'),
+    ).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '訪問候補の詳細' })).toBeTruthy();
+    expectRouterReplacedWithSearchParam('detail', 'proposal_2');
+    expectRouterReplacedWithSearchParam('focus', 'detail');
   });
 
   it('confirms proposal bulk rejection before submitting selected proposals', async () => {
@@ -812,7 +929,12 @@ describe('ScheduleProposalsContent', () => {
     const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
     expect(within(partialAlert).getByText('山田花子')).toBeTruthy();
     expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
-    expect(within(partialAlert).getAllByText(/Network offline/)).toHaveLength(2);
+    expect(
+      within(partialAlert).getAllByText(
+        '未更新理由: 通信が完了しませんでした。接続を確認して再試行してください。',
+      ),
+    ).toHaveLength(2);
+    expectAlertExcludesSensitiveDetails(partialAlert);
     expect(
       screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
     ).toBe('true');

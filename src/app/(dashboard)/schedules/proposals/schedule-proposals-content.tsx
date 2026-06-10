@@ -535,6 +535,29 @@ function canApplyBulkProposalAction(proposal: Proposal, action: 'approve' | 'rej
   );
 }
 
+const SAFE_BULK_ACTION_FAILURE_MESSAGES = new Set([
+  'この候補は承認できません',
+  'この候補は却下できません',
+  '勤務枠が埋まりました',
+  '候補はすでに更新済みです',
+  '訪問候補が見つかりません',
+  '確定済み訪問の変更は管理者承認後に進めてください',
+  '確定済み訪問の変更は承認後に新候補を確定してください',
+]);
+
+function bulkActionFailureDisplayMessage(failure: BulkActionFailure) {
+  if (!failure.reachedServer) {
+    return '通信が完了しませんでした。接続を確認して再試行してください。';
+  }
+
+  const trimmedMessage = failure.message.trim();
+  if (SAFE_BULK_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
+    return trimmedMessage;
+  }
+
+  return 'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。';
+}
+
 export function ScheduleProposalsContent({
   initialStatus,
   initialCaseId,
@@ -1140,7 +1163,7 @@ export function ScheduleProposalsContent({
           timeWindowEnd: item.proposal.time_window_end,
           pharmacistName: item.proposal.proposed_pharmacist?.name ?? '担当未解決',
           vehicleLabel: item.proposal.vehicle_resource?.label ?? '社用車未指定',
-          message: item.message,
+          message: bulkActionFailureDisplayMessage(item),
         })),
       });
 
@@ -1727,6 +1750,17 @@ export function ScheduleProposalsContent({
                       {failure.pharmacistName} / {failure.vehicleLabel}
                     </p>
                     <p className="text-xs leading-5">未更新理由: {failure.message}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                      onClick={() => openDetail(failure.id)}
+                      aria-label={`${failure.patientName} ${formatDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} の未更新候補を詳細で確認`}
+                    >
+                      該当候補を確認
+                      <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
+                    </Button>
                   </li>
                 ))}
               </ul>
