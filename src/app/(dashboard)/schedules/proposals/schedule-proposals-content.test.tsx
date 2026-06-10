@@ -221,24 +221,51 @@ function expectElementTextExcludesSensitiveDetails(element: HTMLElement) {
   expectTextExcludesSensitiveDetails(element.textContent);
 }
 
-function failedProposalDetailButtonName(patientName: string, timePattern: string) {
-  return new RegExp(`${patientName}.*2026\\/04\\/09.*${timePattern}.*未更新候補を詳細で確認`);
+function shortEntityIdentifier(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return '未設定';
+  const withoutKnownPrefix = normalized.replace(/^(proposal|case|patient)[_-]/u, '');
+  const candidate = withoutKnownPrefix || normalized;
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+}
+
+function proposalSafeIdentifierLabel(caseId: string, proposalId: string) {
+  return `ケース ${shortEntityIdentifier(caseId)} / 候補 ${shortEntityIdentifier(proposalId)}`;
+}
+
+function failedProposalDetailButtonName(
+  patientName: string,
+  timePattern: string,
+  proposalId = 'proposal_2',
+) {
+  return new RegExp(
+    `${patientName}.*2026\\/04\\/09.*${timePattern}.*候補 ${shortEntityIdentifier(proposalId)}.*未更新候補を詳細で確認`,
+  );
 }
 
 function proposalTargetName(
   patientName: string,
   timeRange = '18:00 - 19:00',
   dateLabel = '2026/04/09',
+  options?: {
+    caseId?: string;
+    proposalId?: string;
+    pharmacistName?: string;
+    vehicleLabel?: string;
+  },
 ) {
-  return `${patientName} ${dateLabel} ${timeRange} / 薬剤師A / 社用車A`;
+  const caseId = options?.caseId ?? 'case_1';
+  const proposalId = options?.proposalId ?? 'proposal_1';
+  return `${patientName} ${dateLabel} ${timeRange} / ${options?.pharmacistName ?? '薬剤師A'} / ${options?.vehicleLabel ?? '社用車A'} / ${proposalSafeIdentifierLabel(caseId, proposalId)}`;
 }
 
 function proposalCheckboxName(
   patientName: string,
   timeRange = '18:00 - 19:00',
   dateLabel = '2026/04/09',
+  options?: Parameters<typeof proposalTargetName>[3],
 ) {
-  return `${proposalTargetName(patientName, timeRange, dateLabel)} の候補を選択`;
+  return `${proposalTargetName(patientName, timeRange, dateLabel, options)} の候補を選択`;
 }
 
 function expectRouterReplacedWithSearchParam(key: string, value: string) {
@@ -347,7 +374,10 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent />);
 
     const firstTarget = proposalTargetName('佐藤太郎', '09:00 - 10:00');
-    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30', '2026/04/09', {
+      caseId: 'case_2',
+      proposalId: 'proposal_2',
+    });
     expect(screen.getByRole('checkbox', { name: `${firstTarget} の候補を選択` })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: `${secondTarget} の候補を選択` })).toBeTruthy();
     expect(screen.getByRole('button', { name: `${firstTarget} の候補詳細を開く` })).toBeTruthy();
@@ -358,6 +388,196 @@ describe('ScheduleProposalsContent', () => {
     expect(
       screen.getByRole('button', { name: `${secondTarget} を承認して患者連絡へ進める` }),
     ).toBeTruthy();
+  });
+
+  it('keeps same-name proposal actions unique when date, time, pharmacist, and vehicle match', () => {
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    const firstTarget = proposalTargetName('佐藤太郎');
+    const secondTarget = proposalTargetName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+      caseId: 'case_2',
+      proposalId: 'proposal_2',
+    });
+    expect(screen.getByRole('checkbox', { name: `${firstTarget} の候補を選択` })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: `${secondTarget} の候補を選択` })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: `${firstTarget} を承認して患者連絡へ進める` }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: `${secondTarget} を承認して患者連絡へ進める` }),
+    ).toBeTruthy();
+    expect(screen.getAllByText('ケース 1 / 候補 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('ケース 2 / 候補 2').length).toBeGreaterThan(0);
+  });
+
+  it('disambiguates same-name case search results with safe case and patient identifiers', async () => {
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        case_id: 'case_same_1',
+        case_: {
+          patient: {
+            id: 'patient_same_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_same_2',
+        case_: {
+          patient: {
+            id: 'patient_same_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-case-search') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'case_same_1',
+                status: 'active',
+                primary_pharmacist_id: 'pharmacist_1',
+                primary_pharmacist_name: '薬剤師A',
+                patient: {
+                  id: 'patient_same_1',
+                  name: '佐藤太郎',
+                  residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+                },
+              },
+              {
+                id: 'case_same_2',
+                status: 'active',
+                primary_pharmacist_id: 'pharmacist_1',
+                primary_pharmacist_name: '薬剤師A',
+                patient: {
+                  id: 'patient_same_2',
+                  name: '佐藤太郎',
+                  residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+                },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    expect(screen.getByRole('button', { name: '選択中2件の訪問候補を一括承認' })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('ケース/患者検索'), { target: { value: '佐藤' } });
+    const firstResult = await screen.findByRole('button', {
+      name: '佐藤太郎 / ケース same_1 / 患者識別 same_1 / 主担当 薬剤師A で候補を絞り込む',
+    });
+    const secondResult = screen.getByRole('button', {
+      name: '佐藤太郎 / ケース same_2 / 患者識別 same_2 / 主担当 薬剤師A で候補を絞り込む',
+    });
+    expect(firstResult).toBeTruthy();
+    expect(secondResult).toBeTruthy();
+    expect(firstResult.textContent).not.toContain('東京都千代田区1-1-1');
+    expect(secondResult.textContent).not.toContain('東京都港区2-2-2');
+
+    fireEvent.click(secondResult);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: '承認できる訪問候補を選択して一括承認' }),
+      ).toBeTruthy();
+    });
+    expect(screen.getByText(/ケース固定中/).textContent).toContain('ケース same_2');
+    expect(screen.getByText(/ケース固定中/).textContent).toContain('患者識別 same_2');
+    expectRouterReplacedWithSearchParam('case_id', 'case_same_2');
+    expectRouterReplacedWithSearchParam('patient_id', 'patient_same_2');
+    expectRouterReplacedWithSearchParam('focus', 'patient');
+    expect(
+      useRealtimeQueryMock.mock.calls.some(([arg]) => {
+        const queryKey = (arg as { queryKey: unknown[] }).queryKey;
+        if (queryKey[0] !== 'schedule-proposals-dashboard') return false;
+        const params = new URLSearchParams(String(queryKey[2] ?? ''));
+        return (
+          params.get('case_id') === 'case_same_2' && params.get('patient_id') === 'patient_same_2'
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it('does not auto-open the first same-name proposal for patient-focused URLs without a detail id', () => {
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        case_id: 'case_same_1',
+        case_: {
+          patient: {
+            id: 'patient_same_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_same_2',
+        case_: {
+          patient: {
+            id: 'patient_same_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+
+    render(
+      <ScheduleProposalsContent
+        initialFocus="patient"
+        initialCaseId="case_same_2"
+        initialPatientId="patient_same_2"
+      />,
+    );
+
+    expect(screen.queryByTestId('schedule-proposal-active-row')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /訪問候補詳細/ })).toBeNull();
+    expect(screen.getByText(/ケース固定中/).textContent).toContain('ケース same_2');
+    expect(
+      useRealtimeQueryMock.mock.calls.some(([arg]) => {
+        const queryKey = (arg as { queryKey: unknown[] }).queryKey;
+        return queryKey[0] === 'schedule-proposal-detail' && queryKey[2] === null;
+      }),
+    ).toBe(true);
   });
 
   it('names the proposal detail sheet and actions with the active proposal target', () => {
@@ -398,7 +618,10 @@ describe('ScheduleProposalsContent', () => {
 
     render(<ScheduleProposalsContent initialDetailId="proposal_2" />);
 
-    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30', '2026/04/09', {
+      caseId: 'case_2',
+      proposalId: 'proposal_2',
+    });
     expect(screen.getByRole('dialog', { name: `${target} の訪問候補詳細` })).toBeTruthy();
     expect(
       screen.getAllByRole('button', { name: `${target} を承認して患者連絡へ進める` }).length,
@@ -494,7 +717,10 @@ describe('ScheduleProposalsContent', () => {
 
     render(<ScheduleProposalsContent initialStatus="patient_contact_pending" />);
 
-    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30', '2026/04/09', {
+      caseId: 'case_2',
+      proposalId: 'proposal_2',
+    });
     fireEvent.click(screen.getByRole('button', { name: `${secondTarget} を日時確定する` }));
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -570,7 +796,10 @@ describe('ScheduleProposalsContent', () => {
       />,
     );
 
-    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30', '2026/04/09', {
+      caseId: 'case_2',
+      proposalId: 'proposal_2',
+    });
     const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
     fireEvent.click(within(detailDialog).getByRole('button', { name: `${target} を日時確定する` }));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -882,7 +1111,7 @@ describe('ScheduleProposalsContent', () => {
     expectAlertExcludesSensitiveDetails(partialAlert);
     expect(
       within(partialAlert).getByRole('button', {
-        name: '佐藤太郎 2026/04/09 09:00 - 10:00 の未更新候補を詳細で確認',
+        name: '佐藤太郎 2026/04/09 09:00 - 10:00 / 候補 2 の未更新候補を詳細で確認',
       }),
     ).toBeTruthy();
     expect(
@@ -892,18 +1121,33 @@ describe('ScheduleProposalsContent', () => {
     ).toBe('false');
     expect(
       screen
-        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00') })
+        .getByRole('checkbox', {
+          name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
+            caseId: 'case_2',
+            proposalId: 'proposal_2',
+          }),
+        })
         .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
       screen
-        .getByRole('checkbox', { name: proposalCheckboxName('鈴木一郎') })
+        .getByRole('checkbox', {
+          name: proposalCheckboxName('鈴木一郎', '18:00 - 19:00', '2026/04/09', {
+            caseId: 'case_3',
+            proposalId: 'proposal_3',
+          }),
+        })
         .getAttribute('aria-checked'),
     ).toBe('false');
     expect(screen.getByRole('button', { name: '選択中1件の訪問候補を一括承認' })).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00') }),
+      screen.getByRole('checkbox', {
+        name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00', '2026/04/09', {
+          caseId: 'case_2',
+          proposalId: 'proposal_2',
+        }),
+      }),
     );
 
     expect(screen.queryByTestId('proposal-bulk-partial-failure')).toBeNull();
@@ -1215,7 +1459,12 @@ describe('ScheduleProposalsContent', () => {
     ).toBe('false');
     expect(
       screen
-        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getByRole('checkbox', {
+          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+            caseId: 'case_2',
+            proposalId: 'proposal_2',
+          }),
+        })
         .getAttribute('aria-checked'),
     ).toBe('true');
     expectToastMessagesExcludeSensitiveDetails();
@@ -1290,7 +1539,12 @@ describe('ScheduleProposalsContent', () => {
     ).toBe('true');
     expect(
       screen
-        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getByRole('checkbox', {
+          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+            caseId: 'case_2',
+            proposalId: 'proposal_2',
+          }),
+        })
         .getAttribute('aria-checked'),
     ).toBe('true');
   });
@@ -1354,7 +1608,12 @@ describe('ScheduleProposalsContent', () => {
     ).toBe('true');
     expect(
       screen
-        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getByRole('checkbox', {
+          name: proposalCheckboxName('佐藤太郎', '18:00 - 19:00', '2026/04/09', {
+            caseId: 'case_2',
+            proposalId: 'proposal_2',
+          }),
+        })
         .getAttribute('aria-checked'),
     ).toBe('true');
   });

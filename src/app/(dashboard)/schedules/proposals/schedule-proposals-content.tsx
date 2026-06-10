@@ -288,7 +288,6 @@ const CONTACT_METHOD_LABELS: Record<ContactMethod, string> = {
   email: 'メール',
 };
 
-const AUTO_DETAIL_ID = '__auto__';
 const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
 
 function formatDateTime(value: string | null | undefined) {
@@ -541,10 +540,30 @@ function canApplyBulkProposalAction(proposal: Proposal, action: 'approve' | 'rej
   );
 }
 
+function shortEntityIdentifier(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return '未設定';
+  const withoutKnownPrefix = normalized.replace(/^(proposal|case|patient)[_-]/u, '');
+  const candidate = withoutKnownPrefix || normalized;
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+}
+
+function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
+  return `ケース ${shortEntityIdentifier(proposal.case_id)} / 候補 ${shortEntityIdentifier(proposal.id)}`;
+}
+
 function proposalActionTargetLabel(proposal: Proposal) {
   const pharmacistName = proposal.proposed_pharmacist?.name ?? '担当未解決';
   const vehicleLabel = proposal.vehicle_resource?.label ?? '社用車未指定';
-  return `${proposal.case_.patient.name} ${formatDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel}`;
+  return `${proposal.case_.patient.name} ${formatDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel} / ${proposalSafeIdentifierLabel(proposal)}`;
+}
+
+function caseOptionPrimaryPharmacistLabel(careCase: CaseOption) {
+  return careCase.primary_pharmacist_name ?? '主担当未設定';
+}
+
+function caseOptionTargetLabel(careCase: CaseOption) {
+  return `${careCase.patient.name} / ケース ${shortEntityIdentifier(careCase.id)} / 患者識別 ${shortEntityIdentifier(careCase.patient.id)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
 }
 
 const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
@@ -592,7 +611,6 @@ export function ScheduleProposalsContent({
   initialPatientId,
   initialDateFrom,
   initialDateTo,
-  initialFocus,
   initialPreset,
   initialDetailId,
   initialTravelMode,
@@ -614,12 +632,7 @@ export function ScheduleProposalsContent({
   const [bulkRejectReason, setBulkRejectReason] = useState('');
   const [bulkActionFailureSummary, setBulkActionFailureSummary] =
     useState<BulkActionFailureSummary | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(
-    initialDetailId ??
-      (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
-        ? AUTO_DETAIL_ID
-        : null),
-  );
+  const [detailId, setDetailId] = useState<string | null>(initialDetailId ?? null);
   const [contactFormDraft, setContactFormDraft] = useState<ContactFormState | null>(null);
   const [reproposalFormDraft, setReproposalFormDraft] = useState<{
     start_date: string;
@@ -837,18 +850,8 @@ export function ScheduleProposalsContent({
     } satisfies CaseOption;
   }, [caseId, patientId, proposals, selectedCaseSummary]);
 
-  const autoDetailId =
-    initialFocus === 'patient' || initialCaseId || initialPatientId
-      ? ((proposals.find((proposal) => matchesTab(proposal, activeTab)) ?? proposals[0])?.id ??
-        null)
-      : null;
-
   const activeDetailId =
-    detailId === AUTO_DETAIL_ID
-      ? autoDetailId
-      : detailId && proposals.some((proposal) => proposal.id === detailId)
-        ? detailId
-        : null;
+    detailId && proposals.some((proposal) => proposal.id === detailId) ? detailId : null;
 
   useEffect(() => {
     if (!activeDetailId) return;
@@ -936,7 +939,7 @@ export function ScheduleProposalsContent({
     setCaseId(careCase.id);
     setPatientId(careCase.patient.id);
     setCaseSearchInput('');
-    setDetailId(AUTO_DETAIL_ID);
+    setDetailId(null);
     clearSelectedProposals();
     replaceDashboardUrl({
       case_id: careCase.id,
@@ -1561,9 +1564,12 @@ export function ScheduleProposalsContent({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     ケース固定中
-                    {effectiveSelectedCaseSummary.primary_pharmacist_name
-                      ? ` / 主担当 ${effectiveSelectedCaseSummary.primary_pharmacist_name}`
-                      : ''}
+                    {' / '}
+                    ケース {shortEntityIdentifier(effectiveSelectedCaseSummary.id)}
+                    {' / '}
+                    患者識別 {shortEntityIdentifier(effectiveSelectedCaseSummary.patient.id)}
+                    {' / '}
+                    主担当 {caseOptionPrimaryPharmacistLabel(effectiveSelectedCaseSummary)}
                   </p>
                 </div>
                 <Button type="button" size="sm" variant="outline" onClick={clearCaseFilter}>
@@ -1587,12 +1593,18 @@ export function ScheduleProposalsContent({
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="h-auto min-h-[44px] whitespace-normal py-2 text-left sm:h-auto"
+                        aria-label={`${caseOptionTargetLabel(careCase)} で候補を絞り込む`}
                         onClick={() => applyCaseFilter(careCase)}
                       >
-                        {careCase.patient.name}
-                        {careCase.primary_pharmacist_name
-                          ? ` / ${careCase.primary_pharmacist_name}`
-                          : ''}
+                        <span className="flex flex-col items-start leading-tight">
+                          <span>{careCase.patient.name}</span>
+                          <span className="text-xs font-normal text-muted-foreground">
+                            ケース {shortEntityIdentifier(careCase.id)} / 患者識別{' '}
+                            {shortEntityIdentifier(careCase.patient.id)} / 主担当{' '}
+                            {caseOptionPrimaryPharmacistLabel(careCase)}
+                          </span>
+                        </span>
                       </Button>
                     ))}
                   </div>
@@ -1804,7 +1816,8 @@ export function ScheduleProposalsContent({
                     <p className="text-xs leading-5">
                       {formatDateLabel(failure.proposedDate)}{' '}
                       {timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} /{' '}
-                      {failure.pharmacistName} / {failure.vehicleLabel}
+                      {failure.pharmacistName} / {failure.vehicleLabel} / 候補{' '}
+                      {shortEntityIdentifier(failure.id)}
                     </p>
                     <p className="text-xs leading-5">未更新理由: {failure.message}</p>
                     <Button
@@ -1813,7 +1826,7 @@ export function ScheduleProposalsContent({
                       size="sm"
                       className="mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
                       onClick={() => openDetail(failure.id)}
-                      aria-label={`${failure.patientName} ${formatDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} の未更新候補を詳細で確認`}
+                      aria-label={`${failure.patientName} ${formatDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${shortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
                     >
                       該当候補を確認
                       <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
@@ -1950,6 +1963,7 @@ export function ScheduleProposalsContent({
                             {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
                           </Badge>
                           <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
+                          <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                           <span className="inline-flex items-center gap-1">
@@ -2092,6 +2106,12 @@ export function ScheduleProposalsContent({
                   </dd>
                 </div>
                 <div>
+                  <dt className="text-xs text-muted-foreground">識別子</dt>
+                  <dd className="font-medium">
+                    {proposalSafeIdentifierLabel(singleConfirmProposal)}
+                  </dd>
+                </div>
+                <div>
                   <dt className="text-xs text-muted-foreground">担当</dt>
                   <dd className="font-medium">
                     {singleConfirmProposal.proposed_pharmacist?.name ?? '担当未解決'}
@@ -2117,7 +2137,7 @@ export function ScheduleProposalsContent({
                 </div>
               </dl>
               <p className="text-xs leading-5 text-muted-foreground">
-                住所や連絡先、薬剤・処方に関する細かな内容はこの確認画面には表示しません。対象患者・候補日・担当・社用車だけを確認してから実行してください。
+                住所や連絡先、薬剤・処方に関する細かな内容はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子だけを確認してから実行してください。
               </p>
             </div>
           ) : null}
@@ -2199,6 +2219,7 @@ export function ScheduleProposalsContent({
                       {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
                     </Badge>
                     <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
+                    <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {formatDateLabel(proposal.proposed_date)}{' '}
@@ -2250,7 +2271,7 @@ export function ScheduleProposalsContent({
               </div>
             ) : null}
             <p className="text-xs leading-5 text-muted-foreground">
-              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象患者・候補日・担当・社用車だけを確認してから実行してください。
+              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象患者・候補日・担当・社用車・識別子だけを確認してから実行してください。
             </p>
           </div>
 
