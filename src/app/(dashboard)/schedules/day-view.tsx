@@ -70,6 +70,7 @@ import {
   handleScheduleDayRescheduleSuccess,
 } from './schedule-day-reschedule';
 import { ScheduleDayOfflinePanel } from './schedule-day-offline-panel';
+import { ScheduleDayOperationalTasksPanel } from './schedule-day-operational-tasks-panel';
 import { ScheduleDayRoutePreview } from './schedule-day-route-preview';
 import {
   applyScheduleDayRouteOrderDraft,
@@ -119,7 +120,6 @@ import {
   addressOfPatient,
   CONTACT_STATUS_LABELS,
   countCompletedPreparationItems,
-  formatTaskDueLabel,
   PREPARATION_ITEMS,
   PRIORITY_LABELS,
   priorityBadgeClass,
@@ -129,8 +129,6 @@ import {
   SCHEDULE_STATUS_LABELS,
   SCHEDULING_TASK_TYPES,
   statusBadgeClass,
-  TASK_TYPE_LABELS,
-  taskPriorityClass,
   timeLabel,
   toDateKey,
   type CaseOption,
@@ -1770,236 +1768,35 @@ export function ScheduleDayView({
             </div>
           </PageSection>
 
-          <PageSection
-            title="運用タスク"
-            description="スケジュールに影響する未完了タスクを優先順で表示します"
-            contentClassName="space-y-3"
-          >
-            {callbackTasksLoading ? (
-              <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                再架電タスクを読み込んでいます...
-              </div>
-            ) : callbackTasks.length > 0 ? (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-900">
-                  架電結果の再記録や折返し対応が必要な候補です。
-                </div>
-                {callbackTasks.map((task) => {
-                  const relatedProposal = task.related_entity_id
-                    ? (proposalById.get(task.related_entity_id) ?? null)
-                    : null;
-
-                  return (
-                    <div
-                      key={task.id}
-                      className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-medium text-foreground">{task.title}</p>
-                            <Badge variant="outline">
-                              {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
-                            </Badge>
-                            <Badge variant="outline" className={taskPriorityClass(task.priority)}>
-                              {task.priority}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            期限 {formatTaskDueLabel(task)}
-                            {task.assigned_to
-                              ? ` / 担当 ${pharmacistNameById.get(task.assigned_to) ?? '未登録'}`
-                              : ''}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={
-                            task.status === 'in_progress'
-                              ? 'border-sky-200 bg-sky-50 text-sky-700'
-                              : 'border-amber-200 bg-amber-50 text-amber-700'
-                          }
-                        >
-                          {task.status === 'in_progress' ? '対応中' : '未着手'}
-                        </Badge>
-                      </div>
-
-                      {(relatedProposal || task.description) && (
-                        <div className="space-y-1 text-xs text-muted-foreground">
-                          {relatedProposal ? (
-                            <p>
-                              {relatedProposal.case_.patient.name} /{' '}
-                              {format(parseISO(relatedProposal.proposed_date), 'M/d', {
-                                locale: ja,
-                              })}{' '}
-                              {timeLabel(
-                                relatedProposal.time_window_start,
-                                relatedProposal.time_window_end,
-                              )}
-                            </p>
-                          ) : (
-                            <p>対象候補は現在の表示週外です。</p>
-                          )}
-                          {task.description && <p className="leading-5">{task.description}</p>}
-                        </div>
-                      )}
-
-                      <ActionRail align="start" className="pt-1">
-                        {relatedProposal && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedDate(toDateKey(relatedProposal.proposed_date));
-                              openContactLogDialog(relatedProposal);
-                              if (task.status === 'pending') {
-                                callbackTaskMutation.mutate({
-                                  id: task.id,
-                                  status: 'in_progress',
-                                });
-                              }
-                            }}
-                            disabled={callbackTaskMutation.isPending}
-                          >
-                            架電結果を記録
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            callbackTaskMutation.mutate({
-                              id: task.id,
-                              status: 'in_progress',
-                            })
-                          }
-                          disabled={callbackTaskMutation.isPending || task.status === 'in_progress'}
-                        >
-                          対応中にする
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            callbackTaskMutation.mutate({
-                              id: task.id,
-                              status: 'completed',
-                            })
-                          }
-                          disabled={callbackTaskMutation.isPending}
-                        >
-                          完了
-                        </Button>
-                      </ActionRail>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {tasksLoading ? (
-              <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                運用タスクを読み込んでいます...
-              </div>
-            ) : schedulingTasks.length === 0 ? (
-              callbackTasks.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                  スケジュール関連の未完了タスクはありません
-                </div>
-              ) : null
-            ) : (
-              schedulingTasks.map((task) => {
-                const relatedSchedule =
-                  task.related_entity_type === 'visit_schedule' && task.related_entity_id
-                    ? (scheduleById.get(task.related_entity_id) ?? null)
-                    : null;
-                const canApproveOverride =
-                  task.task_type === 'visit_schedule_override_approval' && relatedSchedule;
-                const canOpenPreparation =
-                  task.task_type === 'visit_preparation' && relatedSchedule;
-
-                return (
-                  <div
-                    key={task.id}
-                    className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">{task.title}</p>
-                          <Badge variant="outline">
-                            {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
-                          </Badge>
-                          <Badge variant="outline" className={taskPriorityClass(task.priority)}>
-                            {task.priority}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          期限 {formatTaskDueLabel(task)}
-                          {task.assigned_to
-                            ? ` / 担当 ${pharmacistNameById.get(task.assigned_to) ?? '未登録'}`
-                            : ''}
-                        </p>
-                      </div>
-                    </div>
-
-                    {(relatedSchedule || task.description) && (
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        {relatedSchedule && (
-                          <p>
-                            {relatedSchedule.case_.patient.name} /{' '}
-                            {format(parseISO(relatedSchedule.scheduled_date), 'M/d', {
-                              locale: ja,
-                            })}{' '}
-                            {timeLabel(
-                              relatedSchedule.time_window_start,
-                              relatedSchedule.time_window_end,
-                            )}
-                          </p>
-                        )}
-                        {task.description && <p className="leading-5">{task.description}</p>}
-                      </div>
-                    )}
-
-                    {task.task_type === 'visit_schedule_override_approval' &&
-                      task.related_entity_id &&
-                      !relatedSchedule && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                          対象予定をこの週の予定一覧で確認してから変更承認してください。
-                        </div>
-                      )}
-
-                    {(canApproveOverride || canOpenPreparation) && (
-                      <ActionRail align="start" className="pt-1">
-                        {canOpenPreparation && relatedSchedule && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openPreparationDialog(relatedSchedule)}
-                          >
-                            準備チェック
-                          </Button>
-                        )}
-                        {canApproveOverride && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const scheduleId = task.related_entity_id;
-                              if (!scheduleId) return;
-                              rescheduleApprovalMutation.mutate(scheduleId);
-                            }}
-                            disabled={rescheduleApprovalMutation.isPending}
-                          >
-                            変更承認
-                          </Button>
-                        )}
-                      </ActionRail>
-                    )}
-                  </div>
-                );
+          <ScheduleDayOperationalTasksPanel
+            callbackTasks={callbackTasks}
+            callbackTasksLoading={callbackTasksLoading}
+            schedulingTasks={schedulingTasks}
+            tasksLoading={tasksLoading}
+            proposalById={proposalById}
+            scheduleById={scheduleById}
+            pharmacistNameById={pharmacistNameById}
+            callbackTaskPending={callbackTaskMutation.isPending}
+            rescheduleApprovalPending={rescheduleApprovalMutation.isPending}
+            onRecordCallbackTask={(task, proposal) => {
+              setSelectedDate(toDateKey(proposal.proposed_date));
+              openContactLogDialog(proposal);
+              if (task.status === 'pending') {
+                callbackTaskMutation.mutate({
+                  id: task.id,
+                  status: 'in_progress',
+                });
+              }
+            }}
+            onUpdateCallbackTaskStatus={(taskId, status) =>
+              callbackTaskMutation.mutate({
+                id: taskId,
+                status,
               })
-            )}
-          </PageSection>
+            }
+            onOpenPreparation={openPreparationDialog}
+            onApproveOverride={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
+          />
 
           <RelatedManagementLinks selectedCase={selectedCase} />
         </div>

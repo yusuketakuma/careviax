@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-000958
+
+- current task: extract the ScheduleDayView operational tasks section into a tested panel and add target-specific task action labels.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.sections.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/components/layout/page-section.tsx`, and read-only code-mapper/accessibility reviewer findings for the next schedule UI/UX slice.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: no backend behavior bug was fixed in this slice. The UI risk was that repeated operational task actions had short duplicate labels such as `架電結果を記録`, `対応中にする`, `完了`, `準備チェック`, and `変更承認`, which made target selection harder for assistive technology and during fast operator workflows.
+- security risks found: no auth, authorization, org scoping, task mutation endpoint, or data persistence behavior changed. The change reduces accidental wrong-target operation risk by adding patient/date context to task action accessible names and preserving the existing week-visible schedule guard before override approval.
+- performance issues found: no new network calls, DB queries, polling, or unbounded loops were introduced. `day-view.tsx` now delegates the operational task rendering to a prop-driven panel.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.tsx' 'src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx' 'src/app/(dashboard)/schedules/day-view.tsx'`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`.
+- validation results: focused operational-tasks/day-view suite passed with 2 files / 18 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed.
+- remaining work: accessibility reviewer flagged confirmation-less `変更承認` as the next High priority safety issue across task, proposal, and confirmed schedule surfaces. This slice intentionally kept mutation ownership in `day-view.tsx` and did not yet introduce the approval confirmation dialog.
+- next action: add a shared reschedule approval confirmation flow so `変更承認` click opens a patient/date/impact confirmation dialog and only final confirmation calls `rescheduleApprovalMutation.mutate`.
+
 ### 20260611-000231
 
 - current task: extract the ScheduleDayView offline/mobile sync and cached-brief panel into a tested component before the broad UI/UX overhaul.
