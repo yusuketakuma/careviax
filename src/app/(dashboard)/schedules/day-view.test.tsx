@@ -935,13 +935,32 @@ describe('ScheduleDayView', () => {
       expect(dialog.getByRole('heading', { name: '訪問前提・確認材料' })).toBeTruthy();
     });
 
+    const packRegion = dialog.getByRole('region', { name: '訪問前提・確認材料' });
+    const pack = within(packRegion);
+    expect(pack.getByRole('heading', { name: '訪問前提・確認材料' }).tagName).toBe('H3');
+    expect(pack.getByRole('region', { name: '訪問前の即時確認' })).toBeTruthy();
+    expect(pack.getByRole('region', { name: '臨床・算定確認' })).toBeTruthy();
+    expect(pack.getByRole('heading', { name: '訪問前の即時確認' }).tagName).toBe('H4');
+    expect(pack.getByRole('heading', { name: '臨床・算定確認' }).tagName).toBe('H4');
+
+    const departureRegion = dialog.getByRole('region', { name: '出発直前確認' });
+    const departure = within(departureRegion);
+    expect(departure.getByRole('heading', { name: '出発直前確認' }).tagName).toBe('H3');
+    expect(departure.getByRole('heading', { name: '出発前チェックリスト' }).tagName).toBe('H4');
+    expect(departure.getByRole('heading', { name: '訪問先マップ' }).tagName).toBe('H4');
+    expect(departure.getByRole('region', { name: '出発前チェックリスト' })).toBeTruthy();
+    expect(departure.getByRole('region', { name: '訪問先マップ' })).toBeTruthy();
+    expect(packRegion.compareDocumentPosition(departureRegion)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const checklistRegion = departure.getByRole('region', { name: '出発前チェックリスト' });
+    const mapRegion = departure.getByRole('region', { name: '訪問先マップ' });
+    expect(checklistRegion.compareDocumentPosition(mapRegion)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
     expect(dialog.getByRole('region', { name: 'ready 判定' })).toBeTruthy();
-    expect(dialog.getByRole('region', { name: '訪問前提・確認材料' })).toBeTruthy();
-    expect(dialog.getByRole('region', { name: '出発前チェックリスト' })).toBeTruthy();
-    expect(dialog.getByRole('region', { name: '訪問先マップ' })).toBeTruthy();
     expect(dialog.getByRole('heading', { name: 'ready 判定' })).toBeTruthy();
-    expect(dialog.getByRole('heading', { name: '出発前チェックリスト' })).toBeTruthy();
-    expect(dialog.getByRole('heading', { name: '訪問先マップ' })).toBeTruthy();
     const readinessRegion = within(dialog.getByRole('region', { name: 'ready 判定' }));
     const readinessSummary = readinessRegion.getByText('出発前に解決が必要な項目があります。');
     expect(readinessSummary).toBeTruthy();
@@ -984,7 +1003,7 @@ describe('ScheduleDayView', () => {
     );
     expect(readyButton.disabled).toBe(true);
 
-    const checklist = within(dialog.getByRole('region', { name: '出発前チェックリスト' }));
+    const checklist = within(checklistRegion);
     for (const label of [
       '薬歴・前回変更の確認',
       '持参薬・物品確認',

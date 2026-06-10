@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-032843
+
+- current task: improve visit-preparation dialog grouping for preparation pack and departure checks.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js local accessibility docs, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and read-only accessibility/UX plus verifier findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the visit-preparation dialog had one large preparation-pack group with mixed prerequisite, clinical, billing, handoff, and coordination content. The checklist and map were adjacent in an unlabeled grid, so the route/map affordance was visually and semantically detached from the checklist that gates ready.
+- security risks found: no auth, authorization, API, persistence, or PHI response behavior changed. The slice reduces wrong-address and wrong-departure workflow risk by adding named regions, visible boundaries, and a clear `出発直前確認` parent for checklist plus map.
+- performance issues found: no network, DB, polling, or render-loop path changed. The change only restructures existing rendered dialog markup.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm exec eslint 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/schedules/day-view.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx'`; `git diff --check`; `pnpm typecheck`; `pnpm lint`; `pnpm format:check`; read-only verifier focused rerun.
+- validation results: focused day-view suite passed with 1 file / 24 tests. Targeted ESLint, targeted Prettier, whitespace diff check, full typecheck, full ESLint, and changed-file format gate all passed. Verifier reran the focused suite and diff check with no commit blockers.
+- remaining work: browser/Playwright visual proof for the larger preparation dialog remains useful, especially mobile overflow and nested section density. Broader ScheduleDayView hierarchy and map-view visual proof remain part of the UI/UX overhaul.
+- next action: commit this preparation dialog grouping slice, then continue with browser proof or the next ScheduleDayView UI hierarchy item.
+
 ### 20260611-032235
 
 - current task: prevent stale carry-item confirmation when carry items are regenerated as ready.

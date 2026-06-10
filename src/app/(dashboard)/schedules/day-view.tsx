@@ -3808,381 +3808,448 @@ export function ScheduleDayView({
             {preparationDetails?.pack && (
               <section
                 aria-labelledby="preparation-pack-heading"
-                className="grid gap-3 rounded-xl border bg-muted/20 p-4"
+                className="space-y-3 rounded-xl border bg-muted/20 p-4"
               >
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <div className="space-y-1 text-sm">
-                    <h3 id="preparation-pack-heading" className="font-medium text-foreground">
-                      訪問前提・確認材料
-                    </h3>
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      患者住所、導入準備、算定、処方差分、前回課題を訪問前に確認します。
-                    </p>
-                    <p className="text-muted-foreground">
-                      {preparationDetails.pack.patient.address ?? '住所未登録'}
-                    </p>
-                    {preparationDetails.pack.site && (
-                      <p className="text-xs text-muted-foreground">
-                        拠点: {preparationDetails.pack.site.name}
-                      </p>
-                    )}
-                    {preparationDetails.pack.handoff.summary && (
-                      <p className="text-xs leading-6 text-muted-foreground">
-                        {preparationDetails.pack.handoff.summary}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    <h3 className="font-medium text-foreground">当日状況</h3>
-                    <p className="text-muted-foreground">
-                      同日担当 {preparationDetails.pack.workload.same_day_visit_count} 件
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      施設集約 {preparationDetails.pack.facility_mode.same_day_patient_count} 名
-                    </p>
-                    <p className="text-xs leading-6 text-muted-foreground">
-                      {preparationDetails.pack.facility_mode.same_day_patient_names.join('、')}
-                    </p>
-                  </div>
+                <div className="space-y-1 text-sm">
+                  <h3 id="preparation-pack-heading" className="font-medium text-foreground">
+                    訪問前提・確認材料
+                  </h3>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    患者住所、導入準備、算定、処方差分、前回課題を訪問前に確認します。
+                  </p>
                 </div>
 
-                {unresolvedPreparationReadinessBlockers.length > 0 && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    <p className="font-medium">訪問前提の未完了</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-4 leading-5">
-                      {unresolvedPreparationReadinessBlockers.map((blocker) => (
-                        <li key={blocker}>{blocker}</li>
-                      ))}
-                    </ul>
+                <section
+                  aria-labelledby="preparation-pack-immediate-heading"
+                  className="space-y-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                >
+                  <div className="space-y-1">
+                    <h4
+                      id="preparation-pack-immediate-heading"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      訪問前の即時確認
+                    </h4>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      訪問先、当日負荷、導入準備、ready を止める項目を先に確認します。
+                    </p>
                   </div>
-                )}
-
-                {preparationDetails.pack.onboarding_readiness ? (
-                  <OnboardingWarningBadges
-                    readiness={preparationDetails.pack.onboarding_readiness}
-                  />
-                ) : (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
-                  >
-                    導入準備の状態を確認できません。
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="space-y-1 text-sm">
+                      <p className="font-medium text-foreground">訪問先</p>
+                      <p className="text-muted-foreground">
+                        {preparationDetails.pack.patient.address ?? '住所未登録'}
+                      </p>
+                      {preparationDetails.pack.site && (
+                        <p className="text-xs text-muted-foreground">
+                          拠点: {preparationDetails.pack.site.name}
+                        </p>
+                      )}
+                      {preparationDetails.pack.handoff.summary && (
+                        <p className="text-xs leading-6 text-muted-foreground">
+                          {preparationDetails.pack.handoff.summary}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <p className="font-medium text-foreground">当日状況</p>
+                      <p className="text-muted-foreground">
+                        同日担当 {preparationDetails.pack.workload.same_day_visit_count} 件
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        施設集約 {preparationDetails.pack.facility_mode.same_day_patient_count} 名
+                      </p>
+                      <p className="text-xs leading-6 text-muted-foreground">
+                        {preparationDetails.pack.facility_mode.same_day_patient_names.join('、')}
+                      </p>
+                    </div>
                   </div>
-                )}
 
-                {(() => {
-                  const homeVisit2026Items = getHomeVisit2026PreparationItems(
-                    preparationDetails.pack,
-                  );
-                  const requiredItems = homeVisit2026Items.filter((item) => item.required);
-                  const requiredOpenItems = requiredItems.filter((item) => !item.done);
+                  {unresolvedPreparationReadinessBlockers.length > 0 && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <p className="font-medium">訪問前提の未完了</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 leading-5">
+                        {unresolvedPreparationReadinessBlockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-                  return (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-xs text-emerald-950">
+                  {preparationDetails.pack.onboarding_readiness ? (
+                    <OnboardingWarningBadges
+                      readiness={preparationDetails.pack.onboarding_readiness}
+                    />
+                  ) : (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                    >
+                      導入準備の状態を確認できません。
+                    </div>
+                  )}
+                </section>
+
+                <section
+                  aria-labelledby="preparation-pack-clinical-heading"
+                  className="space-y-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                >
+                  <div className="space-y-1">
+                    <h4
+                      id="preparation-pack-clinical-heading"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      臨床・算定確認
+                    </h4>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      訪問中に記録する薬学的管理、会議引き継ぎ、前回課題、算定と処方差分を確認します。
+                    </p>
+                  </div>
+
+                  {(() => {
+                    const homeVisit2026Items = getHomeVisit2026PreparationItems(
+                      preparationDetails.pack,
+                    );
+                    const requiredItems = homeVisit2026Items.filter((item) => item.required);
+                    const requiredOpenItems = requiredItems.filter((item) => !item.done);
+
+                    return (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-xs text-emerald-950">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium">訪問薬剤管理の記録ポイント</p>
+                            <p className="mt-1 leading-5 text-emerald-900/80">
+                              {VISIT_TYPE_LABELS[preparationDetails.pack.visit.visit_type]}で残す
+                              薬学的管理、連携、加算要件の証跡です。
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="border-emerald-300 bg-white">
+                            訪問中に記録 {requiredOpenItems.length}件
+                          </Badge>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {requiredOpenItems.length === 0 ? (
+                            <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-800">
+                              記録ポイント確認済み
+                            </span>
+                          ) : (
+                            requiredOpenItems.slice(0, 8).map((item) => (
+                              <span
+                                key={item.key}
+                                className={cn(
+                                  'rounded-full border bg-white px-2.5 py-1 text-[11px] font-medium',
+                                  item.severity === 'urgent'
+                                    ? 'border-rose-200 text-rose-800'
+                                    : item.severity === 'high'
+                                      ? 'border-amber-200 text-amber-800'
+                                      : 'border-emerald-200 text-emerald-800',
+                                )}
+                              >
+                                {item.label}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {preparationDetails.pack.conference_context.length > 0 && (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">訪問薬剤管理の記録ポイント</p>
-                          <p className="mt-1 leading-5 text-emerald-900/80">
-                            {VISIT_TYPE_LABELS[preparationDetails.pack.visit.visit_type]}で残す
-                            薬学的管理、連携、加算要件の証跡です。
+                          <p className="font-medium">会議からの引き継ぎ</p>
+                          <p className="mt-1 leading-5 text-sky-900/80">
+                            退院前カンファ・担当者会議で決まった内容を訪問前に確認します。
                           </p>
                         </div>
-                        <Badge variant="outline" className="border-emerald-300 bg-white">
-                          訪問中に記録 {requiredOpenItems.length}件
+                        <Badge variant="outline" className="border-sky-300 bg-white">
+                          {preparationDetails.pack.conference_context.length}件
                         </Badge>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {requiredOpenItems.length === 0 ? (
-                          <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-800">
-                            記録ポイント確認済み
-                          </span>
-                        ) : (
-                          requiredOpenItems.slice(0, 8).map((item) => (
-                            <span
-                              key={item.key}
-                              className={cn(
-                                'rounded-full border bg-white px-2.5 py-1 text-[11px] font-medium',
-                                item.severity === 'urgent'
-                                  ? 'border-rose-200 text-rose-800'
-                                  : item.severity === 'high'
-                                    ? 'border-amber-200 text-amber-800'
-                                    : 'border-emerald-200 text-emerald-800',
-                              )}
-                            >
-                              {item.label}
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {preparationDetails.pack.conference_context.length > 0 && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium">会議からの引き継ぎ</p>
-                        <p className="mt-1 leading-5 text-sky-900/80">
-                          退院前カンファ・担当者会議で決まった内容を訪問前に確認します。
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="border-sky-300 bg-white">
-                        {preparationDetails.pack.conference_context.length}件
-                      </Badge>
-                    </div>
-                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                      {preparationDetails.pack.conference_context.slice(0, 2).map((note) => (
-                        <div
-                          key={note.id}
-                          className="rounded-lg border border-sky-200 bg-white px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-900">
-                              {conferenceContextLabel(note.note_type)}
-                            </span>
-                            <span className="font-medium text-foreground">{note.title}</span>
+                      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                        {preparationDetails.pack.conference_context.slice(0, 2).map((note) => (
+                          <div
+                            key={note.id}
+                            className="rounded-lg border border-sky-200 bg-white px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-900">
+                                {conferenceContextLabel(note.note_type)}
+                              </span>
+                              <span className="font-medium text-foreground">{note.title}</span>
+                            </div>
+                            {note.highlights.length > 0 ? (
+                              <ul className="mt-2 space-y-1 leading-5 text-sky-950">
+                                {note.highlights.slice(0, 3).map((highlight, index) => (
+                                  <li key={`${note.id}-${index}`}>・{highlight}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            {note.action_items.length > 0 ? (
+                              <p className="mt-2 leading-5 text-sky-900/80">
+                                合意事項: {note.action_items.slice(0, 2).join(' / ')}
+                              </p>
+                            ) : null}
                           </div>
-                          {note.highlights.length > 0 ? (
-                            <ul className="mt-2 space-y-1 leading-5 text-sky-950">
-                              {note.highlights.slice(0, 3).map((highlight, index) => (
-                                <li key={`${note.id}-${index}`}>・{highlight}</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          {note.action_items.length > 0 ? (
-                            <p className="mt-2 leading-5 text-sky-900/80">
-                              合意事項: {note.action_items.slice(0, 2).join(' / ')}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {preparationDetails.pack.previous_visit && (
-                  <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs">
-                    <p className="font-medium text-foreground">前回訪問</p>
-                    <p className="mt-1 text-muted-foreground">
-                      {format(
-                        parseISO(preparationDetails.pack.previous_visit.visit_date),
-                        'yyyy/MM/dd',
-                        { locale: ja },
-                      )}{' '}
-                      / {preparationDetails.pack.previous_visit.outcome_status}
-                    </p>
-                    {preparationDetails.pack.previous_visit.soap_plan && (
-                      <p className="mt-1 leading-6 text-muted-foreground">
-                        {preparationDetails.pack.previous_visit.soap_plan}
+                  {preparationDetails.pack.previous_visit && (
+                    <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs">
+                      <p className="font-medium text-foreground">前回訪問</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {format(
+                          parseISO(preparationDetails.pack.previous_visit.visit_date),
+                          'yyyy/MM/dd',
+                          { locale: ja },
+                        )}{' '}
+                        / {preparationDetails.pack.previous_visit.outcome_status}
                       </p>
-                    )}
-                  </div>
-                )}
+                      {preparationDetails.pack.previous_visit.soap_plan && (
+                        <p className="mt-1 leading-6 text-muted-foreground">
+                          {preparationDetails.pack.previous_visit.soap_plan}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                {preparationDetails.pack.billing_blockers.length > 0 && (
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground">算定ブロッカー</h3>
-                    <div className="grid gap-2 lg:grid-cols-2">
-                      {preparationDetails.pack.billing_blockers.map((blocker) => (
-                        <div
-                          key={`${blocker.evidence_id}:${blocker.key}`}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900"
-                        >
-                          <p className="font-medium">{blocker.reason}</p>
-                          <p className="mt-1 text-rose-800/80">
-                            {blocker.action_label} / {blocker.action_href}
-                          </p>
+                  {preparationDetails.pack.billing_blockers.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">算定ブロッカー</p>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {preparationDetails.pack.billing_blockers.map((blocker) => (
+                          <div
+                            key={`${blocker.evidence_id}:${blocker.key}`}
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900"
+                          >
+                            <p className="font-medium">{blocker.reason}</p>
+                            <p className="mt-1 text-rose-800/80">
+                              {blocker.action_label} / {blocker.action_href}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {preparationDetails.pack.prescription_changes && (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">処方差分サマリー</p>
+                        <span className="text-[11px] text-sky-800/80">
+                          {preparationDetails.pack.prescription_changes.previous_prescribed_date
+                            ? `${format(
+                                parseISO(
+                                  preparationDetails.pack.prescription_changes
+                                    .previous_prescribed_date,
+                                ),
+                                'yyyy/MM/dd',
+                                { locale: ja },
+                              )} → ${format(
+                                parseISO(
+                                  preparationDetails.pack.prescription_changes
+                                    .current_prescribed_date,
+                                ),
+                                'yyyy/MM/dd',
+                                { locale: ja },
+                              )}`
+                            : `最新 ${format(
+                                parseISO(
+                                  preparationDetails.pack.prescription_changes
+                                    .current_prescribed_date,
+                                ),
+                                'yyyy/MM/dd',
+                                { locale: ja },
+                              )}`}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                          追加 {preparationDetails.pack.prescription_changes.added.length}
+                        </span>
+                        <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                          変更 {preparationDetails.pack.prescription_changes.changed.length}
+                        </span>
+                        <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                          中止 {preparationDetails.pack.prescription_changes.removed.length}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                        <div>
+                          <p className="font-medium text-sky-900">追加</p>
+                          {preparationDetails.pack.prescription_changes.added.length === 0 ? (
+                            <p className="mt-1 text-sky-800/80">なし</p>
+                          ) : (
+                            <ul className="mt-1 space-y-1 text-sky-900">
+                              {preparationDetails.pack.prescription_changes.added
+                                .slice(0, 4)
+                                .map((drug) => (
+                                  <li key={`added-${drug}`}>+ {drug}</li>
+                                ))}
+                            </ul>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {preparationDetails.pack.prescription_changes && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium">処方差分サマリー</p>
-                      <span className="text-[11px] text-sky-800/80">
-                        {preparationDetails.pack.prescription_changes.previous_prescribed_date
-                          ? `${format(
-                              parseISO(
-                                preparationDetails.pack.prescription_changes
-                                  .previous_prescribed_date,
-                              ),
-                              'yyyy/MM/dd',
-                              { locale: ja },
-                            )} → ${format(
-                              parseISO(
-                                preparationDetails.pack.prescription_changes
-                                  .current_prescribed_date,
-                              ),
-                              'yyyy/MM/dd',
-                              { locale: ja },
-                            )}`
-                          : `最新 ${format(
-                              parseISO(
-                                preparationDetails.pack.prescription_changes
-                                  .current_prescribed_date,
-                              ),
-                              'yyyy/MM/dd',
-                              { locale: ja },
-                            )}`}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
-                        追加 {preparationDetails.pack.prescription_changes.added.length}
-                      </span>
-                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
-                        変更 {preparationDetails.pack.prescription_changes.changed.length}
-                      </span>
-                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
-                        中止 {preparationDetails.pack.prescription_changes.removed.length}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid gap-2 lg:grid-cols-3">
-                      <div>
-                        <p className="font-medium text-sky-900">追加</p>
-                        {preparationDetails.pack.prescription_changes.added.length === 0 ? (
-                          <p className="mt-1 text-sky-800/80">なし</p>
-                        ) : (
-                          <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.added
-                              .slice(0, 4)
-                              .map((drug) => (
-                                <li key={`added-${drug}`}>+ {drug}</li>
-                              ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sky-900">変更</p>
-                        {preparationDetails.pack.prescription_changes.changed.length === 0 ? (
-                          <p className="mt-1 text-sky-800/80">なし</p>
-                        ) : (
-                          <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.changed
-                              .slice(0, 4)
-                              .map((item) => (
-                                <li key={`changed-${item.drug_name}`}>
-                                  {item.drug_name}
-                                  <span className="block text-[11px] text-sky-800/80">
-                                    {item.reasons.join(' / ')}
-                                  </span>
-                                </li>
-                              ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sky-900">中止</p>
-                        {preparationDetails.pack.prescription_changes.removed.length === 0 ? (
-                          <p className="mt-1 text-sky-800/80">なし</p>
-                        ) : (
-                          <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.removed
-                              .slice(0, 4)
-                              .map((drug) => (
-                                <li key={`removed-${drug}`}>- {drug}</li>
-                              ))}
-                          </ul>
-                        )}
+                        <div>
+                          <p className="font-medium text-sky-900">変更</p>
+                          {preparationDetails.pack.prescription_changes.changed.length === 0 ? (
+                            <p className="mt-1 text-sky-800/80">なし</p>
+                          ) : (
+                            <ul className="mt-1 space-y-1 text-sky-900">
+                              {preparationDetails.pack.prescription_changes.changed
+                                .slice(0, 4)
+                                .map((item) => (
+                                  <li key={`changed-${item.drug_name}`}>
+                                    {item.drug_name}
+                                    <span className="block text-[11px] text-sky-800/80">
+                                      {item.reasons.join(' / ')}
+                                    </span>
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-sky-900">中止</p>
+                          {preparationDetails.pack.prescription_changes.removed.length === 0 ? (
+                            <p className="mt-1 text-sky-800/80">なし</p>
+                          ) : (
+                            <ul className="mt-1 space-y-1 text-sky-900">
+                              {preparationDetails.pack.prescription_changes.removed
+                                .slice(0, 4)
+                                .map((drug) => (
+                                  <li key={`removed-${drug}`}>- {drug}</li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <VisitBriefCard
-                  brief={preparationDetails.pack.visit_brief}
-                  title="訪問要点サマリー"
-                  description="処方内容、調剤方法、連携更新を短くまとめています。"
-                  compact
-                />
+                  <VisitBriefCard
+                    brief={preparationDetails.pack.visit_brief}
+                    title="訪問要点サマリー"
+                    description="処方内容、調剤方法、連携更新を短くまとめています。"
+                    compact
+                  />
 
-                <HomeCareFeatureHighlights
-                  features={preparationDetails.pack.home_care_feature_highlights}
-                  title="訪問時の優先ハイライト"
-                  description="訪問支援項目のうち、この訪問で先に見るべきものだけを抽出しています。"
-                  emptyText="この訪問で優先表示するハイライトはありません。"
-                />
+                  <HomeCareFeatureHighlights
+                    features={preparationDetails.pack.home_care_feature_highlights}
+                    title="訪問時の優先ハイライト"
+                    description="訪問支援項目のうち、この訪問で先に見るべきものだけを抽出しています。"
+                    emptyText="この訪問で優先表示するハイライトはありません。"
+                  />
+                </section>
 
                 {(preparationDetails.pack.open_tasks.length > 0 ||
                   preparationDetails.pack.recent_contact_logs.length > 0 ||
                   preparationDetails.pack.care_team.length > 0) && (
-                  <div className="grid gap-3 lg:grid-cols-3">
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">未処理タスク</p>
-                      {preparationDetails.pack.open_tasks.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">なし</p>
-                      ) : (
-                        preparationDetails.pack.open_tasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
-                          >
-                            <p className="font-medium text-foreground">{task.title}</p>
-                            {task.due_at && (
-                              <p className="mt-1 text-muted-foreground">
-                                期限 {format(parseISO(task.due_at), 'M/d HH:mm', { locale: ja })}
+                  <section
+                    aria-labelledby="preparation-pack-coordination-heading"
+                    className="space-y-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                  >
+                    <div className="space-y-1">
+                      <h4
+                        id="preparation-pack-coordination-heading"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        連携・周辺情報
+                      </h4>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        訪問前に残っているタスク、直近架電、連携先だけをまとめます。
+                      </p>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-3">
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">未処理タスク</p>
+                        {preparationDetails.pack.open_tasks.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">なし</p>
+                        ) : (
+                          preparationDetails.pack.open_tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
+                            >
+                              <p className="font-medium text-foreground">{task.title}</p>
+                              {task.due_at && (
+                                <p className="mt-1 text-muted-foreground">
+                                  期限 {format(parseISO(task.due_at), 'M/d HH:mm', { locale: ja })}
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">直近架電</p>
+                        {preparationDetails.pack.recent_contact_logs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">なし</p>
+                        ) : (
+                          preparationDetails.pack.recent_contact_logs.map((log) => (
+                            <div
+                              key={log.id}
+                              className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
+                            >
+                              <p className="font-medium text-foreground">
+                                {CONTACT_STATUS_LABELS[log.outcome]}
                               </p>
-                            )}
-                          </div>
-                        ))
-                      )}
+                              <p className="mt-1 leading-6 text-muted-foreground">
+                                {log.note ?? 'メモなし'}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">連携先</p>
+                        {preparationDetails.pack.care_team.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">登録なし</p>
+                        ) : (
+                          preparationDetails.pack.care_team.slice(0, 4).map((member) => (
+                            <div
+                              key={member.id}
+                              className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
+                            >
+                              <p className="font-medium text-foreground">
+                                {member.role} / {member.name}
+                              </p>
+                              <p className="mt-1 text-muted-foreground">
+                                {member.organization_name ?? '所属未登録'}
+                                {member.phone ? ` / ${member.phone}` : ''}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">直近架電</p>
-                      {preparationDetails.pack.recent_contact_logs.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">なし</p>
-                      ) : (
-                        preparationDetails.pack.recent_contact_logs.map((log) => (
-                          <div
-                            key={log.id}
-                            className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
-                          >
-                            <p className="font-medium text-foreground">
-                              {CONTACT_STATUS_LABELS[log.outcome]}
-                            </p>
-                            <p className="mt-1 leading-6 text-muted-foreground">
-                              {log.note ?? 'メモなし'}
-                            </p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">連携先</p>
-                      {preparationDetails.pack.care_team.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">登録なし</p>
-                      ) : (
-                        preparationDetails.pack.care_team.slice(0, 4).map((member) => (
-                          <div
-                            key={member.id}
-                            className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
-                          >
-                            <p className="font-medium text-foreground">
-                              {member.role} / {member.name}
-                            </p>
-                            <p className="mt-1 text-muted-foreground">
-                              {member.organization_name ?? '所属未登録'}
-                              {member.phone ? ` / ${member.phone}` : ''}
-                            </p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  </section>
                 )}
               </section>
             )}
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <section
+              aria-labelledby="preparation-departure-heading"
+              className="grid gap-4 rounded-xl border border-border/70 bg-card p-4 lg:grid-cols-[1.1fr_0.9fr]"
+            >
+              <div className="space-y-1 lg:col-span-2">
+                <h3
+                  id="preparation-departure-heading"
+                  className="text-sm font-medium text-foreground"
+                >
+                  出発直前確認
+                </h3>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  チェックリストと訪問先ルートを確認してから ready に進めます。
+                </p>
+              </div>
               <section aria-labelledby="preparation-checklist-heading" className="space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <h3 id="preparation-checklist-heading" className="text-sm font-medium">
+                    <h4 id="preparation-checklist-heading" className="text-sm font-medium">
                       出発前チェックリスト
-                    </h3>
+                    </h4>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       未完了が残る間は ready に進めません。
                     </p>
@@ -4250,12 +4317,12 @@ export function ScheduleDayView({
                   className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3"
                 >
                   <div className="space-y-1">
-                    <h3
+                    <h4
                       id="preparation-map-heading"
                       className="text-sm font-medium text-foreground"
                     >
                       訪問先マップ
-                    </h3>
+                    </h4>
                     <p className="text-xs leading-5 text-muted-foreground">
                       {preparationDetails.pack.patient.address}
                     </p>
@@ -4280,7 +4347,7 @@ export function ScheduleDayView({
                   </a>
                 </section>
               ) : null}
-            </div>
+            </section>
           </div>
           {preparationTarget && (
             <div
