@@ -3684,14 +3684,14 @@ export function ScheduleDayView({
           closePreparationDialog();
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>訪問準備チェック</DialogTitle>
             <DialogDescription>
               ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
             {preparationTarget && (
               <section
                 aria-labelledby="preparation-target-heading"

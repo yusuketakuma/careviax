@@ -70,6 +70,10 @@ describe('proxy', () => {
     expect(response.headers.get('Content-Security-Policy')).toContain("style-src 'self' 'nonce-");
     expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self' 'nonce-");
     expect(response.headers.get('Content-Security-Policy')).toContain("'strict-dynamic'");
+    expect(response.headers.get('Content-Security-Policy')).toContain(
+      "frame-src 'self' https://www.google.com",
+    );
+    expect(response.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     expect(response.headers.get('Content-Security-Policy')).not.toContain("'unsafe-inline'");
   });
 

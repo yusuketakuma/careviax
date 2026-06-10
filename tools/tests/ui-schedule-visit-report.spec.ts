@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   ensureConfirmedScheduleActionFixture,
   ensureGroupedVisitFixtures,
@@ -51,6 +51,15 @@ async function expectNoPageHorizontalOverflow(page: Page) {
       scrollWidth: root.scrollWidth,
     };
   });
+
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
+}
+
+async function expectNoLocatorHorizontalOverflow(locator: Locator) {
+  const overflow = await locator.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
 
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 }
@@ -332,6 +341,70 @@ test.describe('schedule page', () => {
     expect(preparationBox.y).toBeLessThan(patientAddressBox.y);
     expect(rescheduleBox.y).toBeLessThan(patientAddressBox.y);
     await expectNoPageHorizontalOverflow(page);
+
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
+  test('visit preparation dialog exposes grouped pack and departure checks', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop dialog grouping is covered separately from mobile shell stability checks.',
+    );
+
+    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()));
+    const { page, errors } = await createInstrumentedPage(context);
+
+    await openScheduleBoard(page);
+
+    const card = page.locator(`#schedule-${fixture.scheduleId}`);
+    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
+      timeout: 90_000,
+    });
+    await expect(card).toBeVisible({ timeout: 90_000 });
+
+    await card
+      .getByRole('button', {
+        name: /施設E2E 太郎.*訪問準備を開く/,
+      })
+      .click();
+
+    const dialog = page.getByRole('dialog', { name: '訪問準備チェック' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('region', { name: '対象訪問' })).toBeVisible();
+    await expect(dialog.getByRole('region', { name: 'ready 判定' })).toBeVisible();
+
+    const packRegion = dialog.getByRole('region', { name: '訪問前提・確認材料' });
+    await expect(packRegion).toBeVisible({ timeout: 90_000 });
+    await expect(packRegion.getByRole('region', { name: '訪問前の即時確認' })).toBeVisible();
+    await expect(packRegion.getByRole('region', { name: '臨床・算定確認' })).toBeVisible();
+
+    const departureRegion = dialog.getByRole('region', { name: '出発直前確認' });
+    await expect(departureRegion).toBeVisible();
+    await expect(
+      departureRegion.getByRole('region', { name: '出発前チェックリスト' }),
+    ).toBeVisible();
+    await expect(departureRegion.getByRole('region', { name: '訪問先マップ' })).toBeVisible();
+    await expect(departureRegion.getByRole('link', { name: 'ナビで開く' })).toBeVisible();
+
+    const actionTargetSummary = dialog.locator('#preparation-action-target-summary');
+    await expect(actionTargetSummary).toBeVisible();
+    await expect(actionTargetSummary).toContainText('最終操作対象:');
+    await expect(actionTargetSummary).toContainText('施設E2E 太郎');
+    await expect(
+      dialog.getByRole('button', {
+        name: /施設E2E 太郎.*訪問準備をreadyに進める/,
+      }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', {
+        name: /施設E2E 太郎.*訪問準備を保存/,
+      }),
+    ).toBeVisible();
+    await expectNoPageHorizontalOverflow(page);
+    await expectNoLocatorHorizontalOverflow(dialog);
 
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);

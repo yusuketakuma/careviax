@@ -30,6 +30,7 @@ const CSP_STATIC_TAIL = [
   "font-src 'self'",
   // Cognito hosted UI + AWS SDK endpoints
   "connect-src 'self' https://*.amazonaws.com https://*.cognito.ap-northeast-1.amazonaws.com",
+  "frame-src 'self' https://www.google.com",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "base-uri 'self'",
