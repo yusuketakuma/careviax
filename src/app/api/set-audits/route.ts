@@ -13,6 +13,7 @@ import {
 } from '@/server/services/prescription-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import type { ScheduleStatus } from '@prisma/client';
 import { z } from 'zod';
 
 // B3: approved_scope keys must match pattern day_number-slot
@@ -29,6 +30,18 @@ const createSetAuditSchema = z.object({
   reject_reason: z.string().optional(),
   audited_at: z.string().datetime().optional(),
 });
+
+const MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
+  'planned',
+  'in_preparation',
+  'ready',
+  'postponed',
+];
+const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
+  'planned',
+  'in_preparation',
+  'postponed',
+];
 
 function normalizeApprovedScope(scope: unknown) {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
@@ -217,7 +230,7 @@ export const POST = withAuth(
             org_id: req.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
-              in: ['planned', 'in_preparation', 'ready', 'postponed'],
+              in: MUTABLE_VISIT_SCHEDULE_STATUSES,
             },
           },
           data: {
@@ -238,6 +251,7 @@ export const POST = withAuth(
       } else if (result === 'partial_approved') {
         // Partial: carry_items_partial + re-work task
         const carryItems = buildSetCarryItems(setBatches, effectiveApprovedScope);
+        const carryItemsInput = toPrismaJsonInput(carryItems);
         const transitionErr = await transitionHelper('set_audited', {
           exceptionStatus: 'carry_items_partial',
         });
@@ -247,12 +261,39 @@ export const POST = withAuth(
             org_id: req.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
-              in: ['planned', 'in_preparation', 'ready', 'postponed'],
+              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
             },
           },
           data: {
-            carry_items: toPrismaJsonInput(carryItems),
+            carry_items: carryItemsInput,
             carry_items_status: 'partial',
+          },
+        });
+        await tx.visitPreparation.updateMany({
+          where: {
+            org_id: req.orgId,
+            schedule: {
+              org_id: req.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+          },
+          data: {
+            carry_items_confirmed: false,
+            prepared_at: null,
+          },
+        });
+        await tx.visitSchedule.updateMany({
+          where: {
+            org_id: req.orgId,
+            cycle_id: plan.cycle_id,
+            schedule_status: 'ready',
+          },
+          data: {
+            carry_items: carryItemsInput,
+            carry_items_status: 'partial',
+            schedule_status: 'in_preparation',
+            pre_visit_checklist_completed: false,
           },
         });
 
@@ -278,12 +319,39 @@ export const POST = withAuth(
             org_id: req.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
-              in: ['planned', 'in_preparation', 'ready', 'postponed'],
+              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
             },
           },
           data: {
             carry_items: [],
             carry_items_status: 'blocked',
+          },
+        });
+        await tx.visitPreparation.updateMany({
+          where: {
+            org_id: req.orgId,
+            schedule: {
+              org_id: req.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+          },
+          data: {
+            carry_items_confirmed: false,
+            prepared_at: null,
+          },
+        });
+        await tx.visitSchedule.updateMany({
+          where: {
+            org_id: req.orgId,
+            cycle_id: plan.cycle_id,
+            schedule_status: 'ready',
+          },
+          data: {
+            carry_items: [],
+            carry_items_status: 'blocked',
+            schedule_status: 'in_preparation',
+            pre_visit_checklist_completed: false,
           },
         });
 

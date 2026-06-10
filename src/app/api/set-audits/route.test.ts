@@ -13,6 +13,7 @@ const {
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
   visitScheduleUpdateManyMock,
+  visitPreparationUpdateManyMock,
   taskCreateMock,
   workflowExceptionCreateMock,
   notifyWorkflowMutationMock,
@@ -28,6 +29,7 @@ const {
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
   visitScheduleUpdateManyMock: vi.fn(),
+  visitPreparationUpdateManyMock: vi.fn(),
   taskCreateMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
@@ -113,6 +115,7 @@ describe('/api/set-audits POST', () => {
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     cycleTransitionLogCreateMock.mockResolvedValue({});
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
+    visitPreparationUpdateManyMock.mockResolvedValue({ count: 1 });
     taskCreateMock.mockResolvedValue({ id: 'task_1' });
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
 
@@ -140,6 +143,9 @@ describe('/api/set-audits POST', () => {
         },
         visitSchedule: {
           updateMany: visitScheduleUpdateManyMock,
+        },
+        visitPreparation: {
+          updateMany: visitPreparationUpdateManyMock,
         },
         task: {
           create: taskCreateMock,
@@ -282,10 +288,15 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
         cycle_id: 'cycle_1',
-      }),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'postponed'],
+        },
+      },
       data: {
         carry_items: [
           expect.objectContaining({
@@ -293,6 +304,37 @@ describe('/api/set-audits POST', () => {
           }),
         ],
         carry_items_status: 'partial',
+      },
+    });
+    expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          schedule_status: 'ready',
+        },
+      },
+      data: {
+        carry_items_confirmed: false,
+        prepared_at: null,
+      },
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        schedule_status: 'ready',
+      },
+      data: {
+        carry_items: [
+          expect.objectContaining({
+            batch_id: 'batch_1',
+          }),
+        ],
+        carry_items_status: 'partial',
+        schedule_status: 'in_preparation',
+        pre_visit_checklist_completed: false,
       },
     });
     expect(taskCreateMock).toHaveBeenCalledWith({
@@ -398,13 +440,45 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
         cycle_id: 'cycle_1',
-      }),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'postponed'],
+        },
+      },
       data: {
         carry_items: [],
         carry_items_status: 'blocked',
+      },
+    });
+    expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          schedule_status: 'ready',
+        },
+      },
+      data: {
+        carry_items_confirmed: false,
+        prepared_at: null,
+      },
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        schedule_status: 'ready',
+      },
+      data: {
+        carry_items: [],
+        carry_items_status: 'blocked',
+        schedule_status: 'in_preparation',
+        pre_visit_checklist_completed: false,
       },
     });
     expect(workflowExceptionCreateMock).toHaveBeenCalledWith({

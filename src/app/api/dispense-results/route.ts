@@ -203,8 +203,7 @@ export const POST = withAuth(
                 where: {
                   schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
                 },
-                select: { id: true },
-                take: 1,
+                select: { id: true, schedule_status: true },
               },
               case_: {
                 select: {
@@ -510,8 +509,8 @@ export const POST = withAuth(
         });
       }
 
-      const visitScheduleId = task.cycle.visit_schedules[0]?.id;
-      if (visitScheduleId) {
+      const visitSchedules = task.cycle.visit_schedules;
+      if (visitSchedules.length > 0) {
         const persistedResults = await tx.dispenseResult.findMany({
           where: {
             org_id: req.orgId,
@@ -528,21 +527,54 @@ export const POST = withAuth(
           },
         });
 
-        await tx.visitSchedule.update({
-          where: { id: visitScheduleId },
-          data: {
-            carry_items: persistedResults.map((line) => ({
-              line_id: line.line_id,
-              drug_name: line.actual_drug_name,
-              drug_code: line.actual_drug_code,
-              quantity: line.actual_quantity,
-              unit: line.actual_unit,
-              carry_type: line.carry_type,
-              special_notes: line.special_notes,
-            })),
-            carry_items_status: resolveCarryItemsStatus(persistedResults),
-          },
-        });
+        const carryItemsStatus = resolveCarryItemsStatus(persistedResults);
+        const carryItems = persistedResults.map((line) => ({
+          line_id: line.line_id,
+          drug_name: line.actual_drug_name,
+          drug_code: line.actual_drug_code,
+          quantity: line.actual_quantity,
+          unit: line.actual_unit,
+          carry_type: line.carry_type,
+          special_notes: line.special_notes,
+        }));
+        const readyScheduleIdsToReopen =
+          carryItemsStatus === 'ready'
+            ? []
+            : visitSchedules
+                .filter((visitSchedule) => visitSchedule.schedule_status === 'ready')
+                .map((visitSchedule) => visitSchedule.id);
+
+        if (readyScheduleIdsToReopen.length > 0) {
+          await tx.visitPreparation.updateMany({
+            where: {
+              org_id: req.orgId,
+              schedule_id: { in: readyScheduleIdsToReopen },
+            },
+            data: {
+              carry_items_confirmed: false,
+              prepared_at: null,
+            },
+          });
+        }
+
+        for (const visitSchedule of visitSchedules) {
+          const shouldReopenReadySchedule =
+            visitSchedule.schedule_status === 'ready' && carryItemsStatus !== 'ready';
+
+          await tx.visitSchedule.update({
+            where: { id: visitSchedule.id },
+            data: {
+              carry_items: carryItems,
+              carry_items_status: carryItemsStatus,
+              ...(shouldReopenReadySchedule
+                ? {
+                    schedule_status: 'in_preparation',
+                    pre_visit_checklist_completed: false,
+                  }
+                : {}),
+            },
+          });
+        }
       }
 
       if (latestIntake?.source_type === 'fax' && latestIntake.original_collected_at == null) {

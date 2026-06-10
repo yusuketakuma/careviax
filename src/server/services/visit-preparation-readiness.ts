@@ -75,8 +75,13 @@ export const VISIT_READY_CHECKLIST_BLOCKED_MESSAGE =
 export const VISIT_READY_CONTEXT_BLOCKED_MESSAGE =
   '訪問準備に未解決のブロッカーがあるため ready へ進めません';
 
+export const VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER = '持参物ステータス未解決';
+
 function buildReadinessBlockers(preparation: VisitReadyPreparation) {
-  return PREPARATION_READY_ITEMS.flatMap(([field, label]) => (preparation?.[field] ? [] : [label]));
+  const blockers = PREPARATION_READY_ITEMS.flatMap(([field, label]) =>
+    preparation?.[field] ? [] : [label],
+  );
+  return blockers;
 }
 
 function buildOnboardingBlockers(readiness: Record<VisitReadyOnboardingKey, boolean>) {
@@ -112,6 +117,7 @@ export async function evaluateVisitScheduleReadyTransition(
     select: {
       id: true,
       case_id: true,
+      carry_items_status: true,
       scheduled_date: true,
       preparation: {
         select: {
@@ -225,7 +231,12 @@ export async function evaluateVisitScheduleReadyTransition(
   } satisfies Record<VisitReadyOnboardingKey, boolean>;
 
   const details = {
-    readiness_blockers: buildReadinessBlockers(preparation),
+    readiness_blockers: [
+      ...buildReadinessBlockers(preparation),
+      ...(['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
+        ? [VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER]
+        : []),
+    ],
     onboarding_blockers: buildOnboardingBlockers(onboardingReadiness),
     billing_blockers: billingBlockers,
   } satisfies VisitReadyTransitionBlockers;

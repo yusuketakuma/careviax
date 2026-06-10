@@ -12,6 +12,7 @@ import {
   evaluateVisitScheduleReadyTransition,
   getVisitReadyTransitionErrorMessage,
   VISIT_READY_CHECKLIST_BLOCKED_MESSAGE,
+  VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
   VISIT_READY_CONTEXT_BLOCKED_MESSAGE,
   type VisitReadyTransitionBlockers,
 } from './visit-preparation-readiness';
@@ -32,6 +33,7 @@ const completePreparationRecord = {
 function makeSchedule(
   overrides: Partial<{
     scheduledDate: Date;
+    carryItemsStatus: 'ready' | 'partial' | 'blocked' | null;
     preparation: typeof completePreparationRecord | null;
     contacts: Array<{ id: string }>;
     careTeamLinks: Array<{ role: string }>;
@@ -40,6 +42,7 @@ function makeSchedule(
   return {
     id: 'schedule_1',
     case_id: 'case_1',
+    carry_items_status: overrides.carryItemsStatus ?? 'ready',
     scheduled_date: overrides.scheduledDate ?? new Date('2026-04-15T00:00:00.000Z'),
     preparation: overrides.preparation ?? completePreparationRecord,
     case_: {
@@ -159,6 +162,47 @@ describe('evaluateVisitScheduleReadyTransition', () => {
       );
     }
   });
+
+  it.each(['partial', 'blocked'] as const)(
+    'blocks ready transition when carry_items_status is %s',
+    async (carryItemsStatus) => {
+      const db = makeDb(makeSchedule({ carryItemsStatus }));
+
+      const result = await evaluateVisitScheduleReadyTransition(asReadyTransitionDb(db), {
+        orgId: 'org_1',
+        scheduleId: 'schedule_1',
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        details: {
+          readiness_blockers: [VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER],
+          onboarding_blockers: [],
+          billing_blockers: [],
+        },
+      });
+      if (!result.ok) {
+        expect(result.details.readiness_blockers).not.toContain('持参薬・物品確認');
+        expect(getVisitReadyTransitionErrorMessage(result.details)).toBe(
+          VISIT_READY_CHECKLIST_BLOCKED_MESSAGE,
+        );
+      }
+    },
+  );
+
+  it.each(['ready', null] as const)(
+    'does not block ready transition when carry_items_status is %s',
+    async (carryItemsStatus) => {
+      const db = makeDb(makeSchedule({ carryItemsStatus }));
+
+      const result = await evaluateVisitScheduleReadyTransition(asReadyTransitionDb(db), {
+        orgId: 'org_1',
+        scheduleId: 'schedule_1',
+      });
+
+      expect(result).toEqual({ ok: true });
+    },
+  );
 
   it('blocks ready transition when onboarding prerequisites are missing', async () => {
     const db = makeDb(

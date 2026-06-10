@@ -190,6 +190,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       time_window_start: new Date('1970-01-01T09:00:00Z'),
       time_window_end: new Date('1970-01-01T10:00:00Z'),
       schedule_status: 'planned',
+      carry_items_status: 'ready',
       priority: 'normal',
       pharmacist_id: 'user_1',
       facility_batch_id: 'batch_1',
@@ -669,6 +670,39 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       }),
     );
   });
+
+  it.each(['partial', 'blocked'] as const)(
+    'includes unresolved carry item status %s in readiness blockers',
+    async (carryItemsStatus) => {
+      const baseSchedule = await visitScheduleFindFirstMock();
+      visitScheduleFindFirstMock.mockClear();
+      visitScheduleFindFirstMock.mockResolvedValueOnce({
+        ...baseSchedule,
+        carry_items_status: carryItemsStatus,
+      });
+
+      const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          pack: {
+            readiness_blockers: expect.arrayContaining(['持参物ステータス未解決']),
+          },
+        },
+      });
+      expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            carry_items_status: true,
+          }),
+        }),
+      );
+    },
+  );
 
   it('summarizes previous visit dates by the local pharmacy calendar day', async () => {
     visitRecordFindFirstMock.mockResolvedValue({

@@ -21,6 +21,7 @@ import {
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import { VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER } from '@/server/services/visit-preparation-readiness';
 import {
   getPatientHomeCareFeatureSummary,
   selectScheduleHomeCareFeatureHighlights,
@@ -428,6 +429,7 @@ export async function GET(
       time_window_end: true,
       visit_type: true,
       schedule_status: true,
+      carry_items_status: true,
       priority: true,
       pharmacist_id: true,
       facility_batch_id: true,
@@ -851,6 +853,9 @@ export async function GET(
   const readinessBlockers = [
     !preparation?.medication_changes_reviewed ? '薬歴・前回変更の確認' : null,
     !preparation?.carry_items_confirmed ? '持参薬・物品確認' : null,
+    ['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
+      ? VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER
+      : null,
     !preparation?.previous_issues_reviewed ? '前回課題の確認' : null,
     !preparation?.route_confirmed ? 'ルート確認' : null,
     !preparation?.offline_synced ? 'オフライン同期確認' : null,
