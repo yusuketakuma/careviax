@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ensureGroupedVisitFixtures } from './helpers/grouped-visit-fixtures';
+import {
+  ensureConfirmedScheduleActionFixture,
+  ensureGroupedVisitFixtures,
+} from './helpers/grouped-visit-fixtures';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
@@ -12,6 +15,13 @@ import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mock
 
 test.setTimeout(240_000);
 test.use({ serviceWorkers: 'block' });
+
+function formatLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 async function openScheduleBoard(page: Page) {
   await openStableRoute(page, '/schedules');
@@ -266,6 +276,63 @@ test.describe('schedule page', () => {
     await expect(page.getByRole('button', { name: /翌週/ }).first()).toBeVisible();
 
     // Filter known React Query warning for visit-route-plan (tracked as BUG-002)
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
+  test('confirmed schedule card surfaces primary actions before details', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop confirmed card placement is covered separately from the mobile visit surface.',
+    );
+
+    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()));
+    const { page, errors } = await createInstrumentedPage(context);
+
+    await openScheduleBoard(page);
+
+    const card = page.locator(`#schedule-${fixture.scheduleId}`);
+    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
+      timeout: 90_000,
+    });
+    await expect(card).toBeVisible({ timeout: 90_000 });
+    await expect(card.getByText('電話確定済み')).toBeVisible();
+
+    const visitStartButton = card.getByRole('button', {
+      name: /施設E2E 太郎.*訪問開始/,
+    });
+    const preparationButton = card.getByRole('button', {
+      name: /施設E2E 太郎.*訪問準備を開く/,
+    });
+    const rescheduleButton = card.getByRole('button', {
+      name: /施設E2E 太郎.*リスケ候補を作る/,
+    });
+    await expect(visitStartButton).toBeVisible();
+    await expect(preparationButton).toBeVisible();
+    await expect(rescheduleButton).toBeVisible();
+
+    const patientNameBox = await card.getByText('施設E2E 太郎').first().boundingBox();
+    const visitStartBox = await visitStartButton.boundingBox();
+    const preparationBox = await preparationButton.boundingBox();
+    const rescheduleBox = await rescheduleButton.boundingBox();
+    const patientAddressBox = await card.getByText('患者住所').boundingBox();
+    if (!patientNameBox || !visitStartBox || !preparationBox || !rescheduleBox) {
+      throw new Error('Confirmed schedule action rail placement target was not measurable');
+    }
+    if (!patientAddressBox) {
+      throw new Error('Confirmed schedule patient address block was not measurable');
+    }
+
+    expect(visitStartBox.y).toBeGreaterThan(patientNameBox.y);
+    expect(preparationBox.y).toBeGreaterThan(patientNameBox.y);
+    expect(rescheduleBox.y).toBeGreaterThan(patientNameBox.y);
+    expect(visitStartBox.y).toBeLessThan(patientAddressBox.y);
+    expect(preparationBox.y).toBeLessThan(patientAddressBox.y);
+    expect(rescheduleBox.y).toBeLessThan(patientAddressBox.y);
+    await expectNoPageHorizontalOverflow(page);
+
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);
   });

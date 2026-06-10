@@ -1,8 +1,7 @@
 import { Client } from 'pg';
 
 const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ??
-  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 export const GROUPED_VISIT_IDS = {
@@ -13,6 +12,7 @@ export const GROUPED_VISIT_IDS = {
   facilityCases: ['e2e_grouped_facility_case_1', 'e2e_grouped_facility_case_2'],
   facilityResidences: ['e2e_grouped_facility_residence_1', 'e2e_grouped_facility_residence_2'],
   facilitySchedules: ['e2e_grouped_facility_schedule_1', 'e2e_grouped_facility_schedule_2'],
+  confirmedActionSchedule: 'e2e_confirmed_action_schedule',
   homePatients: ['e2e_grouped_home_patient_1', 'e2e_grouped_home_patient_2'],
   homeCases: ['e2e_grouped_home_case_1', 'e2e_grouped_home_case_2'],
   homeResidences: ['e2e_grouped_home_residence_1', 'e2e_grouped_home_residence_2'],
@@ -246,8 +246,8 @@ export async function ensureGroupedVisitFixtures() {
       await client.query(
         `
           INSERT INTO "VisitSchedule" (
-            "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","facility_batch_id","facility_unit_id","medication_start_date","medication_end_date","created_at","updated_at"
-          ) VALUES ($1,$2,$3,$4,'regular','normal','ready','2026-04-25','09:00','10:00',$5,'primary',$6,$7,$8,'2026-04-25','2026-05-08',NOW(),NOW())
+            "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","facility_batch_id","facility_unit_id","medication_start_date","medication_end_date","confirmed_at","confirmed_by","carry_items_status","created_at","updated_at"
+          ) VALUES ($1,$2,$3,$4,'regular','normal','ready','2026-04-25','09:00','10:00',$5,'primary',$6,$7,$8,'2026-04-25','2026-05-08','2026-04-24T01:00:00Z',$5,'ready',NOW(),NOW())
           ON CONFLICT ("id") DO UPDATE
           SET "org_id" = EXCLUDED."org_id",
               "case_id" = EXCLUDED."case_id",
@@ -263,6 +263,9 @@ export async function ensureGroupedVisitFixtures() {
               "facility_unit_id" = EXCLUDED."facility_unit_id",
               "medication_start_date" = EXCLUDED."medication_start_date",
               "medication_end_date" = EXCLUDED."medication_end_date",
+              "confirmed_at" = EXCLUDED."confirmed_at",
+              "confirmed_by" = EXCLUDED."confirmed_by",
+              "carry_items_status" = EXCLUDED."carry_items_status",
               "updated_at" = NOW()
         `,
         [
@@ -304,6 +307,111 @@ export async function ensureGroupedVisitFixtures() {
     }
 
     return GROUPED_VISIT_IDS;
+  } finally {
+    await client.end();
+  }
+}
+
+export async function ensureConfirmedScheduleActionFixture(scheduledDate: string) {
+  await ensureGroupedVisitFixtures();
+
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const baseResult = await client.query<{
+      org_id: string;
+      user_id: string;
+      site_id: string | null;
+    }>(
+      `
+        SELECT u.org_id, u.id AS user_id, m.site_id
+        FROM "User" u
+        LEFT JOIN "Membership" m ON m.user_id = u.id AND m.org_id = u.org_id
+        WHERE lower(u.email) = lower('demo@ph-os.example.com')
+        ORDER BY m.created_at DESC NULLS LAST, u.created_at DESC
+        LIMIT 1
+      `,
+    );
+    const base = baseResult.rows[0];
+    if (!base) throw new Error('Confirmed schedule action fixture requires the local auth user');
+
+    const siteId =
+      base.site_id ??
+      (
+        await client.query<{ id: string }>(
+          `SELECT id FROM "PharmacySite" WHERE org_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [base.org_id],
+        )
+      ).rows[0]?.id;
+    if (!siteId) throw new Error('Confirmed schedule action fixture requires a pharmacy site');
+
+    await client.query(
+      `
+        INSERT INTO "VisitSchedule" (
+          "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","facility_batch_id","facility_unit_id","medication_start_date","medication_end_date","confirmed_at","confirmed_by","carry_items_status","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,'09:00','10:00',$6,'primary',1,$7,$8,$5,$5,NOW(),$6,'ready',NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "case_id" = EXCLUDED."case_id",
+            "site_id" = EXCLUDED."site_id",
+            "visit_type" = EXCLUDED."visit_type",
+            "priority" = EXCLUDED."priority",
+            "schedule_status" = 'ready',
+            "scheduled_date" = EXCLUDED."scheduled_date",
+            "time_window_start" = EXCLUDED."time_window_start",
+            "time_window_end" = EXCLUDED."time_window_end",
+            "pharmacist_id" = EXCLUDED."pharmacist_id",
+            "assignment_mode" = EXCLUDED."assignment_mode",
+            "route_order" = EXCLUDED."route_order",
+            "facility_batch_id" = EXCLUDED."facility_batch_id",
+            "facility_unit_id" = EXCLUDED."facility_unit_id",
+            "medication_start_date" = EXCLUDED."medication_start_date",
+            "medication_end_date" = EXCLUDED."medication_end_date",
+            "confirmed_at" = EXCLUDED."confirmed_at",
+            "confirmed_by" = EXCLUDED."confirmed_by",
+            "carry_items_status" = EXCLUDED."carry_items_status",
+            "updated_at" = NOW()
+      `,
+      [
+        GROUPED_VISIT_IDS.confirmedActionSchedule,
+        base.org_id,
+        GROUPED_VISIT_IDS.facilityCases[0],
+        siteId,
+        scheduledDate,
+        base.user_id,
+        GROUPED_VISIT_IDS.facilityBatch,
+        GROUPED_VISIT_IDS.facilityUnit,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "VisitPreparation" (
+          "id","org_id","schedule_id","checklist","medication_changes_reviewed","carry_items_confirmed","previous_issues_reviewed","route_confirmed","offline_synced","prepared_by","prepared_at","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'{}'::jsonb,true,true,true,true,true,$4,NOW(),NOW(),NOW())
+        ON CONFLICT ("schedule_id") DO UPDATE
+        SET "checklist" = EXCLUDED."checklist",
+            "medication_changes_reviewed" = true,
+            "carry_items_confirmed" = true,
+            "previous_issues_reviewed" = true,
+            "route_confirmed" = true,
+            "offline_synced" = true,
+            "prepared_by" = EXCLUDED."prepared_by",
+            "prepared_at" = EXCLUDED."prepared_at",
+            "updated_at" = NOW()
+      `,
+      [
+        `prep_${GROUPED_VISIT_IDS.confirmedActionSchedule}`,
+        base.org_id,
+        GROUPED_VISIT_IDS.confirmedActionSchedule,
+        base.user_id,
+      ],
+    );
+
+    return {
+      scheduleId: GROUPED_VISIT_IDS.confirmedActionSchedule,
+      scheduledDate,
+    };
   } finally {
     await client.end();
   }

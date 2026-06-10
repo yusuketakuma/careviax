@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-021826
+
+- current task: add browser-level proof that confirmed schedule cards expose primary actions before patient-detail blocks.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, `tools/tests/helpers/local-auth.ts`, `playwright.local.config.ts`, `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/visit-schedule-fetch.helpers.ts`, `src/server/services/visit-schedule-service.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/lib/hooks/use-org-id.ts`, `src/components/providers/app-provider.tsx`, and `prisma/schema/visit.prisma`.
+- files changed: `tools/tests/helpers/grouped-visit-fixtures.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, and `.codex/ralph-state.md`.
+- bugs found: the prior browser proof had no confirmed schedule fixture, so the surfaced confirmed-card action rail was only covered by unit/DOM checks and empty-state browser proof. Direct `/schedules?date=2026-04-25&tab=confirmed` Playwright startup proved flaky in Next dev and could leave the app at the server-rendered loading shell before schedule API hydration, so the E2E now uses the stable `/schedules` entry path with a same-day confirmed fixture.
+- security risks found: no auth, authorization, endpoint, org scope, or product data behavior changed. The new fixture keeps the existing local-only `ph_os_e2e` Playwright database guard and uses the demo local auth user/site.
+- performance issues found: no product runtime path changed. The E2E avoids the slow/flaky historical date direct-link path and reuses the existing stable schedule board load path.
+- validation commands: `pnpm exec eslint tools/tests/ui-schedule-visit-report.spec.ts tools/tests/helpers/grouped-visit-fixtures.ts`; `pnpm exec prettier --check tools/tests/ui-schedule-visit-report.spec.ts tools/tests/helpers/grouped-visit-fixtures.ts`; `git diff --check`; `pnpm test:e2e:local tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "confirmed schedule card surfaces primary actions before details"`; `pnpm test:e2e:local tools/tests/ui-schedule-visit-report.spec.ts --project=mobile-chromium -g "confirmed schedule card surfaces primary actions before details"`; `pnpm test:e2e:local tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "grouped facility"`; `pnpm exec tsc --noEmit --pretty false`; `pnpm lint`; `pnpm format:check`.
+- validation results: targeted ESLint passed. Targeted Prettier passed. Whitespace diff check passed. New confirmed-card desktop E2E passed with 1 test. Mobile project skipped the desktop-only proof as intended. Related grouped facility E2E passed with 2 tests. Standalone TypeScript passed. Full ESLint passed. Changed-file format gate passed.
+- remaining work: broader ScheduleDayView extraction and UI hierarchy polish remain, plus audit items outside this schedule proof slice.
+- next action: commit this confirmed schedule browser-proof slice, then continue the next highest-value audit item.
+
 ### 20260611-014515
 
 - current task: run the production build gate after the schedule UI/UX slices.
