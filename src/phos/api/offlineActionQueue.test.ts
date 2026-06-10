@@ -21,6 +21,7 @@ import {
 import {
   enqueuePhosOfflineCardAction,
   listPhosPendingOfflineCardActions,
+  PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE,
   phosOfflineActionDb,
   retryPhosOfflineCardActions,
 } from './offlineActionQueue';
@@ -168,6 +169,29 @@ describe('PH-OS offline action queue', () => {
     });
 
     expect(executeCardAction).toHaveBeenCalledWith('card_1', request, { offlineReplay: true });
+    expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
+  });
+
+  it('replays queued card actions across bounded IndexedDB batches', async () => {
+    for (let index = 0; index < PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE + 3; index += 1) {
+      await enqueuePhosOfflineCardAction({
+        card_id: `card_${index}`,
+        request: {
+          action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+          idempotency_key: `idem_batch_${index}`,
+          client_version: 1,
+        },
+        offline_op_class: 'NON_BLOCKING',
+      });
+    }
+    const executeCardAction = vi.fn(async () => actionResponse());
+
+    await expect(retryPhosOfflineCardActions({ client: { executeCardAction } })).resolves.toEqual({
+      synced: PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE + 3,
+      failed: 0,
+    });
+
+    expect(executeCardAction).toHaveBeenCalledTimes(PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE + 3);
     expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
   });
 

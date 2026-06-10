@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-114200
+
+- current task: batch PH-OS offline action/evidence replay reads so sync does not load the entire IndexedDB queue into memory at once.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/offlineActionQueue.ts`, `src/phos/api/offlineActionQueue.test.ts`, `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, and latest read-only performance review notes.
+- files changed: `src/phos/api/offlineActionQueue.ts`, `src/phos/api/offlineActionQueue.test.ts`, `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: offline action and evidence replay read every retryable IndexedDB row with one `toArray()` call before processing, so a large local queue could load all encrypted payload strings and retry metadata into memory at once.
+- security risks found: no auth, tenant, encryption, upload URL, or PHI logging behavior changed. Evidence payloads remain encrypted at rest and legacy plaintext evidence rows are still purged during read.
+- performance issues found: action replay now reads primary-key batches of 25 records and evidence replay reads primary-key batches of 10 records, processing each record at most once per retry call while continuing across batches. Tests cover queues larger than each batch size.
+- validation commands: `pnpm exec prettier --write src/phos/api/offlineActionQueue.ts src/phos/api/offlineActionQueue.test.ts src/phos/api/offlineEvidenceQueue.ts src/phos/api/offlineEvidenceQueue.test.ts`; focused `pnpm exec vitest run src/phos/api/offlineActionQueue.test.ts src/phos/api/offlineEvidenceQueue.test.ts src/lib/offline/crypto.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos src/lib/offline/crypto.test.ts --reporter=dot`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`; `git diff --check`.
+- validation results: focused offline action/evidence/crypto suite passed with 3 files / 20 tests. Standalone TypeScript passed. PH-OS plus offline crypto suite passed with 106 files passed / 1 skipped and 794 tests passed / 1 skipped. Full ESLint passed. Full Vitest passed with 755 files passed / 1 skipped and 5034 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`. Whitespace diff check passed.
+- remaining work: locally actionable follow-ups remain from read-only reviews: PH-OS app logs should remove or hash raw workflow object IDs, and Aurora/database calls may still need a bounded query-timeout review. External live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI.
+- next action: checkpoint this validated offline replay batching slice, then implement the next local high-value PH-OS backend/security/performance follow-up.
+
 ### 20260610-113600
 
 - current task: make PH-OS handoff and visit-mode idempotency replay actor-bound so cached mutation responses cannot be replayed by another same-tenant actor.

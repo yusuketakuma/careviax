@@ -11,6 +11,7 @@ import type {
 import { PhosApiError } from './types';
 
 const MAX_RETRIES = 3;
+export const PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE = 25;
 
 export type PhosOfflineActionRecord = {
   id?: number;
@@ -134,42 +135,60 @@ async function readQueuedCardAction(record: PhosOfflineActionRecord): Promise<{
   };
 }
 
+async function readNextOfflineActionReplayBatch(
+  afterId: number,
+): Promise<PhosOfflineActionRecord[]> {
+  return phosOfflineActionDb.offlineActions
+    .where(':id')
+    .above(afterId)
+    .limit(PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE)
+    .toArray();
+}
+
 export async function retryPhosOfflineCardActions(input: {
   client: Pick<PhosApiClient, 'executeCardAction'>;
   observability?: PhosOfflineSyncMetricEmitter;
 }): Promise<{ synced: number; failed: number }> {
-  const pending = (
-    await phosOfflineActionDb.offlineActions.where('retry_count').below(MAX_RETRIES).toArray()
-  ).filter((record) => !record.blocked_reason);
   let synced = 0;
   let failed = 0;
+  let afterId = 0;
 
-  for (const record of pending) {
-    if (record.id === undefined) continue;
-    try {
-      const payload = await readQueuedCardAction(record);
-      await input.client.executeCardAction(payload.card_id, payload.request, { offlineReplay: true });
-      await phosOfflineActionDb.offlineActions.delete(record.id);
-      synced++;
-    } catch (error) {
-      failed++;
-      const next_retry_count = record.retry_count + 1;
-      const blocked_reason = blockedReasonFor(error, next_retry_count);
-      if (blocked_reason === 'CONFLICT') {
-        input.observability?.emitMetric({
-          name: 'OfflineSyncConflictCount',
-          value: 1,
-          unit: 'Count',
-          route_key: 'POST /cards/{card_id}/actions',
-          action_code: record.action_code,
-          error_code: errorMessage(error),
+  while (true) {
+    const records = await readNextOfflineActionReplayBatch(afterId);
+    if (records.length === 0) break;
+    afterId = records.reduce((maxId, record) => Math.max(maxId, record.id ?? maxId), afterId);
+
+    for (const record of records) {
+      if (record.id === undefined || record.retry_count >= MAX_RETRIES || record.blocked_reason) {
+        continue;
+      }
+      try {
+        const payload = await readQueuedCardAction(record);
+        await input.client.executeCardAction(payload.card_id, payload.request, {
+          offlineReplay: true,
+        });
+        await phosOfflineActionDb.offlineActions.delete(record.id);
+        synced++;
+      } catch (error) {
+        failed++;
+        const next_retry_count = record.retry_count + 1;
+        const blocked_reason = blockedReasonFor(error, next_retry_count);
+        if (blocked_reason === 'CONFLICT') {
+          input.observability?.emitMetric({
+            name: 'OfflineSyncConflictCount',
+            value: 1,
+            unit: 'Count',
+            route_key: 'POST /cards/{card_id}/actions',
+            action_code: record.action_code,
+            error_code: errorMessage(error),
+          });
+        }
+        await phosOfflineActionDb.offlineActions.update(record.id, {
+          retry_count: next_retry_count,
+          last_error: errorMessage(error),
+          blocked_reason,
         });
       }
-      await phosOfflineActionDb.offlineActions.update(record.id, {
-        retry_count: next_retry_count,
-        last_error: errorMessage(error),
-        blocked_reason,
-      });
     }
   }
 

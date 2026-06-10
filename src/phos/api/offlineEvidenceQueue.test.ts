@@ -15,6 +15,7 @@ import {
   listPhosPendingEvidence,
   MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES,
   MAX_OFFLINE_EVIDENCE_QUEUE_BYTES,
+  PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE,
   phosOfflineEvidenceDb,
   retryPhosOfflineEvidenceUploads,
 } from './offlineEvidenceQueue';
@@ -308,6 +309,44 @@ describe('PH-OS offline evidence queue', () => {
       client_version: 7,
       payload: { evidence_key: 'evidence_1' },
     });
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
+  it('retries pending evidence across bounded IndexedDB batches', async () => {
+    for (let index = 0; index < PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE + 2; index += 1) {
+      await enqueuePhosOfflineEvidence({
+        card_id: `card_${index}`,
+        packet_id: `packet_${index}`,
+        evidence_key: `batch_photo_${index}`,
+        label: `Batch photo ${index}`,
+        evidence_type: 'PHOTO',
+        file_name: `batch-${index}.jpg`,
+        mime_type: 'image/jpeg',
+        sha256: 'f'.repeat(64),
+        offline_op_class: 'NON_BLOCKING',
+        file: new Blob([new Uint8Array([index])], { type: 'image/jpeg' }),
+      });
+    }
+    const client = retryClient();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
+
+    await expect(
+      retryPhosOfflineEvidenceUploads({
+        client,
+        fetchImpl,
+      }),
+    ).resolves.toMatchObject({
+      synced: PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE + 2,
+      failed: 0,
+    });
+
+    expect(client.presignEvidenceUpload).toHaveBeenCalledTimes(
+      PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE + 2,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE + 2);
+    expect(client.updateVisitStep).toHaveBeenCalledTimes(
+      PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE + 2,
+    );
     expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
   });
 

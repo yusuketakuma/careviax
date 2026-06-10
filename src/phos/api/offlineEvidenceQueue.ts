@@ -15,6 +15,7 @@ const MAX_RETRIES = 3;
 const BASE64_CHUNK_SIZE = 0x8000;
 const DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS = 30_000;
 const MAX_EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
+export const PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE = 10;
 export const MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 export const MAX_OFFLINE_EVIDENCE_QUEUE_BYTES = 75 * 1024 * 1024;
 
@@ -312,6 +313,16 @@ export async function listPhosPendingEvidence(packet_id: string): Promise<Eviden
   return views;
 }
 
+async function readNextOfflineEvidenceReplayBatch(
+  afterId: number,
+): Promise<PhosOfflineEvidenceRecord[]> {
+  return phosOfflineEvidenceDb.pendingEvidence
+    .where(':id')
+    .above(afterId)
+    .limit(PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE)
+    .toArray();
+}
+
 export async function retryPhosOfflineEvidenceUploads(input: {
   client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
   fetchImpl?: typeof fetch;
@@ -319,55 +330,57 @@ export async function retryPhosOfflineEvidenceUploads(input: {
   uploadTimeoutMs?: number;
 }): Promise<{ synced: number; failed: number; verified_visits: VisitModeView[] }> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const pending = await phosOfflineEvidenceDb.pendingEvidence
-    .where('retry_count')
-    .below(MAX_RETRIES)
-    .toArray();
   let synced = 0;
   let failed = 0;
+  let afterId = 0;
   const verifiedVisits = new Map<string, VisitModeView>();
 
-  for (const record of pending) {
-    try {
-      const payload = await readQueuedEvidencePayload(record);
-      if (!payload) continue;
-      const presigned = await input.client.presignEvidenceUpload({
-        idempotency_key: `evidence_${record.packet_id}_${record.evidence_key}`,
-        card_id: record.card_id,
-        evidence_type: payload.evidence_type,
-        file_name: payload.file_name,
-        mime_type: payload.mime_type,
-        sha256: payload.sha256,
-        size_bytes: payload.size_bytes,
-      });
-      const response = await putEvidenceUpload({
-        fetchImpl,
-        upload_url: presigned.upload_url,
-        method: presigned.method,
-        headers: presigned.headers,
-        body: new Blob([base64ToArrayBuffer(payload.file_bytes_base64)], {
-          type: payload.mime_type,
-        }),
-        signal: input.signal,
-        timeoutMs: input.uploadTimeoutMs,
-      });
-      if (!response.ok) throw new Error(`Evidence upload failed with HTTP ${response.status}`);
-      const visit = await input.client.getVisitMode(record.packet_id);
-      const verifiedVisit = await input.client.updateVisitStep(
-        record.packet_id,
-        VisitStep.EVIDENCE_UPLOAD,
-        {
-          idempotency_key: `evidence_verify_${record.packet_id}_${record.evidence_key}_${presigned.evidence_id}`,
-          client_version: visit.server_version,
-          payload: { evidence_key: presigned.evidence_id },
-        },
-      );
-      verifiedVisits.set(record.packet_id, verifiedVisit);
-      if (record.id !== undefined) await phosOfflineEvidenceDb.pendingEvidence.delete(record.id);
-      synced++;
-    } catch (error) {
-      failed++;
-      if (record.id !== undefined) {
+  while (true) {
+    const records = await readNextOfflineEvidenceReplayBatch(afterId);
+    if (records.length === 0) break;
+    afterId = records.reduce((maxId, record) => Math.max(maxId, record.id ?? maxId), afterId);
+
+    for (const record of records) {
+      if (record.id === undefined || record.retry_count >= MAX_RETRIES) continue;
+      try {
+        const payload = await readQueuedEvidencePayload(record);
+        if (!payload) continue;
+        const presigned = await input.client.presignEvidenceUpload({
+          idempotency_key: `evidence_${record.packet_id}_${record.evidence_key}`,
+          card_id: record.card_id,
+          evidence_type: payload.evidence_type,
+          file_name: payload.file_name,
+          mime_type: payload.mime_type,
+          sha256: payload.sha256,
+          size_bytes: payload.size_bytes,
+        });
+        const response = await putEvidenceUpload({
+          fetchImpl,
+          upload_url: presigned.upload_url,
+          method: presigned.method,
+          headers: presigned.headers,
+          body: new Blob([base64ToArrayBuffer(payload.file_bytes_base64)], {
+            type: payload.mime_type,
+          }),
+          signal: input.signal,
+          timeoutMs: input.uploadTimeoutMs,
+        });
+        if (!response.ok) throw new Error(`Evidence upload failed with HTTP ${response.status}`);
+        const visit = await input.client.getVisitMode(record.packet_id);
+        const verifiedVisit = await input.client.updateVisitStep(
+          record.packet_id,
+          VisitStep.EVIDENCE_UPLOAD,
+          {
+            idempotency_key: `evidence_verify_${record.packet_id}_${record.evidence_key}_${presigned.evidence_id}`,
+            client_version: visit.server_version,
+            payload: { evidence_key: presigned.evidence_id },
+          },
+        );
+        verifiedVisits.set(record.packet_id, verifiedVisit);
+        await phosOfflineEvidenceDb.pendingEvidence.delete(record.id);
+        synced++;
+      } catch (error) {
+        failed++;
         await phosOfflineEvidenceDb.pendingEvidence.update(record.id, {
           retry_count: record.retry_count + 1,
           last_error: safeRetryError(error),
