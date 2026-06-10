@@ -485,6 +485,15 @@ function matchesTab(proposal: Proposal, tab: DashboardTab) {
   }
 }
 
+function canApplyBulkProposalAction(proposal: Proposal, action: 'approve' | 'reject') {
+  if (action === 'approve') {
+    return ['proposed', 'reschedule_pending'].includes(proposal.proposal_status);
+  }
+  return ['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
+    proposal.proposal_status,
+  );
+}
+
 export function ScheduleProposalsContent({
   initialStatus,
   initialCaseId,
@@ -684,6 +693,14 @@ export function ScheduleProposalsContent({
     () => visibleProposals.filter((proposal) => selectedIds.includes(proposal.id)),
     [selectedIds, visibleProposals],
   );
+  const bulkApproveEligibleProposals = useMemo(
+    () => selectedProposals.filter((proposal) => canApplyBulkProposalAction(proposal, 'approve')),
+    [selectedProposals],
+  );
+  const bulkRejectEligibleProposals = useMemo(
+    () => selectedProposals.filter((proposal) => canApplyBulkProposalAction(proposal, 'reject')),
+    [selectedProposals],
+  );
 
   const effectiveSelectedCaseSummary = useMemo(() => {
     if (selectedCaseSummary) return selectedCaseSummary;
@@ -809,6 +826,7 @@ export function ScheduleProposalsContent({
     setPatientId(careCase.patient.id);
     setCaseSearchInput('');
     setDetailId(AUTO_DETAIL_ID);
+    setSelectedIds([]);
     replaceDashboardUrl({
       case_id: careCase.id,
       patient_id: careCase.patient.id,
@@ -821,6 +839,7 @@ export function ScheduleProposalsContent({
     setSelectedCaseSummary(null);
     setCaseId('');
     setPatientId('');
+    setSelectedIds([]);
     replaceDashboardUrl({
       case_id: null,
       patient_id: null,
@@ -831,6 +850,7 @@ export function ScheduleProposalsContent({
   const activatePreset = (preset: FilterPreset) => {
     const today = todayKey();
     setFilterPreset(preset);
+    setSelectedIds([]);
     if (preset === 'today') {
       setActiveTab('unapproved');
       setDateFrom(today);
@@ -877,6 +897,7 @@ export function ScheduleProposalsContent({
     setSelectedCaseSummary(null);
     setCaseId('');
     setPatientId('');
+    setSelectedIds([]);
     setDateFrom(initialDateFrom ?? '');
     setDateTo('');
     setActiveTab(toDashboardTab(initialStatus));
@@ -956,14 +977,9 @@ export function ScheduleProposalsContent({
 
   const bulkActionMutation = useMutation({
     mutationFn: async (action: 'approve' | 'reject') => {
-      const eligible = selectedProposals.filter((proposal) => {
-        if (action === 'approve') {
-          return ['proposed', 'reschedule_pending'].includes(proposal.proposal_status);
-        }
-        return ['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
-          proposal.proposal_status,
-        );
-      });
+      const eligible = selectedProposals.filter((proposal) =>
+        canApplyBulkProposalAction(proposal, action),
+      );
       if (eligible.length === 0) {
         throw new Error(
           action === 'approve'
@@ -1168,6 +1184,16 @@ export function ScheduleProposalsContent({
   const allVisibleSelected =
     visibleProposals.length > 0 &&
     visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
+  const bulkApproveEligibleCount = bulkApproveEligibleProposals.length;
+  const bulkRejectEligibleCount = bulkRejectEligibleProposals.length;
+  const bulkRejectButtonLabel =
+    bulkRejectEligibleCount > 0
+      ? `選択中${bulkRejectEligibleCount}件の訪問候補を一括却下`
+      : '却下できる訪問候補を選択して一括却下';
+  const bulkApproveButtonLabel =
+    bulkApproveEligibleCount > 0
+      ? `選択中${bulkApproveEligibleCount}件の訪問候補を一括承認`
+      : '承認できる訪問候補を選択して一括承認';
   const caseSearchResults = casesQuery.data?.data ?? [];
   const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
   const selectedReproposalVehicle = vehicleResourceOptions.find(
@@ -1239,6 +1265,7 @@ export function ScheduleProposalsContent({
                   onChange={(event) => {
                     const value = event.target.value;
                     setDateFrom(value);
+                    setSelectedIds([]);
                     replaceDashboardUrl({ date_from: value });
                   }}
                 />
@@ -1252,6 +1279,7 @@ export function ScheduleProposalsContent({
                   onChange={(event) => {
                     const value = event.target.value;
                     setDateTo(value);
+                    setSelectedIds([]);
                     replaceDashboardUrl({ date_to: value });
                   }}
                 />
@@ -1406,18 +1434,20 @@ export function ScheduleProposalsContent({
               variant="outline"
               size="sm"
               onClick={() => bulkActionMutation.mutate('reject')}
-              disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
+              disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
+              aria-label={bulkRejectButtonLabel}
             >
               <XCircle className="mr-1.5 size-4" />
-              一括却下
+              {bulkRejectButtonLabel}
             </Button>
             <Button
               size="sm"
               onClick={() => bulkActionMutation.mutate('approve')}
-              disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
+              disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
+              aria-label={bulkApproveButtonLabel}
             >
               <CheckCircle2 className="mr-1.5 size-4" />
-              一括承認
+              {bulkApproveButtonLabel}
             </Button>
           </ActionRail>
         }
@@ -1428,6 +1458,7 @@ export function ScheduleProposalsContent({
           onValueChange={(value) => {
             const nextTab = value as DashboardTab;
             setActiveTab(nextTab);
+            setSelectedIds([]);
             replaceDashboardUrl({
               status:
                 nextTab === 'patient_contact_pending'

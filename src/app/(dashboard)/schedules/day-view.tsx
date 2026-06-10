@@ -2591,6 +2591,7 @@ export function ScheduleDayView({
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${group.label}の定期訪問日を設定`}
                             onClick={() => openFacilityVisitDayDialog(group)}
                           >
                             定期訪問日を設定
@@ -2598,6 +2599,7 @@ export function ScheduleDayView({
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${group.label} ${group.patientNames.length}名の同時訪問順序を保存`}
                             onClick={() =>
                               facilityBatchMutation.mutate({
                                 groupKey: group.key,
@@ -2606,11 +2608,12 @@ export function ScheduleDayView({
                             }
                             disabled={facilityBatchMutation.isPending}
                           >
-                            同時訪問を保存
+                            同時訪問を保存 ({group.patientNames.length}名)
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${group.label} ${group.patientNames.length}名の持参確認を一括反映`}
                             onClick={() =>
                               facilityBatchMutation.mutate({
                                 groupKey: group.key,
@@ -2619,7 +2622,7 @@ export function ScheduleDayView({
                             }
                             disabled={facilityBatchMutation.isPending}
                           >
-                            持参確認を一括反映
+                            持参確認を一括反映 ({group.patientNames.length}名)
                           </Button>
                         </ActionRail>
                       </div>

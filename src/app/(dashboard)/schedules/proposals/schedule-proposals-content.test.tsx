@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -165,6 +165,109 @@ describe('ScheduleProposalsContent', () => {
 
     expect(screen.getByTestId('proposal-preset-banner')).toBeTruthy();
     expect(screen.getByText('未架電・連絡対応の候補を表示中です。')).toBeTruthy();
+  });
+
+  it('labels proposal bulk actions with selected eligible count and submits selected proposals', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables: unknown) => unknown;
+        onSuccess?: (data: unknown, variables: unknown) => unknown;
+        onError?: (error: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables))
+            .then((data) => options.onSuccess?.(data, variables))
+            .catch((error: unknown) => options.onError?.(error));
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: {
+            data: [
+              buildProposal({ id: 'proposal_1' }),
+              buildProposal({
+                id: 'proposal_2',
+                case_id: 'case_2',
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '佐藤太郎',
+                    residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    expect(
+      (
+        screen.getByRole('button', {
+          name: '承認できる訪問候補を選択して一括承認',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: '却下できる訪問候補を選択して一括却下',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+
+    expect(screen.getByRole('button', { name: '選択中2件の訪問候補を一括却下' })).toBeTruthy();
+    const approveButton = screen.getByRole('button', {
+      name: '選択中2件の訪問候補を一括承認',
+    });
+    expect((approveButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(approveButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/visit-schedule-proposals/proposal_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'approve' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/visit-schedule-proposals/proposal_2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'approve' }),
+      }),
+    );
   });
 
   it('shows the human approval and phone confirmation flow on proposal cards', () => {

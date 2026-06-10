@@ -2121,7 +2121,10 @@ describe('ScheduleDayView', () => {
       ).value,
     ).toBe('2');
 
-    fireEvent.click(screen.getByRole('button', { name: '同時訪問を保存' }));
+    expect(screen.getByRole('button', { name: '青空ホームの定期訪問日を設定' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '青空ホーム 2名の持参確認を一括反映' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '青空ホーム 2名の同時訪問順序を保存' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -2129,9 +2132,10 @@ describe('ScheduleDayView', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
-    const facilityBatchCall = fetchMock.mock.calls.find(
+    const facilityBatchCalls = fetchMock.mock.calls.filter(
       ([url]) => url === '/api/facility-visit-batches',
     );
+    const facilityBatchCall = facilityBatchCalls[0];
     expect(facilityBatchCall).toBeTruthy();
     const requestInit = facilityBatchCall?.[1];
     expect(requestInit).toBeTruthy();
@@ -2145,6 +2149,23 @@ describe('ScheduleDayView', () => {
       expect.objectContaining({
         ordered_schedule_ids: ['schedule_facility_2', 'schedule_facility_1'],
         carry_items_confirmed: false,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '青空ホーム 2名の持参確認を一括反映' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([url]) => url === '/api/facility-visit-batches'),
+      ).toHaveLength(2);
+    });
+    const carryConfirmRequestInit = fetchMock.mock.calls.filter(
+      ([url]) => url === '/api/facility-visit-batches',
+    )[1]?.[1];
+    expect(JSON.parse(String(carryConfirmRequestInit?.body))).toEqual(
+      expect.objectContaining({
+        ordered_schedule_ids: ['schedule_facility_2', 'schedule_facility_1'],
+        carry_items_confirmed: true,
       }),
     );
   });
