@@ -50,7 +50,6 @@ import {
   createFacilityVisitRecordHref,
   type FacilityVisitContext,
 } from '@/lib/visits/facility-visit-context';
-import { buildHomeVisit2026ReadinessItems } from '@/lib/visits/home-visit-2026-evidence';
 import { extractConferenceProposalOrigin } from '@/lib/visits/visit-workflow-projection';
 import { type CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
 import {
@@ -124,10 +123,16 @@ import {
   type ScheduleDayProposalActionRequest,
 } from './schedule-day-proposal-action';
 import {
+  PREPARATION_PACK_MISSING_MESSAGE,
+  PREPARATION_ITEM_DESCRIPTIONS,
+  buildScheduleDayPreparationClinicalViewModel,
   buildScheduleDayPreparationForm,
+  buildScheduleDayPreparationReadiness,
   fetchScheduleDayPreparationDetails,
+  getPreparationPackIdentityError,
   handleScheduleDayPreparationSuccess,
   saveScheduleDayPreparation,
+  type ScheduleDayPreparationDetailsState,
   type ScheduleDayPreparationForm,
 } from './schedule-day-preparation';
 import {
@@ -150,8 +155,6 @@ import {
   type Proposal,
   type ScheduleTask,
   type ScheduleTaskStatus,
-  type VisitPreparation,
-  type VisitPreparationPack,
   type VisitPriority,
   type VisitVehicleResourceSummary,
   type VisitSchedule,
@@ -159,11 +162,7 @@ import {
   type VisitScheduleBillingPreview,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
-import {
-  getOnboardingReadinessWarnings,
-  OnboardingWarningBadges,
-  ScheduleBoardSkeleton,
-} from './schedule-day-view.chrome';
+import { OnboardingWarningBadges, ScheduleBoardSkeleton } from './schedule-day-view.chrome';
 import {
   buildProposalBillingPreviewRequests,
   buildScheduleDayGanttViewModel,
@@ -232,42 +231,6 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 0, label: '日' },
 ];
 
-const PREPARATION_ITEM_DESCRIPTIONS: Record<(typeof PREPARATION_ITEMS)[number][0], string> = {
-  medication_changes_reviewed: '処方差分、薬歴、前回からの用法・薬剤変更を確認します。',
-  carry_items_confirmed: '持参薬、物品、未確定の持参物ブロッカーが残っていないか確認します。',
-  previous_issues_reviewed: '前回訪問の課題、SOAP plan、未処理タスクを訪問前に確認します。',
-  route_confirmed: '訪問先住所、施設集約、移動ルート、受入時間帯を確認します。',
-  offline_synced: '訪問先で参照する記録が端末に同期済みか確認します。',
-};
-
-const PREPARATION_PACK_MISSING_MESSAGE =
-  '最新の訪問準備情報を取得できないため ready にできません。';
-const PREPARATION_PACK_MISMATCH_MESSAGE =
-  '取得した訪問準備情報が現在の患者・訪問予定と一致しません。';
-
-type PreparationDetailsState = {
-  preparation: VisitPreparation | null;
-  pack: VisitPreparationPack | null;
-  loadError: string | null;
-  identityError: string | null;
-};
-
-function getPreparationPackIdentityError(
-  schedule: VisitSchedule,
-  pack: VisitPreparationPack | null,
-) {
-  if (!pack) return null;
-  if (pack.visit.id !== schedule.id || pack.patient.id !== schedule.case_.patient.id) {
-    return PREPARATION_PACK_MISMATCH_MESSAGE;
-  }
-  return null;
-}
-
-function isPreparationChecklistBlockerResolved(blocker: string, form: ScheduleDayPreparationForm) {
-  const preparationItem = PREPARATION_ITEMS.find(([, label]) => label === blocker);
-  return preparationItem ? form[preparationItem[0]] : false;
-}
-
 function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
   if (!vehicle) return '自動割当';
   const constraints = [
@@ -277,15 +240,6 @@ function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null 
       : null,
   ].filter((category): category is string => category !== null);
   return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
-}
-
-function getHomeVisit2026PreparationItems(pack: VisitPreparationPack) {
-  return buildHomeVisit2026ReadinessItems({
-    structuredSoap: null,
-    visitType: pack.visit.visit_type,
-    billingBlockers: pack.billing_blockers,
-    intakeInitialTransitionExpected: pack.intake_context.initial_transition_management_expected,
-  });
 }
 
 function conferenceContextLabel(noteType: 'pre_discharge' | 'service_manager') {
@@ -337,9 +291,8 @@ export function ScheduleDayView({
   );
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
-  const [preparationDetails, setPreparationDetails] = useState<PreparationDetailsState | null>(
-    null,
-  );
+  const [preparationDetails, setPreparationDetails] =
+    useState<ScheduleDayPreparationDetailsState | null>(null);
   const [preparationLoading, setPreparationLoading] = useState(false);
   const [preparationForm, setPreparationForm] = useState<ScheduleDayPreparationForm>(() =>
     buildScheduleDayPreparationForm(null),
@@ -375,6 +328,7 @@ export function ScheduleDayView({
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
   const [routeTravelMode, setRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
   const preparationRequestSeqRef = useRef(0);
+  const preparationFormDirtyRef = useRef(false);
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
   const syncConflicts = useOfflineStore((state) => state.syncConflicts);
@@ -1099,6 +1053,7 @@ export function ScheduleDayView({
     const scheduleId = schedule.id;
     const requestSeq = preparationRequestSeqRef.current + 1;
     preparationRequestSeqRef.current = requestSeq;
+    preparationFormDirtyRef.current = false;
     setPreparationTarget(schedule);
     setPreparationDetails({
       preparation: initialPreparation,
@@ -1128,7 +1083,9 @@ export function ScheduleDayView({
           loadError: null,
           identityError,
         });
-        setPreparationForm(buildScheduleDayPreparationForm(acceptedPreparation));
+        if (!preparationFormDirtyRef.current) {
+          setPreparationForm(buildScheduleDayPreparationForm(acceptedPreparation));
+        }
       })
       .catch((error) => {
         if (preparationRequestSeqRef.current !== requestSeq) return;
@@ -1148,6 +1105,7 @@ export function ScheduleDayView({
 
   function closePreparationDialog() {
     preparationRequestSeqRef.current += 1;
+    preparationFormDirtyRef.current = false;
     setPreparationLoading(false);
     setPreparationDetails(null);
     setPreparationTarget(null);
@@ -1443,52 +1401,30 @@ export function ScheduleDayView({
     },
   });
 
-  const completedPreparationFormCount = PREPARATION_ITEMS.filter(
-    ([field]) => preparationForm[field],
-  ).length;
-  const incompletePreparationLabels = PREPARATION_ITEMS.filter(
-    ([field]) => !preparationForm[field],
-  ).map(([, label]) => label);
   const preparationPack = preparationDetails?.pack ?? null;
-  const onboardingReadinessWarnings = preparationPack?.onboarding_readiness
-    ? getOnboardingReadinessWarnings(preparationPack.onboarding_readiness)
-    : [];
-  const onboardingReadinessUnknown = Boolean(
-    preparationPack && preparationPack.onboarding_readiness === null,
-  );
-  const unresolvedPreparationReadinessBlockers =
-    preparationPack?.readiness_blockers.filter(
-      (blocker) => !isPreparationChecklistBlockerResolved(blocker, preparationForm),
-    ) ?? [];
-  const preparationContextBlockerCount =
-    unresolvedPreparationReadinessBlockers.length +
-    onboardingReadinessWarnings.length +
-    (onboardingReadinessUnknown ? 1 : 0) +
-    (preparationPack?.billing_blockers.length ?? 0);
-  const preparationContextBlockerCategories = [
-    unresolvedPreparationReadinessBlockers.length > 0
-      ? `訪問前提 ${unresolvedPreparationReadinessBlockers.length}件`
+  const preparationReadiness = buildScheduleDayPreparationReadiness({
+    form: preparationForm,
+    pack: preparationPack,
+    loadError: preparationDetails?.loadError ?? null,
+    identityError: preparationDetails?.identityError ?? null,
+    loading: preparationLoading,
+    hasTarget: Boolean(preparationTarget),
+    saving: preparationMutation.isPending,
+  });
+  const preparationClinicalViewModel = preparationPack
+    ? buildScheduleDayPreparationClinicalViewModel(preparationPack)
+    : null;
+  const preparationSaveDisabled =
+    preparationMutation.isPending || Boolean(preparationDetails?.identityError);
+  const preparationReadyDescriptionIds = [
+    'preparation-readiness-summary',
+    preparationReadiness.contextBlockerCategories.length > 0
+      ? 'preparation-readiness-categories'
       : null,
-    onboardingReadinessUnknown ? '導入準備 不明' : null,
-    onboardingReadinessWarnings.length > 0
-      ? `導入準備 ${onboardingReadinessWarnings.length}件`
-      : null,
-    preparationPack && preparationPack.billing_blockers.length > 0
-      ? `算定確認 ${preparationPack.billing_blockers.length}件`
-      : null,
-  ].filter(Boolean);
-  const preparationPackStatusError =
-    preparationDetails?.loadError ??
-    preparationDetails?.identityError ??
-    (!preparationLoading && preparationTarget && !preparationPack
-      ? PREPARATION_PACK_MISSING_MESSAGE
-      : null);
-  const markReadyDisabled =
-    preparationMutation.isPending ||
-    preparationLoading ||
-    Boolean(preparationPackStatusError) ||
-    incompletePreparationLabels.length > 0 ||
-    preparationContextBlockerCount > 0;
+    preparationTarget ? 'preparation-action-target-summary' : null,
+  ]
+    .filter((id): id is string => id !== null)
+    .join(' ');
 
   if (isScheduleBoardLoading) {
     return <ScheduleBoardSkeleton />;
@@ -3686,9 +3622,20 @@ export function ScheduleDayView({
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>訪問準備チェック</DialogTitle>
+            <DialogTitle>
+              {preparationTarget
+                ? `${preparationTarget.case_.patient.name}の訪問準備チェック`
+                : '訪問準備チェック'}
+            </DialogTitle>
             <DialogDescription>
-              ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。
+              {preparationTarget
+                ? `${format(parseISO(preparationTarget.scheduled_date), 'yyyy/MM/dd', {
+                    locale: ja,
+                  })} ${timeLabel(
+                    preparationTarget.time_window_start,
+                    preparationTarget.time_window_end,
+                  )} の訪問です。ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。`
+                : 'ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。'}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
@@ -3756,9 +3703,9 @@ export function ScheduleDayView({
               aria-labelledby="preparation-readiness-heading"
               className={cn(
                 'rounded-lg border px-3 py-3 text-sm',
-                preparationPackStatusError || preparationContextBlockerCount > 0
+                preparationReadiness.packStatusError || preparationReadiness.contextBlockerCount > 0
                   ? 'border-rose-200 bg-rose-50 text-rose-900'
-                  : incompletePreparationLabels.length > 0
+                  : preparationReadiness.incompleteChecklistLabels.length > 0
                     ? 'border-amber-200 bg-amber-50 text-amber-900'
                     : 'border-emerald-200 bg-emerald-50 text-emerald-900',
               )}
@@ -3775,31 +3722,24 @@ export function ScheduleDayView({
                     aria-atomic="true"
                     className="mt-1 text-xs leading-5"
                   >
-                    {preparationLoading
-                      ? '最新の訪問準備情報を読み込み中です。'
-                      : preparationPackStatusError
-                        ? preparationPackStatusError
-                        : preparationContextBlockerCount > 0
-                          ? '出発前に解決が必要な項目があります。'
-                          : incompletePreparationLabels.length > 0
-                            ? '出発前チェックリストに未完了項目があります。'
-                            : 'ready に進める状態です。'}
+                    {preparationReadiness.summaryText}
                   </p>
                 </div>
-                <Badge variant={markReadyDisabled ? 'outline' : 'secondary'}>
-                  {markReadyDisabled ? 'ready 停止中' : 'ready 可能'}
+                <Badge variant={preparationReadiness.markReadyDisabled ? 'outline' : 'secondary'}>
+                  {preparationReadiness.markReadyDisabled ? 'ready 停止中' : 'ready 可能'}
                 </Badge>
               </div>
-              {preparationPackStatusError && !preparationLoading ? (
+              {preparationReadiness.packStatusError && !preparationLoading ? (
                 <p role="alert" className="mt-2 text-xs leading-5">
                   最新情報を再取得してからreadyへ進めてください。
                 </p>
-              ) : preparationContextBlockerCategories.length > 0 ? (
+              ) : preparationReadiness.contextBlockerCategories.length > 0 ? (
                 <ul
+                  id="preparation-readiness-categories"
                   aria-label="ready 停止カテゴリ"
                   className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5"
                 >
-                  {preparationContextBlockerCategories.map((category) => (
+                  {preparationReadiness.contextBlockerCategories.map((category) => (
                     <li key={category}>{category}</li>
                   ))}
                 </ul>
@@ -3865,11 +3805,11 @@ export function ScheduleDayView({
                     </div>
                   </div>
 
-                  {unresolvedPreparationReadinessBlockers.length > 0 && (
+                  {preparationReadiness.unresolvedReadinessBlockers.length > 0 && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       <p className="font-medium">訪問前提の未完了</p>
                       <ul className="mt-1 list-disc space-y-1 pl-4 leading-5">
-                        {unresolvedPreparationReadinessBlockers.map((blocker) => (
+                        {preparationReadiness.unresolvedReadinessBlockers.map((blocker) => (
                           <li key={blocker}>{blocker}</li>
                         ))}
                       </ul>
@@ -3907,11 +3847,7 @@ export function ScheduleDayView({
                   </div>
 
                   {(() => {
-                    const homeVisit2026Items = getHomeVisit2026PreparationItems(
-                      preparationDetails.pack,
-                    );
-                    const requiredItems = homeVisit2026Items.filter((item) => item.required);
-                    const requiredOpenItems = requiredItems.filter((item) => !item.done);
+                    const requiredOpenItems = preparationClinicalViewModel?.requiredOpenItems ?? [];
 
                     return (
                       <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-xs text-emerald-950">
@@ -3919,8 +3855,8 @@ export function ScheduleDayView({
                           <div>
                             <p className="font-medium">訪問薬剤管理の記録ポイント</p>
                             <p className="mt-1 leading-5 text-emerald-900/80">
-                              {VISIT_TYPE_LABELS[preparationDetails.pack.visit.visit_type]}で残す
-                              薬学的管理、連携、加算要件の証跡です。
+                              {preparationClinicalViewModel?.visitTypeLabel ?? '訪問'}
+                              で残す薬学的管理、連携、加算要件の証跡です。
                             </p>
                           </div>
                           <Badge variant="outline" className="border-emerald-300 bg-white">
@@ -4255,9 +4191,13 @@ export function ScheduleDayView({
                     </p>
                   </div>
                   <Badge
-                    variant={incompletePreparationLabels.length === 0 ? 'secondary' : 'outline'}
+                    variant={
+                      preparationReadiness.incompleteChecklistLabels.length === 0
+                        ? 'secondary'
+                        : 'outline'
+                    }
                   >
-                    {completedPreparationFormCount}/{PREPARATION_ITEMS.length} 完了
+                    {preparationReadiness.completedChecklistCount}/{PREPARATION_ITEMS.length} 完了
                   </Badge>
                 </div>
                 <p
@@ -4265,14 +4205,14 @@ export function ScheduleDayView({
                   aria-live="polite"
                   className={cn(
                     'rounded-lg border px-3 py-2 text-xs leading-5',
-                    incompletePreparationLabels.length === 0
+                    preparationReadiness.incompleteChecklistLabels.length === 0
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                       : 'border-amber-200 bg-amber-50 text-amber-900',
                   )}
                 >
-                  {incompletePreparationLabels.length === 0
+                  {preparationReadiness.incompleteChecklistLabels.length === 0
                     ? 'チェックリストはすべて完了しています。'
-                    : `未完了: ${incompletePreparationLabels.join(' / ')}`}
+                    : `未完了: ${preparationReadiness.incompleteChecklistLabels.join(' / ')}`}
                 </p>
                 <div className="grid gap-3">
                   {PREPARATION_ITEMS.map(([field, label]) => {
@@ -4287,12 +4227,13 @@ export function ScheduleDayView({
                           aria-labelledby={labelId}
                           aria-describedby={descriptionId}
                           checked={preparationForm[field as keyof typeof preparationForm]}
-                          onCheckedChange={(checked) =>
+                          onCheckedChange={(checked) => {
+                            preparationFormDirtyRef.current = true;
                             setPreparationForm((current) => ({
                               ...current,
                               [field]: Boolean(checked),
-                            }))
-                          }
+                            }));
+                          }}
                         />
                         <span className="grid gap-0.5">
                           <span id={labelId} className="font-medium">
@@ -4385,7 +4326,7 @@ export function ScheduleDayView({
                   markReady: false,
                 })
               }
-              disabled={preparationMutation.isPending || Boolean(preparationPackStatusError)}
+              disabled={preparationSaveDisabled}
             >
               保存
             </Button>
@@ -4395,11 +4336,7 @@ export function ScheduleDayView({
                   ? scheduleActionLabel(preparationTarget, '訪問準備をreadyに進める')
                   : undefined
               }
-              aria-describedby={
-                preparationTarget
-                  ? 'preparation-readiness-summary preparation-action-target-summary'
-                  : 'preparation-readiness-summary'
-              }
+              aria-describedby={preparationReadyDescriptionIds}
               onClick={() =>
                 preparationTarget &&
                 preparationMutation.mutate({
@@ -4407,7 +4344,7 @@ export function ScheduleDayView({
                   markReady: true,
                 })
               }
-              disabled={markReadyDisabled}
+              disabled={preparationReadiness.markReadyDisabled}
             >
               ready に進める
             </Button>

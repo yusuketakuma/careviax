@@ -1,5 +1,9 @@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/loading';
+import {
+  getScheduleDayOnboardingReadinessWarnings,
+  type ScheduleDayOnboardingReadinessWarning,
+} from './schedule-day-preparation';
 
 export type OnboardingReadiness = {
   consent_obtained: boolean;
@@ -9,40 +13,10 @@ export type OnboardingReadiness = {
   primary_physician_set: boolean;
 };
 
-const ONBOARDING_READINESS_ITEMS = [
-  {
-    key: 'consent_obtained',
-    label: '同意未取得',
-    variant: 'destructive',
-  },
-  {
-    key: 'first_visit_doc_delivered',
-    label: '初回文書未交付',
-    variant: 'outline',
-  },
-  {
-    key: 'emergency_contact_set',
-    label: '緊急連絡先未登録',
-    variant: 'outline',
-  },
-  {
-    key: 'management_plan_approved',
-    label: '管理計画未承認',
-    variant: 'outline',
-  },
-  {
-    key: 'primary_physician_set',
-    label: '主治医未設定',
-    variant: 'outline',
-  },
-] as const satisfies ReadonlyArray<{
-  key: keyof OnboardingReadiness;
-  label: string;
-  variant: 'destructive' | 'outline';
-}>;
-
 export function getOnboardingReadinessWarnings(readiness: OnboardingReadiness) {
-  return ONBOARDING_READINESS_ITEMS.filter((item) => !readiness[item.key]);
+  return getScheduleDayOnboardingReadinessWarnings(
+    readiness,
+  ) satisfies ScheduleDayOnboardingReadinessWarning[];
 }
 
 export function OnboardingWarningBadges({ readiness }: { readiness: OnboardingReadiness }) {

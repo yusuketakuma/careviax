@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
 
 describe('DialogDescription', () => {
-  it('renders description through the shared help popover', () => {
+  it('exposes the dialog description and keeps the shared help popover', () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -15,8 +15,11 @@ describe('DialogDescription', () => {
       </Dialog>,
     );
 
-    expect(screen.queryByText('説明本文です。')).toBeNull();
+    expect(
+      screen.getByRole('dialog', { name: 'タイトル', description: '説明本文です。' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'ダイアログ説明を表示' }));
-    expect(screen.getByText('説明本文です。')).toBeTruthy();
+    expect(screen.getByRole('tooltip').textContent).toContain('説明本文です。');
   });
 });

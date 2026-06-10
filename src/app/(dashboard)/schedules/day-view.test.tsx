@@ -927,9 +927,17 @@ describe('ScheduleDayView', () => {
       screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
     );
 
-    const dialogElement = screen.getByRole('dialog');
+    const dialogElement = screen.getByRole('dialog', {
+      name: '山田花子の訪問準備チェック',
+      description:
+        /2026\/04\/09 18:00 - 19:00 の訪問です。ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。/,
+    });
     const dialog = within(dialogElement);
-    expect(dialog.getByRole('heading', { name: '訪問準備チェック' })).toBeTruthy();
+    expect(dialog.getByRole('heading', { name: '山田花子の訪問準備チェック' })).toBeTruthy();
+    fireEvent.click(dialog.getByRole('button', { name: '説明を表示' }));
+    expect(dialog.getByRole('tooltip').textContent).toMatch(
+      /2026\/04\/09 18:00 - 19:00 の訪問です。ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。/,
+    );
     expect(dialog.getByRole('region', { name: '対象訪問' })).toBeTruthy();
     await waitFor(() => {
       expect(dialog.getByRole('heading', { name: '訪問前提・確認材料' })).toBeTruthy();
@@ -999,7 +1007,7 @@ describe('ScheduleDayView', () => {
     );
     expect(saveButton.getAttribute('aria-describedby')).toBe('preparation-action-target-summary');
     expect(readyButton.getAttribute('aria-describedby')).toBe(
-      'preparation-readiness-summary preparation-action-target-summary',
+      'preparation-readiness-summary preparation-readiness-categories preparation-action-target-summary',
     );
     expect(readyButton.disabled).toBe(true);
 
@@ -1159,8 +1167,26 @@ describe('ScheduleDayView', () => {
   });
 
   it('keeps ready disabled when the latest preparation pack cannot be loaded', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables: unknown) => unknown;
+        onSuccess?: (data: unknown, variables: unknown) => unknown;
+        onError?: (error: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables))
+            .then((data) => options.onSuccess?.(data, variables))
+            .catch((error: unknown) => options.onError?.(error));
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        if (init?.method === 'PUT') {
+          return Response.json({ data: { id: 'preparation_1' } });
+        }
         return Response.json({ message: 'pack unavailable' }, { status: 500 });
       }
       return Response.json({ data: [] });
@@ -1200,14 +1226,105 @@ describe('ScheduleDayView', () => {
     const readyButton = dialog.getByRole('button', {
       name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
     }) as HTMLButtonElement;
+    const saveButton = dialog.getByRole('button', {
+      name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を保存/,
+    }) as HTMLButtonElement;
     expect(dialog.getByRole('alert')).toBeTruthy();
+    expect(saveButton.disabled).toBe(false);
     expect(readyButton.disabled).toBe(true);
+
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).startsWith('/api/visit-preparations/schedule_1') &&
+            init?.method === 'PUT',
+        ),
+      ).toBe(true);
+    });
 
     fireEvent.click(readyButton);
 
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/visit-schedules/')),
     ).toBe(false);
+  });
+
+  it('does not overwrite checklist edits when the preparation details fetch resolves later', async () => {
+    const deferred = createDeferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return deferred.promise;
+      }
+      return Promise.resolve(Response.json({ data: [] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    const medicationCheckbox = dialog.getByRole('checkbox', {
+      name: '薬歴・前回変更の確認',
+    });
+    const carryCheckbox = dialog.getByRole('checkbox', {
+      name: '持参薬・物品確認',
+    });
+    expect(medicationCheckbox.getAttribute('aria-checked')).toBe('false');
+    expect(carryCheckbox.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(medicationCheckbox);
+    expect(medicationCheckbox.getAttribute('aria-checked')).toBe('true');
+
+    await act(async () => {
+      deferred.resolve(
+        Response.json({
+          data: {
+            preparation: buildCompletedPreparation(),
+            pack: buildPreparationPack({
+              readiness_blockers: [],
+              billing_blockers: [],
+              onboarding_readiness: {
+                consent_obtained: true,
+                emergency_contact_set: true,
+                first_visit_doc_delivered: true,
+                management_plan_approved: true,
+                primary_physician_set: true,
+              },
+            }),
+          },
+        }),
+      );
+      await deferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(dialog.getByRole('heading', { name: '訪問前提・確認材料' })).toBeTruthy();
+    });
+    expect(medicationCheckbox.getAttribute('aria-checked')).toBe('true');
+    expect(carryCheckbox.getAttribute('aria-checked')).toBe('false');
+    expect(dialog.getByText(/未完了: 持参薬・物品確認/)).toBeTruthy();
   });
 
   it('keeps ready disabled when the preparation pack belongs to a different schedule or patient', async () => {
