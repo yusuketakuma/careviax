@@ -2,6 +2,7 @@
 
 import Dexie, { type Table } from 'dexie';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import {
   VisitStep,
   type EvidencePendingView,
@@ -12,6 +13,8 @@ import type { PhosApiClient } from './types';
 
 const MAX_RETRIES = 3;
 const BASE64_CHUNK_SIZE = 0x8000;
+const DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS = 30_000;
+const MAX_EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
 
 export type PhosOfflineEvidenceInput = {
   card_id: string;
@@ -159,6 +162,102 @@ function safeRetryError(error: unknown): string {
   return 'EVIDENCE_UPLOAD_RETRY_FAILED';
 }
 
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function createUploadAbort(
+  timeoutMs: number,
+  callerSignal?: AbortSignal,
+): {
+  signal: AbortSignal;
+  didTimeout: () => boolean;
+  clear: () => void;
+} {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error('PHOS_EVIDENCE_UPLOAD_TIMEOUT'));
+  }, timeoutMs);
+  maybeUnrefTimeout(timeout);
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    clear: () => {
+      clearTimeout(timeout);
+      callerSignal?.removeEventListener('abort', abortFromCaller);
+    },
+  };
+}
+
+function assertSafeEvidenceUploadUrl(uploadUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(uploadUrl);
+  } catch {
+    throw new Error('PH-OS evidence upload URL must be an absolute http(s) URL');
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('PH-OS evidence upload URL must use http(s)');
+  }
+  const localHttpHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  if (parsed.protocol === 'http:' && !localHttpHosts.has(parsed.hostname)) {
+    throw new Error('PH-OS evidence upload URL must use https outside local development');
+  }
+  if (parsed.username || parsed.password || parsed.hash) {
+    throw new Error('PH-OS evidence upload URL must not include credentials or fragment');
+  }
+}
+
+async function putEvidenceUpload(input: {
+  fetchImpl: typeof fetch;
+  upload_url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: Blob;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}): Promise<Response> {
+  assertSafeEvidenceUploadUrl(input.upload_url);
+  if (input.method !== 'PUT') {
+    throw new Error('PH-OS evidence upload URL must use PUT');
+  }
+  const effectiveTimeoutMs = normalizePositiveTimeoutMs(input.timeoutMs, {
+    fallbackMs: DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS,
+    maxMs: MAX_EVIDENCE_UPLOAD_TIMEOUT_MS,
+  });
+  const uploadAbort = createUploadAbort(effectiveTimeoutMs, input.signal);
+  try {
+    return await input.fetchImpl(input.upload_url, {
+      method: input.method,
+      headers: input.headers,
+      body: input.body,
+      credentials: 'omit',
+      redirect: 'error',
+      signal: uploadAbort.signal,
+    });
+  } catch (error) {
+    if (uploadAbort.didTimeout()) {
+      throw new Error('PH-OS evidence upload timed out');
+    }
+    throw error;
+  } finally {
+    uploadAbort.clear();
+  }
+}
+
 export async function enqueuePhosOfflineEvidence(
   input: PhosOfflineEvidenceInput,
 ): Promise<{ queue_id: number }> {
@@ -201,6 +300,8 @@ export async function listPhosPendingEvidence(packet_id: string): Promise<Eviden
 export async function retryPhosOfflineEvidenceUploads(input: {
   client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  uploadTimeoutMs?: number;
 }): Promise<{ synced: number; failed: number; verified_visits: VisitModeView[] }> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const pending = await phosOfflineEvidenceDb.pendingEvidence
@@ -224,12 +325,16 @@ export async function retryPhosOfflineEvidenceUploads(input: {
         sha256: payload.sha256,
         size_bytes: payload.size_bytes,
       });
-      const response = await fetchImpl(presigned.upload_url, {
+      const response = await putEvidenceUpload({
+        fetchImpl,
+        upload_url: presigned.upload_url,
         method: presigned.method,
         headers: presigned.headers,
         body: new Blob([base64ToArrayBuffer(payload.file_bytes_base64)], {
           type: payload.mime_type,
         }),
+        signal: input.signal,
+        timeoutMs: input.uploadTimeoutMs,
       });
       if (!response.ok) throw new Error(`Evidence upload failed with HTTP ${response.status}`);
       const visit = await input.client.getVisitMode(record.packet_id);

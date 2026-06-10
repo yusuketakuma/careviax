@@ -403,6 +403,7 @@ describe('verify-phos-backend-live-readiness', () => {
 
   it('preserves API Gateway stage paths when building the API smoke URL', async () => {
     let requestedUrl: string | undefined;
+    let requestedInit: RequestInit | undefined;
     const report = await buildPhosBackendLiveReadinessReport({
       env: {
         PHOS_COGNITO_ACCESS_TOKEN: jwt({
@@ -415,13 +416,22 @@ describe('verify-phos-backend-live-readiness', () => {
         PHOS_API_BASE_URL: 'https://api.example.test/prod',
       },
       now,
-      fetch: async (input) => {
+      fetch: async (input, init) => {
         requestedUrl = input.toString();
+        requestedInit = init;
         return new Response('{}', { status: 200 });
       },
     });
 
     expect(requestedUrl).toBe('https://api.example.test/prod/cards');
+    expect(requestedInit).toEqual(
+      expect.objectContaining({
+        credentials: 'omit',
+        redirect: 'error',
+        headers: { Authorization: expect.stringContaining('Bearer ') },
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

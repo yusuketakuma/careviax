@@ -540,6 +540,8 @@ describe('createPhosApiClient', () => {
       'https://api.example.com/prod/cards?query=%E5%B1%B1%E7%94%B0&limit=25',
       expect.objectContaining({
         method: 'GET',
+        credentials: 'omit',
+        redirect: 'error',
         headers: expect.objectContaining({
           Accept: 'application/json',
           Authorization: 'Bearer access-token',
@@ -636,6 +638,8 @@ describe('createPhosApiClient', () => {
       'https://gateway.example.com/api/phos/cards?limit=10',
       expect.objectContaining({
         method: 'GET',
+        credentials: 'omit',
+        redirect: 'error',
         headers: expect.objectContaining({
           Accept: 'application/json',
           Authorization: 'Bearer access-token',

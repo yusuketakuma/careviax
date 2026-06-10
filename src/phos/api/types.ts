@@ -168,6 +168,8 @@ export type PhosOfflineEvidenceQueue = {
   retryUploads(input: {
     client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
     fetchImpl?: typeof fetch;
+    signal?: AbortSignal;
+    uploadTimeoutMs?: number;
   }): Promise<PhosOfflineEvidenceRetryResult>;
 };
 

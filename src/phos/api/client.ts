@@ -715,6 +715,8 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
         method: input.method,
         headers,
+        credentials: 'omit',
+        redirect: 'error',
         signal: requestAbort.signal,
         ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
       });

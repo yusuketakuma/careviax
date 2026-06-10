@@ -75,7 +75,9 @@ async function fetchApiSmokeWithTimeout(input: {
 
   try {
     const response = await input.fetchImpl(input.smokeUrl, {
+      credentials: 'omit',
       headers: { Authorization: `Bearer ${input.accessToken}` },
+      redirect: 'error',
       signal: controller.signal,
     });
     return { response, timed_out: false };

@@ -229,6 +229,9 @@ describe('PH-OS offline evidence queue', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'image/jpeg' },
         body: expect.any(Blob),
+        credentials: 'omit',
+        redirect: 'error',
+        signal: expect.any(AbortSignal),
       }),
     );
     const uploadBody = fetchImpl.mock.calls[0]?.[1]?.body as Blob;
@@ -240,6 +243,95 @@ describe('PH-OS offline evidence queue', () => {
       payload: { evidence_key: 'evidence_1' },
     });
     expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
+  it('rejects unsafe presigned evidence upload URLs before sending bytes', async () => {
+    await enqueuePhosOfflineEvidence({
+      card_id: 'card_1',
+      packet_id: 'packet_1',
+      evidence_key: 'unsafe_photo',
+      label: '危険URL写真',
+      evidence_type: 'PHOTO',
+      file_name: 'unsafe.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'd'.repeat(64),
+      offline_op_class: 'BLOCKING',
+      file: new Blob([new Uint8Array([9, 10])], { type: 'image/jpeg' }),
+    });
+    const client = retryClient({
+      presignEvidenceUpload: vi.fn(async () => ({
+        request_id: 'req_unsafe',
+        evidence_id: 'evidence_unsafe',
+        s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_unsafe.jpg',
+        upload_url: 'https://user:pass@upload.example.com/evidence_unsafe?signature=secret',
+        method: 'PUT' as const,
+        headers: { 'Content-Type': 'image/jpeg' },
+        expires_in_seconds: 300,
+        max_size_bytes: 25 * 1024 * 1024,
+      })),
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
+
+    await expect(
+      retryPhosOfflineEvidenceUploads({
+        client,
+        fetchImpl,
+      }),
+    ).resolves.toEqual({ synced: 0, failed: 1, verified_visits: [] });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const records = await phosOfflineEvidenceDb.pendingEvidence.toArray();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      evidence_key: 'unsafe_photo',
+      retry_count: 1,
+      last_error: 'EVIDENCE_UPLOAD_RETRY_FAILED',
+    });
+  });
+
+  it('bounds stalled presigned evidence uploads with a timeout', async () => {
+    await enqueuePhosOfflineEvidence({
+      card_id: 'card_1',
+      packet_id: 'packet_1',
+      evidence_key: 'timeout_photo',
+      label: 'タイムアウト写真',
+      evidence_type: 'PHOTO',
+      file_name: 'timeout.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'e'.repeat(64),
+      offline_op_class: 'BLOCKING',
+      file: new Blob([new Uint8Array([11, 12])], { type: 'image/jpeg' }),
+    });
+
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          observedSignal = init?.signal ?? undefined;
+          observedSignal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+
+    await expect(
+      retryPhosOfflineEvidenceUploads({
+        client: retryClient(),
+        fetchImpl,
+        uploadTimeoutMs: 1,
+      }),
+    ).resolves.toEqual({ synced: 0, failed: 1, verified_visits: [] });
+
+    expect(observedSignal?.aborted).toBe(true);
+    const records = await phosOfflineEvidenceDb.pendingEvidence.toArray();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      evidence_key: 'timeout_photo',
+      retry_count: 1,
+      last_error: 'EVIDENCE_UPLOAD_RETRY_FAILED',
+    });
   });
 
   it('keeps uploaded evidence queued when server-side verification fails', async () => {
