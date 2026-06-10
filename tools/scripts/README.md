@@ -9,6 +9,7 @@
 - `validate-phos-deploy-template.ts` : PH-OS CloudFormation template export + external validation report
 - `verify-phos-backend-live-readiness.ts` : PH-OS backend live-proof readiness gate/report
 - `verify-phos-cognito-token-trigger.ts` : PH-OS Cognito Pre Token Generation live proof
+- `verify-rate-limit-dynamodb.ts` : rate-limit DynamoDB table/TTL verifier; write/delete preflight requires `RATE_LIMIT_DDB_VERIFY_WRITE=1`
 - `pilot-dossier.ts` : pilot launch dossier 生成
 - `pilot-org-audit.ts` : pilot organization audit
 - `pilot-readiness-report.ts` : pilot readiness report

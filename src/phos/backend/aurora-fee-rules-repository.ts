@@ -278,6 +278,9 @@ export class AuroraFeeRulesRepository implements PhosFeeRulesRepository {
   ): Promise<FeeRuleSearchResponse> {
     assertSafeTenantId(ctx.tenant_id);
     const cursor = decodeCursor(query.cursor);
+    if (query.fee_code && cursor && cursor.fee_code !== query.fee_code) {
+      throw validationError({ field: 'cursor' });
+    }
     const connection = await this.client.connect();
     const params: unknown[] = [ctx.tenant_id];
     let sql = FEE_RULE_SELECT;

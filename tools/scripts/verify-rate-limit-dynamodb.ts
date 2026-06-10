@@ -1,4 +1,6 @@
 import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 type DynamoAttributeValue = { S?: string; N?: string; BOOL?: boolean };
 
@@ -17,19 +19,29 @@ type DynamoResponse = {
   Attributes?: Record<string, DynamoAttributeValue>;
 };
 
-function requireEnv(name: string) {
-  const value = process.env[name];
+type Env = Record<string, string | undefined>;
+type FetchLike = typeof fetch;
+
+const WRITE_OPT_IN_ENV = 'RATE_LIMIT_DDB_VERIFY_WRITE';
+
+function requireEnv(env: Env, name: string) {
+  const value = env[name];
   if (!value) {
     throw new Error(`${name} is required`);
   }
   return value;
 }
 
-function resolveCredentials(): AwsCredentials {
+function isTruthyEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true';
+}
+
+function resolveCredentials(env: Env): AwsCredentials {
   return {
-    accessKeyId: requireEnv('AWS_ACCESS_KEY_ID'),
-    secretAccessKey: requireEnv('AWS_SECRET_ACCESS_KEY'),
-    sessionToken: process.env.AWS_SESSION_TOKEN,
+    accessKeyId: requireEnv(env, 'AWS_ACCESS_KEY_ID'),
+    secretAccessKey: requireEnv(env, 'AWS_SECRET_ACCESS_KEY'),
+    sessionToken: env.AWS_SESSION_TOKEN,
   };
 }
 
@@ -38,6 +50,7 @@ async function callDynamo(args: {
   target: string;
   body: Record<string, unknown>;
   credentials: AwsCredentials;
+  fetch: FetchLike;
 }) {
   const body = JSON.stringify(args.body);
   const signed = await signAwsJsonRequest({
@@ -47,7 +60,7 @@ async function callDynamo(args: {
     body,
     credentials: args.credentials,
   });
-  const response = await fetch(`https://${signed.host}/`, {
+  const response = await args.fetch(`https://${signed.host}/`, {
     method: 'POST',
     headers: signed.headers,
     body,
@@ -57,24 +70,36 @@ async function callDynamo(args: {
     message?: string;
   };
   if (!response.ok) {
-    throw new Error(`${args.target} failed: ${response.status} ${payload.message ?? payload.__type ?? ''}`);
+    throw new Error(
+      `${args.target} failed: ${response.status} ${payload.message ?? payload.__type ?? ''}`,
+    );
   }
   return payload;
 }
 
-async function main() {
-  const tableName = requireEnv('RATE_LIMIT_DDB_TABLE_NAME');
-  const region = process.env.RATE_LIMIT_DDB_REGION ?? requireEnv('AWS_REGION');
-  const credentials = resolveCredentials();
-  const testKey = process.env.RATE_LIMIT_VERIFY_WRITE_KEY ?? '__ph_os_rate_limit_preflight__';
-  const now = Date.now();
+export async function verifyRateLimitDynamoDb(
+  input: {
+    env?: Env;
+    fetch?: FetchLike;
+    now?: number;
+  } = {},
+) {
+  const env = input.env ?? process.env;
+  const fetchImpl = input.fetch ?? fetch;
+  const tableName = requireEnv(env, 'RATE_LIMIT_DDB_TABLE_NAME');
+  const region = env.RATE_LIMIT_DDB_REGION ?? requireEnv(env, 'AWS_REGION');
+  const credentials = resolveCredentials(env);
+  const testKey = env.RATE_LIMIT_VERIFY_WRITE_KEY ?? '__ph_os_rate_limit_preflight__';
+  const now = input.now ?? Date.now();
   const resetAt = now + 60_000;
   const expiresAt = Math.ceil(resetAt / 1000) + 300;
+  const verifyWrite = isTruthyEnv(env[WRITE_OPT_IN_ENV]);
 
   const table = await callDynamo({
     region,
     target: 'DescribeTable',
     credentials,
+    fetch: fetchImpl,
     body: { TableName: tableName },
   });
   const keySchema = table.Table?.KeySchema ?? [];
@@ -85,7 +110,11 @@ async function main() {
   if (!keySchema.some((key) => key.AttributeName === 'pk' && key.KeyType === 'HASH')) {
     throw new Error('Rate-limit table must use pk as the HASH key');
   }
-  if (!attributes.some((attribute) => attribute.AttributeName === 'pk' && attribute.AttributeType === 'S')) {
+  if (
+    !attributes.some(
+      (attribute) => attribute.AttributeName === 'pk' && attribute.AttributeType === 'S',
+    )
+  ) {
     throw new Error('Rate-limit table pk attribute must be a string');
   }
 
@@ -93,6 +122,7 @@ async function main() {
     region,
     target: 'DescribeTimeToLive',
     credentials,
+    fetch: fetchImpl,
     body: { TableName: tableName },
   });
   if (
@@ -102,48 +132,57 @@ async function main() {
     throw new Error('Rate-limit table TTL must be enabled on expires_at');
   }
 
-  await callDynamo({
-    region,
-    target: 'UpdateItem',
-    credentials,
-    body: {
-      TableName: tableName,
-      Key: { pk: { S: testKey } },
-      UpdateExpression:
-        'ADD hit_count :inc SET reset_at = :reset_at, expires_at = :expires_at, updated_at = :updated_at, created_at = if_not_exists(created_at, :created_at)',
-      ExpressionAttributeValues: {
-        ':inc': { N: '1' },
-        ':reset_at': { N: String(resetAt) },
-        ':expires_at': { N: String(expiresAt) },
-        ':updated_at': { S: new Date(now).toISOString() },
-        ':created_at': { S: new Date(now).toISOString() },
-      },
-      ReturnValues: 'UPDATED_NEW',
-    },
-  });
-
-  await callDynamo({
-    region,
-    target: 'DeleteItem',
-    credentials,
-    body: {
-      TableName: tableName,
-      Key: { pk: { S: testKey } },
-    },
-  });
-
-  console.log(
-    JSON.stringify({
-      ok: true,
-      tableName,
+  if (verifyWrite) {
+    await callDynamo({
       region,
-      ttl: 'expires_at',
-      writePath: 'verified',
-    }),
-  );
+      target: 'UpdateItem',
+      credentials,
+      fetch: fetchImpl,
+      body: {
+        TableName: tableName,
+        Key: { pk: { S: testKey } },
+        UpdateExpression:
+          'ADD hit_count :inc SET reset_at = :reset_at, expires_at = :expires_at, updated_at = :updated_at, created_at = if_not_exists(created_at, :created_at)',
+        ExpressionAttributeValues: {
+          ':inc': { N: '1' },
+          ':reset_at': { N: String(resetAt) },
+          ':expires_at': { N: String(expiresAt) },
+          ':updated_at': { S: new Date(now).toISOString() },
+          ':created_at': { S: new Date(now).toISOString() },
+        },
+        ReturnValues: 'UPDATED_NEW',
+      },
+    });
+
+    await callDynamo({
+      region,
+      target: 'DeleteItem',
+      credentials,
+      fetch: fetchImpl,
+      body: {
+        TableName: tableName,
+        Key: { pk: { S: testKey } },
+      },
+    });
+  }
+
+  return {
+    ok: true,
+    tableName,
+    region,
+    ttl: 'expires_at',
+    writePath: verifyWrite ? 'verified' : 'skipped',
+    writeOptIn: WRITE_OPT_IN_ENV,
+  };
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+async function main() {
+  console.log(JSON.stringify(await verifyRateLimitDynamoDb()));
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

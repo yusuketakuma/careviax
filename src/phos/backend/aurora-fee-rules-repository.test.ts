@@ -193,6 +193,28 @@ describe('AuroraFeeRulesRepository', () => {
     expect(params).toEqual(['tenant_abc123', 'M001', '2026', 'rv_1', 51]);
   });
 
+  it('rejects cursors whose fee_code does not match the requested fee_code filter', async () => {
+    const { pool } = client();
+    const repository = new AuroraFeeRulesRepository(pool);
+    const cursor = Buffer.from(
+      JSON.stringify({
+        fee_code: 'M001',
+        revision_code: '2026',
+        rule_version_id: 'rv_1',
+      }),
+      'utf8',
+    ).toString('base64url');
+
+    await expect(
+      repository.searchFeeRules(ctx, { fee_code: 'M002', limit: 50, cursor }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed cursors before opening an Aurora connection', async () => {
     const { pool } = client();
     const repository = new AuroraFeeRulesRepository(pool);

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-090409
+
+- current task: close the remaining locally actionable low-priority PH-OS backend hardening findings from the latest read-only reviews.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `tools/scripts/verify-rate-limit-dynamodb.ts`, `tools/scripts/README.md`, `tools/infra/rate-limit-dynamodb.json`, `src/phos/backend/aurora-fee-rules-repository.ts`, `src/phos/backend/aurora-fee-rules-repository.test.ts`, `src/phos/backend/fee-rules-lambda.ts`, and `src/phos/backend/fee-rules-lambda.test.ts`.
+- files changed: `tools/scripts/verify-rate-limit-dynamodb.ts`, `tools/scripts/verify-rate-limit-dynamodb.test.ts`, `tools/scripts/README.md`, `src/phos/backend/aurora-fee-rules-repository.ts`, `src/phos/backend/aurora-fee-rules-repository.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the rate-limit DynamoDB verifier wrote and deleted a live preflight item by default. Aurora fee-rule pagination accepted a cursor generated for a different `fee_code` filter and could run the second-page query under a mismatched filter/cursor pair.
+- security risks found: live DynamoDB write/delete verification now requires explicit `RATE_LIMIT_DDB_VERIFY_WRITE=1`; by default the script only verifies table shape and TTL. Fee-rule cursor/filter mismatch is rejected before opening an Aurora connection, preventing opaque cursors from being replayed across fee-code filters.
+- performance issues found: no user request hot path became heavier. The rate-limit verifier skips two live DDB calls unless explicitly opted in, and fee-rule cursor validation is a constant-time string comparison before DB access.
+- validation commands: `pnpm exec prettier --write tools/scripts/verify-rate-limit-dynamodb.ts tools/scripts/verify-rate-limit-dynamodb.test.ts tools/scripts/README.md`; focused `pnpm exec vitest run tools/scripts/verify-rate-limit-dynamodb.test.ts --reporter=dot`; focused ESLint for the rate-limit verifier files; `pnpm exec vitest run tools/scripts/verify-rate-limit-dynamodb.test.ts tools/scripts/verify-phos-backend-live-readiness.test.ts tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; `pnpm exec prettier --write src/phos/backend/aurora-fee-rules-repository.ts src/phos/backend/aurora-fee-rules-repository.test.ts`; focused `pnpm exec vitest run src/phos/backend/aurora-fee-rules-repository.test.ts src/phos/backend/fee-rules-lambda.test.ts --reporter=dot`; focused ESLint for the Aurora fee-rule repository files; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos tools/scripts/verify-rate-limit-dynamodb.test.ts --reporter=dot`.
+- validation results: Prettier completed. New rate-limit verifier unit tests passed with 1 file / 2 tests. Focused script suite passed with 3 files / 36 tests. Focused Aurora fee-rules/lambda suite passed with 2 files / 21 tests. Focused ESLint passed for touched script and backend files. Standalone TypeScript passed. PH-OS plus rate-limit verifier Vitest passed with 103 files passed / 1 skipped and 752 tests passed / 1 skipped.
+- remaining work: external live AWS/JWT/API proof still needs target environment inputs and AWS CLI. No further locally actionable P1/P2 backend findings from the latest review batch remain in the current workspace state.
+- next action: commit this final local backend hardening slice, then run full repository validation before reporting the remaining external proof blockers.
+
 ### 20260610-090044
 
 - current task: cache the default PH-OS evidence presign Lambda handler graph across warm invocations.
