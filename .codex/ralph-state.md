@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-014219
+
+- current task: capture browser proof for the schedule UI/UX slices after the grouped mobile list and surfaced confirmed actions changes.
+- files inspected: `git status --short`, `package.json`, `playwright.local.config.ts`, `tools/tests/ui-mobile-layout.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/schedule-view-toggle.tsx`, MCP browser snapshots/logs, and `/tmp` Playwright screenshots.
+- files changed: `.codex/ralph-state.md`.
+- bugs found: MCP browser writes under `.playwright-mcp` triggered Next dev Fast Refresh churn, so MCP was not reliable for stable visual proof. CLI Playwright with an httpOnly local-auth cookie and `/tmp` screenshots avoided that watcher feedback. The E2E seed for 2026-04-09 currently has 0 confirmed schedules, so browser proof covers layout/empty state/mobile controls while confirmed-card action placement remains covered by DOM/unit tests.
+- security risks found: no product code or auth behavior changed. Browser proof used the existing local E2E demo user and local `ph_os_e2e` database guard.
+- performance issues found: no product runtime issue changed. The verification path avoids writing browser artifacts into watched source directories.
+- validation commands: targeted Playwright mobile route check `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-mobile-layout.spec.ts -g '/schedules keeps cross-screen mobile shell stable'`; CLI Playwright desktop/mobile authenticated screenshot/DOM checks against `/schedules?date=2026-04-09&tab=confirmed`.
+- validation results: targeted mobile Playwright route passed with 1 passed / 1 skipped. Desktop authenticated DOM check: one `h1`, `scrollWidth === clientWidth`, daily board and confirmed tab visible, 0 confirmed schedules empty state visible, no captured errors, screenshot saved to `/tmp/careviax-desktop-schedules-retry.png`. Mobile authenticated DOM check: one `h1`, `scrollWidth === clientWidth`, daily board and mobile visit list visible, `リスト`/`地図` segmented buttons remain 44px high with `aria-pressed=true/false`, no captured errors, screenshot saved to `/tmp/careviax-mobile-schedules-board.png`.
+- remaining work: seed or fixture a confirmed schedule for browser-level visual proof of the surfaced confirmed-card action rail, and continue broader ScheduleDayView visual hierarchy polish.
+- next action: commit this browser-proof record, then either add a focused E2E fixture for confirmed schedule card visual proof or continue the next UI hierarchy slice.
+
 ### 20260611-013943
 
 - current task: move confirmed schedule card primary actions directly under the card identity summary.
