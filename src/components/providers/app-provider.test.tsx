@@ -54,21 +54,18 @@ describe('AppProvider', () => {
           name: '薬剤師',
           cognitoSub: 'sub_123',
         },
+        offlineEncryptionSecret: 'offline-secret',
       },
     });
 
     render(
-      <AppProvider
-        session={null}
-        initialOrgId="org_1"
-        initialSiteId="site_1"
-      >
+      <AppProvider session={null} initialOrgId="org_1" initialSiteId="site_1">
         <div>child</div>
-      </AppProvider>
+      </AppProvider>,
     );
 
     await waitFor(() => {
-      expect(initOfflineEncryptionKeyMock).toHaveBeenCalledWith('sub_123');
+      expect(initOfflineEncryptionKeyMock).toHaveBeenCalledWith('sub_123', 'offline-secret');
     });
     expect(clearOfflineEncryptionKeyMock).not.toHaveBeenCalled();
     expect(useAuthStore.getState().currentUser).toMatchObject({
@@ -79,6 +76,31 @@ describe('AppProvider', () => {
     });
   });
 
+  it('clears the offline encryption key when the session lacks an offline encryption secret', async () => {
+    useSessionMock.mockReturnValue({
+      status: 'authenticated',
+      data: {
+        user: {
+          id: 'user_1',
+          email: 'staff@example.com',
+          name: '薬剤師',
+          cognitoSub: 'sub_123',
+        },
+      },
+    });
+
+    render(
+      <AppProvider session={null} initialOrgId="org_1" initialSiteId="site_1">
+        <div>child</div>
+      </AppProvider>,
+    );
+
+    await waitFor(() => {
+      expect(clearOfflineEncryptionKeyMock).toHaveBeenCalledTimes(1);
+    });
+    expect(initOfflineEncryptionKeyMock).not.toHaveBeenCalled();
+  });
+
   it('clears the offline encryption key when there is no authenticated session', async () => {
     useSessionMock.mockReturnValue({
       status: 'unauthenticated',
@@ -86,13 +108,9 @@ describe('AppProvider', () => {
     });
 
     render(
-      <AppProvider
-        session={null}
-        initialOrgId="org_1"
-        initialSiteId="site_1"
-      >
+      <AppProvider session={null} initialOrgId="org_1" initialSiteId="site_1">
         <div>child</div>
-      </AppProvider>
+      </AppProvider>,
     );
 
     await waitFor(() => {

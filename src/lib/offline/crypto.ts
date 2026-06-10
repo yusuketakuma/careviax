@@ -125,17 +125,15 @@ function getOrCreateSalt(cryptoApi: Crypto): Uint8Array {
   return salt;
 }
 
-async function deriveKeyFromUserId(
+async function deriveKeyFromSessionSecret(
   userId: string,
   salt: Uint8Array,
   cryptoApi: Crypto,
-  sessionSecret?: string,
+  sessionSecret: string,
 ): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const normalizedSalt = Uint8Array.from(salt);
-  // If a server-issued sessionSecret is provided, combine it with userId for
-  // higher entropy key material. Falls back to userId alone for backward compat.
-  const keyInput = sessionSecret ? `${userId}:${sessionSecret}` : userId;
+  const keyInput = `${userId}:${sessionSecret}`;
   const keyMaterial = await cryptoApi.subtle.importKey(
     'raw',
     enc.encode(keyInput),
@@ -158,17 +156,21 @@ async function deriveKeyFromUserId(
  * The derived CryptoKey is stored in IndexedDB with extractable:false.
  *
  * @param userId - Cognito user ID (required)
- * @param sessionSecret - Optional server-issued secret to increase key entropy
+ * @param sessionSecret - Server-issued secret required to derive the offline key
  */
 export async function initOfflineEncryptionKey(
   userId: string,
-  sessionSecret?: string,
+  sessionSecret: string,
 ): Promise<void> {
   const cryptoApi = getOfflineCryptoApi();
   if (!cryptoApi || typeof window === 'undefined') return;
+  if (!userId.trim() || !sessionSecret.trim()) {
+    await clearOfflineEncryptionKey();
+    return;
+  }
   try {
     const salt = getOrCreateSalt(cryptoApi);
-    const key = await deriveKeyFromUserId(userId, salt, cryptoApi, sessionSecret);
+    const key = await deriveKeyFromSessionSecret(userId, salt, cryptoApi, sessionSecret);
     await putKeyInIndexedDB(key);
     cachedOfflineEncryptionKey = key;
   } catch {

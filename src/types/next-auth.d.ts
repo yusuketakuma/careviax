@@ -5,6 +5,7 @@ declare module 'next-auth' {
   interface Session {
     cognitoGroups?: unknown;
     error?: string;
+    offlineEncryptionSecret?: string;
     phosAccessToken?: string;
     phosRole?: UserRole;
     user: DefaultSession['user'] & {
@@ -26,6 +27,7 @@ declare module 'next-auth/jwt' {
     refreshToken?: string;
     idToken?: string;
     accessTokenExpiry?: number;
+    offlineEncryptionSecret?: string;
     sessionVersion?: number;
     phosRole?: UserRole;
     error?: string;

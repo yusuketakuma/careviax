@@ -971,7 +971,7 @@ describe('BoardClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
-    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '訪問・報告' }));
 
     fireEvent.click(screen.getByRole('button', { name: '訪問を完了する' }));
 
@@ -1012,7 +1012,7 @@ describe('BoardClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
-    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '訪問・報告' }));
     fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
 
     expect(screen.getByRole('status').textContent).toBe('一時保存しました');
@@ -1053,7 +1053,7 @@ describe('BoardClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
-    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '訪問・報告' }));
     fireEvent.click(screen.getByRole('button', { name: '一時保存' }));
 
     await waitFor(() =>
@@ -1175,7 +1175,7 @@ describe('BoardClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
-    fireEvent.click(screen.getByRole('tab', { name: '訪問・報告' }));
+    fireEvent.click(await screen.findByRole('tab', { name: '訪問・報告' }));
 
     const requiredFile = new File(['required'], 'required.jpg', { type: 'image/jpeg' });
     fireEvent.change(screen.getByLabelText('必須写真ファイル'), {

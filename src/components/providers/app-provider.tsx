@@ -5,10 +5,7 @@ import { SessionProvider, useSession } from 'next-auth/react';
 import type { Session } from 'next-auth';
 import { QueryProvider } from '@/components/providers/query-provider';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import {
-  clearOfflineEncryptionKey,
-  initOfflineEncryptionKey,
-} from '@/lib/offline/crypto';
+import { clearOfflineEncryptionKey, initOfflineEncryptionKey } from '@/lib/offline/crypto';
 
 type AppProviderProps = {
   children: React.ReactNode;
@@ -19,7 +16,7 @@ type AppProviderProps = {
 
 function SessionStateBridge() {
   const { data: session, status } = useSession();
-  const lastOfflineIdentityRef = useRef<string | null>(null);
+  const lastOfflineKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     useAuthStore.setState((state) => ({
@@ -37,27 +34,25 @@ function SessionStateBridge() {
     if (status === 'loading') return;
 
     const offlineIdentity = session?.user?.cognitoSub ?? session?.user?.id ?? null;
-    if (offlineIdentity && lastOfflineIdentityRef.current !== offlineIdentity) {
-      lastOfflineIdentityRef.current = offlineIdentity;
-      void initOfflineEncryptionKey(offlineIdentity);
+    const offlineSecret = session?.offlineEncryptionSecret ?? null;
+    const offlineKeyId =
+      offlineIdentity && offlineSecret ? `${offlineIdentity}:${offlineSecret}` : null;
+    if (offlineIdentity && offlineSecret && lastOfflineKeyRef.current !== offlineKeyId) {
+      lastOfflineKeyRef.current = offlineKeyId;
+      void initOfflineEncryptionKey(offlineIdentity, offlineSecret);
       return;
     }
 
-    if (!offlineIdentity) {
-      lastOfflineIdentityRef.current = null;
+    if (!offlineIdentity || !offlineSecret) {
+      lastOfflineKeyRef.current = null;
       void clearOfflineEncryptionKey();
     }
-  }, [session?.user?.cognitoSub, session?.user?.id, status]);
+  }, [session?.offlineEncryptionSecret, session?.user?.cognitoSub, session?.user?.id, status]);
 
   return null;
 }
 
-export function AppProvider({
-  children,
-  session,
-  initialOrgId,
-  initialSiteId,
-}: AppProviderProps) {
+export function AppProvider({ children, session, initialOrgId, initialSiteId }: AppProviderProps) {
   useEffect(() => {
     useAuthStore.setState({
       orgId: initialOrgId,
