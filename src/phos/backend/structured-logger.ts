@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ActionCode, CurrentStep } from '@/phos/contracts/phos_contracts';
 import type { TenantContext } from './tenant-context';
 
@@ -14,7 +15,7 @@ export type PhosLogEntry = {
   correlation_id: string;
   route_key: string;
   action_code?: ActionCode;
-  card_id?: string;
+  card_id_hash?: string;
   current_step?: CurrentStep;
   error_code?: string;
   latency_ms?: number;
@@ -24,6 +25,18 @@ export type PhosLogEntry = {
 const REDACTED = '[REDACTED]';
 const PHI_KEY_PATTERN =
   /patient|name|kana|address|drug|medication|report|photo|image|body|note|summary|authorization|token|password|secret|cookie|database_url|api_key|sha256|checksum|s3_key|evidence_key|mime|content_type|content_length|size_bytes|metadata|file_name|^key$/i;
+const WORKFLOW_OBJECT_ID_KEY_PATTERN =
+  /(^|_)(card|packet|handoff|delivery|candidate|evidence|report|visit)_?id$|^idempotency_key$/i;
+
+export function hashLogIdentifier(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
+function sanitizeIdentifierValue(value: unknown): unknown {
+  if (typeof value === 'string') return hashLogIdentifier(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeIdentifierValue(item));
+  return value;
+}
 
 export function sanitizeLogDetails(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => sanitizeLogDetails(item));
@@ -32,7 +45,11 @@ export function sanitizeLogDetails(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, child]) => [
       key,
-      PHI_KEY_PATTERN.test(key) ? REDACTED : sanitizeLogDetails(child),
+      PHI_KEY_PATTERN.test(key)
+        ? REDACTED
+        : WORKFLOW_OBJECT_ID_KEY_PATTERN.test(key)
+          ? sanitizeIdentifierValue(child)
+          : sanitizeLogDetails(child),
     ]),
   );
 }
@@ -62,7 +79,7 @@ export function buildLogEntry(input: {
     correlation_id: input.ctx.correlation_id,
     route_key: input.route_key,
     ...(input.action_code ? { action_code: input.action_code } : {}),
-    ...(input.card_id ? { card_id: input.card_id } : {}),
+    ...(input.card_id ? { card_id_hash: hashLogIdentifier(input.card_id) } : {}),
     ...(input.current_step ? { current_step: input.current_step } : {}),
     ...(input.error_code ? { error_code: input.error_code } : {}),
     ...(input.latency_ms != null ? { latency_ms: input.latency_ms } : {}),

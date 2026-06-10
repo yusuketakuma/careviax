@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ActionCode, CurrentStep, UserRole } from '@/phos/contracts/phos_contracts';
-import { buildLogEntry, logPhosEvent } from './structured-logger';
+import { buildLogEntry, hashLogIdentifier, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
 
 const ctx: TenantContext = {
@@ -34,6 +34,11 @@ describe('PH-OS structured logger', () => {
           size_bytes: 1024,
           authorization: 'Bearer secret',
           api_key: 'secret-key',
+          card_id: 'card_detail_1',
+          packet_id: 'packet_1',
+          handoff_id: 'handoff_1',
+          idempotency_key: 'idem_1',
+          nested_ids: { delivery_id: 'delivery_1' },
           safe_count: 1,
         },
       }),
@@ -46,7 +51,7 @@ describe('PH-OS structured logger', () => {
       correlation_id: 'corr_1',
       route_key: 'POST /cards/{card_id}/actions',
       action_code: ActionCode.APPROVE_SET_AUDIT,
-      card_id: 'card_001',
+      card_id_hash: hashLogIdentifier('card_001'),
       current_step: CurrentStep.SET_AUDIT,
       latency_ms: 87,
       details: {
@@ -59,6 +64,11 @@ describe('PH-OS structured logger', () => {
         size_bytes: '[REDACTED]',
         authorization: '[REDACTED]',
         api_key: '[REDACTED]',
+        card_id: hashLogIdentifier('card_detail_1'),
+        packet_id: hashLogIdentifier('packet_1'),
+        handoff_id: hashLogIdentifier('handoff_1'),
+        idempotency_key: hashLogIdentifier('idem_1'),
+        nested_ids: { delivery_id: hashLogIdentifier('delivery_1') },
         safe_count: 1,
       },
     });
