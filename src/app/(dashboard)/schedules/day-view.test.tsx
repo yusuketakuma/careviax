@@ -45,6 +45,12 @@ const visitBriefCacheWhereMock = vi.hoisted(() =>
     ),
   })),
 );
+const offlineCryptoMocks = vi.hoisted(() => ({
+  decryptOfflinePayload: vi.fn(async (payload: string) => payload),
+  encryptOfflinePayloadRequired: vi.fn(
+    async (payload: string, label: string) => `encrypted:${label}:${payload}`,
+  ),
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -158,6 +164,11 @@ vi.mock('@/lib/stores/offline-db', () => ({
       delete: visitBriefCacheDeleteMock,
     },
   },
+}));
+
+vi.mock('@/lib/offline/crypto', () => ({
+  decryptOfflinePayload: offlineCryptoMocks.decryptOfflinePayload,
+  encryptOfflinePayloadRequired: offlineCryptoMocks.encryptOfflinePayloadRequired,
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
@@ -544,6 +555,10 @@ function executeMutations() {
 describe('ScheduleDayView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    offlineCryptoMocks.decryptOfflinePayload.mockImplementation(async (payload: string) => payload);
+    offlineCryptoMocks.encryptOfflinePayloadRequired.mockImplementation(
+      async (payload: string, label: string) => `encrypted:${label}:${payload}`,
+    );
     offlineStoreState.isOffline = false;
     offlineStoreState.pendingSyncCount = 0;
     offlineStoreState.pendingQueue = [];
@@ -2830,6 +2845,166 @@ describe('ScheduleDayView', () => {
       expect.any(Error),
     );
     warnSpy.mockRestore();
+  });
+
+  it('ignores late visit brief refresh responses after the selected date changes', async () => {
+    const oldDateBriefResponse = createDeferred<Response>();
+    const nextDateBriefResponse = createDeferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const body =
+        typeof init?.body === 'string'
+          ? (JSON.parse(init.body) as { schedule_ids?: string[] })
+          : {};
+      if (body.schedule_ids?.includes('schedule_1')) {
+        return oldDateBriefResponse.promise;
+      }
+      if (body.schedule_ids?.includes('schedule_next_day')) {
+        return nextDateBriefResponse.promise;
+      }
+      return Response.json({ data: {} });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule(),
+              buildSchedule({
+                id: 'schedule_next_day',
+                scheduled_date: '2026-04-10',
+                time_window_start: '2026-04-10T09:00:00.000Z',
+                time_window_end: '2026-04-10T10:00:00.000Z',
+                case_: {
+                  patient: {
+                    id: 'patient_next_day',
+                    name: '佐藤次郎',
+                    residences: [
+                      {
+                        address: '東京都千代田区3-3-3',
+                        building_id: null,
+                        unit_name: null,
+                        lat: 35.2,
+                        lng: 139.2,
+                      },
+                    ],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-preparations/brief-batch',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ schedule_ids: ['schedule_1'] }),
+        }),
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /2026年4月10日\(金\)/ }));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-preparations/brief-batch',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ schedule_ids: ['schedule_next_day'] }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_next_day',
+          visitBriefStatus: 'missing',
+        }),
+      );
+    });
+
+    await act(async () => {
+      nextDateBriefResponse.resolve(
+        Response.json({
+          data: {
+            schedule_next_day: {
+              ai_summary: {
+                headline: '当日のブリーフ',
+                must_check_today: ['当日の確認事項'],
+                source_refs: ['current'],
+                generated_at: '2026-04-10T08:00:00.000Z',
+                provider: 'rule',
+                is_fallback: false,
+              },
+            },
+          },
+        }),
+      );
+      await nextDateBriefResponse.promise;
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_next_day',
+          visitBriefStatus: 'available',
+          mustCheckToday: ['当日の確認事項'],
+        }),
+      );
+    });
+    expect(visitBriefCacheAddMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      oldDateBriefResponse.resolve(
+        Response.json({
+          data: {
+            schedule_1: {
+              ai_summary: {
+                headline: '前日の遅延ブリーフ',
+                must_check_today: ['前日の遅延確認事項'],
+                source_refs: [],
+                generated_at: '2026-04-09T08:00:00.000Z',
+                provider: 'rule',
+                is_fallback: false,
+              },
+            },
+          },
+        }),
+      );
+      await oldDateBriefResponse.promise;
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('前日の遅延ブリーフ')).toBeNull();
+    expect(screen.queryByText('前日の遅延確認事項')).toBeNull();
+    expect(visitBriefCacheAddMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_next_day',
+          visitBriefStatus: 'available',
+          mustCheckToday: ['当日の確認事項'],
+        }),
+      );
+    });
   });
 
   it('surfaces offline cache load failure when no visit brief refresh can run', async () => {
