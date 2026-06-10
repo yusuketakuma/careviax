@@ -515,6 +515,7 @@ describe('/api/visit-records POST', () => {
       id: 'schedule_1',
       case_id: 'case_1',
       schedule_status: 'ready',
+      carry_items_status: 'ready',
       recurrence_rule: null,
       cycle_id: 'cycle_1',
       visit_type: 'regular',
@@ -658,6 +659,326 @@ describe('/api/visit-records POST', () => {
       message: '訪問予定に紐づく患者と記録対象患者が一致しません',
     });
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before writes when carry items are blocked for a visit completion record', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      carry_items_status: 'blocked',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '持参物が未確定のため訪問記録を作成できません。持参物を確定するか代替手配を記録してください',
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before writes when partial carry items are completed without acknowledgement', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      carry_items_status: 'partial',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '持参物が一部未確定のため、代替手配または現地対応方針の確認が必要です',
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+  });
+
+  it('records partial carry-item acknowledgement in the visit plan when completing the visit', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      carry_items_status: 'partial',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+          carry_item_warning_acknowledged: true,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          soap_plan: expect.stringContaining('持参物一部未確定の警告確認'),
+        }),
+      }),
+    );
+  });
+
+  it.each(['ready', null] as const)(
+    'ignores carry-item acknowledgement for %s carry-item schedules',
+    async (carryItemsStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValue({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        schedule_status: 'ready',
+        carry_items_status: carryItemsStatus,
+        recurrence_rule: null,
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        time_window_start: null,
+        time_window_end: null,
+        medication_end_date: null,
+        visit_deadline_date: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      });
+
+      const response = await POST(
+        createRequest(
+          {
+            schedule_id: 'schedule_1',
+            patient_id: 'patient_1',
+            visit_date: '2026-03-26',
+            outcome_status: 'completed',
+            structured_soap: completedVisitStructuredSoap,
+            carry_item_warning_acknowledged: true,
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      const createData = visitRecordCreateMock.mock.calls[0]?.[0]?.data as
+        | { soap_plan?: string | null }
+        | undefined;
+      expect(createData?.soap_plan ?? '').not.toContain('持参物一部未確定');
+    },
+  );
+
+  it.each([
+    ['postponed', '延期理由', {}],
+    ['cancelled', 'キャンセル理由', {}],
+  ] as const)(
+    'returns 400 when a blocked carry-item schedule is %s without a reason',
+    async (outcomeStatus, messagePart, extraPayload) => {
+      visitScheduleFindFirstMock.mockResolvedValue({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        schedule_status: 'ready',
+        carry_items_status: 'blocked',
+        recurrence_rule: null,
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        time_window_start: null,
+        time_window_end: null,
+        medication_end_date: null,
+        visit_deadline_date: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      });
+
+      const response = await POST(
+        createRequest(
+          {
+            schedule_id: 'schedule_1',
+            patient_id: 'patient_1',
+            visit_date: '2026-03-26',
+            outcome_status: outcomeStatus,
+            ...extraPayload,
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining(messagePart),
+      });
+      expect(visitRecordCreateMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows a blocked carry-item schedule to be postponed without creating a completed visit', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      carry_items_status: 'blocked',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'postponed',
+          postpone_reason: '持参物が未確定のため延期',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledOnce();
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1' },
+      data: { schedule_status: 'postponed' },
+    });
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a blocked carry-item schedule to be cancelled with a reason', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      carry_items_status: 'blocked',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'cancelled',
+          cancellation_reason: '持参物が未確定で安全に訪問できないためキャンセル',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledOnce();
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1' },
+      data: { schedule_status: 'cancelled' },
+    });
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
   });
 
   it('returns existing conflict dates by the local pharmacy calendar day', async () => {

@@ -12,6 +12,7 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
+const visitCardMobilePropsMock = vi.hoisted(() => vi.fn());
 const offlineStoreState = vi.hoisted(() => ({
   isOffline: false,
   pendingSyncCount: 0,
@@ -71,7 +72,24 @@ vi.mock('@/components/visit-brief/visit-brief-card', () => ({
 }));
 
 vi.mock('@/components/features/visits/visit-card-mobile', () => ({
-  VisitCardMobile: () => <div />,
+  VisitCardMobile: (props: {
+    id: string;
+    status: string;
+    carryItemsStatus?: string | null;
+    actionContextLabel?: string;
+    onStartVisit?: (id: string) => void;
+  }) => {
+    visitCardMobilePropsMock(props);
+    return (
+      <button
+        type="button"
+        aria-label={`mobile-start-${props.id}`}
+        onClick={() => props.onStartVisit?.(props.id)}
+      >
+        mobile start {props.id}
+      </button>
+    );
+  },
 }));
 
 vi.mock('@/components/features/visits/visit-route-map', () => ({
@@ -2015,7 +2033,7 @@ describe('ScheduleDayView', () => {
     expect(overlapCell?.textContent).toContain('#2');
   });
 
-  it('requires carry-item warning acknowledgement before starting blocked visits', async () => {
+  it('blocks visit start when carry items are blocked', async () => {
     const push = vi.fn();
     useRouterMock.mockReturnValue({ push });
     useOrgIdMock.mockReturnValue('org_1');
@@ -2048,7 +2066,7 @@ describe('ScheduleDayView', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: /山田花子.*4\/9.*18:00 - 19:00.*警告を確認して訪問開始/,
+        name: /山田花子.*4\/9.*18:00 - 19:00.*持参物未確定を確認/,
       }),
     );
 
@@ -2056,13 +2074,124 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '持参薬が未確定のままです' })).toBeTruthy();
     expect(screen.getByRole('dialog').textContent).toContain('山田花子');
     expect(screen.getByText('持参物ステータス: blocked')).toBeTruthy();
+    expect(
+      screen.getByText('持参物を確定するか代替手配を記録してから、訪問を開始してください。'),
+    ).toBeTruthy();
 
-    const confirmationButtons = screen.getAllByRole('button', {
-      name: '警告を確認して訪問開始',
+    const blockedStartButton = screen.getByRole('button', {
+      name: '持参物を確定してから開始',
+    }) as HTMLButtonElement;
+    expect(blockedStartButton.disabled).toBe(true);
+    fireEvent.click(blockedStartButton);
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit acknowledgement before starting partial carry-item visits', async () => {
+    const push = vi.fn();
+    useRouterMock.mockReturnValue({ push });
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                id: 'schedule_partial',
+                schedule_status: 'ready',
+                carry_items_status: 'partial',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
     });
-    fireEvent.click(confirmationButtons[confirmationButtons.length - 1]);
 
-    expect(push).toHaveBeenCalledWith('/visits/schedule_blocked/record');
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*警告を確認して訪問開始/,
+      }),
+    );
+
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: '持参物の一部が未確定です' })).toBeTruthy();
+    expect(screen.getByText('持参物ステータス: partial')).toBeTruthy();
+    const confirmationButton = screen.getByRole('button', {
+      name: '警告を確認して訪問開始',
+    }) as HTMLButtonElement;
+    expect(confirmationButton.disabled).toBe(true);
+
+    fireEvent.click(confirmationButton);
+    expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。',
+      }),
+    );
+    expect(confirmationButton.disabled).toBe(false);
+
+    fireEvent.click(confirmationButton);
+
+    expect(push).toHaveBeenCalledWith('/visits/schedule_partial/record');
+  });
+
+  it('routes mobile start actions through the carry-item warning gate', async () => {
+    const push = vi.fn();
+    useRouterMock.mockReturnValue({ push });
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                id: 'schedule_blocked',
+                schedule_status: 'ready',
+                carry_items_status: 'blocked',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'schedule_blocked',
+        status: 'ready',
+        carryItemsStatus: 'blocked',
+        actionContextLabel: '山田花子 4/9 18:00 - 19:00',
+        onStartVisit: expect.any(Function),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'mobile-start-schedule_blocked' }));
+
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: '持参薬が未確定のままです' })).toBeTruthy();
   });
 
   it('drops malformed fresh visit brief cache rows instead of rendering them', async () => {

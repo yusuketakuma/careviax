@@ -35,6 +35,7 @@ import {
 } from '@/lib/stores/sync-engine';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -138,6 +139,7 @@ const relationOptions = [
 ];
 
 const formSchema = visitRecordBaseSchema.extend({
+  carry_item_warning_acknowledged: z.boolean().optional(),
   residual_medications: z
     .array(
       z.object({
@@ -320,6 +322,7 @@ export function VisitRecordForm({
   const autoCapturedStartRef = useRef(false);
   const draftSaveFailureNotifiedRef = useRef(false);
   const errorSummaryId = 'visit-record-form-error-summary';
+  const carryItemAcknowledgementErrorId = 'carry-item-warning-acknowledgement-error';
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
@@ -432,6 +435,7 @@ export function VisitRecordForm({
       cancellation_reason: '',
       postpone_reason: '',
       revisit_reason: '',
+      carry_item_warning_acknowledged: false,
       residual_medications: [],
     },
   });
@@ -440,6 +444,15 @@ export function VisitRecordForm({
     control: form.control,
     name: 'outcome_status',
   });
+  const requiresCarryItemWarningAcknowledgement =
+    schedule?.carry_items_status === 'partial' &&
+    !['postponed', 'cancelled'].includes(outcomeStatus);
+  const carryItemWarningAcknowledged = useWatch({
+    control: form.control,
+    name: 'carry_item_warning_acknowledged',
+  });
+  const carryItemAcknowledgementError =
+    form.formState.errors.carry_item_warning_acknowledged?.message;
   const visitDate =
     useWatch({
       control: form.control,
@@ -456,6 +469,11 @@ export function VisitRecordForm({
   const allowNavigation = useUnsavedChangesGuard({
     enabled: form.formState.isDirty,
   });
+  useEffect(() => {
+    if (!requiresCarryItemWarningAcknowledgement && carryItemAcknowledgementError) {
+      form.clearErrors('carry_item_warning_acknowledged');
+    }
+  }, [carryItemAcknowledgementError, form, requiresCarryItemWarningAcknowledgement]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -930,6 +948,19 @@ export function VisitRecordForm({
   });
 
   async function onSubmit(values: FormValues) {
+    if (
+      requiresCarryItemWarningAcknowledgement &&
+      values.carry_item_warning_acknowledged !== true
+    ) {
+      form.setError('carry_item_warning_acknowledged', {
+        type: 'manual',
+        message: '持参物一部未確定の確認が必要です',
+      });
+      scrollToErrorSummary();
+      toast.error('持参物一部未確定の確認を完了してから保存してください');
+      return;
+    }
+
     const completionStructuredSoap = buildStructuredSoap(values);
     const completionMissingItems = getMissingHomeVisit2026CompletionItems({
       outcomeStatus: values.outcome_status,
@@ -971,6 +1002,9 @@ export function VisitRecordForm({
       ...values,
       patient_id: schedule?.patient_id ?? values.patient_id,
       structured_soap: buildStructuredSoap(values),
+      carry_item_warning_acknowledged: requiresCarryItemWarningAcknowledgement
+        ? values.carry_item_warning_acknowledged
+        : undefined,
       visit_geo_log: locationTrackingEnabled ? (nextVisitGeoLog ?? undefined) : undefined,
     };
 
@@ -1004,6 +1038,7 @@ export function VisitRecordForm({
   const errorSummaryItems = collectFormErrorSummaryItems(form.formState.errors, {
     visit_date: '訪問日',
     outcome_status: '訪問結果',
+    carry_item_warning_acknowledged: '持参物一部未確定の確認',
     structured_soap: '訪問薬剤管理の必須確認',
     receipt_at: '受領日時',
     'residual_medications.*.drug_name': '残薬の薬剤名',
@@ -1262,8 +1297,46 @@ export function VisitRecordForm({
                     {carryItemsWarning.title}
                   </h3>
                 </CardHeader>
-                <CardContent className="text-sm text-rose-900">
-                  {carryItemsWarning.description}
+                <CardContent className="space-y-3 text-sm text-rose-900">
+                  <p>{carryItemsWarning.description}</p>
+                  {requiresCarryItemWarningAcknowledgement && (
+                    <div className="space-y-1.5">
+                      <label className="flex min-h-11 items-start gap-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-3">
+                        <Checkbox
+                          checked={Boolean(carryItemWarningAcknowledged)}
+                          onCheckedChange={(checked) => {
+                            const acknowledged = Boolean(checked);
+                            form.setValue('carry_item_warning_acknowledged', acknowledged, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                            if (acknowledged) {
+                              form.clearErrors('carry_item_warning_acknowledged');
+                            }
+                          }}
+                          aria-describedby={
+                            carryItemAcknowledgementError
+                              ? carryItemAcknowledgementErrorId
+                              : undefined
+                          }
+                          aria-invalid={Boolean(carryItemAcknowledgementError)}
+                          aria-labelledby="carry-item-warning-acknowledgement-label"
+                        />
+                        <span id="carry-item-warning-acknowledgement-label">
+                          未確定の持参物を確認し、代替手配または現地対応方針を確認しました。
+                        </span>
+                      </label>
+                      {carryItemAcknowledgementError && (
+                        <p
+                          id={carryItemAcknowledgementErrorId}
+                          className="text-xs text-destructive"
+                          role="alert"
+                        >
+                          {carryItemAcknowledgementError}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

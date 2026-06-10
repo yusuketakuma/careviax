@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildProposalBillingPreviewRequests,
+  canOverrideDepartureCarryWarning,
   buildScheduleDayGanttViewModel,
   buildScheduleDayOfflineStatus,
   buildScheduleDayRouteMapPoints,
@@ -95,6 +96,18 @@ describe('schedule-day-view.helpers', () => {
         'carry_items_status'
       >),
     ).toBeNull();
+    expect(
+      canOverrideDepartureCarryWarning({ carry_items_status: 'blocked' } as Pick<
+        VisitSchedule,
+        'carry_items_status'
+      >),
+    ).toBe(false);
+    expect(
+      canOverrideDepartureCarryWarning({ carry_items_status: 'partial' } as Pick<
+        VisitSchedule,
+        'carry_items_status'
+      >),
+    ).toBe(true);
   });
 
   it('builds navigation URLs from addresses', () => {

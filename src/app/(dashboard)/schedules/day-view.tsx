@@ -175,6 +175,7 @@ import {
   buildDirectionsUrl,
   buildMapEmbedUrl,
   type FacilityTrackerGroup,
+  canOverrideDepartureCarryWarning,
   getFacilityTrackerGrouping,
   getDepartureCarryWarning,
   proposalLockText,
@@ -242,6 +243,13 @@ function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null 
   return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
 }
 
+function visitStartActionText(schedule: Pick<VisitSchedule, 'carry_items_status'>) {
+  if (!getDepartureCarryWarning(schedule)) return '訪問開始';
+  return canOverrideDepartureCarryWarning(schedule)
+    ? '警告を確認して訪問開始'
+    : '持参物未確定を確認';
+}
+
 function conferenceContextLabel(noteType: 'pre_discharge' | 'service_manager') {
   return noteType === 'pre_discharge' ? '退院前カンファ' : '担当者会議';
 }
@@ -291,6 +299,7 @@ export function ScheduleDayView({
   );
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
+  const [departureWarningAcknowledged, setDepartureWarningAcknowledged] = useState(false);
   const [preparationDetails, setPreparationDetails] =
     useState<ScheduleDayPreparationDetailsState | null>(null);
   const [preparationLoading, setPreparationLoading] = useState(false);
@@ -779,6 +788,7 @@ export function ScheduleDayView({
 
   function handleVisitStart(schedule: VisitSchedule) {
     if (getDepartureCarryWarning(schedule)) {
+      setDepartureWarningAcknowledged(false);
       setDepartureWarningTarget(schedule);
       return;
     }
@@ -925,10 +935,14 @@ export function ScheduleDayView({
     })} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} の${actionLabel}`;
   }
 
-  function scheduleActionLabel(schedule: VisitSchedule, actionLabel: string) {
+  function scheduleActionContextLabel(schedule: VisitSchedule) {
     return `${schedule.case_.patient.name} ${format(parseISO(schedule.scheduled_date), 'M/d', {
       locale: ja,
-    })} ${timeLabel(schedule.time_window_start, schedule.time_window_end)} の${actionLabel}`;
+    })} ${timeLabel(schedule.time_window_start, schedule.time_window_end)}`;
+  }
+
+  function scheduleActionLabel(schedule: VisitSchedule, actionLabel: string) {
+    return `${scheduleActionContextLabel(schedule)} の${actionLabel}`;
   }
 
   useEffect(() => {
@@ -1548,6 +1562,7 @@ export function ScheduleDayView({
                       ? format(parseISO(schedule.time_window_end), 'HH:mm')
                       : undefined
                   }
+                  actionContextLabel={scheduleActionContextLabel(schedule)}
                   status={schedule.schedule_status}
                   carryItemsStatus={schedule.carry_items_status}
                   mustCheckToday={brief?.mustCheckToday ?? []}
@@ -2853,16 +2868,12 @@ export function ScheduleDayView({
                                 }
                                 aria-label={scheduleActionLabel(
                                   schedule,
-                                  getDepartureCarryWarning(schedule)
-                                    ? '警告を確認して訪問開始'
-                                    : '訪問開始',
+                                  visitStartActionText(schedule),
                                 )}
                                 onClick={() => handleVisitStart(schedule)}
                               >
                                 <PlayCircle className="size-4" aria-hidden="true" />
-                                {getDepartureCarryWarning(schedule)
-                                  ? '警告を確認して訪問開始'
-                                  : '訪問開始'}
+                                {visitStartActionText(schedule)}
                               </Button>
                             )}
                             {schedule.schedule_status === 'in_progress' && (
@@ -4356,6 +4367,7 @@ export function ScheduleDayView({
         open={departureWarningTarget !== null}
         onOpenChange={(open) => {
           if (open) return;
+          setDepartureWarningAcknowledged(false);
           setDepartureWarningTarget(null);
         }}
       >
@@ -4367,38 +4379,79 @@ export function ScheduleDayView({
             </DialogDescription>
           </DialogHeader>
           {departureWarningTarget && (
-            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-              <p className="font-medium text-foreground">
-                {departureWarningTarget.case_.patient.name}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                {format(parseISO(departureWarningTarget.scheduled_date), 'yyyy/MM/dd', {
-                  locale: ja,
-                })}{' '}
-                {timeLabel(
-                  departureWarningTarget.time_window_start,
-                  departureWarningTarget.time_window_end,
-                )}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                持参物ステータス: {departureWarningTarget.carry_items_status}
-              </p>
-            </div>
+            <>
+              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                <p className="font-medium text-foreground">
+                  {departureWarningTarget.case_.patient.name}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {format(parseISO(departureWarningTarget.scheduled_date), 'yyyy/MM/dd', {
+                    locale: ja,
+                  })}{' '}
+                  {timeLabel(
+                    departureWarningTarget.time_window_start,
+                    departureWarningTarget.time_window_end,
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  持参物ステータス: {departureWarningTarget.carry_items_status}
+                </p>
+              </div>
+              {!canOverrideDepartureCarryWarning(departureWarningTarget) && (
+                <p
+                  id="departure-warning-resolution"
+                  role="alert"
+                  className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  持参物を確定するか代替手配を記録してから、訪問を開始してください。
+                </p>
+              )}
+              {canOverrideDepartureCarryWarning(departureWarningTarget) && (
+                <label className="flex min-h-11 items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+                  <Checkbox
+                    checked={departureWarningAcknowledged}
+                    onCheckedChange={(checked) => setDepartureWarningAcknowledged(Boolean(checked))}
+                    aria-labelledby="departure-warning-acknowledgement-label"
+                  />
+                  <span id="departure-warning-acknowledgement-label">
+                    未確定の持参物を確認し、代替手配または現地対応方針を確認しました。
+                  </span>
+                </label>
+              )}
+            </>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDepartureWarningTarget(null)}>
-              戻る
-            </Button>
             <Button
-              variant="destructive"
+              variant="outline"
               onClick={() => {
-                if (!departureWarningTarget) return;
-                router.push(createVisitRecordHref(departureWarningTarget));
+                setDepartureWarningAcknowledged(false);
                 setDepartureWarningTarget(null);
               }}
             >
-              警告を確認して訪問開始
+              戻る
             </Button>
+            {canOverrideDepartureCarryWarning(departureWarningTarget) ? (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!departureWarningTarget) return;
+                  router.push(createVisitRecordHref(departureWarningTarget));
+                  setDepartureWarningAcknowledged(false);
+                  setDepartureWarningTarget(null);
+                }}
+                disabled={!departureWarningAcknowledged}
+              >
+                警告を確認して訪問開始
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                disabled
+                aria-describedby="departure-warning-resolution"
+              >
+                持参物を確定してから開始
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

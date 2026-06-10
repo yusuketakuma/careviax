@@ -343,6 +343,12 @@ export function getDepartureCarryWarning(
   return null;
 }
 
+export function canOverrideDepartureCarryWarning(
+  schedule: Pick<VisitSchedule, 'carry_items_status'> | null,
+) {
+  return schedule?.carry_items_status === 'partial';
+}
+
 export function buildDirectionsUrl(address: string) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
 }

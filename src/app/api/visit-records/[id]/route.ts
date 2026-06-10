@@ -205,6 +205,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('schedule_id' in payload || 'patient_id' in payload) {
     return validationError('訪問記録のスケジュールIDと患者IDは変更できません');
   }
+  if ('carry_item_warning_acknowledged' in payload) {
+    return validationError('持参物警告確認は訪問記録作成時のみ指定できます');
+  }
 
   const parsed = updateVisitRecordSchema.safeParse(payload);
   if (!parsed.success) {

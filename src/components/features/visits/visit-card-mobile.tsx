@@ -28,6 +28,7 @@ export interface VisitCardMobileProps {
   routeOrder?: number | null;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
+  actionContextLabel?: string;
   status: VisitStatus;
   patientHref?: string;
   carryItemsStatus?: string | null;
@@ -69,6 +70,7 @@ export function VisitCardMobile({
   routeOrder,
   scheduledTimeStart,
   scheduledTimeEnd,
+  actionContextLabel,
   status,
   patientHref,
   carryItemsStatus,
@@ -79,21 +81,40 @@ export function VisitCardMobile({
 }: VisitCardMobileProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const config = STATUS_CONFIG[status] ?? { label: status, variant: 'outline' as const };
-  const isActionable = status === 'ready' || status === 'in_preparation' || status === 'departed';
+  const isActionable = status === 'ready' || status === 'departed';
   const isCompleted = status === 'completed' || status === 'cancelled';
   const mapsUrl = buildMapsUrl(address, lat, lng);
+  const actionContext = actionContextLabel ?? patientName;
 
   const timeLabel =
     scheduledTimeStart && scheduledTimeEnd
       ? `${scheduledTimeStart} 〜 ${scheduledTimeEnd}`
-      : scheduledTimeStart ?? null;
+      : (scheduledTimeStart ?? null);
 
   const showStartAction = isActionable && onStartVisit;
   const showCompleteAction = status === 'in_progress' && onCompleteVisit;
+  const carryItemsLabel =
+    carryItemsStatus === 'blocked'
+      ? '未確定'
+      : carryItemsStatus === 'partial'
+        ? '一部未確定'
+        : carryItemsStatus;
+  const startActionText =
+    carryItemsStatus === 'blocked'
+      ? '持参物未確定を確認'
+      : carryItemsStatus === 'partial'
+        ? '警告を確認して訪問開始'
+        : '訪問開始';
+  const startSwipeHint =
+    carryItemsStatus === 'blocked'
+      ? '右スワイプで持参物未確定の警告を確認'
+      : carryItemsStatus === 'partial'
+        ? '右スワイプで警告を確認して訪問開始'
+        : '右スワイプで訪問開始';
   const swipeHint = showStartAction
     ? showCompleteAction
       ? '右スワイプで訪問開始、左スワイプで完了'
-      : '右スワイプで訪問開始'
+      : startSwipeHint
     : showCompleteAction
       ? '左スワイプで訪問完了'
       : null;
@@ -132,9 +153,9 @@ export function VisitCardMobile({
       className={cn(
         'rounded-lg border border-border bg-card p-4 shadow-sm',
         isCompleted && 'opacity-60',
-        className
+        className,
       )}
-      aria-label={`訪問カード: ${patientName}`}
+      aria-label={`訪問カード: ${actionContext}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -176,7 +197,7 @@ export function VisitCardMobile({
                     : 'outline'
               }
             >
-              持参物 {carryItemsStatus}
+              持参物 {carryItemsLabel}
             </Badge>
           )}
           {mustCheckToday.slice(0, 2).map((item) => (
@@ -201,11 +222,8 @@ export function VisitCardMobile({
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn(
-            buttonVariants({ variant: 'outline', size: 'sm' }),
-            'min-h-[44px] flex-1'
-          )}
-          aria-label={`${patientName}の住所をナビで開く`}
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-[44px] flex-1')}
+          aria-label={`${actionContext}の住所をナビで開く`}
         >
           <Navigation className="mr-1.5 h-4 w-4" aria-hidden="true" />
           ナビ起動
@@ -216,10 +234,10 @@ export function VisitCardMobile({
             size="sm"
             className="min-h-[44px] flex-1"
             onClick={() => onStartVisit(id)}
-            aria-label={`${patientName}の訪問を開始`}
+            aria-label={`${actionContext}の${startActionText}`}
           >
             <Play className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            訪問開始
+            {startActionText}
           </Button>
         )}
 

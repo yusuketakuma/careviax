@@ -712,6 +712,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     conflict_resolution,
     existing_record_id,
     expected_version,
+    carry_item_warning_acknowledged,
     ...rest
   } = input;
   const visitRecordedAt = new Date(visit_date);
@@ -726,7 +727,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     typeof soapTextOverrides.soap_assessment === 'string'
       ? soapTextOverrides.soap_assessment
       : (rest.soap_assessment ?? null);
-  const soapPlan =
+  const baseSoapPlan =
     typeof soapTextOverrides.soap_plan === 'string'
       ? soapTextOverrides.soap_plan
       : (rest.soap_plan ?? null);
@@ -738,6 +739,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         id: true,
         case_id: true,
         schedule_status: true,
+        carry_items_status: true,
         recurrence_rule: true,
         cycle_id: true,
         visit_type: true,
@@ -789,6 +791,43 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (careCase.patient_id !== patient_id) {
       return { error: 'patient_mismatch' as const };
     }
+    if (
+      schedule.carry_items_status === 'blocked' &&
+      !['postponed', 'cancelled'].includes(outcome_status)
+    ) {
+      return { error: 'carry_items_blocked' as const };
+    }
+    if (
+      schedule.carry_items_status === 'partial' &&
+      !['postponed', 'cancelled'].includes(outcome_status) &&
+      carry_item_warning_acknowledged !== true
+    ) {
+      return { error: 'carry_items_partial_acknowledgement_required' as const };
+    }
+    if (
+      schedule.carry_items_status === 'blocked' &&
+      outcome_status === 'postponed' &&
+      !rest.postpone_reason?.trim()
+    ) {
+      return { error: 'blocked_carry_items_postpone_reason_required' as const };
+    }
+    if (
+      schedule.carry_items_status === 'blocked' &&
+      outcome_status === 'cancelled' &&
+      !rest.cancellation_reason?.trim()
+    ) {
+      return { error: 'blocked_carry_items_cancellation_reason_required' as const };
+    }
+    const shouldRecordCarryItemWarningAcknowledgement =
+      schedule.carry_items_status === 'partial' &&
+      carry_item_warning_acknowledged === true &&
+      outcome_status !== 'postponed' &&
+      outcome_status !== 'cancelled';
+    const soapPlan = shouldRecordCarryItemWarningAcknowledgement
+      ? [baseSoapPlan, '持参物一部未確定の警告確認: 代替手配または現地対応方針を確認済み。']
+          .filter((line): line is string => Boolean(line?.trim()))
+          .join('\n')
+      : baseSoapPlan;
 
     let billingBlockers: Parameters<
       typeof getMissingHomeVisit2026CompletionItems
@@ -874,6 +913,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               ...rest,
               outcome_status,
               ...soapTextOverrides,
+              soap_plan: soapPlan,
               structured_soap: normalizeOptionalJsonInput(structured_soap),
               visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
               version: { increment: 1 },
@@ -891,6 +931,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               ...rest,
               outcome_status,
               ...soapTextOverrides,
+              soap_plan: soapPlan,
               structured_soap: normalizeOptionalJsonInput(structured_soap),
               visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
             } as Prisma.VisitRecordUncheckedCreateInput,
@@ -1291,6 +1332,24 @@ export const POST = withAuth(
       }
       if (result.error === 'patient_mismatch') {
         return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
+      }
+      if (result.error === 'carry_items_blocked') {
+        return validationError(
+          '持参物が未確定のため訪問記録を作成できません。持参物を確定するか代替手配を記録してください',
+        );
+      }
+      if (result.error === 'carry_items_partial_acknowledgement_required') {
+        return validationError(
+          '持参物が一部未確定のため、代替手配または現地対応方針の確認が必要です',
+        );
+      }
+      if (result.error === 'blocked_carry_items_postpone_reason_required') {
+        return validationError('持参物未確定で延期する場合は延期理由を入力してください');
+      }
+      if (result.error === 'blocked_carry_items_cancellation_reason_required') {
+        return validationError(
+          '持参物未確定でキャンセルする場合はキャンセル理由を入力してください',
+        );
       }
       if (result.error === 'home_visit_2026_readiness_incomplete') {
         return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {

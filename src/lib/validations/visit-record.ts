@@ -59,7 +59,7 @@ export const visitRecordBaseSchema = z.object({
         prescribed_daily_dose: z.number().positive().optional(),
         remaining_quantity: z.number().min(0, '残数は0以上で入力してください'),
         is_prohibited_reduction: z.boolean().default(false),
-      })
+      }),
     )
     .optional(),
   conflict_resolution: z.enum(['overwrite']).optional(),
@@ -68,11 +68,16 @@ export const visitRecordBaseSchema = z.object({
   visit_geo_log: visitGeoLogSchema.optional(),
 });
 
-export const createVisitRecordSchema = visitRecordBaseSchema.superRefine((data, ctx) => {
+export const createVisitRecordInputSchema = visitRecordBaseSchema.extend({
+  carry_item_warning_acknowledged: z.boolean().optional(),
+});
+
+export const createVisitRecordSchema = createVisitRecordInputSchema.superRefine((data, ctx) => {
   if (data.outcome_status === 'completed') {
     const hasS = Boolean(data.soap_subjective?.trim());
     const hasP = Boolean(data.soap_plan?.trim());
-    const hasStructuredSoap = data.structured_soap != null && Object.keys(data.structured_soap).length > 0;
+    const hasStructuredSoap =
+      data.structured_soap != null && Object.keys(data.structured_soap).length > 0;
     if (!hasS && !hasP && !hasStructuredSoap) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -83,15 +88,10 @@ export const createVisitRecordSchema = visitRecordBaseSchema.superRefine((data, 
   }
 });
 
-export const updateVisitRecordSchema = visitRecordBaseSchema
-  .partial()
-  .extend({
-    version: z.number().int().positive(),
-    attachments: z
-      .array(visitRecordAttachmentRefSchema)
-      .max(10, '添付は10件までです')
-      .optional(),
-  });
+export const updateVisitRecordSchema = visitRecordBaseSchema.partial().extend({
+  version: z.number().int().positive(),
+  attachments: z.array(visitRecordAttachmentRefSchema).max(10, '添付は10件までです').optional(),
+});
 
 export type CreateVisitRecordInput = z.infer<typeof createVisitRecordSchema>;
 export type UpdateVisitRecordInput = z.infer<typeof updateVisitRecordSchema>;

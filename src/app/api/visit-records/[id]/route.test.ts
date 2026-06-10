@@ -410,6 +410,27 @@ describe('/api/visit-records/[id]', () => {
     expect(visitRecordUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects create-only carry-item acknowledgement on PATCH before updating', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        carry_item_warning_acknowledged: true,
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '持参物警告確認は訪問記録作成時のみ指定できます',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object patch payloads before loading the visit record', async () => {
     const response = await PATCH(createRequest(['visit_1']), {
       params: Promise.resolve({ id: 'visit_1' }),
