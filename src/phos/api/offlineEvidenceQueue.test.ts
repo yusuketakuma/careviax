@@ -2,7 +2,13 @@
 
 import 'fake-indexeddb/auto';
 
+import { webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearOfflineEncryptionKey,
+  initOfflineEncryptionKey,
+  isEncryptedOfflinePayload,
+} from '@/lib/offline/crypto';
 import { VisitStatus, VisitStep, type VisitModeView } from '@/phos/contracts/phos_contracts';
 import {
   enqueuePhosOfflineEvidence,
@@ -65,16 +71,25 @@ function retryClient(
 
 describe('PH-OS offline evidence queue', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
+    Object.defineProperty(window, 'crypto', {
+      configurable: true,
+      value: webcrypto,
+    });
+    await indexedDB.deleteDatabase('ph-os-offline-keys');
     await indexedDB.deleteDatabase('PH-OSEvidenceOfflineQueue');
+    await initOfflineEncryptionKey('user_1', 'session-secret');
     await phosOfflineEvidenceDb.open();
   });
 
   afterEach(async () => {
+    await clearOfflineEncryptionKey();
     phosOfflineEvidenceDb.close();
     await indexedDB.deleteDatabase('PH-OSEvidenceOfflineQueue');
+    await indexedDB.deleteDatabase('ph-os-offline-keys');
   });
 
-  it('stores photo evidence as Blob metadata and exposes pending badge view data', async () => {
+  it('stores photo evidence as encrypted payload and exposes pending badge view data', async () => {
     await enqueuePhosOfflineEvidence({
       card_id: 'card_1',
       packet_id: 'packet_1',
@@ -98,7 +113,11 @@ describe('PH-OS offline evidence queue', () => {
       size_bytes: 3,
       retry_count: 0,
     });
-    expect(records[0].file_bytes.byteLength).toBe(3);
+    expect(records[0]).not.toHaveProperty('file_bytes');
+    expect(records[0]).not.toHaveProperty('file_name');
+    expect(records[0]).not.toHaveProperty('label');
+    expect(records[0]).not.toHaveProperty('sha256');
+    expect(isEncryptedOfflinePayload(records[0].payload)).toBe(true);
     expect(await listPhosPendingEvidence('packet_1')).toEqual([
       expect.objectContaining({
         evidence_key: 'mandatory_photo',
@@ -107,6 +126,26 @@ describe('PH-OS offline evidence queue', () => {
         retry_count: 0,
       }),
     ]);
+  });
+
+  it('fails closed when offline evidence encryption is unavailable', async () => {
+    await clearOfflineEncryptionKey();
+
+    await expect(
+      enqueuePhosOfflineEvidence({
+        card_id: 'card_1',
+        packet_id: 'packet_1',
+        evidence_key: 'mandatory_photo',
+        label: '必須写真',
+        evidence_type: 'PHOTO',
+        file_name: 'mandatory.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        offline_op_class: 'BLOCKING',
+        file: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }),
+      }),
+    ).rejects.toMatchObject({ name: 'OfflineEncryptionUnavailableError' });
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
   });
 
   it('rejects base64 or text payloads instead of storing them in IndexedDB', async () => {
@@ -127,6 +166,27 @@ describe('PH-OS offline evidence queue', () => {
     expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
   });
 
+  it('purges legacy plaintext evidence records instead of exposing them', async () => {
+    await phosOfflineEvidenceDb.pendingEvidence.add({
+      card_id: 'card_1',
+      packet_id: 'packet_1',
+      evidence_key: 'legacy_photo',
+      label: '平文写真',
+      evidence_type: 'PHOTO',
+      file_name: 'legacy.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'a'.repeat(64),
+      offline_op_class: 'BLOCKING',
+      file_bytes: new Uint8Array([1, 2, 3]).buffer,
+      size_bytes: 3,
+      created_at: '2026-06-10T00:00:00.000Z',
+      retry_count: 0,
+    } as never);
+
+    await expect(listPhosPendingEvidence('packet_1')).resolves.toEqual([]);
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
   it('retries pending evidence through presign, S3 PUT, and server-side VisitMode verification', async () => {
     await enqueuePhosOfflineEvidence({
       card_id: 'card_1',
@@ -141,7 +201,7 @@ describe('PH-OS offline evidence queue', () => {
       file: new Blob([new Uint8Array([4, 5])], { type: 'image/jpeg' }),
     });
     const client = retryClient();
-    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
 
     await expect(
       retryPhosOfflineEvidenceUploads({
@@ -171,6 +231,8 @@ describe('PH-OS offline evidence queue', () => {
         body: expect.any(Blob),
       }),
     );
+    const uploadBody = fetchImpl.mock.calls[0]?.[1]?.body as Blob;
+    expect([...new Uint8Array(await uploadBody.arrayBuffer())]).toEqual([4, 5]);
     expect(client.getVisitMode).toHaveBeenCalledWith('packet_1');
     expect(client.updateVisitStep).toHaveBeenCalledWith('packet_1', VisitStep.EVIDENCE_UPLOAD, {
       idempotency_key: 'evidence_verify_packet_1_optional_photo_evidence_1',
@@ -198,7 +260,7 @@ describe('PH-OS offline evidence queue', () => {
         throw new Error('server verification failed');
       }),
     });
-    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
 
     await expect(
       retryPhosOfflineEvidenceUploads({
@@ -219,7 +281,7 @@ describe('PH-OS offline evidence queue', () => {
     expect(records[0]).toMatchObject({
       evidence_key: 'mandatory_photo',
       retry_count: 1,
-      last_error: 'server verification failed',
+      last_error: 'EVIDENCE_UPLOAD_RETRY_FAILED',
     });
   });
 });

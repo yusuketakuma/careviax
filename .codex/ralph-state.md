@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-103000
+
+- current task: encrypt PH-OS offline evidence queue payloads and purge legacy plaintext evidence records so queued photos are not stored as readable IndexedDB metadata/bytes.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, `src/phos/api/offlineActionQueue.ts`, `src/lib/offline/crypto.ts`, `src/lib/offline/crypto.test.ts`, and read-only security/performance subagent reports.
+- files changed: `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: offline evidence queued photo bytes and metadata were stored directly in IndexedDB as `file_bytes`, `file_name`, `label`, `sha256`, and related fields, so an offline queue snapshot exposed readable medical evidence data until replay succeeded.
+- security risks found: new offline evidence rows are encrypted with the existing PH-OS offline encryption key path and fail closed when that key is unavailable. The queue no longer persists plaintext evidence metadata or bytes, Dexie schema version 2 clears old plaintext rows on upgrade, list/retry paths purge records without encrypted payloads, and retry error persistence is sanitized to avoid storing arbitrary server/client error text.
+- performance issues found: no network hot path became unbounded. Evidence bytes are base64 encoded/decoded in bounded chunks before encryption/decryption to avoid pathological argument sizes while preserving Blob replay behavior.
+- validation commands: `pnpm exec prettier --write src/phos/api/offlineEvidenceQueue.ts src/phos/api/offlineEvidenceQueue.test.ts`; focused `pnpm exec vitest run src/phos/api/offlineEvidenceQueue.test.ts src/phos/api/offlineActionQueue.test.ts src/lib/offline/crypto.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`; `git diff --check`; `git status --short`.
+- validation results: focused offline evidence/action/crypto suite passed with 3 files / 13 tests. Standalone TypeScript passed. PH-OS suite passed with 104 files passed / 1 skipped and 776 tests passed / 1 skipped. Full ESLint passed. Full Vitest passed with 754 files passed / 1 skipped and 5016 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`. Whitespace diff check passed.
+- remaining work: external live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI for service-side CloudFormation validation. Local follow-ups remain for PH-OS API destination origin policy/credential omission, presigned evidence upload URL validation and per-network-step timeout, backend Lambda soft deadlines, and the broader legacy Next API fail-closed product decision.
+- next action: checkpoint this validated offline evidence encryption slice, then continue with API destination/credentials and evidence upload timeout hardening if still locally actionable.
+
 ### 20260610-102100
 
 - current task: add bounded PH-OS API client and live-readiness smoke request behavior so backend/API Gateway stalls do not leave frontend-prep workflows or operator proof hanging indefinitely.

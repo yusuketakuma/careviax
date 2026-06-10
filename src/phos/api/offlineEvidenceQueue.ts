@@ -1,6 +1,7 @@
 'use client';
 
 import Dexie, { type Table } from 'dexie';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import {
   VisitStep,
   type EvidencePendingView,
@@ -10,6 +11,7 @@ import {
 import type { PhosApiClient } from './types';
 
 const MAX_RETRIES = 3;
+const BASE64_CHUNK_SIZE = 0x8000;
 
 export type PhosOfflineEvidenceInput = {
   card_id: string;
@@ -24,13 +26,27 @@ export type PhosOfflineEvidenceInput = {
   file: Blob;
 };
 
-export type PhosOfflineEvidenceRecord = Omit<PhosOfflineEvidenceInput, 'file'> & {
+export type PhosOfflineEvidenceRecord = {
   id?: number;
-  file_bytes: ArrayBuffer;
+  card_id: string;
+  packet_id: string;
+  evidence_key: string;
+  offline_op_class: OfflineOpClass;
+  payload?: string;
   size_bytes: number;
   created_at: string;
   retry_count: number;
   last_error?: string;
+};
+
+type EncryptedEvidencePayload = {
+  label: string;
+  evidence_type: string;
+  file_name: string;
+  mime_type: string;
+  sha256: string;
+  file_bytes_base64: string;
+  size_bytes: number;
 };
 
 class PhosOfflineEvidenceDb extends Dexie {
@@ -43,6 +59,12 @@ class PhosOfflineEvidenceDb extends Dexie {
       pendingEvidence:
         '++id, card_id, packet_id, evidence_key, offline_op_class, created_at, retry_count',
     });
+    this.version(2)
+      .stores({
+        pendingEvidence:
+          '++id, card_id, packet_id, evidence_key, offline_op_class, created_at, retry_count',
+      })
+      .upgrade((tx) => tx.table('pendingEvidence').clear());
   }
 }
 
@@ -60,22 +82,95 @@ function assertBlobEvidence(input: PhosOfflineEvidenceInput): void {
   }
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE)));
+  }
+  return btoa(chunks.join(''));
+}
+
+function base64ToArrayBuffer(value: string): ArrayBuffer {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
+function isEncryptedEvidencePayload(value: unknown): value is EncryptedEvidencePayload {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as EncryptedEvidencePayload).label === 'string' &&
+    typeof (value as EncryptedEvidencePayload).evidence_type === 'string' &&
+    typeof (value as EncryptedEvidencePayload).file_name === 'string' &&
+    typeof (value as EncryptedEvidencePayload).mime_type === 'string' &&
+    typeof (value as EncryptedEvidencePayload).sha256 === 'string' &&
+    typeof (value as EncryptedEvidencePayload).file_bytes_base64 === 'string' &&
+    typeof (value as EncryptedEvidencePayload).size_bytes === 'number'
+  );
+}
+
+async function encryptEvidencePayload(input: {
+  evidence: PhosOfflineEvidenceInput;
+  file_bytes: ArrayBuffer;
+}): Promise<string> {
+  return encryptOfflinePayloadRequired(
+    JSON.stringify({
+      label: input.evidence.label,
+      evidence_type: input.evidence.evidence_type,
+      file_name: input.evidence.file_name,
+      mime_type: input.evidence.mime_type,
+      sha256: input.evidence.sha256,
+      file_bytes_base64: arrayBufferToBase64(input.file_bytes),
+      size_bytes: input.evidence.file.size,
+    } satisfies EncryptedEvidencePayload),
+    'PH-OS offline evidence payload',
+  );
+}
+
+async function deleteLegacyPlaintextRecord(record: PhosOfflineEvidenceRecord): Promise<boolean> {
+  if (typeof record.payload === 'string') return false;
+  if (record.id !== undefined) await phosOfflineEvidenceDb.pendingEvidence.delete(record.id);
+  return true;
+}
+
+async function readQueuedEvidencePayload(
+  record: PhosOfflineEvidenceRecord,
+): Promise<EncryptedEvidencePayload | null> {
+  if (await deleteLegacyPlaintextRecord(record)) return null;
+  const decrypted = await decryptOfflinePayload(record.payload);
+  if (!decrypted) return null;
+  try {
+    const parsed = JSON.parse(decrypted) as unknown;
+    return isEncryptedEvidencePayload(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeRetryError(error: unknown): string {
+  if (error instanceof Error && /^Evidence upload failed with HTTP \d{3}$/.test(error.message)) {
+    return error.message;
+  }
+  return 'EVIDENCE_UPLOAD_RETRY_FAILED';
+}
+
 export async function enqueuePhosOfflineEvidence(
   input: PhosOfflineEvidenceInput,
 ): Promise<{ queue_id: number }> {
   assertBlobEvidence(input);
   const file_bytes = await input.file.arrayBuffer();
+  const payload = await encryptEvidencePayload({ evidence: input, file_bytes });
   const id = await phosOfflineEvidenceDb.pendingEvidence.add({
     card_id: input.card_id,
     packet_id: input.packet_id,
     evidence_key: input.evidence_key,
-    label: input.label,
-    evidence_type: input.evidence_type,
-    file_name: input.file_name,
-    mime_type: input.mime_type,
-    sha256: input.sha256,
     offline_op_class: input.offline_op_class,
-    file_bytes,
+    payload,
     size_bytes: input.file.size,
     created_at: new Date().toISOString(),
     retry_count: 0,
@@ -88,13 +183,19 @@ export async function listPhosPendingEvidence(packet_id: string): Promise<Eviden
     .where('packet_id')
     .equals(packet_id)
     .toArray();
-  return records.map((record) => ({
-    evidence_key: record.evidence_key,
-    label: record.label,
-    offline_op_class: record.offline_op_class,
-    created_at: record.created_at,
-    retry_count: record.retry_count,
-  }));
+  const views: EvidencePendingView[] = [];
+  for (const record of records) {
+    const payload = await readQueuedEvidencePayload(record);
+    if (!payload) continue;
+    views.push({
+      evidence_key: record.evidence_key,
+      label: payload.label,
+      offline_op_class: record.offline_op_class,
+      created_at: record.created_at,
+      retry_count: record.retry_count,
+    });
+  }
+  return views;
 }
 
 export async function retryPhosOfflineEvidenceUploads(input: {
@@ -112,19 +213,23 @@ export async function retryPhosOfflineEvidenceUploads(input: {
 
   for (const record of pending) {
     try {
+      const payload = await readQueuedEvidencePayload(record);
+      if (!payload) continue;
       const presigned = await input.client.presignEvidenceUpload({
         idempotency_key: `evidence_${record.packet_id}_${record.evidence_key}`,
         card_id: record.card_id,
-        evidence_type: record.evidence_type,
-        file_name: record.file_name,
-        mime_type: record.mime_type,
-        sha256: record.sha256,
-        size_bytes: record.size_bytes,
+        evidence_type: payload.evidence_type,
+        file_name: payload.file_name,
+        mime_type: payload.mime_type,
+        sha256: payload.sha256,
+        size_bytes: payload.size_bytes,
       });
       const response = await fetchImpl(presigned.upload_url, {
         method: presigned.method,
         headers: presigned.headers,
-        body: new Blob([record.file_bytes], { type: record.mime_type }),
+        body: new Blob([base64ToArrayBuffer(payload.file_bytes_base64)], {
+          type: payload.mime_type,
+        }),
       });
       if (!response.ok) throw new Error(`Evidence upload failed with HTTP ${response.status}`);
       const visit = await input.client.getVisitMode(record.packet_id);
@@ -145,7 +250,7 @@ export async function retryPhosOfflineEvidenceUploads(input: {
       if (record.id !== undefined) {
         await phosOfflineEvidenceDb.pendingEvidence.update(record.id, {
           retry_count: record.retry_count + 1,
-          last_error: error instanceof Error ? error.message : 'Unknown evidence upload error',
+          last_error: safeRetryError(error),
         });
       }
     }
