@@ -194,6 +194,7 @@ describe('Dynamo card action transaction client', () => {
           PK: { S: 'TENANT#tenant_abc123' },
           SK: { S: 'CARD_ACTION_IDEMPOTENCY#card_1#idem_1' },
           entity_type: { S: 'CARD_ACTION_IDEMPOTENCY' },
+          actor_user_id: { S: 'user_1' },
           request_fingerprint: { S: 'fp_1' },
           response_json: { S: JSON.stringify(response()) },
         },

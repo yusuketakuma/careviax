@@ -936,7 +936,6 @@ export type EvidenceUploadRequest = {
   mime_type: string;
   sha256: string;
   size_bytes: number;
-  s3_key?: string;
 };
 
 export type EvidencePresignUploadResponse = {

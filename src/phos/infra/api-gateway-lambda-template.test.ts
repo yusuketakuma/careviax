@@ -278,6 +278,10 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
       Type: 'String',
       AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$',
     });
+    expect(template.Parameters.PhosAuroraDatabaseSecretArn).toMatchObject({
+      Type: 'String',
+      AllowedPattern: '^arn:aws:secretsmanager:[A-Za-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$',
+    });
     expect(template.Parameters.PhosSecurityEventTableName.Default).not.toBe(
       template.Parameters.PhosDynamoDbTableName.Default,
     );
@@ -534,6 +538,7 @@ describe('PH-OS API Gateway/Lambda deployment template', () => {
 
     expect(template.Parameters.PhosAuroraDatabaseSecretArn).toMatchObject({
       Type: 'String',
+      AllowedPattern: '^arn:aws:secretsmanager:[A-Za-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$',
       Description: expect.stringContaining('Secrets Manager ARN'),
     });
     expect(template.Parameters).not.toHaveProperty('PhosAuroraDatabaseUrl');

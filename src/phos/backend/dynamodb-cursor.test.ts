@@ -86,6 +86,71 @@ describe('DynamoDB pagination cursor', () => {
     );
   });
 
+  it('rejects table-only cursors when the query requires GSI key attributes', () => {
+    const encoded = encodeDynamoCursor({
+      PK: { S: 'TENANT#tenant_abc123' },
+      SK: { S: 'CARD#card_1' },
+    });
+
+    expect(() =>
+      decodeDynamoCursor(encoded, {
+        tenant_id: 'tenant_abc123',
+        required_key_attributes: ['GSI1PK', 'GSI1SK'],
+        required_partition: {
+          attribute: 'GSI1PK',
+          value: 'TENANT#tenant_abc123#BOARD',
+        },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        status: 400,
+        error_code: 'VALIDATION_ERROR',
+        details: { field: 'cursor' },
+      }),
+    );
+  });
+
+  it('rejects GSI cursors whose partition does not match the current query', () => {
+    const encoded = encodeDynamoCursor(validKey);
+
+    expect(() =>
+      decodeDynamoCursor(encoded, {
+        tenant_id: 'tenant_abc123',
+        required_key_attributes: ['GSI1PK', 'GSI1SK'],
+        required_partition: {
+          attribute: 'GSI1PK',
+          value: 'TENANT#tenant_abc123#ASSIGNEE#user_2',
+        },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        status: 400,
+        error_code: 'VALIDATION_ERROR',
+        details: { field: 'cursor' },
+      }),
+    );
+  });
+
+  it('allows hash-only GSI cursors when the index contract has no sort key', () => {
+    const key: DynamoCursorKey = {
+      PK: { S: 'TENANT#tenant_abc123' },
+      SK: { S: 'CLAIM_CANDIDATE#claim_1' },
+      GSI8PK: { S: 'TENANT#tenant_abc123#CARD#card_1#CLAIM_CANDIDATES' },
+    };
+    const encoded = encodeDynamoCursor(key);
+
+    expect(
+      decodeDynamoCursor(encoded, {
+        tenant_id: 'tenant_abc123',
+        required_key_attributes: ['GSI8PK'],
+        required_partition: {
+          attribute: 'GSI8PK',
+          value: 'TENANT#tenant_abc123#CARD#card_1#CLAIM_CANDIDATES',
+        },
+      }),
+    ).toEqual(key);
+  });
+
   it('extracts tenant ids from PH-OS partition keys with optional suffixes', () => {
     expect(tenantIdFromDynamoPartitionKey('TENANT#tenant_abc123')).toBe('tenant_abc123');
     expect(tenantIdFromDynamoPartitionKey('TENANT#tenant_abc123#BOARD')).toBe('tenant_abc123');

@@ -198,6 +198,61 @@ export function writePhosApiGatewayLambdaTemplate(input: {
   return outputPath;
 }
 
+function listValues(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+function includesAction(action: unknown, expected: string): boolean {
+  return listValues(action).some((value) => value === expected);
+}
+
+export function evaluateSecretsManagerLeastPrivilegeContract(
+  template_json: string,
+): ValidationCheck {
+  let template: { Resources?: Record<string, { Properties?: { Policies?: unknown } }> };
+  try {
+    template = JSON.parse(template_json) as typeof template;
+  } catch (error) {
+    return {
+      name: 'secrets_manager_least_privilege_contract',
+      status: 'failed',
+      detail: `Template JSON is not parseable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  const failures: string[] = [];
+  for (const [logicalId, resource] of Object.entries(template.Resources ?? {})) {
+    const policies = Array.isArray(resource.Properties?.Policies)
+      ? resource.Properties.Policies
+      : [];
+    for (const [policyIndex, policy] of policies.entries()) {
+      if (!policy || typeof policy !== 'object') continue;
+      const statements = (policy as { PolicyDocument?: { Statement?: unknown } }).PolicyDocument
+        ?.Statement;
+      for (const [statementIndex, statement] of listValues(statements).entries()) {
+        if (!statement || typeof statement !== 'object') continue;
+        const typed = statement as { Action?: unknown; Resource?: unknown };
+        if (!includesAction(typed.Action, 'secretsmanager:GetSecretValue')) continue;
+        if (listValues(typed.Resource).some((resourceValue) => resourceValue === '*')) {
+          failures.push(`${logicalId}.Policies[${policyIndex}].Statement[${statementIndex}]`);
+        }
+      }
+    }
+  }
+
+  return failures.length > 0
+    ? {
+        name: 'secrets_manager_least_privilege_contract',
+        status: 'failed',
+        detail: `secretsmanager:GetSecretValue must not use wildcard Resource: ${failures.join(', ')}`,
+      }
+    : {
+        name: 'secrets_manager_least_privilege_contract',
+        status: 'passed',
+        detail: 'No secretsmanager:GetSecretValue statement uses wildcard Resource.',
+      };
+}
+
 function parseCloudFormationHandler(input: { logical_id: string; handler: string }) {
   const separatorIndex = input.handler.lastIndexOf('.');
   if (separatorIndex <= 0 || separatorIndex === input.handler.length - 1) {
@@ -333,9 +388,10 @@ export function buildPhosDeployTemplateValidationReport(
   } = {},
 ): PhosDeployTemplateValidationReport {
   const strict = input.strict ?? false;
+  const templateJson = input.template_json ?? renderPhosApiGatewayLambdaTemplateJson();
   const templatePath = writePhosApiGatewayLambdaTemplate({
     output_path: input.output_path,
-    template_json: input.template_json,
+    template_json: templateJson,
   });
   const checks: ValidationCheck[] = [
     {
@@ -343,6 +399,7 @@ export function buildPhosDeployTemplateValidationReport(
       status: 'passed',
       detail: `Wrote PH-OS API Gateway/Lambda CloudFormation template to ${templatePath}.`,
     },
+    evaluateSecretsManagerLeastPrivilegeContract(templateJson),
   ];
   const runner = input.runner ?? runCommand;
   const externalValidation = input.external_validation ?? true;

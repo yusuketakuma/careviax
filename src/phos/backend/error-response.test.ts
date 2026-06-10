@@ -10,6 +10,9 @@ describe('PH-OS ErrorResponse contract', () => {
     });
 
     expect(response.statusCode).toBe(400);
+    expect(response.headers['Cache-Control']).toBe('no-store, max-age=0');
+    expect(response.headers.Pragma).toBe('no-cache');
+    expect(response.headers['Content-Type']).toBe('application/json');
     expect(response.headers['X-Request-Id']).toBe('req_2');
     expect(JSON.parse(response.body)).toEqual({
       request_id: 'req_2',

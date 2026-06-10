@@ -6,6 +6,7 @@ import {
   buildPhosDeployTemplateValidationReport,
   collectPhosCloudFormationLambdaHandlers,
   evaluateLambdaArtifactContract,
+  evaluateSecretsManagerLeastPrivilegeContract,
   renderPhosApiGatewayLambdaTemplateJson,
   resolveSafeArtifactPath,
   writePhosApiGatewayLambdaTemplate,
@@ -86,6 +87,7 @@ describe('validate-phos-deploy-template', () => {
       missing_tools: [],
       checks: [
         { name: 'cloudformation_template_export', status: 'passed' },
+        { name: 'secrets_manager_least_privilege_contract', status: 'passed' },
         { name: 'cloudformation_validate_template', status: 'passed' },
         { name: 'cfn_lint', status: 'passed' },
         { name: 'lambda_artifact_contract', status: 'passed' },
@@ -191,6 +193,7 @@ describe('validate-phos-deploy-template', () => {
       missing_tools: [],
       checks: [
         { name: 'cloudformation_template_export', status: 'passed' },
+        { name: 'secrets_manager_least_privilege_contract', status: 'passed' },
         { name: 'lambda_artifact_contract', status: 'passed' },
       ],
     });
@@ -226,6 +229,37 @@ describe('validate-phos-deploy-template', () => {
     expect(evaluateLambdaArtifactContract({ artifact_root: artifactRoot })).toMatchObject({
       name: 'lambda_artifact_contract',
       status: 'passed',
+    });
+  });
+
+  it('fails the static secrets contract when GetSecretValue uses wildcard resource', () => {
+    expect(
+      evaluateSecretsManagerLeastPrivilegeContract(
+        JSON.stringify({
+          Resources: {
+            UnsafeRole: {
+              Properties: {
+                Policies: [
+                  {
+                    PolicyDocument: {
+                      Statement: [
+                        {
+                          Action: ['secretsmanager:GetSecretValue'],
+                          Resource: '*',
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    ).toMatchObject({
+      name: 'secrets_manager_least_privilege_contract',
+      status: 'failed',
+      detail: expect.stringContaining('wildcard Resource'),
     });
   });
 

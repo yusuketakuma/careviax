@@ -9,6 +9,7 @@ import {
 describe('createLambdaObservabilitySink', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     delete process.env.PHOS_SECURITY_EVENT_TABLE_NAME;
   });
 
@@ -107,6 +108,41 @@ describe('createLambdaObservabilitySink', () => {
       request_id: 'req_1',
       correlation_id: 'corr_1',
       error: 'ddb unavailable',
+    });
+  });
+
+  it('bounds flush latency when security event persistence does not resolve', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const send = vi.fn(() => new Promise(() => {}));
+    const sink = createLambdaObservabilitySink({
+      security_event_client: { send },
+      security_event_table_name: 'phos_security_events',
+      security_event_flush_timeout_ms: 10,
+    });
+
+    sink.recordSecurityEvent({
+      event_type: 'AUTHORIZATION_DENIED',
+      severity: 'WARNING',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      route_key: 'GET /cards',
+      error_code: 'FORBIDDEN',
+    });
+    const flush = sink.flush?.();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(flush).resolves.toBeUndefined();
+
+    const logged = errorSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((entry) => entry.type === 'PHOS_SECURITY_EVENT_FLUSH_TIMEOUT');
+    expect(logged).toMatchObject({
+      type: 'PHOS_SECURITY_EVENT_FLUSH_TIMEOUT',
+      pending_count: 1,
+      timeout_ms: 10,
     });
   });
 

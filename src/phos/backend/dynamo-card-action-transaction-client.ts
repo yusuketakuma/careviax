@@ -176,6 +176,7 @@ export function buildDynamoActionCommitTransactWriteItems(
           }),
           card_id: { S: input.projected_response.card.card_id },
           idempotency_key: { S: input.command.idempotency_key },
+          actor_user_id: { S: input.audit_event.actor_user_id },
           request_fingerprint: { S: input.request_fingerprint },
           response_json: { S: JSON.stringify(input.projected_response) },
           action_code: { S: input.command.action_code },

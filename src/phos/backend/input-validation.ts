@@ -20,10 +20,17 @@ export function parsePositiveVersion(value: unknown): number {
 }
 
 export function parseIdempotencyKey(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
+  if (typeof value !== 'string') {
     throw validationError({ field: 'idempotency_key' });
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(trimmed)) {
+    throw validationError({
+      field: 'idempotency_key',
+      expected: '1-128 characters matching [A-Za-z0-9._:-]',
+    });
+  }
+  return trimmed;
 }
 
 export function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {

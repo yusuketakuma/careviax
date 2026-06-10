@@ -29,6 +29,7 @@ import {
 import type { PhosHttpEvent } from './lambda-handler';
 import { createInMemoryObservabilitySink } from './observability';
 import { toDynamoAttributeValue } from './dynamodb-attribute-values';
+import { encodeDynamoCursor } from './dynamodb-cursor';
 
 const card: CardSummaryView = {
   card_id: 'card_1',
@@ -205,6 +206,30 @@ describe('PH-OS cards Lambda composition', () => {
         partition_key: 'TENANT#tenant_abc123#BOARD',
         limit: 25,
         cursor: 'not-base64-json',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects table-only Dynamo cursors before querying a board GSI', async () => {
+    const send = vi.fn(async () => ({ Items: [] }));
+    const client = createDynamoCardsClient({ client: { send } });
+
+    await expect(
+      client.query({
+        table_name: 'phos_core',
+        index_name: 'GSI1',
+        partition_key: 'TENANT#tenant_abc123#BOARD',
+        limit: 25,
+        cursor: encodeDynamoCursor({
+          PK: { S: 'TENANT#tenant_abc123' },
+          SK: { S: 'CARD#card_1' },
+        }),
       }),
     ).rejects.toMatchObject({
       status: 400,

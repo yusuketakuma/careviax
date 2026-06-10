@@ -614,7 +614,9 @@ describe('PH-OS API Gateway/Lambda runtime proof', () => {
       const response = await testCase.handler(apiGatewayEventFor(route, testCase.overrides));
 
       expect(response.statusCode, route.route_key).toBe(200);
+      expect(response.headers['Cache-Control'], route.route_key).toBe('no-store, max-age=0');
       expect(response.headers['Content-Type'], route.route_key).toBe('application/json');
+      expect(response.headers.Pragma, route.route_key).toBe('no-cache');
       expect(response.headers['X-Request-Id'], route.route_key).toBe(
         `req_${route.route_key.replace(/[^a-zA-Z0-9]+/g, '_')}`,
       );

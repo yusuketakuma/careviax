@@ -138,6 +138,14 @@ export function createDynamoCardsClient(input: {
           Limit: query.limit,
           ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
             tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+            required_key_attributes: [
+              keyAttributes.partition_key,
+              ...(keyAttributes.sort_key ? [keyAttributes.sort_key] : []),
+            ],
+            required_partition: {
+              attribute: keyAttributes.partition_key,
+              value: query.partition_key,
+            },
           }),
         }),
       );
@@ -232,6 +240,7 @@ function createDefaultActionMapper(
     toIdempotencyRecord(item): DynamoActionIdempotencyRecord {
       const responseJson = stringAttr(item, 'response_json');
       return {
+        actor_user_id: stringAttr(item, 'actor_user_id'),
         request_fingerprint: stringAttr(item, 'request_fingerprint') ?? '',
         ...(responseJson ? { response: JSON.parse(responseJson) } : {}),
       };

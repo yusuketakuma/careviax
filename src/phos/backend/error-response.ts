@@ -10,7 +10,9 @@ export function toLambdaJsonResponse(statusCode: number, body: unknown): PhosLam
   return {
     statusCode,
     headers: {
+      'Cache-Control': 'no-store, max-age=0',
       'Content-Type': 'application/json',
+      Pragma: 'no-cache',
       'X-Request-Id': readRequestId(body),
     },
     body: JSON.stringify(body),

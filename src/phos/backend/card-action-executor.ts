@@ -161,6 +161,18 @@ function assertActionAllowed(
   state: CardActionExecutionState,
   command: CardActionCommand,
 ) {
+  assertActionRoleAllowed(ctx, command);
+
+  const allowedActions = state.allowed_actions ?? [state.next_action.code];
+  if (!allowedActions.includes(command.action_code)) {
+    throw actionGuardFailed({
+      action_code: command.action_code,
+      allowed_actions: allowedActions,
+    });
+  }
+}
+
+function assertActionRoleAllowed(ctx: TenantContext, command: CardActionCommand) {
   const transition = ACTION_TRANSITION_MATRIX[command.action_code];
   const allowedRoles: readonly TenantContext['role'][] | undefined =
     'required_role' in transition ? transition.required_role : undefined;
@@ -168,14 +180,6 @@ function assertActionAllowed(
     throw domainError(403, 'FORBIDDEN', 'api.error.forbidden', {
       action_code: command.action_code,
       required_role: allowedRoles,
-    });
-  }
-
-  const allowedActions = state.allowed_actions ?? [state.next_action.code];
-  if (!allowedActions.includes(command.action_code)) {
-    throw actionGuardFailed({
-      action_code: command.action_code,
-      allowed_actions: allowedActions,
     });
   }
 }
@@ -351,6 +355,9 @@ export function createCardActionExecutorRepository(
       card_id: string,
       command: CardActionCommand,
     ): Promise<ActionResponse> {
+      assertCardActionRouteOwnsAction(command);
+      assertActionRoleAllowed(ctx, command);
+
       const request_fingerprint = createActionRequestFingerprint(command);
       const idempotent = await store.getIdempotentAction(
         ctx,
@@ -370,7 +377,6 @@ export function createCardActionExecutorRepository(
         throw domainError(404, 'NOT_FOUND', 'api.error.card_not_found', { card_id });
       }
 
-      assertCardActionRouteOwnsAction(command);
       assertFreshVersion(state, command);
       assertActionAllowed(ctx, state, command);
       assertCardCanTransition(state, command);

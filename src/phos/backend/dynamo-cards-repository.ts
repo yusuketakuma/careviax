@@ -82,7 +82,7 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
         key_type: 'GSI',
       });
 
-      const fetchedItems: TSummary[] = [];
+      const fetchedItems: CardBoardItemView[] = [];
       let cursor = query.cursor;
       let next_cursor: string | undefined;
       let selectedItems: CardBoardItemView[] = [];
@@ -97,16 +97,13 @@ export function createDynamoCardsRepository<TSummary, TDetail>(
           limit: query.limit,
           cursor,
         });
-        fetchedItems.push(...result.items);
+        fetchedItems.push(...result.items.map((item) => mapper.toCardBoardItem(item)));
         next_cursor = result.next_cursor;
-        selectedItems = selectBoardItems(
-          fetchedItems.map((item) => mapper.toCardBoardItem(item)),
-          {
-            quickFilter: query.filter ?? BoardQuickFilterValues.ALL,
-            query: query.query,
-            sortKey: query.sort ?? BoardSortKeyValues.VISIT_TIME,
-          },
-        );
+        selectedItems = selectBoardItems(fetchedItems, {
+          quickFilter: query.filter ?? BoardQuickFilterValues.ALL,
+          query: query.query,
+          sortKey: query.sort ?? BoardSortKeyValues.VISIT_TIME,
+        });
         if (selectedItems.length >= query.limit || !next_cursor || !fillFilteredPage) break;
         cursor = next_cursor;
       }

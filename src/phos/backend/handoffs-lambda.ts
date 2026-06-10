@@ -22,6 +22,7 @@ import type {
 import { createDynamoHandoffTransactionClient } from './dynamo-handoff-transaction-client';
 import {
   decodeDynamoCursor,
+  dynamoCursorKeyAttributesForIndex,
   encodeDynamoCursor,
   tenantIdFromDynamoPartitionKey,
 } from './dynamodb-cursor';
@@ -121,8 +122,12 @@ export function createDynamoHandoffStoreClient(input: {
 
   return {
     async queryHandoffs(query) {
-      const partitionName = query.key_type === 'GSI' ? `${query.index_name}PK` : 'PK';
-      const sortName = query.key_type === 'GSI' ? `${query.index_name}SK` : 'SK';
+      const keyAttributes =
+        query.key_type === 'GSI'
+          ? dynamoCursorKeyAttributesForIndex(query.index_name ?? '')
+          : { partition_key: 'PK', sort_key: 'SK' };
+      const partitionName = keyAttributes.partition_key;
+      const sortName = keyAttributes.sort_key ?? 'SK';
       const command = new QueryCommand({
         TableName: query.table_name,
         IndexName: query.index_name,
@@ -142,6 +147,14 @@ export function createDynamoHandoffStoreClient(input: {
         Limit: query.limit,
         ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
           tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+          required_key_attributes: [
+            partitionName,
+            ...(keyAttributes.sort_key ? [keyAttributes.sort_key] : []),
+          ],
+          required_partition: {
+            attribute: partitionName,
+            value: query.partition_key,
+          },
         }),
       });
       const result = await input.client.send(command);

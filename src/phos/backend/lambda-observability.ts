@@ -14,9 +14,12 @@ export type PhosLambdaRuntimeDependencies = {
   observability?: PhosObservabilitySink;
   security_event_client?: Pick<AwsDynamoDBClient, 'send'>;
   security_event_table_name?: string;
+  security_event_flush_timeout_ms?: number;
   trace_annotation_sink?: PhosTraceAnnotationSink;
   now?: () => Date;
 };
+
+const DEFAULT_SECURITY_EVENT_FLUSH_TIMEOUT_MS = 250;
 
 function shouldPersistSecurityEvents(): boolean {
   return process.env.PHOS_SECURITY_EVENTS_DYNAMO === '1';
@@ -36,6 +39,10 @@ export function createLambdaObservabilitySink(
   const securityEventClient =
     deps.security_event_client ?? (shouldPersistSecurityEvents() ? new DynamoDBClient({}) : null);
   const pendingSecurityEvents = new Set<Promise<void>>();
+  const securityEventFlushTimeoutMs = Math.max(
+    1,
+    deps.security_event_flush_timeout_ms ?? DEFAULT_SECURITY_EVENT_FLUSH_TIMEOUT_MS,
+  );
 
   return {
     emitMetric(metric) {
@@ -73,7 +80,28 @@ export function createLambdaObservabilitySink(
       pendingSecurityEvents.add(persistence);
     },
     async flush() {
-      await Promise.allSettled([...pendingSecurityEvents]);
+      const pending = [...pendingSecurityEvents];
+      if (pending.length === 0) return;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.allSettled(pending),
+          new Promise<void>((resolve) => {
+            timeout = setTimeout(() => {
+              console.error(
+                JSON.stringify({
+                  type: 'PHOS_SECURITY_EVENT_FLUSH_TIMEOUT',
+                  pending_count: pending.length,
+                  timeout_ms: securityEventFlushTimeoutMs,
+                }),
+              );
+              resolve();
+            }, securityEventFlushTimeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
     },
   };
 }

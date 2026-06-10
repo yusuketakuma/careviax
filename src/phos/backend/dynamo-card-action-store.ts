@@ -78,6 +78,7 @@ export type DynamoActionCommitProjection = {
 };
 
 export type DynamoActionIdempotencyRecord = {
+  actor_user_id?: string;
   request_fingerprint: string;
   response?: ActionResponse;
 };
@@ -118,6 +119,12 @@ export function createDynamoCardActionExecutionStore<TStateItem, TIdempotencyIte
 
       const record = mapper.toIdempotencyRecord(item);
       if (record.request_fingerprint !== request_fingerprint) {
+        return {
+          status: 'CONFLICT',
+          existing_request_fingerprint: record.request_fingerprint,
+        };
+      }
+      if (record.actor_user_id !== ctx.user_id) {
         return {
           status: 'CONFLICT',
           existing_request_fingerprint: record.request_fingerprint,

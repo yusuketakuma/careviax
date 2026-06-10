@@ -74,7 +74,7 @@ export function assertTenantS3Key(ctx: Pick<TenantContext, 'tenant_id'>, key: st
 }
 
 export function validateEvidenceUploadRequest(input: EvidenceUploadRequest): void {
-  if (input.s3_key) {
+  if ('s3_key' in input) {
     throw new TenantStorageKeyError('client supplied s3_key is forbidden');
   }
   assertSafeSegment(input.card_id, 'card_id');

@@ -173,6 +173,36 @@ describe('createCardActionExecutorRepository', () => {
     expect(fakeStore.commitAction).not.toHaveBeenCalled();
   });
 
+  it('rejects action-specific role failures before idempotency replay disclosure', async () => {
+    const clerkCtx: TenantContext = {
+      ...ctx,
+      user_id: 'clerk_1',
+      role: UserRole.PHARMACY_CLERK,
+    };
+    const replayed = actionResponse();
+    const fakeStore = store({
+      getIdempotentAction: vi.fn(
+        async (): Promise<IdempotentActionLookup> => ({
+          status: 'MATCH',
+          response: replayed,
+        }),
+      ),
+    });
+    const repository = createCardActionExecutorRepository(fakeStore);
+
+    await expect(repository.executeCardAction(clerkCtx, 'card_1', command)).rejects.toMatchObject({
+      status: 403,
+      error_code: 'FORBIDDEN',
+      details: {
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        required_role: [UserRole.PHARMACIST],
+      },
+    });
+    expect(fakeStore.getIdempotentAction).not.toHaveBeenCalled();
+    expect(fakeStore.loadActionState).not.toHaveBeenCalled();
+    expect(fakeStore.commitAction).not.toHaveBeenCalled();
+  });
+
   it('rejects an idempotency key reused with a different request fingerprint', async () => {
     const fakeStore = store({
       getIdempotentAction: vi.fn(async (): Promise<IdempotentActionLookup> => {

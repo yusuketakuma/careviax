@@ -27,7 +27,7 @@ import type { CardActionExecutionState } from './card-action-executor';
 import type { TenantContext } from './tenant-context';
 
 type StateItem = { id: string; version: number };
-type IdempotencyItem = { fingerprint: string; saved?: ActionResponse };
+type IdempotencyItem = { actor?: string; fingerprint: string; saved?: ActionResponse };
 
 const ctx: TenantContext = {
   tenant_id: 'tenant_abc123',
@@ -125,6 +125,7 @@ const mapper: DynamoCardActionStoreMapper<StateItem, IdempotencyItem> = {
     allowed_actions: [ActionCode.CONFIRM_PRESCRIPTION_DIFF],
   }),
   toIdempotencyRecord: (item) => ({
+    actor_user_id: item.actor,
     request_fingerprint: item.fingerprint,
     response: item.saved,
   }),
@@ -166,7 +167,7 @@ describe('createDynamoCardActionExecutionStore', () => {
   it('looks up idempotency records under the tenant PK and action ledger SK', async () => {
     const saved = actionResponse();
     const fakeClient = client({
-      getIdempotency: vi.fn(async () => ({ fingerprint: 'fp_1', saved })),
+      getIdempotency: vi.fn(async () => ({ actor: 'user_1', fingerprint: 'fp_1', saved })),
     });
     const store = createDynamoCardActionExecutionStore(fakeClient, mapper);
 
@@ -178,6 +179,32 @@ describe('createDynamoCardActionExecutionStore', () => {
       sort_key: 'CARD_ACTION_IDEMPOTENCY#card_1#idem_1',
     });
     expect(result).toEqual({ status: 'MATCH', response: saved });
+  });
+
+  it('treats matching idempotency records from a different actor as conflict', async () => {
+    const saved = actionResponse();
+    const fakeClient = client({
+      getIdempotency: vi.fn(async () => ({ actor: 'user_2', fingerprint: 'fp_1', saved })),
+    });
+    const store = createDynamoCardActionExecutionStore(fakeClient, mapper);
+
+    await expect(store.getIdempotentAction(ctx, 'card_1', 'idem_1', 'fp_1')).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fp_1',
+    });
+  });
+
+  it('treats legacy idempotency records without an actor as conflict', async () => {
+    const saved = actionResponse();
+    const fakeClient = client({
+      getIdempotency: vi.fn(async () => ({ fingerprint: 'fp_1', saved })),
+    });
+    const store = createDynamoCardActionExecutionStore(fakeClient, mapper);
+
+    await expect(store.getIdempotentAction(ctx, 'card_1', 'idem_1', 'fp_1')).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fp_1',
+    });
   });
 
   it('treats the same idempotency key with a different request fingerprint as conflict', async () => {

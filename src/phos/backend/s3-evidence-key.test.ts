@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { EvidenceUploadRequest } from '@/phos/contracts/phos_contracts';
 import {
   assertTenantS3Key,
   buildEvidenceKey,
@@ -72,7 +73,10 @@ describe('PH-OS S3 evidence key contract', () => {
       }),
     ).not.toThrow();
     expect(() =>
-      validateEvidenceUploadRequest({ ...base, s3_key: 'tenants/other/evidence/x/y.jpg' }),
+      validateEvidenceUploadRequest({
+        ...base,
+        s3_key: 'tenants/other/evidence/x/y.jpg',
+      } as unknown as EvidenceUploadRequest),
     ).toThrow(TenantStorageKeyError);
     expect(() => validateEvidenceUploadRequest({ ...base, card_id: '../card_1' })).toThrow(
       TenantStorageKeyError,
@@ -103,5 +107,25 @@ describe('PH-OS S3 evidence key contract', () => {
     expect(() => validateEvidenceUploadRequest({ ...base, size_bytes: 0 })).toThrow(
       TenantStorageKeyError,
     );
+  });
+
+  it('keeps client supplied s3_key out of the public upload request contract', () => {
+    const request: EvidenceUploadRequest = {
+      idempotency_key: 'idem_evidence_1',
+      card_id: 'card_1',
+      evidence_type: 'PHOTO',
+      file_name: 'photo.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'a'.repeat(64),
+      size_bytes: 1024,
+    };
+
+    const forbidden: EvidenceUploadRequest = {
+      ...request,
+      // @ts-expect-error public upload requests must not accept a client supplied storage key.
+      s3_key: 'tenants/other/evidence/x/y.jpg',
+    };
+
+    expect(() => validateEvidenceUploadRequest(forbidden)).toThrow(TenantStorageKeyError);
   });
 });

@@ -215,6 +215,46 @@ describe('createDynamoCardsRepository', () => {
     expect(result.next_cursor).toBeUndefined();
   });
 
+  it('maps each fetched Dynamo item once while filling filtered search pages', async () => {
+    const fakeClient = client();
+    vi.mocked(fakeClient.query)
+      .mockResolvedValueOnce({
+        items: [{ id: 'page_1_nonmatch', patient: '患者 佐藤' }],
+        next_cursor: 'cursor_2',
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 'page_2_match', patient: '患者 山田' }],
+      });
+    const toCardBoardItem = vi.fn((summary: SummaryItem) => ({
+      ...mapper.toCardBoardItem(summary),
+      card: {
+        ...mapper.toCardBoardItem(summary).card,
+        quick_filter_keys:
+          summary.id === 'page_2_match' ? [BoardQuickFilter.TODAY] : [BoardQuickFilter.URGENT],
+      },
+    }));
+    const repository = createDynamoCardsRepository(fakeClient, {
+      ...mapper,
+      toCardBoardItem,
+    });
+
+    await repository.searchCards(ctx, {
+      filter: BoardQuickFilter.TODAY,
+      sort: BoardSortKey.VISIT_TIME,
+      limit: 1,
+    });
+
+    expect(toCardBoardItem).toHaveBeenCalledTimes(2);
+    expect(toCardBoardItem).toHaveBeenNthCalledWith(1, {
+      id: 'page_1_nonmatch',
+      patient: '患者 佐藤',
+    });
+    expect(toCardBoardItem).toHaveBeenNthCalledWith(2, {
+      id: 'page_2_match',
+      patient: '患者 山田',
+    });
+  });
+
   it('gets card detail through tenant PK and card SK', async () => {
     const fakeClient = client();
     const repository = createDynamoCardsRepository(fakeClient, mapper);

@@ -19,6 +19,7 @@ import {
 import { createDynamoReportDeliveryTransactionClient } from './dynamo-report-delivery-transaction-client';
 import {
   decodeDynamoCursor,
+  dynamoCursorKeyAttributesForIndex,
   encodeDynamoCursor,
   tenantIdFromDynamoPartitionKey,
 } from './dynamodb-cursor';
@@ -50,6 +51,7 @@ export function createDynamoReportDeliveriesClient(input: {
 }): DynamoReportDeliveriesClient {
   return {
     async queryReportDeliveries(query): Promise<DynamoReportDeliveryQueryOutput> {
+      const keyAttributes = dynamoCursorKeyAttributesForIndex(query.index_name);
       const result = await input.client.send(
         new QueryCommand({
           TableName: query.table_name,
@@ -64,6 +66,14 @@ export function createDynamoReportDeliveriesClient(input: {
           Limit: query.limit,
           ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
             tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),
+            required_key_attributes: [
+              keyAttributes.partition_key,
+              ...(keyAttributes.sort_key ? [keyAttributes.sort_key] : []),
+            ],
+            required_partition: {
+              attribute: keyAttributes.partition_key,
+              value: query.partition_key,
+            },
           }),
           ScanIndexForward: false,
         }),

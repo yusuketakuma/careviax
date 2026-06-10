@@ -1169,6 +1169,8 @@ export function buildPhosApiGatewayLambdaTemplate(
         Description: 'Dedicated PH-OS security event table name. Must not be the PH-OS core table.',
       }),
       [auroraDatabaseSecretArnParameter]: parameter('String', {
+        AllowedPattern:
+          '^arn:aws:secretsmanager:[A-Za-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$',
         Description: 'Secrets Manager ARN containing the PH-OS Aurora PostgreSQL connection URL.',
       }),
     },

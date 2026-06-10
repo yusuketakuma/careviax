@@ -295,6 +295,7 @@ describe('PH-OS Final No-Go gate', () => {
     });
     expect(template.Parameters.PhosAuroraDatabaseSecretArn).toMatchObject({
       Type: 'String',
+      AllowedPattern: '^arn:aws:secretsmanager:[A-Za-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$',
     });
     expect(template.Parameters).not.toHaveProperty('PhosAuroraDatabaseUrl');
     expect(JSON.stringify(template)).not.toContain('PHOS_AURORA_DATABASE_URL');

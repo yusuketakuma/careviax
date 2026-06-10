@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
+import { PHOS_DYNAMODB_TABLE_CONTRACT } from '@/phos/infra/dynamodb-table-contract';
 import { validationError } from './input-validation';
 
 export type DynamoCursorKey = Record<string, AttributeValue>;
@@ -26,11 +27,31 @@ const DYNAMO_CURSOR_STRING_KEY_ATTRIBUTES = new Set([
 
 type DynamoCursorDecodeOptions = {
   tenant_id?: string;
+  required_key_attributes?: readonly string[];
+  required_partition?: {
+    attribute: string;
+    value: string;
+  };
 };
 
 export function encodeDynamoCursor(key: DynamoCursorKey | undefined): string | undefined {
   if (!key) return undefined;
   return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
+}
+
+export function dynamoCursorKeyAttributesForIndex(indexName: string): {
+  partition_key: string;
+  sort_key?: string;
+} {
+  const index =
+    PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes[
+      indexName as keyof typeof PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes
+    ];
+  if (!index) throw new Error(`Unsupported PH-OS DynamoDB index: ${indexName}`);
+  return {
+    partition_key: index.partition_key,
+    ...(index.sort_key ? { sort_key: index.sort_key } : {}),
+  };
 }
 
 function isStringKeyAttribute(value: unknown): value is { S: string } {
@@ -73,6 +94,22 @@ function assertDynamoCursorTenant(key: DynamoCursorKey, options: DynamoCursorDec
   }
 }
 
+function assertDynamoCursorRequiredKeys(
+  key: DynamoCursorKey,
+  options: DynamoCursorDecodeOptions,
+): void {
+  for (const attributeName of options.required_key_attributes ?? []) {
+    if (!isStringKeyAttribute(key[attributeName])) {
+      throw new Error(`cursor must include ${attributeName}`);
+    }
+  }
+  if (!options.required_partition) return;
+  const value = key[options.required_partition.attribute]?.S;
+  if (value !== options.required_partition.value) {
+    throw new Error('cursor partition does not match request query');
+  }
+}
+
 export function tenantIdFromDynamoPartitionKey(partition_key: string): string | undefined {
   return partition_key.match(/^TENANT#([^#]+)/)?.[1];
 }
@@ -86,6 +123,7 @@ export function decodeDynamoCursor(
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
     assertDynamoCursorKeyShape(parsed);
     assertDynamoCursorTenant(parsed, options);
+    assertDynamoCursorRequiredKeys(parsed, options);
     return parsed;
   } catch {
     throw validationError({ field: 'cursor' });
