@@ -54,7 +54,6 @@ import {
 import { cn } from '@/lib/utils';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
-import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useRouteOrderDraft } from './route-order-draft';
@@ -70,6 +69,7 @@ import {
   generateScheduleDayRescheduleProposals,
   handleScheduleDayRescheduleSuccess,
 } from './schedule-day-reschedule';
+import { ScheduleDayRoutePreview } from './schedule-day-route-preview';
 import {
   applyScheduleDayRouteOrderDraft,
   handleScheduleDayRouteOrderApplySuccess,
@@ -1361,66 +1361,24 @@ export function ScheduleDayView({
             </CardContent>
           </Card>
         ) : mobileVisitSurface === 'map' ? (
-          <VisitRoutePreviewPanel
+          <ScheduleDayRoutePreview
             controlId="day-mobile-route"
-            title="日次ルートマップ"
-            description="薬局から訪問先までの経路を確認し、そのまま route_order へ反映できます。"
-            selectionLabel={routeSelectionLabel}
-            travelMode={routeTravelMode}
-            onTravelModeChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
-            plan={routePlanData}
-            points={routeMapPoints}
-            site={routeMapSite}
-            orderedIds={routeOrderDraft.draftIds}
-            currentOrderedIds={routeOrderDraft.currentIds}
-            onMoveItem={(scheduleId, direction) => routeOrderDraft.moveItem(scheduleId, direction)}
-            headerControls={
-              <>
-                <div className="space-y-1">
-                  <Label htmlFor="mobile-route-pharmacist" className="text-xs">
-                    対象薬剤師
-                  </Label>
-                  <Select
-                    value={resolvedRoutePharmacistId}
-                    onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
-                  >
-                    <SelectTrigger id="mobile-route-pharmacist" className="w-[12rem]">
-                      <SelectValue placeholder="薬剤師を選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {routePharmacistOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                          {option.siteName ? ` / ${option.siteName}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {routeOrderDraft.manualDirty ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={routeOrderDraft.resetToOptimized}
-                  >
-                    最適順へ戻す
-                  </Button>
-                ) : null}
-              </>
-            }
-            loading={routePlanLoading}
+            routePharmacistControlId="mobile-route-pharmacist"
+            routeSelectionLabel={routeSelectionLabel}
+            routeTravelMode={routeTravelMode}
+            onRouteTravelModeChange={setRouteTravelMode}
+            routePlan={routePlanData}
+            routeMapPoints={routeMapPoints}
+            routeMapSite={routeMapSite}
+            routeOrderDraft={routeOrderDraft}
+            routePharmacistOptions={routePharmacistOptions}
+            resolvedRoutePharmacistId={resolvedRoutePharmacistId}
+            onRoutePharmacistChange={setSelectedRoutePharmacistId}
+            routePlanLoading={routePlanLoading}
+            routeOptimizationDirty={routeOptimizationDirty}
+            applyPending={applyOptimizedRouteMutation.isPending}
+            onApplyOptimizedRoute={() => applyOptimizedRouteMutation.mutate()}
             actionLabel="最適順を route_order に反映"
-            actionDisabled={
-              routePlanLoading || applyOptimizedRouteMutation.isPending || !routeOptimizationDirty
-            }
-            actionPending={applyOptimizedRouteMutation.isPending}
-            onAction={() => applyOptimizedRouteMutation.mutate()}
-            extraSummary={
-              routeOrderDraft.diffCount > 0 ? (
-                <Badge variant="outline">差分 {routeOrderDraft.diffCount} 件</Badge>
-              ) : null
-            }
           />
         ) : (
           <>
@@ -2721,74 +2679,27 @@ export function ScheduleDayView({
               </PageSection>
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
-              <VisitRoutePreviewPanel
+              <ScheduleDayRoutePreview
                 controlId="day-desktop-route"
+                routePharmacistControlId="desktop-route-pharmacist"
                 className="hidden md:block"
-                title="日次ルートマップ"
-                description="薬局から訪問先までの経路を確認し、そのまま route_order へ反映できます。"
-                selectionLabel={routeSelectionLabel}
-                travelMode={routeTravelMode}
-                onTravelModeChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
-                plan={routePlanData}
-                points={routeMapPoints}
-                site={routeMapSite}
-                orderedIds={routeOrderDraft.draftIds}
-                currentOrderedIds={routeOrderDraft.currentIds}
-                onMoveItem={(scheduleId, direction) =>
-                  routeOrderDraft.moveItem(scheduleId, direction)
-                }
-                headerControls={
-                  <>
-                    <div className="space-y-1">
-                      <Label htmlFor="desktop-route-pharmacist" className="text-xs">
-                        対象薬剤師
-                      </Label>
-                      <Select
-                        value={resolvedRoutePharmacistId}
-                        onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
-                      >
-                        <SelectTrigger id="desktop-route-pharmacist" className="w-[12rem]">
-                          <SelectValue placeholder="薬剤師を選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {routePharmacistOptions.map((option) => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                              {option.siteName ? ` / ${option.siteName}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {routeOrderDraft.manualDirty ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={routeOrderDraft.resetToOptimized}
-                      >
-                        最適順へ戻す
-                      </Button>
-                    ) : null}
-                  </>
-                }
-                loading={routePlanLoading}
+                routeSelectionLabel={routeSelectionLabel}
+                routeTravelMode={routeTravelMode}
+                onRouteTravelModeChange={setRouteTravelMode}
+                routePlan={routePlanData}
+                routeMapPoints={routeMapPoints}
+                routeMapSite={routeMapSite}
+                routeOrderDraft={routeOrderDraft}
+                routePharmacistOptions={routePharmacistOptions}
+                resolvedRoutePharmacistId={resolvedRoutePharmacistId}
+                onRoutePharmacistChange={setSelectedRoutePharmacistId}
+                routePlanLoading={routePlanLoading}
+                routeOptimizationDirty={routeOptimizationDirty}
+                applyPending={applyOptimizedRouteMutation.isPending}
+                onApplyOptimizedRoute={() => applyOptimizedRouteMutation.mutate()}
                 actionLabel="最適順を反映"
-                actionDisabled={
-                  routePlanLoading ||
-                  applyOptimizedRouteMutation.isPending ||
-                  !routeOptimizationDirty
-                }
-                actionPending={applyOptimizedRouteMutation.isPending}
-                onAction={() => applyOptimizedRouteMutation.mutate()}
-                extraSummary={
-                  <>
-                    <Badge variant="outline">対象 {routeMapSchedules.length} 件</Badge>
-                    {routeOrderDraft.diffCount > 0 ? (
-                      <Badge variant="outline">差分 {routeOrderDraft.diffCount} 件</Badge>
-                    ) : null}
-                  </>
-                }
+                showRouteMapScheduleCount
+                routeMapScheduleCount={routeMapSchedules.length}
               />
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
