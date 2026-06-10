@@ -63,6 +63,16 @@ import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile'
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { moveRouteItem, useRouteOrderDraft } from './route-order-draft';
 import {
   handleScheduleDayFacilityBatchSuccess,
@@ -329,6 +339,8 @@ export function ScheduleDayView({
     scheduleIds: string[];
     patientNames: string[];
   } | null>(null);
+  const [facilityCarryConfirmTarget, setFacilityCarryConfirmTarget] =
+    useState<FacilityTrackerGroup | null>(null);
   const [facilityVisitDayForm, setFacilityVisitDayForm] = useState({
     preferred_weekdays: [] as number[],
     preferred_time_from: '',
@@ -1334,6 +1346,9 @@ export function ScheduleDayView({
         notifySuccess: toast.success,
         invalidateQueries: queryClient.invalidateQueries.bind(queryClient),
       });
+      if (variables.carryItemsConfirmed) {
+        setFacilityCarryConfirmTarget(null);
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '同時訪問グループの保存に失敗しました');
@@ -2614,12 +2629,7 @@ export function ScheduleDayView({
                             size="sm"
                             variant="outline"
                             aria-label={`${group.label} ${group.patientNames.length}名の持参確認を一括反映`}
-                            onClick={() =>
-                              facilityBatchMutation.mutate({
-                                groupKey: group.key,
-                                carryItemsConfirmed: true,
-                              })
-                            }
+                            onClick={() => setFacilityCarryConfirmTarget(group)}
                             disabled={facilityBatchMutation.isPending}
                           >
                             持参確認を一括反映 ({group.patientNames.length}名)
@@ -3165,6 +3175,93 @@ export function ScheduleDayView({
         onCancel={() => setRescheduleApprovalTarget(null)}
         onConfirm={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
       />
+
+      <AlertDialog
+        open={facilityCarryConfirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !facilityBatchMutation.isPending) {
+            setFacilityCarryConfirmTarget(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {facilityCarryConfirmTarget
+                ? `${facilityCarryConfirmTarget.label} ${facilityCarryConfirmTarget.patientNames.length}名の持参確認を一括反映しますか`
+                : '持参確認を一括反映しますか'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              対象全員の持参薬・施設預かり・不足時対応を確認済みにします。患者違い、部屋違い、未確定の持参物がある場合はキャンセルして個別に確認してください。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {facilityCarryConfirmTarget ? (
+            <div className="space-y-3 text-sm">
+              <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">対象日</dt>
+                  <dd className="font-medium">
+                    {format(selectedDay, 'M月d日(E)', { locale: ja })}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">対象施設</dt>
+                  <dd className="font-medium">{facilityCarryConfirmTarget.label}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">対象人数</dt>
+                  <dd className="font-medium">
+                    {facilityCarryConfirmTarget.patientNames.length}名
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">持参未確認</dt>
+                  <dd className="font-medium">{facilityCarryConfirmTarget.carryPendingCount}件</dd>
+                </div>
+              </dl>
+              <ul
+                aria-label={`${facilityCarryConfirmTarget.label}の一括持参確認対象`}
+                className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
+              >
+                {getOrderedFacilityPatients(facilityCarryConfirmTarget).map((patient, index) => (
+                  <li key={patient.scheduleId} className="rounded-md bg-muted/30 px-3 py-2 text-sm">
+                    <span className="font-medium">
+                      {index + 1}. {patient.patientName}
+                    </span>
+                    {patient.unitName ? (
+                      <span className="ml-2 text-muted-foreground">{patient.unitName}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs leading-5 text-muted-foreground">
+                住所、薬剤名、処方詳細はこの確認画面には表示しません。対象患者と順序だけを確認し、持参物の現物確認が済んでいる場合のみ反映してください。
+              </p>
+            </div>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={facilityBatchMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!facilityCarryConfirmTarget) return;
+                facilityBatchMutation.mutate({
+                  groupKey: facilityCarryConfirmTarget.key,
+                  carryItemsConfirmed: true,
+                });
+              }}
+              disabled={!facilityCarryConfirmTarget || facilityBatchMutation.isPending}
+            >
+              {facilityBatchMutation.isPending
+                ? '持参確認を反映中...'
+                : `${facilityCarryConfirmTarget?.patientNames.length ?? 0}名の持参確認を反映`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={rescheduleTarget !== null}

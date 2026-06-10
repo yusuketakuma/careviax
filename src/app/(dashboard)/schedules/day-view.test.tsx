@@ -2152,7 +2152,37 @@ describe('ScheduleDayView', () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '青空ホーム 2名の持参確認を一括反映' }));
+    const carryConfirmButton = screen.getByRole('button', {
+      name: '青空ホーム 2名の持参確認を一括反映',
+    });
+    fireEvent.click(carryConfirmButton);
+
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === '/api/facility-visit-batches'),
+    ).toHaveLength(1);
+    let carryConfirmDialog = screen.getByRole('alertdialog', {
+      name: '青空ホーム 2名の持参確認を一括反映しますか',
+    });
+    expect(
+      within(carryConfirmDialog).getByText(
+        /対象全員の持参薬・施設預かり・不足時対応を確認済みにします/,
+      ),
+    ).toBeTruthy();
+    expect(within(carryConfirmDialog).getByText(/青空一郎/)).toBeTruthy();
+    expect(within(carryConfirmDialog).getByText(/青空二郎/)).toBeTruthy();
+
+    fireEvent.click(within(carryConfirmDialog).getByRole('button', { name: 'キャンセル' }));
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === '/api/facility-visit-batches'),
+    ).toHaveLength(1);
+
+    fireEvent.click(carryConfirmButton);
+    carryConfirmDialog = screen.getByRole('alertdialog', {
+      name: '青空ホーム 2名の持参確認を一括反映しますか',
+    });
+    fireEvent.click(
+      within(carryConfirmDialog).getByRole('button', { name: '2名の持参確認を反映' }),
+    );
 
     await waitFor(() => {
       expect(

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -167,7 +167,7 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getByText('未架電・連絡対応の候補を表示中です。')).toBeTruthy();
   });
 
-  it('labels proposal bulk actions with selected eligible count and submits selected proposals', async () => {
+  it('confirms proposal bulk approval before submitting selected proposals', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
     useMutationMock.mockImplementation(
@@ -248,6 +248,22 @@ describe('ScheduleProposalsContent', () => {
     expect((approveButton as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(approveButton);
+    expect(fetchMock).not.toHaveBeenCalled();
+    let approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括承認しますか',
+    });
+    expect(within(approveDialog).getByText(/承認後は患者連絡待ちへ進みます/)).toBeTruthy();
+    expect(within(approveDialog).getByText('山田花子')).toBeTruthy();
+    expect(within(approveDialog).getByText('佐藤太郎')).toBeTruthy();
+
+    fireEvent.click(within(approveDialog).getByRole('button', { name: 'キャンセル' }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(approveButton);
+    approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括承認しますか',
+    });
+    fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -266,6 +282,100 @@ describe('ScheduleProposalsContent', () => {
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify({ action: 'approve' }),
+      }),
+    );
+  });
+
+  it('confirms proposal bulk rejection before submitting selected proposals', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables: unknown) => unknown;
+        onSuccess?: (data: unknown, variables: unknown) => unknown;
+        onError?: (error: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables))
+            .then((data) => options.onSuccess?.(data, variables))
+            .catch((error: unknown) => options.onError?.(error));
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: {
+            data: [
+              buildProposal({ id: 'proposal_1' }),
+              buildProposal({
+                id: 'proposal_2',
+                case_id: 'case_2',
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '佐藤太郎',
+                    residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    const rejectButton = screen.getByRole('button', {
+      name: '選択中2件の訪問候補を一括却下',
+    });
+
+    fireEvent.click(rejectButton);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const rejectDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括却下しますか',
+    });
+    expect(within(rejectDialog).getByText(/却下すると選択候補から外れます/)).toBeTruthy();
+    expect(within(rejectDialog).getByText('山田花子')).toBeTruthy();
+    expect(within(rejectDialog).getByText('佐藤太郎')).toBeTruthy();
+
+    fireEvent.click(within(rejectDialog).getByRole('button', { name: '2件を一括却下' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/visit-schedule-proposals/proposal_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'reject' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/visit-schedule-proposals/proposal_2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'reject' }),
       }),
     );
   });

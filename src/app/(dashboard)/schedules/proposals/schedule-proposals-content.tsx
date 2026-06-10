@@ -26,6 +26,16 @@ import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
@@ -233,6 +243,14 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   patient_contact_pending: '患者連絡中',
   confirmed: '確定済み',
   rejected: '却下',
+};
+
+const FILTER_PRESET_LABELS: Record<FilterPreset, string> = {
+  all: '全て',
+  today: '本日候補',
+  contact: '患者連絡中',
+  reschedule: '再調整',
+  stale: '差替済み・期限切れ',
 };
 
 const CONTACT_METHOD_LABELS: Record<ContactMethod, string> = {
@@ -515,6 +533,7 @@ export function ScheduleProposalsContent({
   const [dateFrom, setDateFrom] = useState(initialDateFrom ?? '');
   const [dateTo, setDateTo] = useState(initialDateTo ?? '');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
   const [detailId, setDetailId] = useState<string | null>(
     initialDetailId ??
       (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
@@ -551,6 +570,11 @@ export function ScheduleProposalsContent({
   const [lastGenerationDiagnostics, setLastGenerationDiagnostics] =
     useState<ProposalGenerationDiagnostics | null>(null);
   const deferredCaseSearchInput = useDeferredValue(caseSearchInput.trim());
+
+  function clearSelectedProposals() {
+    setSelectedIds([]);
+    setBulkConfirmAction(null);
+  }
 
   const replaceDashboardUrl = (patch: Record<string, string | null | undefined>) => {
     const next = mergeScheduleProposalSearchParams({
@@ -701,6 +725,11 @@ export function ScheduleProposalsContent({
     () => selectedProposals.filter((proposal) => canApplyBulkProposalAction(proposal, 'reject')),
     [selectedProposals],
   );
+  const bulkConfirmEligibleProposals = useMemo(() => {
+    if (bulkConfirmAction === 'approve') return bulkApproveEligibleProposals;
+    if (bulkConfirmAction === 'reject') return bulkRejectEligibleProposals;
+    return [];
+  }, [bulkApproveEligibleProposals, bulkConfirmAction, bulkRejectEligibleProposals]);
 
   const effectiveSelectedCaseSummary = useMemo(() => {
     if (selectedCaseSummary) return selectedCaseSummary;
@@ -826,7 +855,7 @@ export function ScheduleProposalsContent({
     setPatientId(careCase.patient.id);
     setCaseSearchInput('');
     setDetailId(AUTO_DETAIL_ID);
-    setSelectedIds([]);
+    clearSelectedProposals();
     replaceDashboardUrl({
       case_id: careCase.id,
       patient_id: careCase.patient.id,
@@ -839,7 +868,7 @@ export function ScheduleProposalsContent({
     setSelectedCaseSummary(null);
     setCaseId('');
     setPatientId('');
-    setSelectedIds([]);
+    clearSelectedProposals();
     replaceDashboardUrl({
       case_id: null,
       patient_id: null,
@@ -850,7 +879,7 @@ export function ScheduleProposalsContent({
   const activatePreset = (preset: FilterPreset) => {
     const today = todayKey();
     setFilterPreset(preset);
-    setSelectedIds([]);
+    clearSelectedProposals();
     if (preset === 'today') {
       setActiveTab('unapproved');
       setDateFrom(today);
@@ -897,7 +926,7 @@ export function ScheduleProposalsContent({
     setSelectedCaseSummary(null);
     setCaseId('');
     setPatientId('');
-    setSelectedIds([]);
+    clearSelectedProposals();
     setDateFrom(initialDateFrom ?? '');
     setDateTo('');
     setActiveTab(toDashboardTab(initialStatus));
@@ -1009,7 +1038,7 @@ export function ScheduleProposalsContent({
     },
     onSuccess: async (_data, action) => {
       toast.success(action === 'approve' ? '選択候補を承認しました' : '選択候補を却下しました');
-      setSelectedIds([]);
+      clearSelectedProposals();
       await invalidateProposalQueries();
     },
     onError: (error) => {
@@ -1186,6 +1215,25 @@ export function ScheduleProposalsContent({
     visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
   const bulkApproveEligibleCount = bulkApproveEligibleProposals.length;
   const bulkRejectEligibleCount = bulkRejectEligibleProposals.length;
+  const bulkConfirmEligibleCount = bulkConfirmEligibleProposals.length;
+  const bulkConfirmSkippedCount = bulkConfirmAction
+    ? Math.max(0, selectedProposals.length - bulkConfirmEligibleCount)
+    : 0;
+  const bulkConfirmActionLabel = bulkConfirmAction === 'approve' ? '一括承認' : '一括却下';
+  const bulkConfirmTitle =
+    bulkConfirmAction === 'approve'
+      ? `選択中${bulkConfirmEligibleCount}件の訪問候補を一括承認しますか`
+      : `選択中${bulkConfirmEligibleCount}件の訪問候補を一括却下しますか`;
+  const bulkConfirmDescription =
+    bulkConfirmAction === 'approve'
+      ? '承認後は患者連絡待ちへ進みます。日時確定ではありません。対象患者、候補日、担当、社用車を確認してください。'
+      : '却下すると選択候補から外れます。患者連絡中の候補は辞退扱いとして記録される場合があります。対象患者、候補日、担当、社用車を確認してください。';
+  const bulkConfirmDateRange =
+    dateFrom || dateTo
+      ? `${dateFrom ? formatDateLabel(dateFrom) : '開始日未指定'} - ${
+          dateTo ? formatDateLabel(dateTo) : '終了日未指定'
+        }`
+      : '日付指定なし';
   const bulkRejectButtonLabel =
     bulkRejectEligibleCount > 0
       ? `選択中${bulkRejectEligibleCount}件の訪問候補を一括却下`
@@ -1265,7 +1313,7 @@ export function ScheduleProposalsContent({
                   onChange={(event) => {
                     const value = event.target.value;
                     setDateFrom(value);
-                    setSelectedIds([]);
+                    clearSelectedProposals();
                     replaceDashboardUrl({ date_from: value });
                   }}
                 />
@@ -1279,7 +1327,7 @@ export function ScheduleProposalsContent({
                   onChange={(event) => {
                     const value = event.target.value;
                     setDateTo(value);
-                    setSelectedIds([]);
+                    clearSelectedProposals();
                     replaceDashboardUrl({ date_to: value });
                   }}
                 />
@@ -1433,7 +1481,7 @@ export function ScheduleProposalsContent({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => bulkActionMutation.mutate('reject')}
+              onClick={() => setBulkConfirmAction('reject')}
               disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
               aria-label={bulkRejectButtonLabel}
             >
@@ -1442,7 +1490,7 @@ export function ScheduleProposalsContent({
             </Button>
             <Button
               size="sm"
-              onClick={() => bulkActionMutation.mutate('approve')}
+              onClick={() => setBulkConfirmAction('approve')}
               disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
               aria-label={bulkApproveButtonLabel}
             >
@@ -1458,7 +1506,7 @@ export function ScheduleProposalsContent({
           onValueChange={(value) => {
             const nextTab = value as DashboardTab;
             setActiveTab(nextTab);
-            setSelectedIds([]);
+            clearSelectedProposals();
             replaceDashboardUrl({
               status:
                 nextTab === 'patient_contact_pending'
@@ -1737,6 +1785,103 @@ export function ScheduleProposalsContent({
           })
         )}
       </div>
+
+      <AlertDialog
+        open={bulkConfirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !bulkActionMutation.isPending) {
+            setBulkConfirmAction(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{bulkConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{bulkConfirmDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">操作</dt>
+                <dd className="font-medium">{bulkConfirmActionLabel}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">実行対象</dt>
+                <dd className="font-medium">{bulkConfirmEligibleCount}件</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">表示タブ / 絞り込み</dt>
+                <dd className="font-medium">
+                  {TAB_LABELS[activeTab]} / {FILTER_PRESET_LABELS[filterPreset]}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">日付範囲</dt>
+                <dd className="font-medium">{bulkConfirmDateRange}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">対象外</dt>
+                <dd className="font-medium">{bulkConfirmSkippedCount}件</dd>
+              </div>
+            </dl>
+
+            <ul
+              aria-label="一括操作の対象候補"
+              className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
+            >
+              {bulkConfirmEligibleProposals.slice(0, 6).map((proposal) => (
+                <li key={proposal.id} className="rounded-md bg-muted/30 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{proposal.case_.patient.name}</span>
+                    <Badge variant="outline" className={statusBadgeClass(proposal.proposal_status)}>
+                      {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
+                    </Badge>
+                    <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatDateLabel(proposal.proposed_date)}{' '}
+                    {timeLabel(proposal.time_window_start, proposal.time_window_end)} /{' '}
+                    {proposal.proposed_pharmacist?.name ?? '担当未解決'} /{' '}
+                    {proposal.vehicle_resource?.label ?? '社用車未指定'}
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+            {bulkConfirmEligibleProposals.length > 6 ? (
+              <p className="text-xs text-muted-foreground">
+                ほか {bulkConfirmEligibleProposals.length - 6} 件も同じ操作対象です。
+              </p>
+            ) : null}
+            <p className="text-xs leading-5 text-muted-foreground">
+              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象患者・候補日・担当・社用車だけを確認してから実行してください。
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkActionMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={bulkConfirmAction === 'reject' ? 'destructive' : 'default'}
+              onClick={() => {
+                if (!bulkConfirmAction || bulkConfirmEligibleCount === 0) return;
+                bulkActionMutation.mutate(bulkConfirmAction);
+              }}
+              disabled={
+                !bulkConfirmAction || bulkConfirmEligibleCount === 0 || bulkActionMutation.isPending
+              }
+            >
+              {bulkActionMutation.isPending
+                ? '一括処理中...'
+                : bulkConfirmAction === 'approve'
+                  ? `${bulkConfirmEligibleCount}件を一括承認`
+                  : `${bulkConfirmEligibleCount}件を一括却下`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Sheet
         open={activeDetailId !== null}
