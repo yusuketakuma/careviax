@@ -356,8 +356,32 @@ describe('ScheduleProposalsContent', () => {
     expect(within(rejectDialog).getByText(/却下すると選択候補から外れます/)).toBeTruthy();
     expect(within(rejectDialog).getByText('山田花子')).toBeTruthy();
     expect(within(rejectDialog).getByText('佐藤太郎')).toBeTruthy();
+    expect(
+      within(rejectDialog).getByText(/入力した理由は実行対象 2 件すべてに記録されます/),
+    ).toBeTruthy();
+    const rejectReasonInput = within(rejectDialog).getByLabelText(
+      '却下理由',
+    ) as HTMLTextAreaElement;
+    const confirmRejectButton = within(rejectDialog).getByRole('button', {
+      name: '2件を一括却下',
+    }) as HTMLButtonElement;
+    expect(rejectReasonInput.getAttribute('aria-invalid')).toBe('true');
+    expect(rejectReasonInput.getAttribute('aria-describedby')).toContain(
+      'bulk-reject-reason-error',
+    );
+    expect(within(rejectDialog).getByText('却下理由を入力してください。')).toBeTruthy();
+    expect(confirmRejectButton.disabled).toBe(true);
 
-    fireEvent.click(within(rejectDialog).getByRole('button', { name: '2件を一括却下' }));
+    fireEvent.change(rejectReasonInput, { target: { value: '   ' } });
+    expect(confirmRejectButton.disabled).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(rejectReasonInput, {
+      target: { value: '  患者都合で訪問候補を見直し  ' },
+    });
+    expect(confirmRejectButton.disabled).toBe(false);
+
+    fireEvent.click(confirmRejectButton);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -367,7 +391,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_1',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'reject' }),
+        body: JSON.stringify({
+          action: 'reject',
+          reject_reason: '患者都合で訪問候補を見直し',
+        }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -375,7 +402,10 @@ describe('ScheduleProposalsContent', () => {
       '/api/visit-schedule-proposals/proposal_2',
       expect.objectContaining({
         method: 'PATCH',
-        body: JSON.stringify({ action: 'reject' }),
+        body: JSON.stringify({
+          action: 'reject',
+          reject_reason: '患者都合で訪問候補を見直し',
+        }),
       }),
     );
   });

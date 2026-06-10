@@ -70,6 +70,7 @@ export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', 
   }),
   z.object({
     action: z.literal('reject'),
+    reject_reason: z.string().trim().min(1, '却下理由は必須です').max(300).optional(),
   }),
   z.object({
     action: z.literal('contact_attempt'),

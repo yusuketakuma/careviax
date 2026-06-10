@@ -20,7 +20,7 @@ export type ScheduleDayContactLogForm = {
 export type ScheduleDayProposalActionPayload =
   | { action: 'approve' }
   | { action: 'confirm' }
-  | { action: 'reject' }
+  | { action: 'reject'; reject_reason?: string }
   | {
       action: 'contact_attempt';
       outcome: Extract<

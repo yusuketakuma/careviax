@@ -736,6 +736,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ) {
       return validationError('この候補は却下できません');
     }
+    const rejectReason = parsed.data.reject_reason?.trim();
 
     const proposal = await withOrgContext(ctx.orgId, async (tx) => {
       const rejectedAt = new Date();
@@ -759,6 +760,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           action: 'visit_schedule_proposal_rejected',
           target_type: 'VisitScheduleProposal',
           target_id: id,
+          changes: rejectReason ? { reject_reason: rejectReason } : undefined,
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,
         },

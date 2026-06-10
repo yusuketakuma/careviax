@@ -658,6 +658,62 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['empty', ''],
+    ['blank', '   '],
+    ['null', null],
+  ])('rejects %s reject reasons before loading the proposal', async (_caseName, rejectReason) => {
+    const response = await PATCH(
+      createRequest({ action: 'reject', reject_reason: rejectReason }, { 'x-org-id': 'org_1' }),
+      {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy single reject requests compatible when no reject reason is provided', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'reject' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: {
+        proposal_status: 'rejected',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        changes: expect.anything(),
+      }),
+    });
+  });
+
   it('rejects blank proposal ids before parsing or mutating the proposal', async () => {
     const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: '   ' }),
@@ -956,9 +1012,15 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       }),
     );
 
-    const response = await PATCH(createRequest({ action: 'reject' }, { 'x-org-id': 'org_1' }), {
-      params: Promise.resolve({ id: 'proposal_1' }),
-    });
+    const response = await PATCH(
+      createRequest(
+        { action: 'reject', reject_reason: '患者都合で訪問候補を見直し' },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -967,6 +1029,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: {
         proposal_status: 'rejected',
       },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_proposal_rejected',
+        changes: {
+          reject_reason: '患者都合で訪問候補を見直し',
+        },
+      }),
     });
   });
 

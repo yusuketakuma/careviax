@@ -215,7 +215,7 @@ type ContactFormState = {
 type ProposalActionPayload =
   | { action: 'approve' }
   | { action: 'confirm' }
-  | { action: 'reject' }
+  | { action: 'reject'; reject_reason?: string }
   | {
       action: 'contact_attempt';
       outcome: ContactOutcome;
@@ -534,6 +534,7 @@ export function ScheduleProposalsContent({
   const [dateTo, setDateTo] = useState(initialDateTo ?? '');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkRejectReason, setBulkRejectReason] = useState('');
   const [detailId, setDetailId] = useState<string | null>(
     initialDetailId ??
       (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
@@ -574,6 +575,7 @@ export function ScheduleProposalsContent({
   function clearSelectedProposals() {
     setSelectedIds([]);
     setBulkConfirmAction(null);
+    setBulkRejectReason('');
   }
 
   const replaceDashboardUrl = (patch: Record<string, string | null | undefined>) => {
@@ -1005,7 +1007,19 @@ export function ScheduleProposalsContent({
   });
 
   const bulkActionMutation = useMutation({
-    mutationFn: async (action: 'approve' | 'reject') => {
+    mutationFn: async (
+      variables:
+        | { action: 'approve' }
+        | {
+            action: 'reject';
+            reject_reason: string;
+          },
+    ) => {
+      const action = variables.action;
+      const rejectReason = action === 'reject' ? variables.reject_reason.trim() : '';
+      if (action === 'reject' && rejectReason.length === 0) {
+        throw new Error('却下理由を入力してください');
+      }
       const eligible = selectedProposals.filter((proposal) =>
         canApplyBulkProposalAction(proposal, action),
       );
@@ -1025,7 +1039,9 @@ export function ScheduleProposalsContent({
               'Content-Type': 'application/json',
               'x-org-id': orgId,
             },
-            body: JSON.stringify({ action }),
+            body: JSON.stringify(
+              action === 'reject' ? { action, reject_reason: rejectReason } : { action },
+            ),
           }).then(async (response) => {
             if (!response.ok) {
               const error = await response.json().catch(() => ({}));
@@ -1036,8 +1052,10 @@ export function ScheduleProposalsContent({
         ),
       );
     },
-    onSuccess: async (_data, action) => {
-      toast.success(action === 'approve' ? '選択候補を承認しました' : '選択候補を却下しました');
+    onSuccess: async (_data, variables) => {
+      toast.success(
+        variables.action === 'approve' ? '選択候補を承認しました' : '選択候補を却下しました',
+      );
       clearSelectedProposals();
       await invalidateProposalQueries();
     },
@@ -1220,6 +1238,9 @@ export function ScheduleProposalsContent({
     ? Math.max(0, selectedProposals.length - bulkConfirmEligibleCount)
     : 0;
   const bulkConfirmActionLabel = bulkConfirmAction === 'approve' ? '一括承認' : '一括却下';
+  const trimmedBulkRejectReason = bulkRejectReason.trim();
+  const bulkRejectReasonInvalid =
+    bulkConfirmAction === 'reject' && trimmedBulkRejectReason.length === 0;
   const bulkConfirmTitle =
     bulkConfirmAction === 'approve'
       ? `選択中${bulkConfirmEligibleCount}件の訪問候補を一括承認しますか`
@@ -1791,6 +1812,7 @@ export function ScheduleProposalsContent({
         onOpenChange={(open) => {
           if (!open && !bulkActionMutation.isPending) {
             setBulkConfirmAction(null);
+            setBulkRejectReason('');
           }
         }}
       >
@@ -1854,6 +1876,40 @@ export function ScheduleProposalsContent({
                 ほか {bulkConfirmEligibleProposals.length - 6} 件も同じ操作対象です。
               </p>
             ) : null}
+
+            {bulkConfirmAction === 'reject' ? (
+              <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <Label htmlFor="bulk-reject-reason">却下理由</Label>
+                <Textarea
+                  id="bulk-reject-reason"
+                  value={bulkRejectReason}
+                  onChange={(event) => setBulkRejectReason(event.target.value)}
+                  placeholder="例: 患者都合によりこの候補日は見送り"
+                  aria-describedby={
+                    bulkRejectReasonInvalid
+                      ? 'bulk-reject-reason-help bulk-reject-reason-error'
+                      : 'bulk-reject-reason-help'
+                  }
+                  aria-invalid={bulkRejectReasonInvalid}
+                  disabled={bulkActionMutation.isPending}
+                  autoFocus
+                  required
+                />
+                {bulkRejectReasonInvalid ? (
+                  <p
+                    id="bulk-reject-reason-error"
+                    role="alert"
+                    className="text-xs font-medium text-destructive"
+                  >
+                    却下理由を入力してください。
+                  </p>
+                ) : null}
+                <p id="bulk-reject-reason-help" className="text-xs leading-5 text-muted-foreground">
+                  入力した理由は実行対象 {bulkConfirmEligibleCount}{' '}
+                  件すべてに記録されます。住所、電話番号、薬剤名、処方詳細は入力しないでください。
+                </p>
+              </div>
+            ) : null}
             <p className="text-xs leading-5 text-muted-foreground">
               住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象患者・候補日・担当・社用車だけを確認してから実行してください。
             </p>
@@ -1867,10 +1923,20 @@ export function ScheduleProposalsContent({
               variant={bulkConfirmAction === 'reject' ? 'destructive' : 'default'}
               onClick={() => {
                 if (!bulkConfirmAction || bulkConfirmEligibleCount === 0) return;
-                bulkActionMutation.mutate(bulkConfirmAction);
+                if (bulkConfirmAction === 'reject') {
+                  bulkActionMutation.mutate({
+                    action: 'reject',
+                    reject_reason: trimmedBulkRejectReason,
+                  });
+                  return;
+                }
+                bulkActionMutation.mutate({ action: 'approve' });
               }}
               disabled={
-                !bulkConfirmAction || bulkConfirmEligibleCount === 0 || bulkActionMutation.isPending
+                !bulkConfirmAction ||
+                bulkConfirmEligibleCount === 0 ||
+                bulkActionMutation.isPending ||
+                bulkRejectReasonInvalid
               }
             >
               {bulkActionMutation.isPending
