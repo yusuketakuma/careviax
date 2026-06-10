@@ -5,6 +5,7 @@ import {
   getCoverageLabel,
   type CoverageCategory,
 } from '@/lib/admin/data-explorer-catalog';
+import { redactAuditLogChangesForResponse } from '@/lib/audit-logs/redaction';
 import { withOrgContext } from '@/lib/db/rls';
 
 const READ_ONLY_FIELDS = new Set(['id', 'org_id', 'created_at', 'updated_at']);
@@ -317,6 +318,16 @@ function sanitizeRow(meta: TableMeta, row: Record<string, unknown>) {
   return safeRow;
 }
 
+function redactRowForResponse(meta: TableMeta, row: Record<string, unknown>) {
+  if (meta.modelName !== 'AuditLog' || typeof row.action !== 'string') {
+    return row;
+  }
+
+  return redactAuditLogChangesForResponse(
+    row as Record<string, unknown> & { action: string; changes: unknown },
+  );
+}
+
 function resolveOrderClause(meta: TableMeta) {
   const fieldNames = new Set(meta.fields.map((field) => field.name));
   if (fieldNames.has('updated_at')) return `${quoteIdentifier('updated_at')} DESC`;
@@ -459,7 +470,9 @@ export async function listDataExplorerRows(
   const rawTotalCount = Number(countRows[0]?.row_count ?? 0);
   const totalCountIsExact = !search || rawTotalCount <= SEARCH_COUNT_EXACT_LIMIT;
   const totalCount = search && !totalCountIsExact ? SEARCH_COUNT_EXACT_LIMIT : rawTotalCount;
-  const sanitizedRows = rows.flatMap((entry) => (entry.row ? [sanitizeRow(meta, entry.row)] : []));
+  const sanitizedRows = rows.flatMap((entry) =>
+    entry.row ? [redactRowForResponse(meta, sanitizeRow(meta, entry.row))] : [],
+  );
   const hasMore = search
     ? sanitizedRows.length > limit
     : offset + sanitizedRows.length < totalCount;

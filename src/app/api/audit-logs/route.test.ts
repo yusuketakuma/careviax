@@ -145,4 +145,40 @@ describe('/api/audit-logs GET', () => {
       }),
     );
   });
+
+  it('redacts proposal reject free text before returning audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'audit_reject_1',
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'visit_schedule_proposal_rejected',
+        target_type: 'VisitScheduleProposal',
+        target_id: 'proposal_1',
+        changes: {
+          reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+        },
+        ip_address: '127.0.0.1',
+        user_agent: 'vitest',
+        created_at: new Date('2026-04-09T00:00:00.000Z'),
+      },
+    ]);
+    countMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
+    const body = await response.json();
+    const bodyText = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data[0].changes).toMatchObject({
+      reject_reason: '却下理由は監査ログ本体に保管されています',
+      reject_reason_redacted: true,
+    });
+    expect(bodyText).not.toContain('東京都港区2-2-2');
+    expect(bodyText).not.toContain('090-1234-5678');
+    expect(bodyText).not.toContain('アムロジピン');
+    expect(bodyText).not.toContain('処方詳細');
+  });
 });

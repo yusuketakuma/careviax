@@ -259,6 +259,49 @@ describe('data explorer service hardening', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('redacts proposal reject free text from AuditLog data explorer rows', async () => {
+    const storedChanges = {
+      reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+      other: 'kept',
+    };
+    mockOrgContext(async (query) => {
+      if (query.includes('COUNT(*)')) {
+        return [{ row_count: 1 }];
+      }
+      return [
+        {
+          row: {
+            id: 'audit_reject_1',
+            org_id: 'org_1',
+            actor_id: 'user_1',
+            action: 'visit_schedule_proposal_rejected',
+            target_type: 'visit_schedule_proposal',
+            target_id: 'proposal_1',
+            changes: storedChanges,
+            ip_address: '192.0.2.10',
+            user_agent: 'test-agent',
+            created_at: new Date('2026-06-10T00:00:00.000Z'),
+            updated_at: new Date('2026-06-10T00:00:00.000Z'),
+          },
+        },
+      ];
+    });
+
+    const result = await listDataExplorerRows('org_1', 'AuditLog');
+    const resultText = JSON.stringify(result.rows);
+
+    expect(result.rows[0]?.changes).toMatchObject({
+      reject_reason: '却下理由は監査ログ本体に保管されています',
+      reject_reason_redacted: true,
+      other: 'kept',
+    });
+    expect(resultText).not.toContain('東京都港区2-2-2');
+    expect(resultText).not.toContain('090-1234-5678');
+    expect(resultText).not.toContain('アムロジピン');
+    expect(resultText).not.toContain('処方詳細');
+    expect(storedChanges.reject_reason).toBe('東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細');
+  });
+
   it('keeps membership permission and status fields read-only', async () => {
     const tx = mockOrgContext(async (query) => {
       if (query.includes('COUNT(*)')) {

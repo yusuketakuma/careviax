@@ -4,6 +4,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { buildPagination } from '@/lib/api/search';
 import { parseBoundedInteger } from '@/lib/api/pagination';
+import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
 
 const DEFAULT_AUDIT_LOG_PAGE = 1;
 const DEFAULT_AUDIT_LOG_LIMIT = 20;
@@ -58,7 +59,7 @@ export const GET = withAuth(
     ]);
 
     return success({
-      data: logs,
+      data: redactAuditLogsForResponse(logs),
       pagination: {
         total,
         page: Math.floor(skip / take) + 1,
