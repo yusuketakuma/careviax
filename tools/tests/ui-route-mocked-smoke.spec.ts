@@ -41,6 +41,12 @@ const PROPOSAL_BULK_FAILURE_ID = 'proposal_bulk_route_mock_failure';
 const PROPOSAL_BULK_REJECT_REASON = '患者都合で訪問候補を見直し';
 const PROPOSAL_BULK_UNSAFE_ERROR_MESSAGE =
   '勤務枠が埋まりました 東京都新宿区9-9-9 090-1234-5678 アムロジピン 処方詳細';
+const PROPOSAL_SEARCH_CASE_A_ID = 'case_search_a';
+const PROPOSAL_SEARCH_CASE_B_ID = 'case_search_b';
+const PROPOSAL_SEARCH_PATIENT_A_ID = 'patient_search_a';
+const PROPOSAL_SEARCH_PATIENT_B_ID = 'patient_search_b';
+const PROPOSAL_SEARCH_A_ID = 'proposal_search_a';
+const PROPOSAL_SEARCH_B_ID = 'proposal_search_b';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -524,8 +530,50 @@ const PROPOSAL_BULK_ROUTE_MOCK_PROPOSALS = [
   }),
 ];
 
-function proposalBulkTargetName(patientName: string, timeRange: string) {
-  return `${patientName} 2026/05/08 ${timeRange} / 薬剤師A / 社用車A`;
+const PROPOSAL_SEARCH_ROUTE_MOCK_PROPOSALS = [
+  buildProposalBulkRouteMockProposal({
+    id: PROPOSAL_SEARCH_A_ID,
+    caseId: PROPOSAL_SEARCH_CASE_A_ID,
+    patientId: PROPOSAL_SEARCH_PATIENT_A_ID,
+    patientName: '佐藤太郎',
+    address: '東京都千代田区1-1-1 RouteMock 101号室',
+    routeOrder: 1,
+    start: '09:00',
+    end: '10:00',
+  }),
+  buildProposalBulkRouteMockProposal({
+    id: PROPOSAL_SEARCH_B_ID,
+    caseId: PROPOSAL_SEARCH_CASE_B_ID,
+    patientId: PROPOSAL_SEARCH_PATIENT_B_ID,
+    patientName: '佐藤太郎',
+    address: '東京都中央区2-2-2 RouteMock 202号室',
+    routeOrder: 2,
+    start: '10:30',
+    end: '11:30',
+  }),
+];
+
+function shortEntityIdentifier(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return '未設定';
+  const withoutKnownPrefix = normalized.replace(/^(proposal|case|patient)[_-]/u, '');
+  const candidate = withoutKnownPrefix || normalized;
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+}
+
+function proposalBulkTargetName(
+  patientName: string,
+  timeRange: string,
+  ids: { caseId: string; proposalId: string },
+) {
+  return `${patientName} 2026/05/08 ${timeRange} / 薬剤師A / 社用車A / ケース ${shortEntityIdentifier(ids.caseId)} / 候補 ${shortEntityIdentifier(ids.proposalId)}`;
+}
+
+async function expectMinTouchBox(locator: Locator, label: string) {
+  const box = await locator.boundingBox();
+  expect(box, `${label} should have a rendered bounding box`).not.toBeNull();
+  expect(box!.width, `${label} width should be at least 44px`).toBeGreaterThanOrEqual(44);
+  expect(box!.height, `${label} height should be at least 44px`).toBeGreaterThanOrEqual(44);
 }
 
 function buildProposalBulkRouteMockDetail(
@@ -1342,9 +1390,227 @@ async function installScheduleProposalBulkRouteMocks(page: Page) {
   return { billingPreviewRequests, listRequests, patchRequests };
 }
 
+async function installScheduleProposalSearchRouteMocks(page: Page) {
+  const listRequests: CapturedRouteRequest[] = [];
+  const billingPreviewRequests: CapturedRouteRequest[] = [];
+
+  await page.route(apiPathPattern('/api/cases'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: PROPOSAL_SEARCH_CASE_A_ID,
+          status: 'active',
+          primary_pharmacist_id: PROPOSAL_BULK_PHARMACIST_ID,
+          primary_pharmacist_name: '薬剤師A',
+          patient: {
+            id: PROPOSAL_SEARCH_PATIENT_A_ID,
+            name: '佐藤太郎',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1 RouteMock 101号室',
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+        {
+          id: PROPOSAL_SEARCH_CASE_B_ID,
+          status: 'active',
+          primary_pharmacist_id: PROPOSAL_BULK_PHARMACIST_ID,
+          primary_pharmacist_name: '薬剤師A',
+          patient: {
+            id: PROPOSAL_SEARCH_PATIENT_B_ID,
+            name: '佐藤太郎',
+            residences: [
+              {
+                address: '東京都中央区2-2-2 RouteMock 202号室',
+                lat: null,
+                lng: null,
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/visit-vehicle-resources'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: PROPOSAL_BULK_VEHICLE_ID,
+          label: '社用車A',
+          travel_mode: 'DRIVE',
+          max_stops: 6,
+          max_route_duration_minutes: 180,
+          available: true,
+          site: {
+            id: PROPOSAL_BULK_SITE_ID,
+            name: 'RouteMock 提案薬局',
+          },
+        },
+      ],
+    });
+  });
+
+  await page.route(
+    apiPathPattern('/api/visit-schedule-proposals/billing-preview-batch'),
+    async (route) => {
+      billingPreviewRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, { data: {} });
+    },
+  );
+
+  await page.route(apiPathPattern('/api/visit-schedule-proposals'), async (route) => {
+    if (route.request().method() !== 'GET') {
+      await fulfillJson(route, { message: 'Unexpected proposal list method in route mock' }, 405);
+      return;
+    }
+
+    listRequests.push(captureRouteRequest(route));
+    const url = new URL(route.request().url());
+    const caseId = url.searchParams.get('case_id');
+    const patientId = url.searchParams.get('patient_id');
+    const data =
+      caseId || patientId
+        ? PROPOSAL_SEARCH_ROUTE_MOCK_PROPOSALS.filter(
+            (proposal) =>
+              (!caseId || proposal.case_id === caseId) &&
+              (!patientId || proposal.case_.patient.id === patientId),
+          )
+        : PROPOSAL_SEARCH_ROUTE_MOCK_PROPOSALS;
+
+    await fulfillJson(route, { data });
+  });
+
+  await page.route(
+    new RegExp(
+      '^(?:https?://[^/]+)?/api/visit-schedule-proposals/(?!billing-preview-batch/?(?:\\?|$))[^/?]+/?(?:\\?.*)?$',
+    ),
+    async (route) => {
+      const proposalId = decodeURIComponent(
+        new URL(route.request().url()).pathname.split('/').pop() ?? '',
+      );
+      const proposal = PROPOSAL_SEARCH_ROUTE_MOCK_PROPOSALS.find((item) => item.id === proposalId);
+      if (!proposal) {
+        await fulfillJson(route, { message: 'Unknown route-mocked proposal' }, 404);
+        return;
+      }
+      await fulfillJson(route, { data: buildProposalBulkRouteMockDetail(proposal) });
+    },
+  );
+
+  return { billingPreviewRequests, listRequests };
+}
+
 test.describe('schedule proposals route-mocked bulk safety smoke', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
+  });
+
+  test('filters same-name proposal search to the exact case and preserves 44px controls', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Proposal same-name search proof uses a single chromium route-mocked pass.',
+    );
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 768, height: 1024 });
+    const { billingPreviewRequests, listRequests } =
+      await installScheduleProposalSearchRouteMocks(page);
+
+    await openStableRoute(
+      page,
+      `/schedules/proposals?workspace=dashboard&status=proposed&date_from=${PROPOSAL_BULK_DATE}&date_to=${PROPOSAL_BULK_DATE}`,
+    );
+
+    await expect(page.getByRole('heading', { name: '訪問候補ダッシュボード' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect
+      .poll(() => listRequests.length, {
+        message: 'same-name proposal dashboard should fetch proposals through the route mock',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => billingPreviewRequests.length, {
+        message: 'same-name proposal dashboard should keep billing previews route-mocked',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+
+    const firstTarget = proposalBulkTargetName('佐藤太郎', '09:00 - 10:00', {
+      caseId: PROPOSAL_SEARCH_CASE_A_ID,
+      proposalId: PROPOSAL_SEARCH_A_ID,
+    });
+    const secondTarget = proposalBulkTargetName('佐藤太郎', '10:30 - 11:30', {
+      caseId: PROPOSAL_SEARCH_CASE_B_ID,
+      proposalId: PROPOSAL_SEARCH_B_ID,
+    });
+    await expect(
+      page.getByRole('button', { name: `${firstTarget} の候補詳細を開く` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: `${secondTarget} の候補詳細を開く` }),
+    ).toBeVisible();
+
+    await page.getByLabel('ケース/患者検索').fill('佐藤');
+    const secondSearchResult = page.getByRole('button', {
+      name: `佐藤太郎 / ケース ${shortEntityIdentifier(PROPOSAL_SEARCH_CASE_B_ID)} / 患者識別 ${shortEntityIdentifier(PROPOSAL_SEARCH_PATIENT_B_ID)} / 主担当 薬剤師A で候補を絞り込む`,
+    });
+    await expect(secondSearchResult).toBeVisible();
+    await expect(secondSearchResult).not.toContainText('東京都中央区2-2-2');
+    await expectMinTouchBox(secondSearchResult, 'same-name second search result');
+    await secondSearchResult.click();
+
+    await expect
+      .poll(
+        () => {
+          const latestUrl = listRequests.at(-1)?.url;
+          if (!latestUrl) return false;
+          const params = new URL(latestUrl).searchParams;
+          return (
+            params.get('case_id') === PROPOSAL_SEARCH_CASE_B_ID &&
+            params.get('patient_id') === PROPOSAL_SEARCH_PATIENT_B_ID
+          );
+        },
+        {
+          message: 'same-name search should refetch proposals for the exact selected case/patient',
+          timeout: 15_000,
+        },
+      )
+      .toBe(true);
+
+    await expect(page.getByRole('button', { name: `${firstTarget} の候補詳細を開く` })).toHaveCount(
+      0,
+    );
+    const detailButton = page.getByRole('button', { name: `${secondTarget} の候補詳細を開く` });
+    const approveButton = page.getByRole('button', {
+      name: `${secondTarget} を承認して患者連絡へ進める`,
+    });
+    const proposalCheckbox = page.getByRole('checkbox', { name: `${secondTarget} の候補を選択` });
+    await expect(detailButton).toBeVisible();
+    await expect(approveButton).toBeVisible();
+    await expectMinTouchBox(detailButton, 'same-name filtered detail button');
+    await expectMinTouchBox(approveButton, 'same-name filtered approve button');
+    await expectMinTouchBox(proposalCheckbox, 'same-name filtered proposal checkbox');
+
+    await detailButton.click();
+    const detailDialog = page.getByRole('dialog', { name: `${secondTarget} の訪問候補詳細` });
+    await expect(detailDialog).toBeVisible();
+    await expectMinTouchBox(
+      detailDialog.getByRole('button', { name: `${secondTarget} を承認して患者連絡へ進める` }),
+      'same-name detail approve button',
+    );
+
+    const bodyText = await page.locator('body').innerText();
+    expect(bodyText).not.toContain('東京都千代田区1-1-1 RouteMock');
+    expect(bodyText).not.toContain('東京都中央区2-2-2 RouteMock');
+    expect(errors).toEqual([]);
   });
 
   test('keeps proposal bulk reject keyboard flow PHI-minimized and target-specific', async ({
@@ -1386,8 +1652,14 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
     await selectAllCheckbox.focus();
     await expect(selectAllCheckbox).toBeFocused();
     await page.keyboard.press('Space');
-    const successTarget = proposalBulkTargetName('山田花子', '09:00 - 10:00');
-    const failureTarget = proposalBulkTargetName('佐藤太郎', '10:30 - 11:30');
+    const successTarget = proposalBulkTargetName('山田花子', '09:00 - 10:00', {
+      caseId: 'proposal_bulk_route_mock_case_success',
+      proposalId: PROPOSAL_BULK_SUCCESS_ID,
+    });
+    const failureTarget = proposalBulkTargetName('佐藤太郎', '10:30 - 11:30', {
+      caseId: 'proposal_bulk_route_mock_case_failure',
+      proposalId: PROPOSAL_BULK_FAILURE_ID,
+    });
     await expect(
       page.getByRole('checkbox', { name: `${successTarget} の候補を選択` }),
     ).toHaveAttribute('aria-checked', 'true');
@@ -1484,7 +1756,7 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
 
     await partialAlert
       .getByRole('button', {
-        name: '佐藤太郎 2026/05/08 10:30 - 11:30 の未更新候補を詳細で確認',
+        name: `佐藤太郎 2026/05/08 10:30 - 11:30 / 候補 ${shortEntityIdentifier(PROPOSAL_BULK_FAILURE_ID)} の未更新候補を詳細で確認`,
       })
       .click();
     await expect(page.getByTestId('schedule-proposal-active-row')).toContainText('佐藤太郎');
