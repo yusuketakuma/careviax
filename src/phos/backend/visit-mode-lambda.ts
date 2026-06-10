@@ -24,6 +24,7 @@ import {
   type EvidenceObjectVerifier,
 } from './evidence-upload-verification';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
+import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
 
 type VisitModeLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosVisitModeRepository;
@@ -162,7 +163,7 @@ function createEvidenceObjectVerifier(
   const bucket = evidenceBucketName(deps);
   if (!bucket) return undefined;
   return createS3EvidenceObjectVerifier({
-    client: deps.s3_client ?? new S3Client({}),
+    client: deps.s3_client ?? withPhosAwsClientTimeout(new S3Client(phosAwsClientConfig())),
     bucket,
   });
 }
@@ -171,7 +172,8 @@ export function createVisitModeRepository(
   deps: VisitModeLambdaDependencies = {},
 ): PhosVisitModeRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient = deps.dynamo_client ?? new DynamoDBClient({});
+  const dynamoClient =
+    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
   const storeClient = deps.store_client ?? createDynamoVisitModeClient({ client: dynamoClient });
   return createVisitModeLifecycleRepository(
     createDynamoVisitModeRepository(storeClient, {

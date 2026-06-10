@@ -9,6 +9,7 @@ import {
   type PhosTraceAnnotationSink,
 } from './observability';
 import { recordDynamoSecurityEvent } from './security-events';
+import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
 
 export type PhosLambdaRuntimeDependencies = {
   observability?: PhosObservabilitySink;
@@ -37,7 +38,10 @@ export function createLambdaObservabilitySink(
     trace_annotation_sink: deps.trace_annotation_sink ?? createXRayTraceAnnotationSink(),
   });
   const securityEventClient =
-    deps.security_event_client ?? (shouldPersistSecurityEvents() ? new DynamoDBClient({}) : null);
+    deps.security_event_client ??
+    (shouldPersistSecurityEvents()
+      ? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()))
+      : null);
   const pendingSecurityEvents = new Set<Promise<void>>();
   const securityEventFlushTimeoutMs = Math.max(
     1,

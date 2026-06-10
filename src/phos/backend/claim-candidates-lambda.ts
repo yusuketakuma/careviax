@@ -41,6 +41,7 @@ import {
 import { withTenantContext } from './lambda-handler';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
 import { PhosDomainError } from './cards-repository';
+import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
 
 type DynamoItem = Record<string, AttributeValue>;
 
@@ -230,7 +231,8 @@ export function createClaimCandidatesRepository(
   deps: ClaimCandidatesLambdaDependencies = {},
 ): PhosClaimCandidatesRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient = deps.dynamo_client ?? new DynamoDBClient({});
+  const dynamoClient =
+    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
   const storeClient =
     deps.store_client ?? createDynamoClaimCandidatesClient({ client: dynamoClient });
   return createDynamoClaimCandidatesRepository(storeClient, { now: deps.now });

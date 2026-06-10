@@ -26,6 +26,7 @@ import { cardSk, tenantPk } from './dynamodb-keys';
 import { phosCoreTableName } from './dynamo-cards-repository';
 import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
+import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
 
 type EvidenceLambdaDependencies = PhosLambdaRuntimeDependencies & {
   presigner?: EvidenceUploadPresigner;
@@ -54,7 +55,7 @@ export function createEvidenceUploadPresigner(
     throw new Error('PH-OS evidence KMS key ARN is not configured');
   }
   return createS3EvidenceUploadPresigner({
-    client: deps.s3_client ?? new S3Client({}),
+    client: deps.s3_client ?? withPhosAwsClientTimeout(new S3Client(phosAwsClientConfig())),
     bucket,
     kms_key_arn,
     expires_in_seconds: deps.expires_in_seconds,
@@ -130,7 +131,9 @@ function createLazyEvidenceUploadAuthorizer(
       authorizer ??=
         deps.upload_authorizer ??
         createDynamoEvidenceUploadAuthorizer({
-          client: deps.dynamo_client ?? new DynamoDBClient({}),
+          client:
+            deps.dynamo_client ??
+            withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig())),
         });
       return authorizer.authorizeEvidenceUpload(ctx, card_id);
     },
@@ -142,7 +145,8 @@ export function createEvidenceUploadIntentStore(
 ): EvidenceUploadIntentStore {
   if (deps.upload_intent_store) return deps.upload_intent_store;
   return createDynamoEvidenceUploadIntentStore({
-    client: deps.dynamo_client ?? new DynamoDBClient({}),
+    client:
+      deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig())),
     now: deps.now,
   });
 }

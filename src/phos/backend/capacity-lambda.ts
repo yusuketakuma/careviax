@@ -13,6 +13,7 @@ import {
   type PhosLambdaRuntimeDependencies,
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
+import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
 
 type CapacityLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosCapacityRepository;
@@ -40,7 +41,8 @@ export function createCapacityRepository(
   deps: CapacityLambdaDependencies = {},
 ): PhosCapacityRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient = deps.dynamo_client ?? new DynamoDBClient({});
+  const dynamoClient =
+    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
   const storeClient = deps.store_client ?? createDynamoCapacityClient({ client: dynamoClient });
   return createDynamoCapacityRepository(storeClient, { now: deps.now });
 }
