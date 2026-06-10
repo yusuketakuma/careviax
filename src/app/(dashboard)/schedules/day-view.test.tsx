@@ -430,6 +430,87 @@ function buildPreparationPack(overrides?: Partial<VisitPreparationPack>): VisitP
   };
 }
 
+function setupPlannerDataQueries() {
+  useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === 'cases') {
+      return {
+        data: {
+          data: [
+            {
+              id: 'case_1',
+              status: 'active',
+              primary_pharmacist_id: 'pharmacist_1',
+              primary_pharmacist_name: '薬剤師A',
+              patient: {
+                id: 'patient_1',
+                name: '山田花子',
+                residences: [{ address: '東京都千代田区1-1-1' }],
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        isFetching: false,
+      };
+    }
+    if (queryKey[0] === 'pharmacists') {
+      return {
+        data: {
+          data: [
+            {
+              id: 'pharmacist_1',
+              name: '薬剤師A',
+              name_kana: null,
+              role: 'pharmacist',
+              site_id: 'site_1',
+              site_name: '本店',
+            },
+          ],
+        },
+        isLoading: false,
+        isFetching: false,
+      };
+    }
+    if (queryKey[0] === 'visit-vehicle-resources') {
+      return {
+        data: { data: [] },
+        isLoading: false,
+        isFetching: false,
+      };
+    }
+    if (queryKey[0] === 'visit-schedule-billing-preview') {
+      return {
+        data: undefined,
+        isLoading: false,
+        isFetching: false,
+      };
+    }
+    return {
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+    };
+  });
+}
+
+function executeMutations() {
+  useMutationMock.mockImplementation(
+    (options: {
+      mutationFn?: (variables: unknown) => unknown;
+      onSuccess?: (data: unknown, variables: unknown) => unknown;
+      onError?: (error: unknown) => unknown;
+    }) => ({
+      mutate: vi.fn((variables: unknown) => {
+        void Promise.resolve(options.mutationFn?.(variables))
+          .then((data) => options.onSuccess?.(data, variables))
+          .catch((error: unknown) => options.onError?.(error));
+      }),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }),
+  );
+}
+
 describe('ScheduleDayView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -473,6 +554,105 @@ describe('ScheduleDayView', () => {
     await renderScheduleDayView(<ScheduleDayView />);
 
     expect(screen.getByTestId('schedule-board-skeleton')).toBeTruthy();
+  });
+
+  it('uses the initial selected date as the planner start date', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupPlannerDataQueries();
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    expect((screen.getByLabelText('訪問起点日') as HTMLInputElement).value).toBe('2026-04-09');
+    const billingPreviewQuery = useQueryMock.mock.calls.find(([options]) => {
+      return (
+        (options as { queryKey?: unknown[] }).queryKey?.[0] === 'visit-schedule-billing-preview'
+      );
+    })?.[0] as { queryKey?: unknown[] } | undefined;
+    expect(billingPreviewQuery?.queryKey).toEqual([
+      'visit-schedule-billing-preview',
+      'org_1',
+      'case_1',
+      '2026-04-09',
+      'regular',
+      'pharmacist_1',
+      'site_1',
+    ]);
+  });
+
+  it('keeps the planner start date coupled to selected day until manually edited', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupPlannerDataQueries();
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    const plannerStartDate = screen.getByLabelText('訪問起点日') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /2026年4月10日\(金\)/ }));
+    });
+
+    expect((screen.getByLabelText('週間スケジュールの対象日') as HTMLInputElement).value).toBe(
+      '2026-04-10',
+    );
+    expect(plannerStartDate.value).toBe('2026-04-10');
+
+    await act(async () => {
+      fireEvent.change(plannerStartDate, { target: { value: '2026-04-15' } });
+      fireEvent.click(screen.getByRole('button', { name: /2026年4月11日\(土\)/ }));
+    });
+
+    expect((screen.getByLabelText('週間スケジュールの対象日') as HTMLInputElement).value).toBe(
+      '2026-04-11',
+    );
+    expect(plannerStartDate.value).toBe('2026-04-15');
+  });
+
+  it('generates proposals using the initial selected date until the planner date is edited', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    setupPlannerDataQueries();
+    executeMutations();
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '訪問候補を生成' }));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({
+      case_id: 'case_1',
+      start_date: '2026-04-09',
+      candidate_count: 3,
+    });
+
+    fireEvent.change(screen.getByLabelText('訪問起点日'), { target: { value: '2026-04-12' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '訪問候補を生成' }));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toMatchObject({
+      case_id: 'case_1',
+      start_date: '2026-04-12',
+      candidate_count: 3,
+    });
   });
 
   it('shows the human decision flow on daily proposal cards', async () => {

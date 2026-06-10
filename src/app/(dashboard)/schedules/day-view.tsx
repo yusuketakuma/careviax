@@ -270,12 +270,19 @@ export function ScheduleDayView({
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
   const [plannerCandidateCountManual, setPlannerCandidateCountManual] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(
-    () => initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd'),
-  );
+  const initialScheduleDate = initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd');
+  const [selectedDate, setSelectedDate] = useState(() => initialScheduleDate);
   const [plannerForm, setPlannerForm] = useState(() =>
-    getDefaultScheduleDayPlannerForm(format(new Date(), 'yyyy-MM-dd')),
+    getDefaultScheduleDayPlannerForm(initialScheduleDate),
   );
+  function selectScheduleDate(dateKey: string) {
+    setPlannerForm((current) =>
+      current.start_date === selectedDate
+        ? applyScheduleDayPlannerStartDate(current, dateKey)
+        : current,
+    );
+    setSelectedDate(dateKey);
+  }
   const [rescheduleTarget, setRescheduleTarget] = useState<VisitSchedule | null>(null);
   const [rescheduleApprovalTarget, setRescheduleApprovalTarget] =
     useState<ScheduleDayRescheduleApprovalTarget | null>(null);
@@ -1464,7 +1471,7 @@ export function ScheduleDayView({
         billedDateSet={billedDateSet}
         nextBillableDate={billingCadence?.next_billable_date ?? null}
         suggestedDateSet={suggestedDateSet}
-        onSelectDate={setSelectedDate}
+        onSelectDate={selectScheduleDate}
       />
 
       <PageSection
