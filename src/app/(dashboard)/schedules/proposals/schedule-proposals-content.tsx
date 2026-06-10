@@ -273,6 +273,10 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   rejected: '却下',
 };
 
+const PROPOSAL_TOUCH_TARGET_CLASS = 'min-h-[44px] sm:h-auto sm:min-h-[44px]';
+const PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS =
+  'size-11 rounded-lg sm:size-11 after:inset-0 [&_svg]:size-4';
+
 const FILTER_PRESET_LABELS: Record<FilterPreset, string> = {
   all: '全て',
   today: '本日候補',
@@ -1599,7 +1603,10 @@ export function ScheduleProposalsContent({
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="h-auto min-h-[44px] whitespace-normal py-2 text-left sm:h-auto"
+                        className={cn(
+                          PROPOSAL_TOUCH_TARGET_CLASS,
+                          'h-auto whitespace-normal py-2 text-left',
+                        )}
                         aria-label={`${caseOptionTargetLabel(careCase)} で候補を絞り込む`}
                         onClick={() => applyCaseFilter(careCase)}
                       >
@@ -1718,6 +1725,7 @@ export function ScheduleProposalsContent({
             <Button
               variant="outline"
               size="sm"
+              className={PROPOSAL_TOUCH_TARGET_CLASS}
               onClick={() => setBulkConfirmAction('reject')}
               disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
               aria-label={bulkRejectButtonLabel}
@@ -1727,6 +1735,7 @@ export function ScheduleProposalsContent({
             </Button>
             <Button
               size="sm"
+              className={PROPOSAL_TOUCH_TARGET_CLASS}
               onClick={() => setBulkConfirmAction('approve')}
               disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
               aria-label={bulkApproveButtonLabel}
@@ -1768,8 +1777,9 @@ export function ScheduleProposalsContent({
         </Tabs>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex min-h-[44px] items-center gap-3 text-sm sm:min-h-0">
+          <label className="flex min-h-[44px] items-center gap-3 text-sm">
             <Checkbox
+              className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
               checked={allVisibleSelected}
               onCheckedChange={(checked) => {
                 setBulkActionFailureSummary(null);
@@ -1830,7 +1840,10 @@ export function ScheduleProposalsContent({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                      className={cn(
+                        PROPOSAL_TOUCH_TARGET_CLASS,
+                        'mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100',
+                      )}
                       onClick={() => openDetail(failure.id)}
                       aria-label={`${failure.patientName} ${formatDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${shortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
                     >
@@ -1943,6 +1956,7 @@ export function ScheduleProposalsContent({
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
                       <Checkbox
+                        className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
                         checked={selectedIds.includes(proposal.id)}
                         onCheckedChange={(checked) => {
                           setBulkActionFailureSummary(null);
@@ -1999,6 +2013,7 @@ export function ScheduleProposalsContent({
                       <Button
                         variant="outline"
                         size="sm"
+                        className={PROPOSAL_TOUCH_TARGET_CLASS}
                         onClick={() => openDetail(proposal.id)}
                         aria-label={`${proposalTargetLabel} の候補詳細を開く`}
                       >
@@ -2007,6 +2022,7 @@ export function ScheduleProposalsContent({
                       {canApprove ? (
                         <Button
                           size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
                           onClick={() => setSingleConfirmAction({ proposal, action: 'approve' })}
                           disabled={proposalActionMutation.isPending}
                           aria-label={`${proposalTargetLabel} を承認して患者連絡へ進める`}
@@ -2017,6 +2033,7 @@ export function ScheduleProposalsContent({
                       {canConfirm ? (
                         <Button
                           size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
                           onClick={() => setSingleConfirmAction({ proposal, action: 'confirm' })}
                           disabled={proposalActionMutation.isPending}
                           aria-label={`${proposalTargetLabel} を日時確定する`}
@@ -2372,6 +2389,7 @@ export function ScheduleProposalsContent({
                     ['proposed', 'reschedule_pending'].includes(detail.proposal_status) ? (
                       <Button
                         size="sm"
+                        className={PROPOSAL_TOUCH_TARGET_CLASS}
                         onClick={() =>
                           setSingleConfirmAction({ proposal: detail, action: 'approve' })
                         }
@@ -2390,6 +2408,7 @@ export function ScheduleProposalsContent({
                         <Button
                           variant="outline"
                           size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
                           onClick={() =>
                             proposalActionMutation.mutate({
                               id: detail.id,
@@ -2417,6 +2436,7 @@ export function ScheduleProposalsContent({
                         </Button>
                         <Button
                           size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
                           onClick={() =>
                             setSingleConfirmAction({ proposal: detail, action: 'confirm' })
                           }
@@ -2435,7 +2455,10 @@ export function ScheduleProposalsContent({
                     {detail.finalized_schedule ? (
                       <Link
                         href={`/visits/${detail.finalized_schedule.id}/record`}
-                        className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40"
+                        className={cn(
+                          PROPOSAL_TOUCH_TARGET_CLASS,
+                          'inline-flex items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40',
+                        )}
                         aria-label={
                           detailTargetLabel ? `${detailTargetLabel} の確定予定を開く` : undefined
                         }

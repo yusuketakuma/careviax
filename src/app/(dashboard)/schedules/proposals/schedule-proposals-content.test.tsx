@@ -282,6 +282,19 @@ function expectAlertExcludesSensitiveDetails(alert: HTMLElement) {
   expect(alert.textContent ?? '').not.toContain('proposal_');
 }
 
+function expectPersistentTouchTarget(element: HTMLElement) {
+  const className = element.getAttribute('class') ?? '';
+  expect(className).toContain('min-h-[44px]');
+  expect(className).toContain('sm:h-auto');
+  expect(className).toContain('sm:min-h-[44px]');
+}
+
+function expectLargeCheckboxTarget(element: HTMLElement) {
+  const className = element.getAttribute('class') ?? '';
+  expect(className).toContain('size-11');
+  expect(className).toContain('sm:size-11');
+}
+
 describe('ScheduleProposalsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -442,6 +455,28 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.queryByText('東京都千代田区1-1-1')).toBeNull();
     expect(screen.queryByText('東京都千代田区2-2-2')).toBeNull();
     expect(screen.getByText('訪問先住所は詳細・ルート確認で表示 / 担当拠点 本店')).toBeTruthy();
+  });
+
+  it('keeps proposal dashboard critical controls at persistent 44px touch targets', () => {
+    mockDashboardProposals([buildProposal()]);
+
+    render(<ScheduleProposalsContent />);
+
+    const target = proposalTargetName('山田花子');
+    expectPersistentTouchTarget(
+      screen.getByRole('button', { name: '承認できる訪問候補を選択して一括承認' }),
+    );
+    expectPersistentTouchTarget(
+      screen.getByRole('button', { name: '却下できる訪問候補を選択して一括却下' }),
+    );
+    expectPersistentTouchTarget(screen.getByRole('button', { name: `${target} の候補詳細を開く` }));
+    expectPersistentTouchTarget(
+      screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }),
+    );
+    expectLargeCheckboxTarget(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    expectLargeCheckboxTarget(
+      screen.getByRole('checkbox', { name: proposalCheckboxName('山田花子') }),
+    );
   });
 
   it('disambiguates same-name case search results with safe case and patient identifiers', async () => {
@@ -632,10 +667,11 @@ describe('ScheduleProposalsContent', () => {
       caseId: 'case_2',
       proposalId: 'proposal_2',
     });
-    expect(screen.getByRole('dialog', { name: `${target} の訪問候補詳細` })).toBeTruthy();
-    expect(
-      screen.getAllByRole('button', { name: `${target} を承認して患者連絡へ進める` }).length,
-    ).toBeGreaterThan(0);
+    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
+    expect(detailDialog).toBeTruthy();
+    expectPersistentTouchTarget(
+      within(detailDialog).getByRole('button', { name: `${target} を承認して患者連絡へ進める` }),
+    );
   });
 
   it('requires confirmation before a single proposal card approval is submitted', async () => {
@@ -811,6 +847,9 @@ describe('ScheduleProposalsContent', () => {
       proposalId: 'proposal_2',
     });
     const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
+    expectPersistentTouchTarget(
+      within(detailDialog).getByRole('button', { name: `${target} を日時確定する` }),
+    );
     fireEvent.click(within(detailDialog).getByRole('button', { name: `${target} を日時確定する` }));
     expect(fetchMock).not.toHaveBeenCalled();
 
