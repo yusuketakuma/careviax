@@ -173,7 +173,7 @@ describe('/api/audit-logs GET', () => {
 
     expect(response.status).toBe(200);
     expect(body.data[0].changes).toMatchObject({
-      reject_reason: '却下理由は監査ログ本体に保管されています',
+      reject_reason: '却下理由の自由記載は出力対象外です',
       reject_reason_redacted: true,
     });
     expect(bodyText).not.toContain('東京都港区2-2-2');

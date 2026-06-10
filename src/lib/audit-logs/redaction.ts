@@ -1,4 +1,4 @@
-const REDACTED_REJECT_REASON = '却下理由は監査ログ本体に保管されています';
+const REDACTED_REJECT_REASON = '却下理由の自由記載は出力対象外です';
 
 type AuditLogLike = {
   action: string;

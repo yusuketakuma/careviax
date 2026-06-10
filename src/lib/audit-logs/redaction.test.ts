@@ -17,7 +17,7 @@ describe('redactAuditLogChangesForResponse', () => {
 
     expect(result).not.toBe(log);
     expect(result.changes).toMatchObject({
-      reject_reason: '却下理由は監査ログ本体に保管されています',
+      reject_reason: '却下理由の自由記載は出力対象外です',
       reject_reason_redacted: true,
       other: 'kept',
     });
@@ -33,6 +33,21 @@ describe('redactAuditLogChangesForResponse', () => {
       id: 'audit_update_1',
       action: 'visit_schedule_proposal_rejected',
       changes: { status: 'rejected' },
+    };
+
+    expect(redactAuditLogChangesForResponse(log)).toBe(log);
+  });
+
+  it('leaves new proposal rejection metadata unchanged', () => {
+    const log = {
+      id: 'audit_reject_2',
+      action: 'visit_schedule_proposal_rejected',
+      changes: {
+        reject_reason_recorded: true,
+        reject_reason_length: 42,
+        reject_reason_storage: 'VisitScheduleProposal.reject_reason',
+        reject_reason_text_stored: false,
+      },
     };
 
     expect(redactAuditLogChangesForResponse(log)).toBe(log);

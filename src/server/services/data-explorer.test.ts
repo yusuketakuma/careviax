@@ -291,7 +291,7 @@ describe('data explorer service hardening', () => {
     const resultText = JSON.stringify(result.rows);
 
     expect(result.rows[0]?.changes).toMatchObject({
-      reject_reason: '却下理由は監査ログ本体に保管されています',
+      reject_reason: '却下理由の自由記載は出力対象外です',
       reject_reason_redacted: true,
       other: 'kept',
     });

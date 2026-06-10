@@ -296,6 +296,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     proposalFindFirstMock.mockResolvedValueOnce({
       ...buildProposal({
         created_at: new Date('2026-03-26T09:00:00.000Z'),
+        reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
           patient: {
             name: '患者A',
@@ -346,6 +347,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           id: 'proposal_2',
           proposed_pharmacist_id: 'pharmacist_2',
           priority: 'emergency',
+          reject_reason: '埼玉県川口市9-9-9 090-9999-9999 ワルファリン 処方詳細',
           route_distance_score: 3.5,
           proposed_date: new Date('2026-03-28T00:00:00.000Z'),
           case_: {
@@ -432,7 +434,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         ]),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: expect.objectContaining({
         id: 'proposal_1',
         vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
@@ -460,6 +463,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         }),
       }),
     });
+    expect(body.data).not.toHaveProperty('reject_reason');
+    expect(body.data.related_proposals[0]).not.toHaveProperty('reject_reason');
+    expect(JSON.stringify(body)).not.toContain('東京都港区2-2-2');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('埼玉県川口市9-9-9');
+    expect(JSON.stringify(body)).not.toContain('090-9999-9999');
+    expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 
   it('scopes proposal detail, related proposals, and day schedules to assignment predicates', async () => {
@@ -705,11 +716,20 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       where: { id: 'proposal_1' },
       data: {
         proposal_status: 'rejected',
+        reject_reason: null,
       },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
-      data: expect.not.objectContaining({
-        changes: expect.anything(),
+      data: expect.objectContaining({
+        changes: {
+          proposal_status_from: 'proposed',
+          proposal_status_to: 'rejected',
+          patient_contact_status_from: 'pending',
+          patient_contact_status_to: 'pending',
+          reject_reason_recorded: false,
+          reject_reason_storage: null,
+          reject_reason_text_stored: false,
+        },
       }),
     });
   });
@@ -1014,7 +1034,10 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     const response = await PATCH(
       createRequest(
-        { action: 'reject', reject_reason: '患者都合で訪問候補を見直し' },
+        {
+          action: 'reject',
+          reject_reason: '  東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細  ',
+        },
         { 'x-org-id': 'org_1' },
       ),
       {
@@ -1028,16 +1051,29 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       where: { id: 'proposal_1' },
       data: {
         proposal_status: 'rejected',
+        reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
       },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'visit_schedule_proposal_rejected',
         changes: {
-          reject_reason: '患者都合で訪問候補を見直し',
+          proposal_status_from: 'proposed',
+          proposal_status_to: 'rejected',
+          patient_contact_status_from: 'pending',
+          patient_contact_status_to: 'pending',
+          reject_reason_recorded: true,
+          reject_reason_length: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細'.length,
+          reject_reason_storage: 'VisitScheduleProposal.reject_reason',
+          reject_reason_text_stored: false,
         },
       }),
     });
+    const auditPayload = JSON.stringify(auditLogCreateMock.mock.calls.at(-1)?.[0]);
+    expect(auditPayload).not.toContain('東京都港区2-2-2');
+    expect(auditPayload).not.toContain('090-1234-5678');
+    expect(auditPayload).not.toContain('アムロジピン');
+    expect(auditPayload).not.toContain('処方詳細');
   });
 
   it('finalizes the proposal into a confirmed visit and supersedes sibling drafts', async () => {

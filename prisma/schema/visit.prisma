@@ -261,6 +261,7 @@ model VisitScheduleProposal {
   medication_end_date           DateTime?                 @db.Date
   visit_deadline_date           DateTime?                 @db.Date
   proposal_reason               String?
+  reject_reason                 String?
   suggested_recurrence_rule     String?
   escalation_reason             String?
   approved_by                   String?

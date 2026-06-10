@@ -142,6 +142,7 @@ describe('/api/visit-schedule-proposals', () => {
       {
         id: 'proposal_1',
         proposed_pharmacist_id: 'user_2',
+        reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
           patient: {
             residences: [],
@@ -226,7 +227,8 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'proposal_1',
@@ -241,6 +243,11 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       ],
     });
+    expect(body.data[0]).not.toHaveProperty('reject_reason');
+    expect(JSON.stringify(body)).not.toContain('東京都港区2-2-2');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('処方詳細');
     expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

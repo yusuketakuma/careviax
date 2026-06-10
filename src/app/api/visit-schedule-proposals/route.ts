@@ -13,6 +13,10 @@ import {
   generateVisitScheduleProposalSchema,
   proposalStatusSchema,
 } from '@/lib/validations/visit-schedule-proposal';
+import {
+  omitProposalRejectReason,
+  omitProposalRejectReasons,
+} from '@/lib/visit-schedule-proposals/response';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
@@ -312,7 +316,7 @@ export const GET = withAuth(
 
     return success({
       data: proposals.map((proposal) => ({
-        ...proposal,
+        ...omitProposalRejectReason(proposal),
         proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
       })),
     });
@@ -635,7 +639,7 @@ export const POST = withAuth(
 
     return success(
       {
-        data: proposals,
+        data: omitProposalRejectReasons(proposals),
         alerts: allAlerts,
         diagnostics: {
           accepted: acceptedDiagnostics,

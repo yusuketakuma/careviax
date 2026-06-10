@@ -34,6 +34,8 @@ import {
   buildVisitScheduleContactTaskKey,
 } from '@/server/services/visit-schedule-communication';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
+import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
+import { omitProposalRejectReason } from '@/lib/visit-schedule-proposals/response';
 
 type RoutePreviewPoint = {
   schedule_id: string;
@@ -615,10 +617,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return success({
     data: {
-      ...proposal,
+      ...omitProposalRejectReason(proposal),
       proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
       related_proposals: relatedProposals.map((item) => ({
-        ...item,
+        ...omitProposalRejectReason(item),
         proposed_pharmacist: pharmacistById.get(item.proposed_pharmacist_id) ?? null,
       })),
       pharmacist_day_schedules: pharmacistDaySchedules,
@@ -725,7 +727,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       payload: { source: 'visit_schedule_proposals_approve', proposal_id: id },
     });
 
-    return success({ data: proposal });
+    return success({ data: omitProposalRejectReason(proposal) });
   }
 
   if (parsed.data.action === 'reject') {
@@ -737,6 +739,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return validationError('この候補は却下できません');
     }
     const rejectReason = parsed.data.reject_reason?.trim();
+    const shouldMarkContactDeclined = existing.proposal_status === 'patient_contact_pending';
+    const patientContactStatusTo = shouldMarkContactDeclined
+      ? 'declined'
+      : existing.patient_contact_status;
 
     const proposal = await withOrgContext(ctx.orgId, async (tx) => {
       const rejectedAt = new Date();
@@ -744,9 +750,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { id },
         data: {
           proposal_status: 'rejected',
-          ...(existing.proposal_status === 'patient_contact_pending'
+          reject_reason: rejectReason ?? null,
+          ...(shouldMarkContactDeclined
             ? {
-                patient_contact_status: 'declined',
+                patient_contact_status: patientContactStatusTo,
                 patient_contacted_at: rejectedAt,
               }
             : {}),
@@ -760,7 +767,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           action: 'visit_schedule_proposal_rejected',
           target_type: 'VisitScheduleProposal',
           target_id: id,
-          changes: rejectReason ? { reject_reason: rejectReason } : undefined,
+          changes: buildProposalRejectAuditChanges({
+            rejectReason,
+            proposalStatusFrom: existing.proposal_status,
+            patientContactStatusFrom: existing.patient_contact_status,
+            patientContactStatusTo,
+          }),
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,
         },
@@ -774,7 +786,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       payload: { source: 'visit_schedule_proposals_reject', proposal_id: id },
     });
 
-    return success({ data: proposal });
+    return success({ data: omitProposalRejectReason(proposal) });
   }
 
   if (parsed.data.action === 'contact_attempt') {
@@ -861,7 +873,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       payload: { source: 'visit_schedule_proposals_contact_attempt', proposal_id: id },
     });
 
-    return success({ data: proposal });
+    return success({ data: omitProposalRejectReason(proposal) });
   }
 
   if (existing.proposal_status !== 'patient_contact_pending') {
@@ -1165,5 +1177,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     payload: { source: 'visit_schedule_proposals_confirm', proposal_id: id },
   });
 
-  return success({ data: result });
+  return success({
+    data: {
+      ...result,
+      proposal: omitProposalRejectReason(result.proposal),
+    },
+  });
 }
