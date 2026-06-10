@@ -212,6 +212,29 @@ type ContactFormState = {
   callback_due_at: string;
 };
 
+type BulkActionFailureSummary = {
+  action: 'approve' | 'reject';
+  successCount: number;
+  failureCount: number;
+  failures: Array<{
+    id: string;
+    patientName: string;
+    proposedDate: string;
+    timeWindowStart: string | null;
+    timeWindowEnd: string | null;
+    pharmacistName: string;
+    vehicleLabel: string;
+    message: string;
+  }>;
+};
+
+type BulkActionFailure = {
+  proposal: Proposal;
+  ok: false;
+  message: string;
+  reachedServer: boolean;
+};
+
 type ProposalActionPayload =
   | { action: 'approve' }
   | { action: 'confirm' }
@@ -535,6 +558,8 @@ export function ScheduleProposalsContent({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
   const [bulkRejectReason, setBulkRejectReason] = useState('');
+  const [bulkActionFailureSummary, setBulkActionFailureSummary] =
+    useState<BulkActionFailureSummary | null>(null);
   const [detailId, setDetailId] = useState<string | null>(
     initialDetailId ??
       (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
@@ -576,6 +601,7 @@ export function ScheduleProposalsContent({
     setSelectedIds([]);
     setBulkConfirmAction(null);
     setBulkRejectReason('');
+    setBulkActionFailureSummary(null);
   }
 
   const replaceDashboardUrl = (patch: Record<string, string | null | undefined>) => {
@@ -1031,33 +1057,106 @@ export function ScheduleProposalsContent({
         );
       }
 
-      await Promise.all(
-        eligible.map((proposal) =>
-          fetch(`/api/visit-schedule-proposals/${proposal.id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-org-id': orgId,
-            },
-            body: JSON.stringify(
-              action === 'reject' ? { action, reject_reason: rejectReason } : { action },
-            ),
-          }).then(async (response) => {
-            if (!response.ok) {
-              const error = await response.json().catch(() => ({}));
-              throw new Error(error.message ?? '一括更新に失敗しました');
-            }
-            return response.json();
-          }),
-        ),
+      const results = await Promise.all(
+        eligible.map(async (proposal) => {
+          let response: Response;
+          try {
+            response = await fetch(`/api/visit-schedule-proposals/${proposal.id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-org-id': orgId,
+              },
+              body: JSON.stringify(
+                action === 'reject' ? { action, reject_reason: rejectReason } : { action },
+              ),
+            });
+          } catch (error) {
+            return {
+              proposal,
+              ok: false as const,
+              message: error instanceof Error ? error.message : '一括更新に失敗しました',
+              reachedServer: false,
+            } satisfies BulkActionFailure;
+          }
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            return {
+              proposal,
+              ok: false as const,
+              message: error.message ?? '一括更新に失敗しました',
+              reachedServer: true,
+            } satisfies BulkActionFailure;
+          }
+
+          try {
+            await response.json();
+            return { proposal, ok: true as const };
+          } catch (error) {
+            return {
+              proposal,
+              ok: false as const,
+              message: error instanceof Error ? error.message : '一括更新に失敗しました',
+              reachedServer: true,
+            } satisfies BulkActionFailure;
+          }
+        }),
       );
+
+      return {
+        action,
+        succeeded: results.filter((result) => result.ok),
+        failed: results.filter((result) => !result.ok),
+      };
     },
-    onSuccess: async (_data, variables) => {
-      toast.success(
-        variables.action === 'approve' ? '選択候補を承認しました' : '選択候補を却下しました',
-      );
-      clearSelectedProposals();
-      await invalidateProposalQueries();
+    onSuccess: async (result) => {
+      const successCount = result.succeeded.length;
+      const failedCount = result.failed.length;
+      const shouldRefreshAfterFailures = result.failed.some((item) => item.reachedServer);
+
+      if (failedCount === 0) {
+        toast.success(
+          result.action === 'approve' ? '選択候補を承認しました' : '選択候補を却下しました',
+        );
+        clearSelectedProposals();
+        await invalidateProposalQueries();
+        return;
+      }
+
+      const failedIds = new Set(result.failed.map((item) => item.proposal.id));
+      setSelectedIds((current) => current.filter((id) => failedIds.has(id)));
+      setBulkConfirmAction(null);
+      setBulkRejectReason('');
+      setBulkActionFailureSummary({
+        action: result.action,
+        successCount,
+        failureCount: failedCount,
+        failures: result.failed.map((item) => ({
+          id: item.proposal.id,
+          patientName: item.proposal.case_.patient.name,
+          proposedDate: item.proposal.proposed_date,
+          timeWindowStart: item.proposal.time_window_start,
+          timeWindowEnd: item.proposal.time_window_end,
+          pharmacistName: item.proposal.proposed_pharmacist?.name ?? '担当未解決',
+          vehicleLabel: item.proposal.vehicle_resource?.label ?? '社用車未指定',
+          message: item.message,
+        })),
+      });
+
+      if (successCount > 0) {
+        toast.warning(
+          `${successCount + failedCount}件中${successCount}件を処理しました。${failedCount}件は未更新です。選択中の候補を確認して再試行してください。`,
+        );
+        await invalidateProposalQueries();
+      } else {
+        toast.error(
+          `${failedCount}件を更新できませんでした。選択中の候補を確認して再試行してください。`,
+        );
+        if (shouldRefreshAfterFailures) {
+          await invalidateProposalQueries();
+        }
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '一括更新に失敗しました');
@@ -1231,6 +1330,25 @@ export function ScheduleProposalsContent({
   const allVisibleSelected =
     visibleProposals.length > 0 &&
     visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
+  const activeBulkActionFailureSummary = useMemo(() => {
+    if (!bulkActionFailureSummary) return null;
+
+    const actionableFailureIds = new Set(
+      visibleProposals
+        .filter((proposal) => canApplyBulkProposalAction(proposal, bulkActionFailureSummary.action))
+        .map((proposal) => proposal.id),
+    );
+    const failures = bulkActionFailureSummary.failures.filter((failure) =>
+      actionableFailureIds.has(failure.id),
+    );
+    if (failures.length === 0) return null;
+
+    return {
+      ...bulkActionFailureSummary,
+      failureCount: failures.length,
+      failures,
+    };
+  }, [bulkActionFailureSummary, visibleProposals]);
   const bulkApproveEligibleCount = bulkApproveEligibleProposals.length;
   const bulkRejectEligibleCount = bulkRejectEligibleProposals.length;
   const bulkConfirmEligibleCount = bulkConfirmEligibleProposals.length;
@@ -1555,9 +1673,10 @@ export function ScheduleProposalsContent({
           <label className="flex min-h-[44px] items-center gap-3 text-sm sm:min-h-0">
             <Checkbox
               checked={allVisibleSelected}
-              onCheckedChange={(checked) =>
-                setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : [])
-              }
+              onCheckedChange={(checked) => {
+                setBulkActionFailureSummary(null);
+                setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : []);
+              }}
               aria-label="表示中の候補をすべて選択"
             />
             表示中の候補をすべて選択
@@ -1566,7 +1685,7 @@ export function ScheduleProposalsContent({
             <FilterSummaryBar
               items={[
                 { label: '表示候補', value: `${visibleProposals.length}件` },
-                { label: '選択中', value: `${selectedIds.length}件` },
+                { label: '選択中', value: `${selectedProposals.length}件` },
                 { label: '本日候補', value: `${todayFilterCount}件` },
                 {
                   label: '患者連絡中',
@@ -1582,6 +1701,38 @@ export function ScheduleProposalsContent({
             />
           </div>
         </div>
+
+        {activeBulkActionFailureSummary ? (
+          <Alert
+            className="border-amber-300 bg-amber-50 text-amber-900"
+            data-testid="proposal-bulk-partial-failure"
+          >
+            <XCircle className="size-4" aria-hidden="true" />
+            <AlertDescription className="space-y-2 text-current">
+              <p className="font-medium">
+                {activeBulkActionFailureSummary.successCount > 0
+                  ? `${activeBulkActionFailureSummary.successCount + activeBulkActionFailureSummary.failureCount}件中${activeBulkActionFailureSummary.successCount}件を処理しました。${activeBulkActionFailureSummary.failureCount}件は未更新です。`
+                  : `${activeBulkActionFailureSummary.failureCount}件を更新できませんでした。`}
+              </p>
+              <ul aria-label="未更新の訪問候補" className="space-y-2">
+                {activeBulkActionFailureSummary.failures.map((failure) => (
+                  <li
+                    key={failure.id}
+                    className="rounded-md border border-amber-200 bg-white/70 p-2"
+                  >
+                    <p className="font-medium">{failure.patientName}</p>
+                    <p className="text-xs leading-5">
+                      {formatDateLabel(failure.proposedDate)}{' '}
+                      {timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} /{' '}
+                      {failure.pharmacistName} / {failure.vehicleLabel}
+                    </p>
+                    <p className="text-xs leading-5">未更新理由: {failure.message}</p>
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : null}
       </PageSection>
 
       <div className="grid gap-4">
@@ -1682,13 +1833,14 @@ export function ScheduleProposalsContent({
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={selectedIds.includes(proposal.id)}
-                        onCheckedChange={(checked) =>
+                        onCheckedChange={(checked) => {
+                          setBulkActionFailureSummary(null);
                           setSelectedIds((current) =>
                             checked
                               ? Array.from(new Set([...current, proposal.id]))
                               : current.filter((id) => id !== proposal.id),
-                          )
-                        }
+                          );
+                        }}
                         aria-label={`${proposal.case_.patient.name} の候補を選択`}
                       />
                       <div className="space-y-2">
@@ -1923,6 +2075,7 @@ export function ScheduleProposalsContent({
               variant={bulkConfirmAction === 'reject' ? 'destructive' : 'default'}
               onClick={() => {
                 if (!bulkConfirmAction || bulkConfirmEligibleCount === 0) return;
+                setBulkActionFailureSummary(null);
                 if (bulkConfirmAction === 'reject') {
                   bulkActionMutation.mutate({
                     action: 'reject',

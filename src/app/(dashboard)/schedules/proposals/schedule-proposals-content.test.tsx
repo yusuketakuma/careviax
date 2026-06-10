@@ -13,6 +13,10 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const invalidateQueriesMock = vi.hoisted(() => vi.fn());
+const toastSuccessMock = vi.hoisted(() => vi.fn());
+const toastWarningMock = vi.hoisted(() => vi.fn());
+const toastErrorMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -44,6 +48,15 @@ vi.mock('next/link', () => ({
       {children}
     </a>
   ),
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastErrorMock,
+    info: vi.fn(),
+    success: toastSuccessMock,
+    warning: toastWarningMock,
+  },
 }));
 
 vi.mock('@/components/features/visits/visit-route-map', () => ({
@@ -98,6 +111,80 @@ function buildProposal(overrides?: Record<string, unknown>) {
   };
 }
 
+function mockImmediateMutations() {
+  useMutationMock.mockImplementation(
+    (options: {
+      mutationFn?: (variables: unknown) => unknown;
+      onSuccess?: (data: unknown, variables: unknown) => unknown;
+      onError?: (error: unknown) => unknown;
+    }) => ({
+      mutate: vi.fn((variables: unknown) => {
+        void Promise.resolve(options.mutationFn?.(variables))
+          .then((data) => options.onSuccess?.(data, variables))
+          .catch((error: unknown) => options.onError?.(error));
+      }),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }),
+  );
+}
+
+function mockDashboardProposals(proposals: Array<ReturnType<typeof buildProposal>>) {
+  useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === 'schedule-proposals-dashboard') {
+      return {
+        data: { data: proposals },
+        isLoading: false,
+        connected: true,
+      };
+    }
+    if (queryKey[0] === 'schedule-proposal-detail') {
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    }
+    return {
+      data: undefined,
+      isLoading: false,
+      connected: true,
+    };
+  });
+}
+
+function invalidatedQueryKeys() {
+  return invalidateQueriesMock.mock.calls.map(([arg]) => {
+    const payload = arg as { queryKey: unknown[] };
+    return payload.queryKey;
+  });
+}
+
+function expectProposalQueryInvalidations() {
+  expect(invalidatedQueryKeys()).toEqual(
+    expect.arrayContaining([
+      ['schedule-proposals-dashboard', 'org_1'],
+      ['schedule-proposal-detail', 'org_1'],
+      ['visit-schedule-proposals', 'org_1'],
+      ['visit-schedules', 'week-board', 'org_1'],
+      ['tasks', 'visit-contact-followup', 'org_1'],
+    ]),
+  );
+  expect(invalidateQueriesMock).toHaveBeenCalledTimes(5);
+}
+
+function expectToastMessagesExcludeSensitiveDetails() {
+  const toastText = JSON.stringify([
+    toastSuccessMock.mock.calls,
+    toastWarningMock.mock.calls,
+    toastErrorMock.mock.calls,
+  ]);
+  expect(toastText).not.toContain('東京都港区2-2-2');
+  expect(toastText).not.toContain('090-1234-5678');
+  expect(toastText).not.toContain('アムロジピン');
+  expect(toastText).not.toContain('処方詳細');
+}
+
 describe('ScheduleProposalsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,7 +194,7 @@ describe('ScheduleProposalsContent', () => {
     usePathnameMock.mockReturnValue('/schedules/proposals');
     useSearchParamsMock.mockReturnValue(new URLSearchParams('workspace=dashboard'));
     useQueryClientMock.mockReturnValue({
-      invalidateQueries: vi.fn(),
+      invalidateQueries: invalidateQueriesMock,
     });
     useMutationMock.mockReturnValue({
       mutate: vi.fn(),
@@ -286,6 +373,101 @@ describe('ScheduleProposalsContent', () => {
     );
   });
 
+  it('reports partial bulk approval failures, refreshes successes, and keeps failed proposals selected', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/proposal_2')) {
+        return new Response(
+          JSON.stringify({
+            message: '勤務枠が埋まりました 東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+          }),
+          {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      return Response.json({ data: {} });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([
+      buildProposal({ id: 'proposal_1' }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+      buildProposal({
+        id: 'proposal_3',
+        case_id: 'case_3',
+        case_: {
+          patient: {
+            id: 'patient_3',
+            name: '鈴木一郎',
+            residences: [{ address: '東京都新宿区3-3-3', lat: 35.3, lng: 139.3 }],
+          },
+        },
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '選択中3件の訪問候補を一括承認',
+      }),
+    );
+    const approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中3件の訪問候補を一括承認しますか',
+    });
+    fireEvent.click(within(approveDialog).getByRole('button', { name: '3件を一括承認' }));
+
+    await waitFor(() => {
+      expect(toastWarningMock).toHaveBeenCalledWith(
+        '3件中2件を処理しました。1件は未更新です。選択中の候補を確認して再試行してください。',
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const warningMessage = toastWarningMock.mock.calls[0]?.[0] as string;
+    expect(warningMessage).not.toContain('山田花子');
+    expect(warningMessage).not.toContain('佐藤太郎');
+    expect(warningMessage).not.toContain('鈴木一郎');
+    expectToastMessagesExcludeSensitiveDetails();
+    expectProposalQueryInvalidations();
+
+    const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
+    expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
+    expect(within(partialAlert).getByText(/2026\/04\/09/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/薬剤師A/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/社用車A/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/勤務枠が埋まりました/)).toBeTruthy();
+    expect(
+      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(
+      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(
+      screen.getByRole('checkbox', { name: '鈴木一郎 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(screen.getByRole('button', { name: '選択中1件の訪問候補を一括承認' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }));
+
+    expect(screen.queryByTestId('proposal-bulk-partial-failure')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: '承認できる訪問候補を選択して一括承認' }),
+    ).toBeTruthy();
+  });
+
   it('confirms proposal bulk rejection before submitting selected proposals', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
@@ -408,6 +590,235 @@ describe('ScheduleProposalsContent', () => {
         }),
       }),
     );
+  });
+
+  it('keeps only failed proposals selected after a partial bulk rejection failure', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/proposal_2')) {
+        return new Response(JSON.stringify({ message: '候補はすでに更新済みです' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return Response.json({ data: {} });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables: unknown) => unknown;
+        onSuccess?: (data: unknown, variables: unknown) => unknown;
+        onError?: (error: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables))
+            .then((data) => options.onSuccess?.(data, variables))
+            .catch((error: unknown) => options.onError?.(error));
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: {
+            data: [
+              buildProposal({ id: 'proposal_1' }),
+              buildProposal({
+                id: 'proposal_2',
+                case_id: 'case_2',
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '佐藤太郎',
+                    residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '選択中2件の訪問候補を一括却下',
+      }),
+    );
+    const rejectDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括却下しますか',
+    });
+    fireEvent.change(within(rejectDialog).getByLabelText('却下理由'), {
+      target: { value: '患者都合で訪問候補を見直し' },
+    });
+    fireEvent.click(within(rejectDialog).getByRole('button', { name: '2件を一括却下' }));
+
+    await waitFor(() => {
+      expect(toastWarningMock).toHaveBeenCalledWith(
+        '2件中1件を処理しました。1件は未更新です。選択中の候補を確認して再試行してください。',
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const warningMessage = toastWarningMock.mock.calls[0]?.[0] as string;
+    expect(warningMessage).not.toContain('山田花子');
+    expect(warningMessage).not.toContain('佐藤太郎');
+    const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
+    expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
+    expect(within(partialAlert).getByText(/2026\/04\/09/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/薬剤師A/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/社用車A/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/候補はすでに更新済みです/)).toBeTruthy();
+    expect(
+      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(
+      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expectToastMessagesExcludeSensitiveDetails();
+    expectProposalQueryInvalidations();
+  });
+
+  it('keeps selection and refreshes when every bulk request reaches the server and fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/proposal_2')) {
+        return new Response(JSON.stringify({ message: '候補はすでに更新済みです' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ message: '勤務枠が埋まりました' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([
+      buildProposal({ id: 'proposal_1' }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '選択中2件の訪問候補を一括承認',
+      }),
+    );
+    const approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括承認しますか',
+    });
+    fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '2件を更新できませんでした。選択中の候補を確認して再試行してください。',
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectProposalQueryInvalidations();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    const errorMessage = toastErrorMock.mock.calls[0]?.[0] as string;
+    expect(errorMessage).not.toContain('山田花子');
+    expect(errorMessage).not.toContain('佐藤太郎');
+    expectToastMessagesExcludeSensitiveDetails();
+    const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
+    expect(within(partialAlert).getByText('山田花子')).toBeTruthy();
+    expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
+    expect(within(partialAlert).getByText(/勤務枠が埋まりました/)).toBeTruthy();
+    expect(within(partialAlert).getByText(/候補はすでに更新済みです/)).toBeTruthy();
+    expect(
+      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(
+      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  it('keeps selection and skips refresh when every bulk request fails before reaching the server', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      throw new Error('Network offline');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([
+      buildProposal({ id: 'proposal_1' }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '選択中2件の訪問候補を一括承認',
+      }),
+    );
+    const approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中2件の訪問候補を一括承認しますか',
+    });
+    fireEvent.click(within(approveDialog).getByRole('button', { name: '2件を一括承認' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '2件を更新できませんでした。選択中の候補を確認して再試行してください。',
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expectToastMessagesExcludeSensitiveDetails();
+    const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
+    expect(within(partialAlert).getByText('山田花子')).toBeTruthy();
+    expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
+    expect(within(partialAlert).getAllByText(/Network offline/)).toHaveLength(2);
+    expect(
+      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(
+      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+    ).toBe('true');
   });
 
   it('shows the human approval and phone confirmation flow on proposal cards', () => {
