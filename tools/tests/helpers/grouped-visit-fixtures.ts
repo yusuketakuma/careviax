@@ -312,8 +312,18 @@ export async function ensureGroupedVisitFixtures() {
   }
 }
 
-export async function ensureConfirmedScheduleActionFixture(scheduledDate: string) {
+type ConfirmedScheduleActionFixtureOptions = {
+  carryItemsStatus?: 'ready' | 'partial' | 'blocked';
+  carryItemsConfirmed?: boolean;
+};
+
+export async function ensureConfirmedScheduleActionFixture(
+  scheduledDate: string,
+  options: ConfirmedScheduleActionFixtureOptions = {},
+) {
   await ensureGroupedVisitFixtures();
+  const carryItemsStatus = options.carryItemsStatus ?? 'ready';
+  const carryItemsConfirmed = options.carryItemsConfirmed ?? true;
 
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
@@ -350,7 +360,7 @@ export async function ensureConfirmedScheduleActionFixture(scheduledDate: string
       `
         INSERT INTO "VisitSchedule" (
           "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","facility_batch_id","facility_unit_id","medication_start_date","medication_end_date","confirmed_at","confirmed_by","carry_items_status","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,'09:00','10:00',$6,'primary',1,$7,$8,$5,$5,NOW(),$6,'ready',NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,'09:00','10:00',$6,'primary',1,$7,$8,$5,$5,NOW(),$6,$9,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
             "case_id" = EXCLUDED."case_id",
@@ -382,17 +392,18 @@ export async function ensureConfirmedScheduleActionFixture(scheduledDate: string
         base.user_id,
         GROUPED_VISIT_IDS.facilityBatch,
         GROUPED_VISIT_IDS.facilityUnit,
+        carryItemsStatus,
       ],
     );
     await client.query(
       `
         INSERT INTO "VisitPreparation" (
           "id","org_id","schedule_id","checklist","medication_changes_reviewed","carry_items_confirmed","previous_issues_reviewed","route_confirmed","offline_synced","prepared_by","prepared_at","created_at","updated_at"
-        ) VALUES ($1,$2,$3,'{}'::jsonb,true,true,true,true,true,$4,NOW(),NOW(),NOW())
+        ) VALUES ($1,$2,$3,'{}'::jsonb,true,$5,true,true,true,$4,NOW(),NOW(),NOW())
         ON CONFLICT ("schedule_id") DO UPDATE
         SET "checklist" = EXCLUDED."checklist",
             "medication_changes_reviewed" = true,
-            "carry_items_confirmed" = true,
+            "carry_items_confirmed" = EXCLUDED."carry_items_confirmed",
             "previous_issues_reviewed" = true,
             "route_confirmed" = true,
             "offline_synced" = true,
@@ -405,6 +416,7 @@ export async function ensureConfirmedScheduleActionFixture(scheduledDate: string
         base.org_id,
         GROUPED_VISIT_IDS.confirmedActionSchedule,
         base.user_id,
+        carryItemsConfirmed,
       ],
     );
 

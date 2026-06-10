@@ -410,6 +410,53 @@ test.describe('schedule page', () => {
     expect(realErrors).toEqual([]);
   });
 
+  test('visit preparation dialog blocks ready when carry items are unresolved', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop carry-item blocker proof is covered separately from mobile shell stability checks.',
+    );
+
+    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()), {
+      carryItemsStatus: 'blocked',
+      carryItemsConfirmed: false,
+    });
+    const { page, errors } = await createInstrumentedPage(context);
+
+    await openScheduleBoard(page);
+
+    const card = page.locator(`#schedule-${fixture.scheduleId}`);
+    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
+      timeout: 90_000,
+    });
+    await expect(card).toBeVisible({ timeout: 90_000 });
+
+    await card
+      .getByRole('button', {
+        name: /施設E2E 太郎.*訪問準備を開く/,
+      })
+      .click();
+
+    const dialog = page.getByRole('dialog', { name: '訪問準備チェック' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('alert').getByText('持参薬が未確定のままです')).toBeVisible();
+    await expect(dialog.getByText('ready 停止中')).toBeVisible();
+    await expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeVisible();
+    await expect(dialog.getByText('持参物ステータス未解決')).toBeVisible({ timeout: 90_000 });
+    await expect(dialog.getByText('未完了: 持参薬・物品確認')).toBeVisible();
+    await expect(
+      dialog.getByRole('button', {
+        name: /施設E2E 太郎.*訪問準備をreadyに進める/,
+      }),
+    ).toBeDisabled();
+    await expectNoPageHorizontalOverflow(page);
+    await expectNoLocatorHorizontalOverflow(dialog);
+
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
   test('week navigation changes displayed dates without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
     await openScheduleBoard(page);

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-040838
+
+- current task: add browser proof that unresolved carry-item status blocks visit-preparation ready.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/repository-audit-2026-06-10.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.helpers.ts`, readiness service and route grep output, and medical-safety reviewer guidance from the previous slice.
+- files changed: `tools/tests/helpers/grouped-visit-fixtures.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `docs/repository-audit-2026-06-10.md`, and `.codex/ralph-state.md`.
+- bugs found: the existing browser proof only covered a `carry_items_status = ready` schedule, leaving the high-risk `blocked/partial` ready-stopper path covered by unit/API tests but not by a real schedule-card-to-dialog browser flow.
+- security risks found: no auth, authorization, tenant scoping, PHI response shape, endpoint, CSP, or DB production behavior changed. The fixture helper remains guarded by the local `ph_os_e2e` database check and only mutates deterministic E2E fixture rows.
+- performance issues found: no product runtime path changed. The E2E fixture can now parameterize carry-item status without adding product queries or render work.
+- validation commands: `pnpm exec prettier --write tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts docs/repository-audit-2026-06-10.md`; `pnpm exec eslint tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`; `pnpm exec prettier --check tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`; `pnpm test:e2e:local tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "visit preparation dialog blocks ready when carry items are unresolved"`; `pnpm test:e2e:local tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "confirmed schedule card surfaces primary actions before details|visit preparation dialog exposes grouped pack and departure checks|visit preparation dialog blocks ready when carry items are unresolved"`; `pnpm typecheck`; `pnpm lint`; `git diff --check`; `pnpm format:check`.
+- validation results: targeted ESLint and Prettier checks passed. The new carry-item blocker Chromium E2E passed. The combined confirmed-card, grouped preparation dialog, and carry-item blocker E2E passed with 3 chromium tests. Full typecheck passed after Next route type generation. Full ESLint passed. Whitespace diff check passed. Changed-file format gate passed.
+- remaining work: overall audit remediation is still not fully complete. UI/UX work still needs planner-filter characterization, overlapping/tablet Gantt policy, mobile/map-view proof, and preparation clinical/readiness extraction before a large visual redesign. Webhook backfill/contract, patient-detail extraction, PDF builder split, coverage raising, dependency cadence, and eventual `skipLibCheck` removal remain.
+- next action: commit this carry-item blocker browser-proof slice, then continue with the next ScheduleDayView UI/UX safety item or planner-filter/Gantt characterization.
+
 ### 20260611-035220
 
 - current task: lock visit-preparation dialog browser proof and fix dialog reachability/CSP blockers before broader UI/UX work.
