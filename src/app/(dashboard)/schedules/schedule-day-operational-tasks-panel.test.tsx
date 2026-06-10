@@ -194,7 +194,7 @@ describe('ScheduleDayOperationalTasksPanel', () => {
     );
 
     expect(screen.getByText('変更承認が必要です')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /変更を承認/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /変更承認を確認/ })).toBeNull();
     expect(
       screen.getByText('対象予定をこの週の予定一覧で確認してから変更承認してください。'),
     ).toBeTruthy();
@@ -233,8 +233,8 @@ describe('ScheduleDayOperationalTasksPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /山田花子.*準備チェックを開く/ }));
     expect(onOpenPreparation).toHaveBeenCalledWith(visibleSchedule);
 
-    fireEvent.click(screen.getByRole('button', { name: /山田花子.*変更を承認/ }));
-    expect(onApproveOverride).toHaveBeenCalledWith(visibleSchedule.id);
+    fireEvent.click(screen.getByRole('button', { name: /山田花子.*変更承認を確認/ }));
+    expect(onApproveOverride).toHaveBeenCalledWith(visibleSchedule);
   });
 
   it('renders loading and empty states', () => {

@@ -33,7 +33,7 @@ export type ScheduleDayOperationalTasksPanelProps = {
   onRecordCallbackTask: (task: ScheduleTask, proposal: Proposal) => void;
   onUpdateCallbackTaskStatus: (taskId: string, status: CallbackTaskStatusUpdate) => void;
   onOpenPreparation: (schedule: VisitSchedule) => void;
-  onApproveOverride: (scheduleId: string) => void;
+  onApproveOverride: (schedule: VisitSchedule) => void;
 };
 
 export function ScheduleDayOperationalTasksPanel({
@@ -226,7 +226,7 @@ function SchedulingTaskItem({
   pharmacistNameById: ReadonlyMap<string, string>;
   rescheduleApprovalPending: boolean;
   onOpenPreparation: (schedule: VisitSchedule) => void;
-  onApproveOverride: (scheduleId: string) => void;
+  onApproveOverride: (schedule: VisitSchedule) => void;
 }) {
   const canApproveOverride =
     task.task_type === 'visit_schedule_override_approval' && relatedSchedule;
@@ -268,9 +268,9 @@ function SchedulingTaskItem({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => onApproveOverride(relatedSchedule.id)}
+              onClick={() => onApproveOverride(relatedSchedule)}
               disabled={rescheduleApprovalPending}
-              aria-label={`${targetLabel} の変更を承認`}
+              aria-label={`${targetLabel} の変更承認を確認`}
             >
               変更承認
             </Button>

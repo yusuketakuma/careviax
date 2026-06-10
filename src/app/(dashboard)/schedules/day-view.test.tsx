@@ -458,6 +458,68 @@ describe('ScheduleDayView', () => {
     ).toBeTruthy();
   });
 
+  it('requires final confirmation before approving a schedule override', async () => {
+    const mutationCalls: unknown[] = [];
+    useMutationMock.mockImplementation(
+      (options: { onSuccess?: (data: unknown, variables: unknown) => unknown }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          mutationCalls.push(variables);
+          void options.onSuccess?.({}, variables);
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                override_request: {
+                  id: 'override_1',
+                  status: 'pending',
+                  reason: '緊急訪問が割り込んだため',
+                  requested_at: '2026-04-09T07:00:00.000Z',
+                  approved_at: null,
+                  approved_by: null,
+                  impact_summary: {
+                    impacted_schedule_count: 2,
+                    proposed_replacements: 1,
+                    impacted_patient_names: ['佐藤太郎'],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /山田花子.*変更承認を確認/ }));
+    expect(mutationCalls).toEqual([]);
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('山田花子さんの確定済み訪問を変更します')).toBeTruthy();
+    expect(dialog.getByText('緊急訪問が割り込んだため')).toBeTruthy();
+    expect(dialog.getByText('影響予定 2 件 / 再提案候補 1 件')).toBeTruthy();
+    expect(dialog.getByText('佐藤太郎')).toBeTruthy();
+
+    fireEvent.click(dialog.getByRole('button', { name: '山田花子さんの変更を承認' }));
+    expect(mutationCalls).toEqual(['schedule_1']);
+  });
+
   it('announces confirmed schedule empty states to assistive technology', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRealtimeQueryMock.mockReturnValue({

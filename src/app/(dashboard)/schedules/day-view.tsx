@@ -71,6 +71,12 @@ import {
 } from './schedule-day-reschedule';
 import { ScheduleDayOfflinePanel } from './schedule-day-offline-panel';
 import { ScheduleDayOperationalTasksPanel } from './schedule-day-operational-tasks-panel';
+import {
+  buildScheduleDayRescheduleApprovalTargetFromProposal,
+  buildScheduleDayRescheduleApprovalTargetFromSchedule,
+  ScheduleDayRescheduleApprovalDialog,
+  type ScheduleDayRescheduleApprovalTarget,
+} from './schedule-day-reschedule-approval-dialog';
 import { ScheduleDayRoutePreview } from './schedule-day-route-preview';
 import {
   applyScheduleDayRouteOrderDraft,
@@ -261,6 +267,8 @@ export function ScheduleDayView({
     getDefaultScheduleDayPlannerForm(format(new Date(), 'yyyy-MM-dd')),
   );
   const [rescheduleTarget, setRescheduleTarget] = useState<VisitSchedule | null>(null);
+  const [rescheduleApprovalTarget, setRescheduleApprovalTarget] =
+    useState<ScheduleDayRescheduleApprovalTarget | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState({
     reason: '',
     reason_code: 'other' as
@@ -1059,6 +1067,7 @@ export function ScheduleDayView({
       return res.json();
     },
     onSuccess: async () => {
+      setRescheduleApprovalTarget(null);
       toast.success('リスケ要求を承認しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
@@ -1795,7 +1804,11 @@ export function ScheduleDayView({
               })
             }
             onOpenPreparation={openPreparationDialog}
-            onApproveOverride={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
+            onApproveOverride={(schedule) =>
+              setRescheduleApprovalTarget(
+                buildScheduleDayRescheduleApprovalTargetFromSchedule(schedule, '運用タスク'),
+              )
+            }
           />
 
           <RelatedManagementLinks selectedCase={selectedCase} />
@@ -2058,11 +2071,19 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() =>
-                                rescheduleApprovalMutation.mutate(
-                                  proposal.reschedule_source_schedule_id as string,
-                                )
-                              }
+                              aria-label={`${proposal.case_.patient.name} ${format(
+                                parseISO(proposal.proposed_date),
+                                'M/d',
+                                { locale: ja },
+                              )} ${timeLabel(
+                                proposal.time_window_start,
+                                proposal.time_window_end,
+                              )} の変更承認を確認`}
+                              onClick={() => {
+                                const target =
+                                  buildScheduleDayRescheduleApprovalTargetFromProposal(proposal);
+                                if (target) setRescheduleApprovalTarget(target);
+                              }}
                               disabled={rescheduleApprovalMutation.isPending}
                             >
                               変更承認
@@ -2673,7 +2694,22 @@ export function ScheduleDayView({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => rescheduleApprovalMutation.mutate(schedule.id)}
+                              aria-label={`${schedule.case_.patient.name} ${format(
+                                parseISO(schedule.scheduled_date),
+                                'M/d',
+                                { locale: ja },
+                              )} ${timeLabel(
+                                schedule.time_window_start,
+                                schedule.time_window_end,
+                              )} の変更承認を確認`}
+                              onClick={() =>
+                                setRescheduleApprovalTarget(
+                                  buildScheduleDayRescheduleApprovalTargetFromSchedule(
+                                    schedule,
+                                    '確定予定',
+                                  ),
+                                )
+                              }
                               disabled={rescheduleApprovalMutation.isPending}
                             >
                               変更承認
@@ -2818,6 +2854,13 @@ export function ScheduleDayView({
           </TabsContent>
         </Tabs>
       </div>
+
+      <ScheduleDayRescheduleApprovalDialog
+        target={rescheduleApprovalTarget}
+        approving={rescheduleApprovalMutation.isPending}
+        onCancel={() => setRescheduleApprovalTarget(null)}
+        onConfirm={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
+      />
 
       <Dialog
         open={rescheduleTarget !== null}

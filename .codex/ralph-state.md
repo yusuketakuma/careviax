@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-001620
+
+- current task: require explicit confirmation before approving schedule reschedule/override changes.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, accessibility reviewer findings, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx`, and `src/app/(dashboard)/schedules/day-view.shared.ts`.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.tsx`, `src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.tsx`, `src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: `変更承認` actions in operational tasks, proposal cards, and confirmed schedule cards could directly call the reschedule approval mutation without a final patient/date/impact confirmation. This could approve a confirmed-visit change after a single click or Enter key press.
+- security risks found: no auth, authorization, org scoping, endpoint, or payload shape changed. The change reduces wrong-patient/wrong-schedule operational risk by moving approval mutation behind a confirmation dialog that shows patient name, source surface, target schedule, reason, impact count, replacement count, and impacted patient names.
+- performance issues found: no new network calls, DB queries, polling, or unbounded loops were introduced. The dialog is rendered from local state and only calls the existing mutation on final confirmation.
+- validation commands: targeted Prettier for changed schedule files; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-reschedule-approval-dialog.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-operational-tasks-panel.test.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`.
+- validation results: focused reschedule-approval/operational-tasks/day-view suite passed with 3 files / 24 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed.
+- remaining work: other repeated actions still need patient-context accessible labels and/or confirmation review, especially proposal card `辞退`/`日時確定`, confirmed schedule `訪問開始`, mobile list/map segmented control state, facility route ordering touch/keyboard alternatives, and Gantt table caption/scope.
+- next action: continue the UI/UX safety pass with repeated proposal/confirmed schedule action labels or the mobile list/map segmented control state, then validate with focused DOM tests.
+
 ### 20260611-000958
 
 - current task: extract the ScheduleDayView operational tasks section into a tested panel and add target-specific task action labels.
