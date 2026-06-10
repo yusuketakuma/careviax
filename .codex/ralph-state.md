@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-090044
+
+- current task: cache the default PH-OS evidence presign Lambda handler graph across warm invocations.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/evidence-lambda.ts`, `src/phos/backend/evidence-lambda.test.ts`, `src/phos/backend/fee-rules-lambda.ts`, and Lambda handler export patterns across `src/phos/backend/*-lambda.ts`.
+- files changed: `src/phos/backend/evidence-lambda.ts` and `.codex/ralph-state.md`.
+- bugs found: `evidencePresignUploadHandler` recreated `createEvidencePresignUploadLambdaHandler()` for every exported handler invocation, unlike other PH-OS Lambda modules that cache the default handler at module scope.
+- security risks found: no authorization or tenant-boundary behavior changed. The existing lazy presigner/authorizer/store initialization and tenant boundary checks remain inside the cached handler graph.
+- performance issues found: warm evidence presign invocations now reuse the default handler graph and avoid reconstructing observability, lazy dependency wrappers, and handler composition on every request.
+- validation commands: `pnpm exec prettier --write src/phos/backend/evidence-lambda.ts`; focused `pnpm exec vitest run src/phos/backend/evidence-lambda.test.ts src/phos/infra/api-gateway-lambda-template.test.ts tools/scripts/validate-phos-deploy-template.test.ts --reporter=dot`; focused ESLint for `src/phos/backend/evidence-lambda.ts` and its test; `pnpm exec tsc --noEmit --pretty false`; `pnpm phos:deploy-template:validate:artifact`.
+- validation results: Prettier was unchanged. Focused evidence/infra/deploy suite passed with 3 files / 44 tests. Focused ESLint passed. Standalone TypeScript passed. Strict artifact-only deploy validation rebuilt `artifacts/phos-lambda-unpacked` and passed.
+- remaining work: external AWS/JWT/API live proof still needs target environment inputs. The remaining low-priority local security follow-up is making live DDB rate-limit verification explicitly opt-in before it writes/deletes DynamoDB records.
+- next action: commit this evidence Lambda caching slice, then inspect the live DDB rate-limit verifier write path.
+
 ### 20260610-085925
 
 - current task: restrict `PHOS_LAMBDA_ARTIFACT_ROOT` validation reads to the ignored `artifacts/` workspace instead of allowing arbitrary filesystem paths.

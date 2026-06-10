@@ -175,6 +175,13 @@ export function createEvidencePresignUploadLambdaHandler(deps: EvidenceLambdaDep
   );
 }
 
+let defaultEvidencePresignUploadHandler:
+  | ReturnType<typeof createEvidencePresignUploadLambdaHandler>
+  | undefined;
+
 export const evidencePresignUploadHandler: ReturnType<
   typeof createEvidencePresignUploadLambdaHandler
-> = (event) => createEvidencePresignUploadLambdaHandler()(event);
+> = (event) => {
+  defaultEvidencePresignUploadHandler ??= createEvidencePresignUploadLambdaHandler();
+  return defaultEvidencePresignUploadHandler(event);
+};
