@@ -648,6 +648,59 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('status').textContent).toContain('4月9日(木) の確定予定はありません');
   });
 
+  it('places confirmed visit primary actions before schedule details', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                schedule_status: 'ready',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    const { container } = await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    const scheduleCard = container.querySelector('#schedule-schedule_1');
+    expect(scheduleCard).toBeTruthy();
+    const card = scheduleCard as HTMLElement;
+    expect(
+      within(card).getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*訪問開始/,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(card).getAllByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/,
+      }),
+    ).toHaveLength(1);
+    expect(
+      within(card).getAllByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*リスケ候補を作る/,
+      }),
+    ).toHaveLength(1);
+
+    const cardText = card.textContent ?? '';
+    expect(cardText.indexOf('訪問開始')).toBeGreaterThan(-1);
+    expect(cardText.indexOf('訪問開始')).toBeLessThan(cardText.indexOf('患者住所'));
+    expect(cardText.indexOf('訪問準備')).toBeLessThan(cardText.indexOf('患者住所'));
+    expect(cardText.indexOf('リスケ候補を作る')).toBeLessThan(cardText.indexOf('患者住所'));
+  });
+
   it('announces proposal loading and empty states to assistive technology', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {

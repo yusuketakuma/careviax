@@ -2904,6 +2904,63 @@ export function ScheduleDayView({
                           </div>
                         </div>
 
+                        {['completed', 'cancelled', 'rescheduled'].includes(
+                          schedule.schedule_status,
+                        ) ? null : (
+                          <ActionRail align="start" className="border-b pb-4">
+                            {['ready', 'departed'].includes(schedule.schedule_status) && (
+                              <Button
+                                size="sm"
+                                className="gap-1.5"
+                                variant={
+                                  getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
+                                }
+                                aria-label={scheduleActionLabel(
+                                  schedule,
+                                  getDepartureCarryWarning(schedule)
+                                    ? '警告を確認して訪問開始'
+                                    : '訪問開始',
+                                )}
+                                onClick={() => handleVisitStart(schedule)}
+                              >
+                                <PlayCircle className="size-4" aria-hidden="true" />
+                                {getDepartureCarryWarning(schedule)
+                                  ? '警告を確認して訪問開始'
+                                  : '訪問開始'}
+                              </Button>
+                            )}
+                            {schedule.schedule_status === 'in_progress' && (
+                              <Link href={`/visits/${schedule.id}/record`}>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  aria-label={scheduleActionLabel(schedule, '訪問完了記録を開く')}
+                                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                                >
+                                  <CheckCircle2 className="size-4" aria-hidden="true" />
+                                  訪問完了
+                                </Button>
+                              </Link>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={scheduleActionLabel(schedule, '訪問準備を開く')}
+                              onClick={() => openPreparationDialog(schedule)}
+                            >
+                              訪問準備
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={scheduleActionLabel(schedule, 'リスケ候補を作る')}
+                              onClick={() => openRescheduleDialog(schedule)}
+                            >
+                              リスケ候補を作る
+                            </Button>
+                          </ActionRail>
+                        )}
+
                         <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
                           <div className="space-y-1 text-sm">
                             <p className="text-muted-foreground">患者住所</p>
@@ -3089,63 +3146,6 @@ export function ScheduleDayView({
                               ) ?? '薬剤師未登録'}
                             </p>
                           </div>
-                        )}
-
-                        {['completed', 'cancelled', 'rescheduled'].includes(
-                          schedule.schedule_status,
-                        ) ? null : (
-                          <ActionRail align="start" className="border-t pt-4">
-                            {['ready', 'departed'].includes(schedule.schedule_status) && (
-                              <Button
-                                size="sm"
-                                className="gap-1.5"
-                                variant={
-                                  getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
-                                }
-                                aria-label={scheduleActionLabel(
-                                  schedule,
-                                  getDepartureCarryWarning(schedule)
-                                    ? '警告を確認して訪問開始'
-                                    : '訪問開始',
-                                )}
-                                onClick={() => handleVisitStart(schedule)}
-                              >
-                                <PlayCircle className="size-4" aria-hidden="true" />
-                                {getDepartureCarryWarning(schedule)
-                                  ? '警告を確認して訪問開始'
-                                  : '訪問開始'}
-                              </Button>
-                            )}
-                            {schedule.schedule_status === 'in_progress' && (
-                              <Link href={`/visits/${schedule.id}/record`}>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  aria-label={scheduleActionLabel(schedule, '訪問完了記録を開く')}
-                                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-                                >
-                                  <CheckCircle2 className="size-4" aria-hidden="true" />
-                                  訪問完了
-                                </Button>
-                              </Link>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={scheduleActionLabel(schedule, '訪問準備を開く')}
-                              onClick={() => openPreparationDialog(schedule)}
-                            >
-                              訪問準備
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={scheduleActionLabel(schedule, 'リスケ候補を作る')}
-                              onClick={() => openRescheduleDialog(schedule)}
-                            >
-                              リスケ候補を作る
-                            </Button>
-                          </ActionRail>
                         )}
                       </CardContent>
                     </Card>

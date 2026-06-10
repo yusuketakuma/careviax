@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-013943
+
+- current task: move confirmed schedule card primary actions directly under the card identity summary.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/components/ui/action-rail.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and read-only accessibility/UX, medical-safety, and verifier findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: confirmed schedule cards kept `訪問開始` / `訪問完了` / `訪問準備` / `リスケ候補を作る` at the bottom after address, rules, preparation, cadence, and exception-history details, which made immediate daily-visit actions harder to reach. During the patch a schedule-only rail was briefly inserted into the proposal card loop; read-only reviewers caught the scope error, it was removed from the proposal loop, and TypeScript/focused tests now pass.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, storage, PHI response shape, or logging behavior changed. Existing patient/date/time `aria-label` context and carry-item warning confirmation behavior are preserved.
+- performance issues found: no network, DB, render-loop, or unbounded computation path changed. The same bounded ActionRail/button rendering is moved within each already-rendered confirmed schedule card.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; standalone `pnpm exec tsc --noEmit --pretty false`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`; read-only verifier sidecar focused check.
+- validation results: focused day-view suite passed locally with 1 file / 24 tests and verifier rerun passed with 1 file / 24 tests. Standalone TypeScript passed. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed. Verifier confirmed proposal loop has no schedule-only ActionRail and confirmed cards show the rail under the header before patient address.
+- remaining work: map view still needs browser-backed visual proof for nested panel weight, and broader ScheduleDayView visual hierarchy polish remains.
+- next action: commit this confirmed-card action placement slice, then continue with browser visual proof or the next PH-OS UI/UX hierarchy task.
+
 ### 20260611-013303
 
 - current task: group the mobile daily visit list with the shared PageSection pattern.
