@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildPhosBackendLiveReadinessReport,
   evaluateAccessTokenReadiness,
@@ -321,6 +321,54 @@ describe('verify-phos-backend-live-readiness', () => {
         }),
       ]),
     );
+  });
+
+  it('bounds the API smoke fetch with a readiness timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      let observedSignal: AbortSignal | undefined;
+      const reportPromise = buildPhosBackendLiveReadinessReport({
+        env: {
+          PHOS_COGNITO_ACCESS_TOKEN: jwt({
+            ...validTemporalClaims,
+            tenant_id: 'tenant_abc123',
+            role: 'PHARMACIST',
+            sub: 'user_001',
+            scope: 'phos/cards.read',
+          }),
+          PHOS_API_BASE_URL: 'https://api.example.test',
+          PHOS_BACKEND_LIVE_SMOKE_TIMEOUT_MS: '5',
+        },
+        now,
+        fetch: async (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            observedSignal = init?.signal ?? undefined;
+            observedSignal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            );
+          }),
+      });
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5);
+      const report = await reportPromise;
+
+      expect(observedSignal?.aborted).toBe(true);
+      expect(report.ok).toBe(false);
+      expect(report.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'api_gateway_lambda_smoke',
+            status: 'failed',
+            detail: 'GET /cards request timed out after 5 ms.',
+          }),
+        ]),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fails the API smoke check before fetch when the API base URL carries unsafe URL parts', async () => {

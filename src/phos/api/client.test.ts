@@ -549,6 +549,74 @@ describe('createPhosApiClient', () => {
     );
   });
 
+  it('aborts stalled requests with the configured PH-OS API timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      let observedSignal: AbortSignal | undefined;
+      const fetchImpl = vi.fn<typeof fetch>(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            observedSignal = init?.signal ?? undefined;
+            observedSignal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            );
+          }),
+      );
+      const client = createPhosApiClient({
+        baseUrl: 'https://api.example.com/prod',
+        fetchImpl,
+        requestTimeoutMs: 1000,
+      });
+
+      const request = expect(client.getCards(undefined, { timeoutMs: 5 })).rejects.toMatchObject({
+        status: 0,
+        response: {
+          request_id: '',
+          error_code: 'INTERNAL_ERROR',
+          message_key: 'api.error.timeout',
+          details: {
+            timeout_ms: 5,
+            response_contract: 'CardSearchResponse',
+          },
+        },
+      } satisfies Partial<PhosApiError>);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5);
+
+      await request;
+      expect(observedSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('propagates caller aborts without converting them into timeout errors', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+          controller.abort();
+        }),
+    );
+    const client = createPhosApiClient({
+      baseUrl: 'https://api.example.com/prod',
+      fetchImpl,
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(client.getCards(undefined, { signal: controller.signal })).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
   it('allows API Gateway custom-domain /api/phos base paths', async () => {
     const searchResponse = {
       items: [{ card: readyCard, next_action: nextAction }],

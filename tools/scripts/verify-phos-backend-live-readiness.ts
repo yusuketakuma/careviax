@@ -4,6 +4,7 @@ import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-
 import { UserRole } from '../../src/phos/contracts/phos_contracts';
 import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
 import { PHOS_API_ROUTES } from '../../src/phos/infra/api-gateway-routes';
+import { normalizePositiveTimeoutMs } from '../../src/lib/utils/timeout';
 import { verifyCognitoPreTokenGenerationLiveProof } from './verify-phos-cognito-token-trigger';
 
 type CheckStatus = 'passed' | 'failed' | 'missing' | 'skipped';
@@ -26,6 +27,9 @@ export type PhosBackendLiveReadinessReport = {
 type Env = Record<string, string | undefined>;
 type FetchLike = typeof fetch;
 
+const DEFAULT_API_SMOKE_TIMEOUT_MS = 10_000;
+const MAX_API_SMOKE_TIMEOUT_MS = 60_000;
+
 const REQUIRED_COGNITO_ENV = [
   'AWS_REGION',
   'PHOS_COGNITO_USER_POOL_ID',
@@ -40,6 +44,47 @@ function isTruthyEnv(value: string | undefined): boolean {
 function readEnv(env: Env, name: string): string | null {
   const value = env[name]?.trim();
   return value ? value : null;
+}
+
+function readApiSmokeTimeoutMs(env: Env): number {
+  return normalizePositiveTimeoutMs(env.PHOS_BACKEND_LIVE_SMOKE_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_API_SMOKE_TIMEOUT_MS,
+    maxMs: MAX_API_SMOKE_TIMEOUT_MS,
+  });
+}
+
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+async function fetchApiSmokeWithTimeout(input: {
+  fetchImpl: FetchLike;
+  smokeUrl: URL;
+  accessToken: string;
+  timeoutMs: number;
+}): Promise<{ response?: Response; timed_out: boolean }> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error('PHOS_BACKEND_LIVE_SMOKE_TIMEOUT'));
+  }, input.timeoutMs);
+  maybeUnrefTimeout(timeout);
+
+  try {
+    const response = await input.fetchImpl(input.smokeUrl, {
+      headers: { Authorization: `Bearer ${input.accessToken}` },
+      signal: controller.signal,
+    });
+    return { response, timed_out: false };
+  } catch (error) {
+    if (timedOut) return { timed_out: true };
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function buildApiSmokeUrl(apiBaseUrl: string): URL | Error {
@@ -414,10 +459,24 @@ export async function buildPhosBackendLiveReadinessReport(
         detail: smokeUrl.message,
       });
     } else {
+      const smokeTimeoutMs = readApiSmokeTimeoutMs(env);
       try {
-        const response = await (input.fetch ?? fetch)(smokeUrl, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        const result = await fetchApiSmokeWithTimeout({
+          fetchImpl: input.fetch ?? fetch,
+          smokeUrl,
+          accessToken,
+          timeoutMs: smokeTimeoutMs,
         });
+        if (result.timed_out) {
+          checks.push({
+            name: 'api_gateway_lambda_smoke',
+            status: 'failed',
+            detail: `GET /cards request timed out after ${smokeTimeoutMs} ms.`,
+          });
+          return buildReport({ checks, missingInputs, strict: input.strict, now: input.now });
+        }
+        const response = result.response;
+        if (!response) throw new Error('GET /cards request returned no response.');
         checks.push({
           name: 'api_gateway_lambda_smoke',
           status: response.status >= 200 && response.status < 300 ? 'passed' : 'failed',
@@ -436,10 +495,20 @@ export async function buildPhosBackendLiveReadinessReport(
   }
 
   const strict = input.strict ?? false;
-  const ok = checks.every(
+  return buildReport({ checks, missingInputs, strict, now: input.now });
+}
+
+function buildReport(input: {
+  checks: ReadinessCheck[];
+  missingInputs: Set<string>;
+  strict: boolean | undefined;
+  now: Date | undefined;
+}): PhosBackendLiveReadinessReport {
+  const strict = input.strict ?? false;
+  const ok = input.checks.every(
     (check) => check.status === 'passed' || (!strict && check.status === 'missing'),
   );
-  const nextActions = Array.from(missingInputs).map(
+  const nextActions = Array.from(input.missingInputs).map(
     (name) => `Set ${name} for live PH-OS backend proof.`,
   );
 
@@ -447,8 +516,8 @@ export async function buildPhosBackendLiveReadinessReport(
     ok,
     generated_at: (input.now ?? new Date()).toISOString(),
     strict,
-    checks,
-    missing_inputs: Array.from(missingInputs).sort(),
+    checks: input.checks,
+    missing_inputs: Array.from(input.missingInputs).sort(),
     next_actions: nextActions.sort(),
   };
 }

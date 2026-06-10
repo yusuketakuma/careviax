@@ -61,51 +61,84 @@ export type PhosReportDeliveriesQuery = {
   limit?: number;
 };
 
+export type PhosRequestOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
 export type PhosApiClient = {
-  getCards(query?: PhosCardsQuery): Promise<CardSearchResponse>;
-  getCapacity(query: PhosCapacityQuery): Promise<CapacityResponse>;
-  getClaimCandidates(query?: PhosClaimCandidatesQuery): Promise<ClaimCandidateSearchResponse>;
+  getCards(query?: PhosCardsQuery, options?: PhosRequestOptions): Promise<CardSearchResponse>;
+  getCapacity(query: PhosCapacityQuery, options?: PhosRequestOptions): Promise<CapacityResponse>;
+  getClaimCandidates(
+    query?: PhosClaimCandidatesQuery,
+    options?: PhosRequestOptions,
+  ): Promise<ClaimCandidateSearchResponse>;
   excludeClaimCandidate(
     candidate_id: string,
     request: ExcludeClaimCandidateRequest,
+    options?: PhosRequestOptions,
   ): Promise<ClaimCandidateMutationResponse>;
-  getFeeRules(query?: {
-    fee_code?: string;
-    cursor?: string;
-    limit?: number;
-  }): Promise<FeeRuleSearchResponse>;
-  getCardDetail(card_id: string): Promise<CardDetailResponse>;
+  getFeeRules(
+    query?: {
+      fee_code?: string;
+      cursor?: string;
+      limit?: number;
+    },
+    options?: PhosRequestOptions,
+  ): Promise<FeeRuleSearchResponse>;
+  getCardDetail(card_id: string, options?: PhosRequestOptions): Promise<CardDetailResponse>;
   executeCardAction(
     card_id: string,
     request: ActionRequest,
-    options?: { offlineReplay?: boolean },
+    options?: PhosRequestOptions & { offlineReplay?: boolean },
   ): Promise<ActionResponse>;
-  getVisitMode(packet_id: string): Promise<VisitModeView>;
+  getVisitMode(packet_id: string, options?: PhosRequestOptions): Promise<VisitModeView>;
   updateVisitStep(
     packet_id: string,
     step: VisitStep,
     request: VisitStepMutationRequest,
+    options?: PhosRequestOptions,
   ): Promise<VisitModeView>;
-  presignEvidenceUpload(request: EvidenceUploadRequest): Promise<EvidencePresignUploadResponse>;
-  getHandoffs(query?: HandoffSearchQuery): Promise<HandoffSearchResponse>;
-  getReportDeliveries(query?: PhosReportDeliveriesQuery): Promise<ReportDeliverySearchResponse>;
+  presignEvidenceUpload(
+    request: EvidenceUploadRequest,
+    options?: PhosRequestOptions,
+  ): Promise<EvidencePresignUploadResponse>;
+  getHandoffs(
+    query?: HandoffSearchQuery,
+    options?: PhosRequestOptions,
+  ): Promise<HandoffSearchResponse>;
+  getReportDeliveries(
+    query?: PhosReportDeliveriesQuery,
+    options?: PhosRequestOptions,
+  ): Promise<ReportDeliverySearchResponse>;
   registerReportReply(
     delivery_id: string,
     request: RegisterReportReplyRequest,
+    options?: PhosRequestOptions,
   ): Promise<ReportDeliveryMutationResponse>;
   markReportActionDone(
     delivery_id: string,
     request: MarkReportActionDoneRequest,
+    options?: PhosRequestOptions,
   ): Promise<ReportDeliveryMutationResponse>;
-  createHandoff(request: CreateHandoffRequest): Promise<HandoffMutationResponse>;
-  openHandoff(handoff_id: string, request: OpenHandoffRequest): Promise<HandoffMutationResponse>;
+  createHandoff(
+    request: CreateHandoffRequest,
+    options?: PhosRequestOptions,
+  ): Promise<HandoffMutationResponse>;
+  openHandoff(
+    handoff_id: string,
+    request: OpenHandoffRequest,
+    options?: PhosRequestOptions,
+  ): Promise<HandoffMutationResponse>;
   resolveHandoff(
     handoff_id: string,
     request: ResolveHandoffRequest,
+    options?: PhosRequestOptions,
   ): Promise<HandoffMutationResponse>;
   returnHandoff(
     handoff_id: string,
     request: ReturnHandoffRequest,
+    options?: PhosRequestOptions,
   ): Promise<HandoffMutationResponse>;
 };
 

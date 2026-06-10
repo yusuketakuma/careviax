@@ -43,15 +43,21 @@ import type {
   PhosCardsQuery,
   PhosClaimCandidatesQuery,
   PhosReportDeliveriesQuery,
+  PhosRequestOptions,
 } from './types';
 import { PhosApiError } from './types';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 export type CreatePhosApiClientOptions = {
   baseUrl: string;
   fetchImpl?: typeof fetch;
   getAccessToken?: () => string | Promise<string>;
   correlationId?: () => string | undefined;
+  requestTimeoutMs?: number;
 };
+
+const DEFAULT_PHOS_API_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_PHOS_API_REQUEST_TIMEOUT_MS = 60_000;
 
 function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
@@ -158,6 +164,58 @@ function invalidResponseError(
       content_type: parsed.content_type,
       ...(responseContract ? { response_contract: responseContract } : {}),
       ...(parsed.invalid_json ? { invalid_json: true } : {}),
+    },
+  };
+}
+
+function requestTimeoutError(timeoutMs: number, responseContract: ResponseContract): ErrorResponse {
+  return {
+    request_id: '',
+    error_code: 'INTERNAL_ERROR',
+    message_key: 'api.error.timeout',
+    details: {
+      timeout_ms: timeoutMs,
+      response_contract: responseContract,
+    },
+  };
+}
+
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function createRequestAbort(
+  timeoutMs: number,
+  callerSignal?: AbortSignal,
+): {
+  signal: AbortSignal;
+  didTimeout: () => boolean;
+  clear: () => void;
+} {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error('PHOS_API_REQUEST_TIMEOUT'));
+  }, timeoutMs);
+  maybeUnrefTimeout(timeout);
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    clear: () => {
+      clearTimeout(timeout);
+      callerSignal?.removeEventListener('abort', abortFromCaller);
     },
   };
 }
@@ -623,6 +681,10 @@ export function isValidResponseContract(value: unknown, contract: ResponseContra
 export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosApiClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const requestTimeoutMs = normalizePositiveTimeoutMs(options.requestTimeoutMs, {
+    fallbackMs: DEFAULT_PHOS_API_REQUEST_TIMEOUT_MS,
+    maxMs: MAX_PHOS_API_REQUEST_TIMEOUT_MS,
+  });
 
   async function request<T>(input: {
     path: string;
@@ -631,6 +693,8 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
     query?: Record<string, string | number | undefined>;
     headers?: Record<string, string>;
     body?: unknown;
+    signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<T> {
     const token = await options.getAccessToken?.();
     const correlationId = options.correlationId?.();
@@ -642,54 +706,75 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       ...input.headers,
     };
 
-    const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
-      method: input.method,
-      headers,
-      ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
+    const effectiveTimeoutMs = normalizePositiveTimeoutMs(input.timeoutMs, {
+      fallbackMs: requestTimeoutMs,
+      maxMs: MAX_PHOS_API_REQUEST_TIMEOUT_MS,
     });
-    const parsed = await readJsonResponse(response);
-    if (!response.ok) {
-      if (isErrorResponse(parsed.payload)) throw new PhosApiError(response.status, parsed.payload);
-      throw new PhosApiError(
-        response.status,
-        invalidResponseError(response.status, parsed, input.responseContract),
-      );
+    const requestAbort = createRequestAbort(effectiveTimeoutMs, input.signal);
+    try {
+      const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
+        method: input.method,
+        headers,
+        signal: requestAbort.signal,
+        ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
+      });
+      const parsed = await readJsonResponse(response);
+      if (!response.ok) {
+        if (isErrorResponse(parsed.payload)) {
+          throw new PhosApiError(response.status, parsed.payload);
+        }
+        throw new PhosApiError(
+          response.status,
+          invalidResponseError(response.status, parsed, input.responseContract),
+        );
+      }
+      if (parsed.invalid_json) {
+        throw new PhosApiError(
+          response.status,
+          invalidResponseError(response.status, parsed, input.responseContract),
+        );
+      }
+      if (!isValidResponseContract(parsed.payload, input.responseContract)) {
+        throw new PhosApiError(
+          response.status,
+          invalidResponseError(response.status, parsed, input.responseContract),
+        );
+      }
+      return parsed.payload as T;
+    } catch (error) {
+      if (requestAbort.didTimeout()) {
+        throw new PhosApiError(0, requestTimeoutError(effectiveTimeoutMs, input.responseContract));
+      }
+      throw error;
+    } finally {
+      requestAbort.clear();
     }
-    if (parsed.invalid_json) {
-      throw new PhosApiError(
-        response.status,
-        invalidResponseError(response.status, parsed, input.responseContract),
-      );
-    }
-    if (!isValidResponseContract(parsed.payload, input.responseContract)) {
-      throw new PhosApiError(
-        response.status,
-        invalidResponseError(response.status, parsed, input.responseContract),
-      );
-    }
-    return parsed.payload as T;
   }
 
   return {
-    getCards(query?: PhosCardsQuery) {
+    getCards(query?: PhosCardsQuery, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /cards');
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
         query,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getCapacity(query: PhosCapacityQuery) {
+    getCapacity(query: PhosCapacityQuery, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /capacity');
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
         query: query satisfies { date: string; scope: CapacityScope },
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getClaimCandidates(query: PhosClaimCandidatesQuery = {}) {
+    getClaimCandidates(query: PhosClaimCandidatesQuery = {}, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /claim-candidates');
       return request({
         method: 'GET',
@@ -701,57 +786,81 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
           cursor?: string;
           limit?: number;
         },
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    excludeClaimCandidate(candidate_id: string, excludeRequest: ExcludeClaimCandidateRequest) {
+    excludeClaimCandidate(
+      candidate_id: string,
+      excludeRequest: ExcludeClaimCandidateRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /claim-candidates/{candidate_id}/exclude', { candidate_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: excludeRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getFeeRules(query: { fee_code?: string; cursor?: string; limit?: number } = {}) {
+    getFeeRules(
+      query: { fee_code?: string; cursor?: string; limit?: number } = {},
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('GET /fee-rules');
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
         query,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getCardDetail(card_id: string) {
+    getCardDetail(card_id: string, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /cards/{card_id}', { card_id });
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
     executeCardAction(
       card_id: string,
       actionRequest: ActionRequest,
-      options?: { offlineReplay?: boolean },
+      requestOptions?: PhosRequestOptions & { offlineReplay?: boolean },
     ) {
       const route = routeInfo('POST /cards/{card_id}/actions', { card_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
-        headers: options?.offlineReplay ? { 'x-phos-offline-replay': '1' } : undefined,
+        headers: requestOptions?.offlineReplay ? { 'x-phos-offline-replay': '1' } : undefined,
         body: actionRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getVisitMode(packet_id: string) {
+    getVisitMode(packet_id: string, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /visit-packets/{packet_id}/visit-mode', { packet_id });
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    updateVisitStep(packet_id: string, step: VisitStep, visitRequest: VisitStepMutationRequest) {
+    updateVisitStep(
+      packet_id: string,
+      step: VisitStep,
+      visitRequest: VisitStepMutationRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /visit-packets/{packet_id}/visit-steps/{step}', {
         packet_id,
         step,
@@ -761,27 +870,39 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
         path: route.path,
         responseContract: route.response_contract,
         body: visitRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    presignEvidenceUpload(uploadRequest: EvidenceUploadRequest) {
+    presignEvidenceUpload(
+      uploadRequest: EvidenceUploadRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /evidence/presign-upload');
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: uploadRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getHandoffs(query) {
+    getHandoffs(query, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('GET /handoffs');
       return request({
         method: 'GET',
         path: route.path,
         responseContract: route.response_contract,
         query,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    getReportDeliveries(query: PhosReportDeliveriesQuery = {}) {
+    getReportDeliveries(
+      query: PhosReportDeliveriesQuery = {},
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('GET /report-deliveries');
       return request({
         method: 'GET',
@@ -792,20 +913,29 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
           cursor?: string;
           limit?: number;
         },
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    registerReportReply(delivery_id: string, reportReplyRequest: RegisterReportReplyRequest) {
+    registerReportReply(
+      delivery_id: string,
+      reportReplyRequest: RegisterReportReplyRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /report-deliveries/{delivery_id}/reply', { delivery_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: reportReplyRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
     markReportActionDone(
       delivery_id: string,
       reportActionDoneRequest: MarkReportActionDoneRequest,
+      requestOptions?: PhosRequestOptions,
     ) {
       const route = routeInfo('POST /report-deliveries/{delivery_id}/action-done', {
         delivery_id,
@@ -815,42 +945,64 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
         path: route.path,
         responseContract: route.response_contract,
         body: reportActionDoneRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    createHandoff(handoffRequest: CreateHandoffRequest) {
+    createHandoff(handoffRequest: CreateHandoffRequest, requestOptions?: PhosRequestOptions) {
       const route = routeInfo('POST /handoffs');
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: handoffRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    openHandoff(handoff_id: string, handoffRequest: OpenHandoffRequest) {
+    openHandoff(
+      handoff_id: string,
+      handoffRequest: OpenHandoffRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /handoffs/{handoff_id}/open', { handoff_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: handoffRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    resolveHandoff(handoff_id: string, handoffRequest: ResolveHandoffRequest) {
+    resolveHandoff(
+      handoff_id: string,
+      handoffRequest: ResolveHandoffRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /handoffs/{handoff_id}/resolve', { handoff_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: handoffRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
-    returnHandoff(handoff_id: string, handoffRequest: ReturnHandoffRequest) {
+    returnHandoff(
+      handoff_id: string,
+      handoffRequest: ReturnHandoffRequest,
+      requestOptions?: PhosRequestOptions,
+    ) {
       const route = routeInfo('POST /handoffs/{handoff_id}/return', { handoff_id });
       return request({
         method: 'POST',
         path: route.path,
         responseContract: route.response_contract,
         body: handoffRequest,
+        signal: requestOptions?.signal,
+        timeoutMs: requestOptions?.timeoutMs,
       });
     },
   };
