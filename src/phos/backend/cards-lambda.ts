@@ -11,6 +11,7 @@ import type {
   CardSummaryView,
   NextActionView,
 } from '@/phos/contracts/phos_contracts';
+import { PHOS_DYNAMODB_TABLE_CONTRACT } from '@/phos/infra/dynamodb-table-contract';
 import type { CardActionExecutionState } from './card-action-executor';
 import { normalizeNextActionView } from './card-action-projection';
 import { createCardActionExecutorRepository } from './card-action-executor';
@@ -93,22 +94,47 @@ function numberAttr(item: DynamoItem, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function dynamoQueryKeyAttributes(query: {
+  index_name?: keyof typeof PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes;
+  sort_key_begins_with?: string;
+}) {
+  if (!query.index_name) {
+    return PHOS_DYNAMODB_TABLE_CONTRACT.primary_key;
+  }
+  const index = PHOS_DYNAMODB_TABLE_CONTRACT.global_secondary_indexes[query.index_name];
+  if (query.sort_key_begins_with && !index.sort_key) {
+    throw new Error(`PH-OS DynamoDB index ${query.index_name} does not have a sort key`);
+  }
+  return index;
+}
+
 export function createDynamoCardsClient(input: {
   client: Pick<AwsDynamoDBClient, 'send'>;
 }): DynamoCardsClient<DynamoItem, DynamoItem> {
   return {
     async query(query): Promise<DynamoQueryOutput<DynamoItem>> {
+      const keyAttributes = dynamoQueryKeyAttributes(query);
+      const expressionAttributeNames: Record<string, string> = {
+        '#pk': keyAttributes.partition_key,
+      };
+      const expressionAttributeValues: Record<string, AttributeValue> = {
+        ':pk': { S: query.partition_key },
+      };
+      const keyConditions = ['#pk = :pk'];
+
+      if (query.sort_key_begins_with && keyAttributes.sort_key) {
+        expressionAttributeNames['#sk'] = keyAttributes.sort_key;
+        expressionAttributeValues[':sk_prefix'] = { S: query.sort_key_begins_with };
+        keyConditions.push('begins_with(#sk, :sk_prefix)');
+      }
+
       const result = await input.client.send(
         new QueryCommand({
           TableName: query.table_name,
           IndexName: query.index_name,
-          KeyConditionExpression: '#pk = :pk',
-          ExpressionAttributeNames: {
-            '#pk': 'GSI1PK',
-          },
-          ExpressionAttributeValues: {
-            ':pk': { S: query.partition_key },
-          },
+          KeyConditionExpression: keyConditions.join(' AND '),
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
           Limit: query.limit,
           ExclusiveStartKey: decodeDynamoCursor(query.cursor, {
             tenant_id: tenantIdFromDynamoPartitionKey(query.partition_key),

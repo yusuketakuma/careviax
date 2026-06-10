@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GetItemCommand,
+  QueryCommand,
   TransactWriteItemsCommand,
   type AttributeValue,
 } from '@aws-sdk/client-dynamodb';
@@ -213,6 +214,46 @@ describe('PH-OS cards Lambda composition', () => {
 
     expect(send).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['GSI2', 'GSI2PK', 'GSI2SK', 'TENANT#tenant_abc123#ASSIGNEE#user_1', 'STATUS#READY'],
+    ['GSI3', 'GSI3PK', 'GSI3SK', 'TENANT#tenant_abc123#PATIENT#patient_1', 'CREATED#'],
+    ['GSI4', 'GSI4PK', 'GSI4SK', 'TENANT#tenant_abc123#PACKET#packet_1', 'CARD#'],
+  ] as const)(
+    'queries %s with its table-contract key attributes',
+    async (indexName, partitionKeyAttribute, sortKeyAttribute, partitionKey, sortPrefix) => {
+      const send = vi.fn(async (command: QueryCommand) => {
+        expect(command).toBeInstanceOf(QueryCommand);
+        return { Items: [] };
+      });
+      const client = createDynamoCardsClient({ client: { send } });
+
+      await client.query({
+        table_name: 'phos_core',
+        index_name: indexName,
+        partition_key: partitionKey,
+        key_type: 'GSI',
+        sort_key_begins_with: sortPrefix,
+        limit: 25,
+      });
+
+      const command = send.mock.calls[0]?.[0] as QueryCommand | undefined;
+      expect(command?.input).toMatchObject({
+        TableName: 'phos_core',
+        IndexName: indexName,
+        KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :sk_prefix)',
+        ExpressionAttributeNames: {
+          '#pk': partitionKeyAttribute,
+          '#sk': sortKeyAttribute,
+        },
+        ExpressionAttributeValues: {
+          ':pk': { S: partitionKey },
+          ':sk_prefix': { S: sortPrefix },
+        },
+        Limit: 25,
+      });
+    },
+  );
 
   it('fails claim review with ACTION_GUARD_FAILED when the Dynamo aggregate is missing', async () => {
     const claimReviewCard: CardSummaryView = {
