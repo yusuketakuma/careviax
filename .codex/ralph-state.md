@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-090742
+
+- current task: record final local validation after the latest PH-OS backend hardening commits.
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, and validation output from full repository commands.
+- files changed: `.codex/ralph-state.md`.
+- bugs found: no new local code bug found during final validation.
+- security risks found: strict live readiness still cannot prove the deployed AWS/JWT/API environment because required inputs are absent. Strict deploy validation still cannot run AWS CloudFormation service validation because `aws` is not installed. Local CloudFormation lint, Lambda artifact contract, backend tests, lint, and production build pass.
+- performance issues found: no new performance issue found during final validation.
+- validation commands: `git status --short`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness`; `pnpm phos:deploy-template:validate`.
+- validation results: worktree was clean before this note. Full ESLint passed. Full Vitest passed with 752 files passed / 1 skipped and 4988 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 generated static pages. Strict backend live-readiness failed only on missing external inputs: `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, and `PHOS_JWT_ISSUER`. Strict deploy-template validation passed template export, `uvx cfn-lint`, and Lambda artifact contract, and failed only because `aws` is not installed.
+- remaining work: provide target AWS CLI/credentials, Cognito/access token inputs, and API base URL, then rerun strict live readiness and strict deploy validation in the target environment.
+- next action: stop local implementation work and report that local backend/security/performance hardening is complete, with the remaining blockers limited to external live proof inputs/tooling.
+
 ### 20260610-090409
 
 - current task: close the remaining locally actionable low-priority PH-OS backend hardening findings from the latest read-only reviews.
