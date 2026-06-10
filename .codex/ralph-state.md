@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-012721
+
+- current task: announce proposal tab loading and empty states in the daily schedule board.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, accessibility/UX reviewer findings, `src/app/(dashboard)/schedules/day-view.tsx`, and `src/app/(dashboard)/schedules/day-view.test.tsx`.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the proposal tab loading and empty states were plain text inside cards, while the confirmed tab already announced equivalent states with `role="status"` and `aria-live="polite"`.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, or persistence behavior changed. The change only improves assistive-technology notification of already-visible proposal tab states.
+- performance issues found: no network, DB, render-loop, or unbounded computation path changed.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`.
+- validation results: focused day-view suite passed with 1 file / 23 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed.
+- remaining work: mobile visit list still needs PageSection-style boundary/order alignment, and confirmed cards still have primary actions low in the card.
+- next action: commit this proposal status semantics slice, then continue with mobile visit list PageSection alignment or confirmed-card primary action placement.
+
 ### 20260611-012504
 
 - current task: add a page-level daily schedule board group around the right-column tabs.

@@ -648,6 +648,49 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('status').textContent).toContain('4月9日(木) の確定予定はありません');
   });
 
+  it('announces proposal loading and empty states to assistive technology', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: undefined,
+          isLoading: true,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    const { rerender } = await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('訪問候補を読み込んでいます');
+
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    rerender(<ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />);
+
+    expect(screen.getByRole('status').textContent).toContain('4月9日(木) の候補はありません');
+  });
+
   it('exposes the mobile visit surface selection state', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRealtimeQueryMock.mockReturnValue({

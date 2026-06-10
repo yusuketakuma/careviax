@@ -2046,13 +2046,21 @@ export function ScheduleDayView({
             <TabsContent value="proposals" className="space-y-4">
               {proposalsLoading ? (
                 <Card>
-                  <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                  <CardContent
+                    role="status"
+                    aria-live="polite"
+                    className="py-12 text-center text-sm text-muted-foreground"
+                  >
                     訪問候補を読み込んでいます...
                   </CardContent>
                 </Card>
               ) : selectedDateProposals.length === 0 ? (
                 <Card>
-                  <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                  <CardContent
+                    role="status"
+                    aria-live="polite"
+                    className="py-12 text-center text-sm text-muted-foreground"
+                  >
                     {format(selectedDay, 'M月d日(E)', { locale: ja })} の候補はありません
                   </CardContent>
                 </Card>
