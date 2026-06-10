@@ -183,43 +183,90 @@ export function createReportDeliveriesRepository(
   );
 }
 
+function createLazyReportDeliveriesRepository(
+  deps: ReportDeliveriesLambdaDependencies = {},
+): PhosReportDeliveriesRepository {
+  let repository: PhosReportDeliveriesRepository | undefined;
+  return {
+    searchReportDeliveries(ctx, query) {
+      repository ??= createReportDeliveriesRepository(deps);
+      return repository.searchReportDeliveries(ctx, query);
+    },
+    registerReportReply(ctx, delivery_id, command) {
+      repository ??= createReportDeliveriesRepository(deps);
+      return repository.registerReportReply(ctx, delivery_id, command);
+    },
+    markReportActionDone(ctx, delivery_id, command) {
+      repository ??= createReportDeliveriesRepository(deps);
+      return repository.markReportActionDone(ctx, delivery_id, command);
+    },
+  };
+}
+
 export function createReportDeliverySearchLambdaHandler(
   deps: ReportDeliveriesLambdaDependencies = {},
 ) {
-  return withTenantContext(
-    createReportDeliverySearchHandler(createReportDeliveriesRepository(deps)),
-    {
-      observability: createLambdaObservabilitySink(deps),
-      now: deps.now,
-    },
-  );
+  const repository = deps.repository
+    ? createReportDeliveriesRepository(deps)
+    : createLazyReportDeliveriesRepository(deps);
+  return withTenantContext(createReportDeliverySearchHandler(repository), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
-export const reportDeliverySearchHandler = createReportDeliverySearchLambdaHandler();
+let defaultReportDeliverySearchHandler:
+  | ReturnType<typeof createReportDeliverySearchLambdaHandler>
+  | undefined;
+
+export const reportDeliverySearchHandler: ReturnType<
+  typeof createReportDeliverySearchLambdaHandler
+> = (event) => {
+  defaultReportDeliverySearchHandler ??= createReportDeliverySearchLambdaHandler();
+  return defaultReportDeliverySearchHandler(event);
+};
 
 export function createRegisterReportReplyLambdaHandler(
   deps: ReportDeliveriesLambdaDependencies = {},
 ) {
-  return withTenantContext(
-    createRegisterReportReplyHandler(createReportDeliveriesRepository(deps)),
-    {
-      observability: createLambdaObservabilitySink(deps),
-      now: deps.now,
-    },
-  );
+  const repository = deps.repository
+    ? createReportDeliveriesRepository(deps)
+    : createLazyReportDeliveriesRepository(deps);
+  return withTenantContext(createRegisterReportReplyHandler(repository), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
 export function createMarkReportActionDoneLambdaHandler(
   deps: ReportDeliveriesLambdaDependencies = {},
 ) {
-  return withTenantContext(
-    createMarkReportActionDoneHandler(createReportDeliveriesRepository(deps)),
-    {
-      observability: createLambdaObservabilitySink(deps),
-      now: deps.now,
-    },
-  );
+  const repository = deps.repository
+    ? createReportDeliveriesRepository(deps)
+    : createLazyReportDeliveriesRepository(deps);
+  return withTenantContext(createMarkReportActionDoneHandler(repository), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
-export const registerReportReplyHandler = createRegisterReportReplyLambdaHandler();
-export const markReportActionDoneHandler = createMarkReportActionDoneLambdaHandler();
+let defaultRegisterReportReplyHandler:
+  | ReturnType<typeof createRegisterReportReplyLambdaHandler>
+  | undefined;
+let defaultMarkReportActionDoneHandler:
+  | ReturnType<typeof createMarkReportActionDoneLambdaHandler>
+  | undefined;
+
+export const registerReportReplyHandler: ReturnType<
+  typeof createRegisterReportReplyLambdaHandler
+> = (event) => {
+  defaultRegisterReportReplyHandler ??= createRegisterReportReplyLambdaHandler();
+  return defaultRegisterReportReplyHandler(event);
+};
+
+export const markReportActionDoneHandler: ReturnType<
+  typeof createMarkReportActionDoneLambdaHandler
+> = (event) => {
+  defaultMarkReportActionDoneHandler ??= createMarkReportActionDoneLambdaHandler();
+  return defaultMarkReportActionDoneHandler(event);
+};

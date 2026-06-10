@@ -236,30 +236,64 @@ export function createClaimCandidatesRepository(
   return createDynamoClaimCandidatesRepository(storeClient, { now: deps.now });
 }
 
+function createLazyClaimCandidatesRepository(
+  deps: ClaimCandidatesLambdaDependencies = {},
+): PhosClaimCandidatesRepository {
+  let repository: PhosClaimCandidatesRepository | undefined;
+  return {
+    searchClaimCandidates(ctx, query) {
+      repository ??= createClaimCandidatesRepository(deps);
+      return repository.searchClaimCandidates(ctx, query);
+    },
+    excludeClaimCandidate(ctx, candidate_id, command) {
+      repository ??= createClaimCandidatesRepository(deps);
+      return repository.excludeClaimCandidate(ctx, candidate_id, command);
+    },
+  };
+}
+
 export function createClaimCandidateSearchLambdaHandler(
   deps: ClaimCandidatesLambdaDependencies = {},
 ) {
-  return withTenantContext(
-    createClaimCandidateSearchHandler(createClaimCandidatesRepository(deps)),
-    {
-      observability: createLambdaObservabilitySink(deps),
-      now: deps.now,
-    },
-  );
+  const repository = deps.repository
+    ? createClaimCandidatesRepository(deps)
+    : createLazyClaimCandidatesRepository(deps);
+  return withTenantContext(createClaimCandidateSearchHandler(repository), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
-export const claimCandidateSearchHandler = createClaimCandidateSearchLambdaHandler();
+let defaultClaimCandidateSearchHandler:
+  | ReturnType<typeof createClaimCandidateSearchLambdaHandler>
+  | undefined;
+
+export const claimCandidateSearchHandler: ReturnType<
+  typeof createClaimCandidateSearchLambdaHandler
+> = (event) => {
+  defaultClaimCandidateSearchHandler ??= createClaimCandidateSearchLambdaHandler();
+  return defaultClaimCandidateSearchHandler(event);
+};
 
 export function createExcludeClaimCandidateLambdaHandler(
   deps: ClaimCandidatesLambdaDependencies = {},
 ) {
-  return withTenantContext(
-    createExcludeClaimCandidateHandler(createClaimCandidatesRepository(deps)),
-    {
-      observability: createLambdaObservabilitySink(deps),
-      now: deps.now,
-    },
-  );
+  const repository = deps.repository
+    ? createClaimCandidatesRepository(deps)
+    : createLazyClaimCandidatesRepository(deps);
+  return withTenantContext(createExcludeClaimCandidateHandler(repository), {
+    observability: createLambdaObservabilitySink(deps),
+    now: deps.now,
+  });
 }
 
-export const excludeClaimCandidateHandler = createExcludeClaimCandidateLambdaHandler();
+let defaultExcludeClaimCandidateHandler:
+  | ReturnType<typeof createExcludeClaimCandidateLambdaHandler>
+  | undefined;
+
+export const excludeClaimCandidateHandler: ReturnType<
+  typeof createExcludeClaimCandidateLambdaHandler
+> = (event) => {
+  defaultExcludeClaimCandidateHandler ??= createExcludeClaimCandidateLambdaHandler();
+  return defaultExcludeClaimCandidateHandler(event);
+};

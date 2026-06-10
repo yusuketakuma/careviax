@@ -181,19 +181,55 @@ export function createVisitModeRepository(
   );
 }
 
+function createLazyVisitModeRepository(
+  deps: VisitModeLambdaDependencies = {},
+): PhosVisitModeRepository {
+  let repository: PhosVisitModeRepository | undefined;
+  return {
+    getVisitMode(ctx, packet_id) {
+      repository ??= createVisitModeRepository(deps);
+      return repository.getVisitMode(ctx, packet_id);
+    },
+    updateVisitStep(ctx, packet_id, step, request) {
+      repository ??= createVisitModeRepository(deps);
+      return repository.updateVisitStep(ctx, packet_id, step, request);
+    },
+  };
+}
+
 export function createGetVisitModeLambdaHandler(deps: VisitModeLambdaDependencies = {}) {
-  return withTenantContext(createGetVisitModeHandler(createVisitModeRepository(deps)), {
+  const repository = deps.repository
+    ? createVisitModeRepository(deps)
+    : createLazyVisitModeRepository(deps);
+  return withTenantContext(createGetVisitModeHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
 export function createUpdateVisitStepLambdaHandler(deps: VisitModeLambdaDependencies = {}) {
-  return withTenantContext(createUpdateVisitStepHandler(createVisitModeRepository(deps)), {
+  const repository = deps.repository
+    ? createVisitModeRepository(deps)
+    : createLazyVisitModeRepository(deps);
+  return withTenantContext(createUpdateVisitStepHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
-export const getVisitModeHandler = createGetVisitModeLambdaHandler();
-export const updateVisitStepHandler = createUpdateVisitStepLambdaHandler();
+let defaultGetVisitModeHandler: ReturnType<typeof createGetVisitModeLambdaHandler> | undefined;
+let defaultUpdateVisitStepHandler:
+  | ReturnType<typeof createUpdateVisitStepLambdaHandler>
+  | undefined;
+
+export const getVisitModeHandler: ReturnType<typeof createGetVisitModeLambdaHandler> = (event) => {
+  defaultGetVisitModeHandler ??= createGetVisitModeLambdaHandler();
+  return defaultGetVisitModeHandler(event);
+};
+
+export const updateVisitStepHandler: ReturnType<typeof createUpdateVisitStepLambdaHandler> = (
+  event,
+) => {
+  defaultUpdateVisitStepHandler ??= createUpdateVisitStepLambdaHandler();
+  return defaultUpdateVisitStepHandler(event);
+};

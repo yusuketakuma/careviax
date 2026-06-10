@@ -310,27 +310,73 @@ export function createCardsRepository(deps: CardsLambdaDependencies = {}): PhosC
   };
 }
 
+function createLazyCardsRepository(deps: CardsLambdaDependencies = {}): PhosCardsRepository {
+  let repository: PhosCardsRepository | undefined;
+  return {
+    searchCards(ctx, query) {
+      repository ??= createCardsRepository(deps);
+      return repository.searchCards(ctx, query);
+    },
+    getCardDetail(ctx, card_id) {
+      repository ??= createCardsRepository(deps);
+      return repository.getCardDetail(ctx, card_id);
+    },
+    executeCardAction(ctx, card_id, command) {
+      repository ??= createCardsRepository(deps);
+      return repository.executeCardAction(ctx, card_id, command);
+    },
+  };
+}
+
 export function createCardSearchLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createCardSearchHandler(createCardsRepository(deps)), {
+  const repository = deps.repository
+    ? createCardsRepository(deps)
+    : createLazyCardsRepository(deps);
+  return withTenantContext(createCardSearchHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
 export function createCardDetailLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createCardDetailHandler(createCardsRepository(deps)), {
+  const repository = deps.repository
+    ? createCardsRepository(deps)
+    : createLazyCardsRepository(deps);
+  return withTenantContext(createCardDetailHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
 export function createExecuteCardActionLambdaHandler(deps: CardsLambdaDependencies = {}) {
-  return withTenantContext(createExecuteCardActionHandler(createCardsRepository(deps)), {
+  const repository = deps.repository
+    ? createCardsRepository(deps)
+    : createLazyCardsRepository(deps);
+  return withTenantContext(createExecuteCardActionHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
-export const cardSearchHandler = createCardSearchLambdaHandler();
-export const cardDetailHandler = createCardDetailLambdaHandler();
-export const executeCardActionHandler = createExecuteCardActionLambdaHandler();
+let defaultCardSearchHandler: ReturnType<typeof createCardSearchLambdaHandler> | undefined;
+let defaultCardDetailHandler: ReturnType<typeof createCardDetailLambdaHandler> | undefined;
+let defaultExecuteCardActionHandler:
+  | ReturnType<typeof createExecuteCardActionLambdaHandler>
+  | undefined;
+
+export const cardSearchHandler: ReturnType<typeof createCardSearchLambdaHandler> = (event) => {
+  defaultCardSearchHandler ??= createCardSearchLambdaHandler();
+  return defaultCardSearchHandler(event);
+};
+
+export const cardDetailHandler: ReturnType<typeof createCardDetailLambdaHandler> = (event) => {
+  defaultCardDetailHandler ??= createCardDetailLambdaHandler();
+  return defaultCardDetailHandler(event);
+};
+
+export const executeCardActionHandler: ReturnType<typeof createExecuteCardActionLambdaHandler> = (
+  event,
+) => {
+  defaultExecuteCardActionHandler ??= createExecuteCardActionLambdaHandler();
+  return defaultExecuteCardActionHandler(event);
+};

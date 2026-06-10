@@ -45,11 +45,31 @@ export function createCapacityRepository(
   return createDynamoCapacityRepository(storeClient, { now: deps.now });
 }
 
+function createLazyCapacityRepository(
+  deps: CapacityLambdaDependencies = {},
+): PhosCapacityRepository {
+  let repository: PhosCapacityRepository | undefined;
+  return {
+    getCapacity(ctx, query) {
+      repository ??= createCapacityRepository(deps);
+      return repository.getCapacity(ctx, query);
+    },
+  };
+}
+
 export function createCapacityLambdaHandler(deps: CapacityLambdaDependencies = {}) {
-  return withTenantContext(createCapacityHandler(createCapacityRepository(deps)), {
+  const repository = deps.repository
+    ? createCapacityRepository(deps)
+    : createLazyCapacityRepository(deps);
+  return withTenantContext(createCapacityHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
-export const capacityHandler = createCapacityLambdaHandler();
+let defaultCapacityHandler: ReturnType<typeof createCapacityLambdaHandler> | undefined;
+
+export const capacityHandler: ReturnType<typeof createCapacityLambdaHandler> = (event) => {
+  defaultCapacityHandler ??= createCapacityLambdaHandler();
+  return defaultCapacityHandler(event);
+};

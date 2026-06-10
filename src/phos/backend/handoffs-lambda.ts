@@ -312,10 +312,41 @@ export function createHandoffRepository(
   return createHandoffLifecycleRepository(store, { now });
 }
 
+function createLazyHandoffRepository(
+  deps: HandoffsLambdaDependencies = {},
+): PhosHandoffsRepository {
+  let repository: PhosHandoffsRepository | undefined;
+  return {
+    searchHandoffs(ctx, query) {
+      repository ??= createHandoffRepository(deps);
+      return repository.searchHandoffs(ctx, query);
+    },
+    createHandoff(ctx, command) {
+      repository ??= createHandoffRepository(deps);
+      return repository.createHandoff(ctx, command);
+    },
+    openHandoff(ctx, handoff_id, command) {
+      repository ??= createHandoffRepository(deps);
+      return repository.openHandoff(ctx, handoff_id, command);
+    },
+    resolveHandoff(ctx, handoff_id, command) {
+      repository ??= createHandoffRepository(deps);
+      return repository.resolveHandoff(ctx, handoff_id, command);
+    },
+    returnHandoff(ctx, handoff_id, command) {
+      repository ??= createHandoffRepository(deps);
+      return repository.returnHandoff(ctx, handoff_id, command);
+    },
+  };
+}
+
 export function createHandoffSearchLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createHandoffSearchHandler(createHandoffRepository(deps)), {
+  const repository = deps.repository
+    ? createHandoffRepository(deps)
+    : createLazyHandoffRepository(deps);
+  return withTenantContext(createHandoffSearchHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
@@ -324,7 +355,10 @@ export function createHandoffSearchLambdaHandler(
 export function createCreateHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createCreateHandoffHandler(createHandoffRepository(deps)), {
+  const repository = deps.repository
+    ? createHandoffRepository(deps)
+    : createLazyHandoffRepository(deps);
+  return withTenantContext(createCreateHandoffHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
@@ -333,7 +367,10 @@ export function createCreateHandoffLambdaHandler(
 export function createOpenHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createOpenHandoffHandler(createHandoffRepository(deps)), {
+  const repository = deps.repository
+    ? createHandoffRepository(deps)
+    : createLazyHandoffRepository(deps);
+  return withTenantContext(createOpenHandoffHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
@@ -342,7 +379,10 @@ export function createOpenHandoffLambdaHandler(
 export function createResolveHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createResolveHandoffHandler(createHandoffRepository(deps)), {
+  const repository = deps.repository
+    ? createHandoffRepository(deps)
+    : createLazyHandoffRepository(deps);
+  return withTenantContext(createResolveHandoffHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
@@ -351,14 +391,42 @@ export function createResolveHandoffLambdaHandler(
 export function createReturnHandoffLambdaHandler(
   deps: HandoffsLambdaDependencies = {},
 ): HandoffLambdaHandler {
-  return withTenantContext(createReturnHandoffHandler(createHandoffRepository(deps)), {
+  const repository = deps.repository
+    ? createHandoffRepository(deps)
+    : createLazyHandoffRepository(deps);
+  return withTenantContext(createReturnHandoffHandler(repository), {
     observability: createLambdaObservabilitySink(deps),
     now: deps.now,
   });
 }
 
-export const handoffSearchHandler = createHandoffSearchLambdaHandler();
-export const createHandoffHandler = createCreateHandoffLambdaHandler();
-export const openHandoffHandler = createOpenHandoffLambdaHandler();
-export const resolveHandoffHandler = createResolveHandoffLambdaHandler();
-export const returnHandoffHandler = createReturnHandoffLambdaHandler();
+let defaultHandoffSearchHandler: HandoffLambdaHandler | undefined;
+let defaultCreateHandoffHandler: HandoffLambdaHandler | undefined;
+let defaultOpenHandoffHandler: HandoffLambdaHandler | undefined;
+let defaultResolveHandoffHandler: HandoffLambdaHandler | undefined;
+let defaultReturnHandoffHandler: HandoffLambdaHandler | undefined;
+
+export const handoffSearchHandler: HandoffLambdaHandler = (event) => {
+  defaultHandoffSearchHandler ??= createHandoffSearchLambdaHandler();
+  return defaultHandoffSearchHandler(event);
+};
+
+export const createHandoffHandler: HandoffLambdaHandler = (event) => {
+  defaultCreateHandoffHandler ??= createCreateHandoffLambdaHandler();
+  return defaultCreateHandoffHandler(event);
+};
+
+export const openHandoffHandler: HandoffLambdaHandler = (event) => {
+  defaultOpenHandoffHandler ??= createOpenHandoffLambdaHandler();
+  return defaultOpenHandoffHandler(event);
+};
+
+export const resolveHandoffHandler: HandoffLambdaHandler = (event) => {
+  defaultResolveHandoffHandler ??= createResolveHandoffLambdaHandler();
+  return defaultResolveHandoffHandler(event);
+};
+
+export const returnHandoffHandler: HandoffLambdaHandler = (event) => {
+  defaultReturnHandoffHandler ??= createReturnHandoffLambdaHandler();
+  return defaultReturnHandoffHandler(event);
+};
