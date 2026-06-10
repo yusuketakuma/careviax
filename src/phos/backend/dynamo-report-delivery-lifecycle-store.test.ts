@@ -14,7 +14,11 @@ import { PHOS_CORE_TABLE } from './dynamo-cards-repository';
 import type { TenantContext } from './tenant-context';
 
 type DeliveryItem = { delivery: ReportDeliveryView };
-type IdempotencyItem = { fingerprint: string; saved?: ReportDeliveryMutationResponse };
+type IdempotencyItem = {
+  actor?: string;
+  fingerprint: string;
+  saved?: ReportDeliveryMutationResponse;
+};
 
 const ctx: TenantContext = {
   tenant_id: 'tenant_abc123',
@@ -45,6 +49,7 @@ function delivery(overrides: Partial<ReportDeliveryView> = {}): ReportDeliveryVi
 const mapper: DynamoReportDeliveryLifecycleMapper<DeliveryItem, IdempotencyItem> = {
   toReportDeliveryView: (item) => item.delivery,
   toIdempotencyRecord: (item) => ({
+    actor_user_id: item.actor,
     request_fingerprint: item.fingerprint,
     response: item.saved,
   }),
@@ -110,6 +115,7 @@ describe('createDynamoReportDeliveryLifecycleStore', () => {
         'REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_reply',
       idempotency_key: 'idem_reply',
       expected_server_version: 1,
+      actor_user_id: 'user_1',
       request_fingerprint: 'fp_reply',
       command: expect.objectContaining({ idempotency_key: 'idem_reply' }),
       response,
@@ -130,6 +136,84 @@ describe('createDynamoReportDeliveryLifecycleStore', () => {
           action_required_note: '薬剤師が電話確認する。',
         }),
       }),
+    });
+  });
+
+  it('returns saved idempotent responses only for the original actor', async () => {
+    const saved: ReportDeliveryMutationResponse = {
+      delivery: delivery({
+        status: ReportDeliveryStatus.ACTION_DONE,
+        reply_summary: '患者情報を含む返信',
+        server_version: 2,
+      }),
+      side_effects: [{ type: 'REPORT_ACTION_DONE', delivery_id: 'delivery_1' }],
+      server_version: 2,
+    };
+    const sameActorClient = client({
+      getIdempotency: vi.fn(async () => ({
+        actor: 'user_1',
+        fingerprint: 'fp_reply',
+        saved,
+      })),
+    });
+    const sameActorStore = createDynamoReportDeliveryLifecycleStore(
+      sameActorClient,
+      mapper,
+      vi.fn(),
+    );
+
+    await expect(
+      sameActorStore.getIdempotentMutation(
+        ctx,
+        'REGISTER_REPORT_REPLY:delivery_1',
+        'idem_reply',
+        'fp_reply',
+      ),
+    ).resolves.toEqual({ status: 'MATCH', response: saved });
+
+    const otherActorClient = client({
+      getIdempotency: vi.fn(async () => ({
+        actor: 'user_2',
+        fingerprint: 'fp_reply',
+        saved,
+      })),
+    });
+    const otherActorStore = createDynamoReportDeliveryLifecycleStore(
+      otherActorClient,
+      mapper,
+      vi.fn(),
+    );
+
+    await expect(
+      otherActorStore.getIdempotentMutation(
+        ctx,
+        'REGISTER_REPORT_REPLY:delivery_1',
+        'idem_reply',
+        'fp_reply',
+      ),
+    ).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fp_reply',
+    });
+
+    const legacyClient = client({
+      getIdempotency: vi.fn(async () => ({
+        fingerprint: 'fp_reply',
+        saved,
+      })),
+    });
+    const legacyStore = createDynamoReportDeliveryLifecycleStore(legacyClient, mapper, vi.fn());
+
+    await expect(
+      legacyStore.getIdempotentMutation(
+        ctx,
+        'REGISTER_REPORT_REPLY:delivery_1',
+        'idem_reply',
+        'fp_reply',
+      ),
+    ).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fp_reply',
     });
   });
 });

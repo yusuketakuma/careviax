@@ -23,6 +23,7 @@ import type { DynamoCardAuditEvent } from './card-audit-events';
 import type { TenantContext } from './tenant-context';
 
 export type DynamoReportDeliveryIdempotencyRecord = {
+  actor_user_id?: string;
   request_fingerprint: string;
   response?: ReportDeliveryMutationResponse;
 };
@@ -36,6 +37,7 @@ export type DynamoReportDeliveryTransitionTransaction = {
   idempotency_sort_key: string;
   idempotency_key: string;
   expected_server_version: number;
+  actor_user_id: string;
   request_fingerprint: string;
   command: RegisterReportReplyRequest | MarkReportActionDoneRequest;
   response: ReportDeliveryMutationResponse;
@@ -99,7 +101,11 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
       if (!item) return { status: 'MISS' };
 
       const record = mapper.toIdempotencyRecord(item);
-      if (record.request_fingerprint !== request_fingerprint || !record.response) {
+      if (
+        record.request_fingerprint !== request_fingerprint ||
+        record.actor_user_id !== ctx.user_id ||
+        !record.response
+      ) {
         return {
           status: 'CONFLICT',
           existing_request_fingerprint: record.request_fingerprint,
@@ -144,6 +150,7 @@ export function createDynamoReportDeliveryLifecycleStore<TDeliveryItem, TIdempot
         }),
         idempotency_key: input.command.idempotency_key,
         expected_server_version: input.previous_delivery.server_version,
+        actor_user_id: ctx.user_id,
         request_fingerprint: input.request_fingerprint,
         command: input.command,
         response: input.response,

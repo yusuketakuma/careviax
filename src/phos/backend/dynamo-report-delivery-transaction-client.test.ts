@@ -39,6 +39,7 @@ function transaction(
     idempotency_sort_key: 'REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_reply',
     idempotency_key: 'idem_reply',
     expected_server_version: 1,
+    actor_user_id: 'user_1',
     request_fingerprint: 'fp_1',
     command: {
       result_status: ReportDeliveryStatus.ACTION_DONE,
@@ -144,7 +145,14 @@ describe('Dynamo report delivery transaction client', () => {
             S: 'REPORT_DELIVERY_IDEMPOTENCY#REGISTER_REPORT_REPLY:delivery_1#idem_reply',
           },
           entity_type: { S: 'REPORT_DELIVERY_IDEMPOTENCY' },
+          actor_user_id: { S: 'user_1' },
           request_fingerprint: { S: 'fp_1' },
+        },
+        ConditionExpression:
+          'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
+        ExpressionAttributeValues: {
+          ':actor_user_id': { S: 'user_1' },
+          ':request_fingerprint': { S: 'fp_1' },
         },
       },
     });

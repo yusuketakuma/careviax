@@ -121,6 +121,7 @@ const lifecycleMapper: DynamoReportDeliveryLifecycleMapper<DynamoItem, DynamoIte
   toIdempotencyRecord(item) {
     const responseJson = stringAttr(item, 'response_json');
     return {
+      actor_user_id: stringAttr(item, 'actor_user_id'),
       request_fingerprint: stringAttr(item, 'request_fingerprint') ?? '',
       ...(responseJson ? { response: JSON.parse(responseJson) } : {}),
     };

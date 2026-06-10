@@ -128,6 +128,33 @@ describe('ReportDelivery lifecycle repository', () => {
     ).rejects.toMatchObject({ status: 409, error_code: 'STALE_VERSION' });
   });
 
+  it('rejects idempotency conflicts without loading or returning cached report PHI', async () => {
+    const conflictStore = store({
+      getIdempotentMutation: vi.fn(
+        async (): Promise<IdempotentReportDeliveryLookup> => ({
+          status: 'CONFLICT',
+          existing_request_fingerprint: 'fp_other_actor',
+        }),
+      ),
+    });
+    const repo = createReportDeliveryLifecycleRepository(conflictStore);
+
+    await expect(
+      repo.registerReportReply(ctx, 'delivery_1', {
+        result_status: ReportDeliveryStatus.ACTION_DONE,
+        reply_summary: '患者情報を含む返信',
+        idempotency_key: 'idem_reply',
+        client_version: 1,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      error_code: 'IDEMPOTENCY_CONFLICT',
+      details: { idempotency_key: 'idem_reply' },
+    });
+    expect(conflictStore.loadReportDelivery).not.toHaveBeenCalled();
+    expect(conflictStore.commitReportDeliveryTransition).not.toHaveBeenCalled();
+  });
+
   it('replays matching idempotent responses after commit races', async () => {
     const saved = {
       delivery: delivery({ status: ReportDeliveryStatus.ACTION_DONE, server_version: 2 }),

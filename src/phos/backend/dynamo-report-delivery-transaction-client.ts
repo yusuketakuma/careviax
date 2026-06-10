@@ -25,11 +25,14 @@ function idempotencyPut(
         }),
         delivery_id: { S: input.response.delivery.delivery_id },
         idempotency_key: { S: input.idempotency_key },
+        actor_user_id: { S: input.actor_user_id },
         request_fingerprint: { S: input.request_fingerprint },
         response_json: { S: JSON.stringify(input.response) },
       },
-      ConditionExpression: 'attribute_not_exists(PK) OR request_fingerprint = :request_fingerprint',
+      ConditionExpression:
+        'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
       ExpressionAttributeValues: {
+        ':actor_user_id': { S: input.actor_user_id },
         ':request_fingerprint': { S: input.request_fingerprint },
       },
     },
