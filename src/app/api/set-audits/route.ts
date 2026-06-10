@@ -31,12 +31,6 @@ const createSetAuditSchema = z.object({
   audited_at: z.string().datetime().optional(),
 });
 
-const MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
-  'planned',
-  'in_preparation',
-  'ready',
-  'postponed',
-];
 const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
   'planned',
   'in_preparation',
@@ -223,6 +217,7 @@ export const POST = withAuth(
       if (result === 'approved') {
         // carry_items confirmed — advance cycle to set_audited
         const carryItems = buildSetCarryItems(setBatches);
+        const carryItemsInput = toPrismaJsonInput(carryItems);
         const transitionErr = await transitionHelper('set_audited');
         if (transitionErr) return transitionErr;
         await tx.visitSchedule.updateMany({
@@ -230,12 +225,39 @@ export const POST = withAuth(
             org_id: req.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
-              in: MUTABLE_VISIT_SCHEDULE_STATUSES,
+              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
             },
           },
           data: {
-            carry_items: toPrismaJsonInput(carryItems),
+            carry_items: carryItemsInput,
             carry_items_status: 'ready',
+          },
+        });
+        await tx.visitPreparation.updateMany({
+          where: {
+            org_id: req.orgId,
+            schedule: {
+              org_id: req.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+          },
+          data: {
+            carry_items_confirmed: false,
+            prepared_at: null,
+          },
+        });
+        await tx.visitSchedule.updateMany({
+          where: {
+            org_id: req.orgId,
+            cycle_id: plan.cycle_id,
+            schedule_status: 'ready',
+          },
+          data: {
+            carry_items: carryItemsInput,
+            carry_items_status: 'ready',
+            schedule_status: 'in_preparation',
+            pre_visit_checklist_completed: false,
           },
         });
 

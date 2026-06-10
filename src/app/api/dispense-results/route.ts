@@ -537,12 +537,9 @@ export const POST = withAuth(
           carry_type: line.carry_type,
           special_notes: line.special_notes,
         }));
-        const readyScheduleIdsToReopen =
-          carryItemsStatus === 'ready'
-            ? []
-            : visitSchedules
-                .filter((visitSchedule) => visitSchedule.schedule_status === 'ready')
-                .map((visitSchedule) => visitSchedule.id);
+        const readyScheduleIdsToReopen = visitSchedules
+          .filter((visitSchedule) => visitSchedule.schedule_status === 'ready')
+          .map((visitSchedule) => visitSchedule.id);
 
         if (readyScheduleIdsToReopen.length > 0) {
           await tx.visitPreparation.updateMany({
@@ -558,8 +555,7 @@ export const POST = withAuth(
         }
 
         for (const visitSchedule of visitSchedules) {
-          const shouldReopenReadySchedule =
-            visitSchedule.schedule_status === 'ready' && carryItemsStatus !== 'ready';
+          const shouldReopenReadySchedule = visitSchedule.schedule_status === 'ready';
 
           await tx.visitSchedule.update({
             where: { id: visitSchedule.id },

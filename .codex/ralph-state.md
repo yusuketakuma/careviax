@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-032235
+
+- current task: prevent stale carry-item confirmation when carry items are regenerated as ready.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/api/set-audits/route.ts`, `src/app/api/set-audits/route.test.ts`, `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-results/route.test.ts`, Prisma visit schema, and read-only code-mapper plus medical-safety findings.
+- files changed: `src/app/api/set-audits/route.ts`, `src/app/api/set-audits/route.test.ts`, `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-results/route.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: approved set audits and all-ready dispense results could regenerate `carry_items` while leaving already-ready schedules and `VisitPreparation.carry_items_confirmed` intact. That allowed a pharmacist to rely on a stale "confirmed" state after the actual carry-item list had been rewritten.
+- security risks found: no authn/authz or PHI response boundary changed. The slice reduces medication workflow safety risk by invalidating stale carry-item confirmations and reopening only already-ready schedules after carry-item regeneration.
+- performance issues found: no unbounded external calls. The added preparation invalidation is a bounded bulk update for ready schedules in a cycle or selected active schedule IDs; non-ready schedules keep lifecycle status and receive only carry-item data updates.
+- validation commands: `pnpm exec prettier --write src/app/api/set-audits/route.ts src/app/api/set-audits/route.test.ts src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts`; `pnpm exec vitest run src/app/api/set-audits/route.test.ts src/app/api/dispense-results/route.test.ts --reporter=dot`; `pnpm typecheck`; `pnpm lint`; `pnpm format:check`; `git diff --check`; read-only medical-safety review.
+- validation results: focused set-audits/dispense-results suite passed with 2 files / 19 tests. Full typecheck passed after Next route type generation. Full ESLint passed. Changed-file format gate passed. Whitespace diff check passed. Medical-safety reviewer reported no commit blockers. The focused dispense-results tests still log non-fatal webhook stderr when `DATABASE_URL` is absent; assertions pass and the command exits 0.
+- remaining work: decide product semantics for `carry_items_status = null` versus "no carry items required", and consider whether approved set audits should detect identical carry-item lists to avoid reopening already-ready schedules when no actual item data changed.
+- next action: commit this stale carry-item confirmation fix, then continue with the next high-value UI/UX or readiness safety task.
+
 ### 20260611-031838
 
 - current task: enforce carry-item readiness semantics across visit ready gates and later carry-item mutations.

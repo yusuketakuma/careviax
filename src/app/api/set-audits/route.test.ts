@@ -158,7 +158,7 @@ describe('/api/set-audits POST', () => {
     );
   });
 
-  it('marks visit schedules ready on approved audits', async () => {
+  it('marks visit schedules ready and downgrades already-ready schedules on approved audits', async () => {
     const response = await POST(
       createRequest(
         {
@@ -171,10 +171,15 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
         cycle_id: 'cycle_1',
-      }),
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'postponed'],
+        },
+      },
       data: {
         carry_items: [
           expect.objectContaining({
@@ -184,6 +189,39 @@ describe('/api/set-audits POST', () => {
           }),
         ],
         carry_items_status: 'ready',
+      },
+    });
+    expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          schedule_status: 'ready',
+        },
+      },
+      data: {
+        carry_items_confirmed: false,
+        prepared_at: null,
+      },
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        schedule_status: 'ready',
+      },
+      data: {
+        carry_items: [
+          expect.objectContaining({
+            batch_id: 'batch_1',
+            drug_name: 'アムロジピン錠5mg',
+            carry_type: 'carry',
+          }),
+        ],
+        carry_items_status: 'ready',
+        schedule_status: 'in_preparation',
+        pre_visit_checklist_completed: false,
       },
     });
   });

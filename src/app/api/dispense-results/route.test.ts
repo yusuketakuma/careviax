@@ -790,6 +790,154 @@ describe('/api/dispense-results POST', () => {
     );
   });
 
+  it('reopens a ready visit schedule when dispensing regenerates ready carry items', async () => {
+    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+      id: 'result_1',
+      line_id: 'line_1',
+      actual_drug_name: 'アムロジピン',
+      actual_drug_code: '123',
+      actual_quantity: 14,
+      actual_unit: '錠',
+      carry_type: 'carry',
+      special_notes: null,
+    });
+    const dispenseResultFindManyMock = vi.fn().mockResolvedValue([
+      {
+        line_id: 'line_1',
+        actual_drug_name: 'アムロジピン',
+        actual_drug_code: '123',
+        actual_quantity: 14,
+        actual_unit: '錠',
+        carry_type: 'carry',
+        special_notes: null,
+      },
+    ]);
+    const dispenseTaskUpdateMock = vi.fn().mockResolvedValue({});
+    const medicationCycleFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'dispensing',
+      version: 1,
+    });
+    const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
+    const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
+    const visitPreparationUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const membershipFindManyMock = vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]);
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [
+                { id: 'schedule_1', schedule_status: 'ready' },
+                { id: 'schedule_2', schedule_status: 'planned' },
+              ],
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: dispenseResultFindManyMock,
+        },
+        medicationCycle: {
+          findFirst: medicationCycleFindFirstMock,
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: cycleTransitionLogCreateMock },
+        visitSchedule: { update: visitScheduleUpdateMock },
+        visitPreparation: { updateMany: visitPreparationUpdateManyMock },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        membership: {
+          findMany: membershipFindManyMock,
+        },
+        auditLog: {
+          create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            actual_unit: '錠',
+            carry_type: 'carry',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule_id: { in: ['schedule_1'] },
+      },
+      data: {
+        carry_items_confirmed: false,
+        prepared_at: null,
+      },
+    });
+    expect(visitScheduleUpdateMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleUpdateMock).toHaveBeenNthCalledWith(1, {
+      where: { id: 'schedule_1' },
+      data: expect.objectContaining({
+        carry_items_status: 'ready',
+        schedule_status: 'in_preparation',
+        pre_visit_checklist_completed: false,
+      }),
+    });
+    expect(visitScheduleUpdateMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'schedule_2' },
+      data: expect.objectContaining({
+        carry_items_status: 'ready',
+      }),
+    });
+    const plannedUpdateData = visitScheduleUpdateMock.mock.calls[1][0].data;
+    expect(plannedUpdateData).not.toHaveProperty('schedule_status');
+    expect(plannedUpdateData).not.toHaveProperty('pre_visit_checklist_completed');
+  });
+
   it('downgrades a ready visit schedule when all carry items are deferred', async () => {
     const dispenseResultCreateMock = vi.fn().mockResolvedValue({
       id: 'result_1',
