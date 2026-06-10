@@ -121,4 +121,25 @@ describe('VisitCardMobile', () => {
     swipeRight();
     expect(handleStart).toHaveBeenCalledWith('schedule_1');
   });
+
+  it('distinguishes generated empty briefs from missing or unavailable briefs', () => {
+    const { rerender } = render(
+      <VisitCardMobile
+        {...baseProps}
+        status="ready"
+        mustCheckToday={[]}
+        visitBriefStatus="available"
+      />,
+    );
+
+    expect(screen.getByText('本日重要チェックなし（軽量ブリーフ確認済み）')).toBeTruthy();
+
+    rerender(<VisitCardMobile {...baseProps} status="ready" visitBriefStatus="missing" />);
+
+    expect(screen.getByText('ブリーフ未取得 - 患者詳細と処方を確認')).toBeTruthy();
+
+    rerender(<VisitCardMobile {...baseProps} status="ready" visitBriefStatus="unavailable" />);
+
+    expect(screen.getByText('ブリーフ確認不可 - 患者詳細と処方を確認')).toBeTruthy();
+  });
 });

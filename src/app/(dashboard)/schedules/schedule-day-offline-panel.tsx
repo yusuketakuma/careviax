@@ -69,7 +69,8 @@ export function ScheduleDayOfflinePanel({
         <CardContent className="space-y-4">
           <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
             {offlineStatus.networkBadgeLabel}、{offlineStatus.pendingSyncLabel}、
-            {offlineStatus.conflictLabel}、最終同期 {offlineStatus.lastSyncLabel}
+            {offlineStatus.conflictLabel}、{offlineStatus.visitBriefCoverageLabel}、
+            {offlineStatus.visitBriefStatusLabel}、最終同期 {offlineStatus.lastSyncLabel}
           </p>
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant="outline" className={offlineStatus.networkBadgeClassName}>
@@ -77,6 +78,9 @@ export function ScheduleDayOfflinePanel({
             </Badge>
             <Badge variant="outline">{offlineStatus.pendingSyncLabel}</Badge>
             <Badge variant="outline">{offlineStatus.conflictLabel}</Badge>
+            <Badge variant="outline" className={offlineStatus.visitBriefCoverageClassName}>
+              {offlineStatus.visitBriefCoverageLabel}
+            </Badge>
             <Badge variant="outline">{offlineStatus.ttlLabel}</Badge>
           </div>
           <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -84,6 +88,9 @@ export function ScheduleDayOfflinePanel({
             <p className="mt-1">
               当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 / 持参チェック対象を
               read-only で参照できます。
+            </p>
+            <p className={cn('mt-1', offlineStatus.visitBriefStatusClassName)}>
+              {offlineStatus.visitBriefStatusLabel}
             </p>
             <p className="mt-1">最終同期: {offlineStatus.lastSyncLabel}</p>
           </div>
@@ -305,6 +312,9 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
             <li key={check}>- {check}</li>
           ))}
         </ul>
+      )}
+      {item.mustCheckToday.length === 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">本日重要チェックなし（生成済み）</p>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
         生成 {format(parseISO(item.generatedAt), 'M/d HH:mm', { locale: ja })} / 根拠{' '}

@@ -33,6 +33,7 @@ export interface VisitCardMobileProps {
   patientHref?: string;
   carryItemsStatus?: string | null;
   mustCheckToday?: string[];
+  visitBriefStatus?: 'available' | 'missing' | 'unavailable';
   onStartVisit?: (id: string) => void;
   onCompleteVisit?: (id: string) => void;
   className?: string;
@@ -75,6 +76,7 @@ export function VisitCardMobile({
   patientHref,
   carryItemsStatus,
   mustCheckToday = [],
+  visitBriefStatus = 'available',
   onStartVisit,
   onCompleteVisit,
   className,
@@ -118,6 +120,15 @@ export function VisitCardMobile({
     : showCompleteAction
       ? '左スワイプで訪問完了'
       : null;
+  const visitBriefLabel =
+    visitBriefStatus === 'unavailable'
+      ? 'ブリーフ確認不可 - 患者詳細と処方を確認'
+      : visitBriefStatus === 'missing'
+        ? 'ブリーフ未取得 - 患者詳細と処方を確認'
+        : mustCheckToday.length === 0
+          ? '本日重要チェックなし（軽量ブリーフ確認済み）'
+          : null;
+  const showVisitBriefLabel = Boolean(visitBriefLabel);
 
   const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
     const touch = event.changedTouches[0];
@@ -184,7 +195,10 @@ export function VisitCardMobile({
         <span className="line-clamp-2">{address}</span>
       </div>
 
-      {(routeOrder != null || carryItemsStatus || mustCheckToday.length > 0) && (
+      {(routeOrder != null ||
+        carryItemsStatus ||
+        mustCheckToday.length > 0 ||
+        showVisitBriefLabel) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {routeOrder != null && <Badge variant="secondary">順路 {routeOrder}</Badge>}
           {carryItemsStatus && (
@@ -205,6 +219,17 @@ export function VisitCardMobile({
               {item}
             </Badge>
           ))}
+          {visitBriefLabel && (
+            <Badge
+              variant="outline"
+              className={cn(
+                'max-w-full truncate',
+                visitBriefStatus !== 'available' && 'border-amber-200 bg-amber-50 text-amber-700',
+              )}
+            >
+              {visitBriefLabel}
+            </Badge>
+          )}
         </div>
       )}
 

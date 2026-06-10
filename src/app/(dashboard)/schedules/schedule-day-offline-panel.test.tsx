@@ -20,6 +20,10 @@ const offlineStatus: ScheduleDayOfflineStatusViewModel = {
   pendingSyncLabel: '同期待ち 0 件',
   conflictLabel: '競合 0 件',
   ttlLabel: '保持期限 24h',
+  visitBriefCoverageLabel: 'ブリーフ 0/0 件',
+  visitBriefCoverageClassName: 'border-emerald-200 text-emerald-700',
+  visitBriefStatusLabel: '当日の確定訪問はありません。',
+  visitBriefStatusClassName: 'text-muted-foreground',
   lastSyncLabel: '未実施',
   canManualSync: false,
   manualSyncDisabledReason: '同期待ちの下書きはありません',
@@ -110,11 +114,38 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(statusText).toContain('オンライン');
     expect(statusText).toContain('同期待ち 0 件');
     expect(statusText).toContain('競合 1 件');
+    expect(statusText).toContain('ブリーフ 0/0 件');
+    expect(statusText).toContain('当日の確定訪問はありません。');
     expect(statusText).toContain('最終同期 未実施');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '今すぐ同期' }).disabled).toBe(
       true,
     );
     expect(screen.getByText('競合を解決してから同期してください')).toBeTruthy();
+  });
+
+  it('shows visit brief coverage and failure status in the sync group', () => {
+    render(
+      <ScheduleDayOfflinePanel
+        {...panelProps({
+          offlineStatus: {
+            ...offlineStatus,
+            visitBriefCoverageLabel: 'ブリーフ 1/3 件',
+            visitBriefCoverageClassName: 'border-amber-200 bg-amber-50 text-amber-700',
+            visitBriefStatusLabel:
+              '軽量 brief を更新できません。患者詳細と処方を確認してください。',
+            visitBriefStatusClassName: 'text-amber-700',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('ブリーフ 1/3 件')).toBeTruthy();
+    expect(
+      screen.getByText('軽量 brief を更新できません。患者詳細と処方を確認してください。'),
+    ).toBeTruthy();
+    const statusText = screen.getByRole('status').textContent ?? '';
+    expect(statusText).toContain('ブリーフ 1/3 件');
+    expect(statusText).toContain('軽量 brief を更新できません');
   });
 
   it('requires confirmation before overwriting or discarding a conflict', () => {
@@ -219,5 +250,17 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(screen.getByText('- ふらつき')).toBeTruthy();
     expect(screen.getByText('- 服薬カレンダー')).toBeTruthy();
     expect(screen.queryByText('- 次回採血予定')).toBeNull();
+  });
+
+  it('marks generated cached briefs with no must-check items explicitly', () => {
+    render(
+      <ScheduleDayOfflinePanel
+        {...panelProps({
+          cachedVisitBriefs: [{ ...cachedBrief, mustCheckToday: [] }],
+        })}
+      />,
+    );
+
+    expect(screen.getByText('本日重要チェックなし（生成済み）')).toBeTruthy();
   });
 });

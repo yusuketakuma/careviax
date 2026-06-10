@@ -175,6 +175,7 @@ import {
   buildDirectionsUrl,
   buildMapEmbedUrl,
   type FacilityTrackerGroup,
+  type ScheduleDayVisitBriefCacheStatus,
   canOverrideDepartureCarryWarning,
   getFacilityTrackerGrouping,
   getDepartureCarryWarning,
@@ -340,6 +341,8 @@ export function ScheduleDayView({
   const [cachedVisitBriefs, setCachedVisitBriefs] = useState<CachedVisitBriefCard[]>([]);
   const [cachedVisitBriefLoadedDate, setCachedVisitBriefLoadedDate] = useState<string | null>(null);
   const [cachedVisitBriefUpdatedAt, setCachedVisitBriefUpdatedAt] = useState<string | null>(null);
+  const [cachedVisitBriefStatus, setCachedVisitBriefStatus] =
+    useState<ScheduleDayVisitBriefCacheStatus>('ready');
   const [mobileVisitSurface, setMobileVisitSurface] = useState<'list' | 'map'>('list');
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
   const [routeTravelMode, setRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
@@ -785,12 +788,16 @@ export function ScheduleDayView({
         pendingSyncCount,
         syncConflictCount: syncConflicts.length,
         cachedVisitBriefCount: visibleCachedVisitBriefs.length,
+        selectedDateScheduleCount: selectedDateSchedules.length,
         cachedVisitBriefUpdatedAt: visibleCachedVisitBriefUpdatedAt,
+        visitBriefCacheStatus: cachedVisitBriefStatus,
         cacheTtlHours: OFFLINE_CACHE_TTL_HOURS,
       }),
     [
+      cachedVisitBriefStatus,
       isOffline,
       pendingSyncCount,
+      selectedDateSchedules.length,
       syncConflicts.length,
       visibleCachedVisitBriefUpdatedAt,
       visibleCachedVisitBriefs.length,
@@ -983,6 +990,7 @@ export function ScheduleDayView({
         setCachedVisitBriefs(result.cards);
         setCachedVisitBriefUpdatedAt(result.updatedAt);
         setCachedVisitBriefLoadedDate(result.loadedDate);
+        setCachedVisitBriefStatus('ready');
       })
       .catch((error) => {
         if (active) {
@@ -990,6 +998,7 @@ export function ScheduleDayView({
           setCachedVisitBriefs([]);
           setCachedVisitBriefUpdatedAt(null);
           setCachedVisitBriefLoadedDate(selectedDate);
+          setCachedVisitBriefStatus('load_failed');
         }
       });
 
@@ -1016,25 +1025,29 @@ export function ScheduleDayView({
         cachedVisitBriefByScheduleId,
       });
       if (cancelled) return;
-      if (filtered.length > 0) {
-        const updatedAt = await saveScheduleDayVisitBriefCards({
-          selectedDate,
-          cards: filtered,
-          repository: visitBriefCacheRepository,
-        });
-        if (cancelled) return;
-        setCachedVisitBriefs((previous) => {
-          return mergeScheduleDayCachedVisitBriefCards({
-            previous,
-            selectedDate,
-            incoming: filtered,
-          });
-        });
-        setCachedVisitBriefUpdatedAt(updatedAt);
+      if (filtered.length === 0) {
+        setCachedVisitBriefStatus('refresh_failed');
+        return;
       }
+      const updatedAt = await saveScheduleDayVisitBriefCards({
+        selectedDate,
+        cards: filtered,
+        repository: visitBriefCacheRepository,
+      });
+      if (cancelled) return;
+      setCachedVisitBriefs((previous) => {
+        return mergeScheduleDayCachedVisitBriefCards({
+          previous,
+          selectedDate,
+          incoming: filtered,
+        });
+      });
+      setCachedVisitBriefUpdatedAt(updatedAt);
+      setCachedVisitBriefStatus('ready');
     })().catch((error) => {
       if (!cancelled) {
         console.warn('[visit-brief-cache] Failed to refresh schedule brief cache', error);
+        setCachedVisitBriefStatus('refresh_failed');
       }
     });
 
@@ -1578,6 +1591,11 @@ export function ScheduleDayView({
               const cachedBrief = cachedVisitBriefByScheduleId.get(schedule.id);
               const brief =
                 cachedBrief?.patientId === schedule.case_.patient.id ? cachedBrief : undefined;
+              const visitBriefStatus = brief
+                ? 'available'
+                : cachedVisitBriefStatus === 'ready'
+                  ? 'missing'
+                  : 'unavailable';
               return (
                 <VisitCardMobile
                   key={schedule.id}
@@ -1598,6 +1616,7 @@ export function ScheduleDayView({
                   status={schedule.schedule_status}
                   carryItemsStatus={schedule.carry_items_status}
                   mustCheckToday={brief?.mustCheckToday ?? []}
+                  visitBriefStatus={visitBriefStatus}
                   onStartVisit={() => handleVisitStart(schedule)}
                   onCompleteVisit={() => handleVisitComplete(schedule)}
                 />

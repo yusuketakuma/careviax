@@ -204,18 +204,26 @@ export type ScheduleDayOfflineStatusViewModel = {
   pendingSyncLabel: string;
   conflictLabel: string;
   ttlLabel: string;
+  visitBriefCoverageLabel: string;
+  visitBriefCoverageClassName: string;
+  visitBriefStatusLabel: string;
+  visitBriefStatusClassName: string;
   lastSyncLabel: string;
   canManualSync: boolean;
   manualSyncDisabledReason: string | null;
   showConflictResolutionHint: boolean;
 };
 
+export type ScheduleDayVisitBriefCacheStatus = 'ready' | 'load_failed' | 'refresh_failed';
+
 export type ScheduleDayOfflineStatusInput = {
   isOffline: boolean;
   pendingSyncCount: number;
   syncConflictCount: number;
   cachedVisitBriefCount: number;
+  selectedDateScheduleCount: number;
   cachedVisitBriefUpdatedAt: string | null;
+  visitBriefCacheStatus: ScheduleDayVisitBriefCacheStatus;
   cacheTtlHours: number;
 };
 
@@ -246,12 +254,43 @@ export function buildScheduleDayOfflineStatus({
   pendingSyncCount,
   syncConflictCount,
   cachedVisitBriefCount,
+  selectedDateScheduleCount,
   cachedVisitBriefUpdatedAt,
+  visitBriefCacheStatus,
   cacheTtlHours,
 }: ScheduleDayOfflineStatusInput): ScheduleDayOfflineStatusViewModel {
+  const missingVisitBriefCount = Math.max(0, selectedDateScheduleCount - cachedVisitBriefCount);
+  const hasVisitBriefCoverageGap = selectedDateScheduleCount > 0 && missingVisitBriefCount > 0;
+  const hasVisitBriefFailure = visitBriefCacheStatus !== 'ready';
+  const visitBriefCoverageLabel =
+    selectedDateScheduleCount > 0
+      ? `ブリーフ ${cachedVisitBriefCount}/${selectedDateScheduleCount} 件`
+      : 'ブリーフ対象 0 件';
+  const visitBriefCoverageClassName =
+    hasVisitBriefCoverageGap || hasVisitBriefFailure
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  const visitBriefStatusLabel =
+    visitBriefCacheStatus === 'load_failed'
+      ? '端末キャッシュを読み込めません。患者詳細と処方を確認してください。'
+      : visitBriefCacheStatus === 'refresh_failed'
+        ? '軽量 brief を更新できません。患者詳細と処方を確認してください。'
+        : hasVisitBriefCoverageGap
+          ? `未取得 ${missingVisitBriefCount} 件。患者詳細と処方を確認してください。`
+          : selectedDateScheduleCount > 0
+            ? '当日予定の軽量 brief を同期済みです。'
+            : '当日の確定訪問はありません。';
+  const visitBriefStatusClassName =
+    hasVisitBriefCoverageGap || hasVisitBriefFailure ? 'text-amber-700' : 'text-muted-foreground';
+
   return {
     visible:
-      isOffline || pendingSyncCount > 0 || syncConflictCount > 0 || cachedVisitBriefCount > 0,
+      isOffline ||
+      pendingSyncCount > 0 ||
+      syncConflictCount > 0 ||
+      cachedVisitBriefCount > 0 ||
+      hasVisitBriefCoverageGap ||
+      hasVisitBriefFailure,
     networkBadgeLabel: isOffline ? 'オフライン' : 'オンライン',
     networkBadgeClassName: isOffline
       ? 'border-amber-200 bg-amber-50 text-amber-700'
@@ -259,6 +298,10 @@ export function buildScheduleDayOfflineStatus({
     pendingSyncLabel: `同期待ち ${pendingSyncCount} 件`,
     conflictLabel: `競合 ${syncConflictCount} 件`,
     ttlLabel: `読取専用 TTL ${cacheTtlHours}h`,
+    visitBriefCoverageLabel,
+    visitBriefCoverageClassName,
+    visitBriefStatusLabel,
+    visitBriefStatusClassName,
     lastSyncLabel: cachedVisitBriefUpdatedAt
       ? format(parseISO(cachedVisitBriefUpdatedAt), 'M/d HH:mm', { locale: ja })
       : '未実施',

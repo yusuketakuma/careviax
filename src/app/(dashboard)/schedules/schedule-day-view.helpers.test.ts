@@ -124,7 +124,9 @@ describe('schedule-day-view.helpers', () => {
         pendingSyncCount: 0,
         syncConflictCount: 0,
         cachedVisitBriefCount: 0,
+        selectedDateScheduleCount: 0,
         cachedVisitBriefUpdatedAt: null,
+        visitBriefCacheStatus: 'ready',
         cacheTtlHours: 24,
       }),
     ).toMatchObject({
@@ -133,6 +135,8 @@ describe('schedule-day-view.helpers', () => {
       pendingSyncLabel: '同期待ち 0 件',
       conflictLabel: '競合 0 件',
       ttlLabel: '読取専用 TTL 24h',
+      visitBriefCoverageLabel: 'ブリーフ対象 0 件',
+      visitBriefStatusLabel: '当日の確定訪問はありません。',
       lastSyncLabel: '未実施',
       canManualSync: false,
       manualSyncDisabledReason: '同期待ちの下書きはありません',
@@ -146,7 +150,9 @@ describe('schedule-day-view.helpers', () => {
       pendingSyncCount: 2,
       syncConflictCount: 1,
       cachedVisitBriefCount: 3,
+      selectedDateScheduleCount: 5,
       cachedVisitBriefUpdatedAt: '2026-04-09T08:15:00',
+      visitBriefCacheStatus: 'ready',
       cacheTtlHours: 12,
     });
 
@@ -156,6 +162,9 @@ describe('schedule-day-view.helpers', () => {
     expect(status.pendingSyncLabel).toBe('同期待ち 2 件');
     expect(status.conflictLabel).toBe('競合 1 件');
     expect(status.ttlLabel).toBe('読取専用 TTL 12h');
+    expect(status.visitBriefCoverageLabel).toBe('ブリーフ 3/5 件');
+    expect(status.visitBriefCoverageClassName).toContain('border-amber-200');
+    expect(status.visitBriefStatusLabel).toBe('未取得 2 件。患者詳細と処方を確認してください。');
     expect(status.lastSyncLabel).toBe('4/9 08:15');
     expect(status.canManualSync).toBe(true);
     expect(status.manualSyncDisabledReason).toBeNull();
@@ -168,7 +177,9 @@ describe('schedule-day-view.helpers', () => {
       pendingSyncCount: 0,
       syncConflictCount: 1,
       cachedVisitBriefCount: 0,
+      selectedDateScheduleCount: 0,
       cachedVisitBriefUpdatedAt: null,
+      visitBriefCacheStatus: 'ready',
       cacheTtlHours: 24,
     });
 
@@ -177,6 +188,27 @@ describe('schedule-day-view.helpers', () => {
     expect(status.canManualSync).toBe(false);
     expect(status.manualSyncDisabledReason).toBe('競合を解決してから同期してください');
     expect(status.showConflictResolutionHint).toBe(true);
+  });
+
+  it('shows offline status when visit brief cache load fails without other offline signals', () => {
+    const status = buildScheduleDayOfflineStatus({
+      isOffline: false,
+      pendingSyncCount: 0,
+      syncConflictCount: 0,
+      cachedVisitBriefCount: 0,
+      selectedDateScheduleCount: 2,
+      cachedVisitBriefUpdatedAt: null,
+      visitBriefCacheStatus: 'load_failed',
+      cacheTtlHours: 24,
+    });
+
+    expect(status.visible).toBe(true);
+    expect(status.visitBriefCoverageLabel).toBe('ブリーフ 0/2 件');
+    expect(status.visitBriefCoverageClassName).toContain('border-amber-200');
+    expect(status.visitBriefStatusLabel).toBe(
+      '端末キャッシュを読み込めません。患者詳細と処方を確認してください。',
+    );
+    expect(status.visitBriefStatusClassName).toBe('text-amber-700');
   });
 
   it('splits workflow traces into trimmed segments', () => {

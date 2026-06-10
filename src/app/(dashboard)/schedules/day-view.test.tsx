@@ -77,6 +77,7 @@ vi.mock('@/components/features/visits/visit-card-mobile', () => ({
     status: string;
     carryItemsStatus?: string | null;
     mustCheckToday?: string[];
+    visitBriefStatus?: 'available' | 'missing' | 'unavailable';
     actionContextLabel?: string;
     onStartVisit?: (id: string) => void;
   }) => {
@@ -162,8 +163,17 @@ async function renderScheduleDayView(ui: ReactElement) {
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
   return result;
+}
+
+function expectStatusAnnouncement(text: string) {
+  expect(screen.getAllByRole('status').some((element) => element.textContent?.includes(text))).toBe(
+    true,
+  );
 }
 
 function createDeferred<T>() {
@@ -1884,9 +1894,7 @@ describe('ScheduleDayView', () => {
     );
 
     expect(getFacilityPatientOrder()).toEqual(['青空二郎', '青空一郎']);
-    expect(screen.getByRole('status').textContent).toContain(
-      '青空ホーム 青空一郎を2 / 2番目に移動しました',
-    );
+    expectStatusAnnouncement('青空ホーム 青空一郎を2 / 2番目に移動しました');
     expect(
       (
         within(facilityOrderList).getByRole('spinbutton', {
@@ -1909,9 +1917,7 @@ describe('ScheduleDayView', () => {
     );
 
     expect(getFacilityPatientOrder()).toEqual(['青空一郎', '青空二郎']);
-    expect(screen.getByRole('status').textContent).toContain(
-      '青空ホーム 青空一郎を1 / 2番目に移動しました',
-    );
+    expectStatusAnnouncement('青空ホーム 青空一郎を1 / 2番目に移動しました');
 
     fireEvent.click(screen.getByRole('button', { name: '青空ホーム' }));
 
@@ -2018,9 +2024,7 @@ describe('ScheduleDayView', () => {
     );
 
     expect(within(facilityOrderList).getByText('現在 1 / 2番目')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain(
-      '青空ホーム 青空二郎を1 / 2番目に移動しました',
-    );
+    expectStatusAnnouncement('青空ホーム 青空二郎を1 / 2番目に移動しました');
     expect(
       (
         within(facilityOrderList).getByRole('spinbutton', {
@@ -2499,6 +2503,14 @@ describe('ScheduleDayView', () => {
         }),
       );
     });
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_patient_changed',
+          visitBriefStatus: 'unavailable',
+        }),
+      );
+    });
     expect(screen.queryByText('誤患者')).toBeNull();
     expect(screen.queryByText('誤患者の確認事項')).toBeNull();
   });
@@ -2578,6 +2590,32 @@ describe('ScheduleDayView', () => {
       expect(screen.queryByText('前日のブリーフ')).toBeNull();
     });
     expect(screen.getByText('この日の軽量 brief キャッシュはまだありません。')).toBeTruthy();
+    expect(screen.getByText('ブリーフ 0/1 件')).toBeTruthy();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[visit-brief-cache] Failed to load schedule brief cache',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('surfaces offline cache load failure when no visit brief refresh can run', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    visitBriefCacheToArrayMock.mockRejectedValue(new Error('indexeddb read failed'));
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      connected: true,
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    expect(
+      await screen.findByText('端末キャッシュを読み込めません。患者詳細と処方を確認してください。'),
+    ).toBeTruthy();
+    expect(screen.getByText('ブリーフ対象 0 件')).toBeTruthy();
     expect(warnSpy).toHaveBeenCalledWith(
       '[visit-brief-cache] Failed to load schedule brief cache',
       expect.any(Error),
@@ -2616,6 +2654,18 @@ describe('ScheduleDayView', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ schedule_ids: ['schedule_cache_recover'] }),
+        }),
+      );
+    });
+    expect(screen.getByText('ブリーフ 0/1 件')).toBeTruthy();
+    expect(
+      screen.getByText('軽量 brief を更新できません。患者詳細と処方を確認してください。'),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_cache_recover',
+          visitBriefStatus: 'unavailable',
         }),
       );
     });
