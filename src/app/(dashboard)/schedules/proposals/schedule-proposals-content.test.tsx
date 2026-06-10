@@ -1075,6 +1075,45 @@ describe('ScheduleProposalsContent', () => {
     );
   });
 
+  it('shows every eligible proposal in bulk confirmation before submitting', () => {
+    mockDashboardProposals(
+      Array.from({ length: 7 }, (_, index) =>
+        buildProposal({
+          id: `proposal_${index + 1}`,
+          case_id: `case_${index + 1}`,
+          case_: {
+            patient: {
+              id: `patient_${index + 1}`,
+              name: `患者${index + 1}`,
+              residences: [
+                {
+                  address: `東京都千代田区${index + 1}-${index + 1}-${index + 1}`,
+                  lat: 35.1 + index / 100,
+                  lng: 139.1 + index / 100,
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+
+    render(<ScheduleProposalsContent />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /表示中の候補をすべて選択/ }));
+    fireEvent.click(screen.getByRole('button', { name: '選択中7件の訪問候補を一括承認' }));
+
+    const approveDialog = screen.getByRole('alertdialog', {
+      name: '選択中7件の訪問候補を一括承認しますか',
+    });
+    const targetList = within(approveDialog).getByRole('list', {
+      name: '一括操作の対象候補',
+    });
+    expect(within(targetList).getAllByRole('listitem')).toHaveLength(7);
+    expect(within(targetList).getByText('患者7')).toBeTruthy();
+    expect(approveDialog.textContent ?? '').not.toContain('ほか 1 件');
+  });
+
   it('reports partial bulk approval failures, refreshes successes, and keeps failed proposals selected', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);

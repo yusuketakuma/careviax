@@ -2236,7 +2236,7 @@ export function ScheduleProposalsContent({
               aria-label="一括操作の対象候補"
               className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
             >
-              {bulkConfirmEligibleProposals.slice(0, 6).map((proposal) => (
+              {bulkConfirmEligibleProposals.map((proposal) => (
                 <li key={proposal.id} className="rounded-md bg-muted/30 px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{proposal.case_.patient.name}</span>
@@ -2255,12 +2255,6 @@ export function ScheduleProposalsContent({
                 </li>
               ))}
             </ul>
-
-            {bulkConfirmEligibleProposals.length > 6 ? (
-              <p className="text-xs text-muted-foreground">
-                ほか {bulkConfirmEligibleProposals.length - 6} 件も同じ操作対象です。
-              </p>
-            ) : null}
 
             {bulkConfirmAction === 'reject' ? (
               <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
