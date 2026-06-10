@@ -1661,8 +1661,8 @@ export function ScheduleDayView({
         cachedVisitBriefs={visibleCachedVisitBriefs}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="space-y-6">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-6">
           <PageSection
             id="planner"
             title="訪問候補を生成"
@@ -2041,7 +2041,8 @@ export function ScheduleDayView({
         <PageSection
           title="日次スケジュールボード"
           description={`${format(selectedDay, 'M月d日(E)', { locale: ja })} の候補、確定予定、施設グループ、ルート順を確認します`}
-          contentClassName="space-y-4"
+          className="min-w-0"
+          contentClassName="min-w-0 space-y-4"
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">候補 {selectedDateProposals.length}件</Badge>
@@ -2065,7 +2066,7 @@ export function ScheduleDayView({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="proposals" className="space-y-4">
+            <TabsContent value="proposals" className="min-w-0 space-y-4">
               {proposalsLoading ? (
                 <Card>
                   <CardContent
@@ -2407,7 +2408,7 @@ export function ScheduleDayView({
               )}
             </TabsContent>
 
-            <TabsContent value="confirmed" className="space-y-4">
+            <TabsContent value="confirmed" className="min-w-0 space-y-4">
               {facilityTracker.length > 0 && (
                 <PageSection
                   title="同時訪問グループトラッカー"
@@ -2673,12 +2674,16 @@ export function ScheduleDayView({
               )}
               {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
                 <PageSection
+                  headingId="schedule-day-gantt-heading"
                   title="タブレット日次ガント"
                   headingLevel={3}
-                  description="縦軸=時間、横軸=薬剤師。横向きで当日の訪問密度と準備状況を俯瞰できます"
-                  className="hidden md:block"
+                  description="縦軸=時間、横軸=薬剤師。予定密度を俯瞰し、下の確定予定カードで開始・準備・変更を実行します"
+                  className="hidden min-w-0 md:block"
                   contentClassName="space-y-4"
                 >
+                  <p id="schedule-day-gantt-scroll-help" className="sr-only">
+                    横スクロールで隠れている薬剤師列を確認できます。ガント内の予定は要約表示です。
+                  </p>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <Badge variant="outline">
                       時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
@@ -2688,7 +2693,13 @@ export function ScheduleDayView({
                     <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
                     <Badge variant="outline">横向き推奨</Badge>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div
+                    role="region"
+                    tabIndex={0}
+                    aria-labelledby="schedule-day-gantt-heading"
+                    aria-describedby="schedule-day-gantt-scroll-help"
+                    className="max-w-full overflow-x-auto rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
                     <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
                       <caption className="sr-only">
                         日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { encode } from 'next-auth/jwt';
 import {
   attachLocalSession,
@@ -11,6 +11,7 @@ import {
   apiPathPattern,
   captureRouteRequest,
   fulfillJson,
+  readRouteBody,
   type CapturedRouteRequest,
 } from './helpers/route-mocks';
 
@@ -27,6 +28,10 @@ const OFFLINE_DB_NAME = 'PH-OSOffline';
 const OFFLINE_KEY_DB_NAME = 'ph-os-offline-keys';
 const OFFLINE_KEY_STORE_NAME = 'crypto-keys';
 const OFFLINE_KEY_RECORD_ID = 'offline-enc-key-v2';
+const GANTT_DATE = '2026-04-29';
+const GANTT_SITE_ID = 'gantt_route_mock_site';
+const GANTT_PHARMACIST_A_ID = 'gantt_route_mock_pharmacist_a';
+const GANTT_PHARMACIST_B_ID = 'gantt_route_mock_pharmacist_b';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -152,6 +157,319 @@ async function readOfflineVisitDraftState(page: Page, scheduleId: string) {
   );
 }
 
+function buildGanttSchedule(args: {
+  id: string;
+  patientId: string;
+  patientName: string;
+  address: string;
+  unitName?: string;
+  pharmacistId: string;
+  routeOrder: number;
+  start: string;
+  end: string;
+  status?: 'planned' | 'in_preparation' | 'ready' | 'departed' | 'in_progress' | 'completed';
+  priority?: 'normal' | 'urgent' | 'emergency';
+  prepared?: boolean;
+}) {
+  return {
+    id: args.id,
+    case_id: `${args.id}_case`,
+    visit_type: 'regular',
+    priority: args.priority ?? 'normal',
+    schedule_status: args.status ?? 'ready',
+    carry_items_status: 'ready',
+    scheduled_date: `${GANTT_DATE}T00:00:00`,
+    time_window_start: `${GANTT_DATE}T${args.start}:00`,
+    time_window_end: `${GANTT_DATE}T${args.end}:00`,
+    pharmacist_id: args.pharmacistId,
+    assignment_mode: 'primary',
+    route_order: args.routeOrder,
+    facility_batch_id: null,
+    confirmed_at: `${GANTT_DATE}T07:30:00`,
+    case_: {
+      patient: {
+        id: args.patientId,
+        name: args.patientName,
+        residences: [
+          {
+            address: args.address,
+            building_id: null,
+            unit_name: args.unitName ?? null,
+            lat: null,
+            lng: null,
+          },
+        ],
+      },
+    },
+    site: {
+      id: GANTT_SITE_ID,
+      name: 'RouteMock 中央薬局',
+      address: '東京都千代田区丸の内1-1-1',
+      lat: null,
+      lng: null,
+    },
+    vehicle_resource: null,
+    preparation: {
+      id: `${args.id}_preparation`,
+      prepared_at: args.prepared ? `${GANTT_DATE}T07:45:00` : null,
+      medication_changes_reviewed: args.prepared ?? false,
+      carry_items_confirmed: args.prepared ?? false,
+      previous_issues_reviewed: args.prepared ?? false,
+      route_confirmed: args.prepared ?? false,
+      offline_synced: true,
+      checklist: {},
+    },
+    override_request: null,
+    applied_override: null,
+    facility_hint: null,
+    workload_hint: {
+      daily_visit_count: 6,
+      urgent_visit_count: args.priority === 'urgent' || args.priority === 'emergency' ? 1 : 0,
+    },
+    handoff_hint: null,
+  };
+}
+
+const GANTT_ROUTE_MOCK_SCHEDULES = [
+  buildGanttSchedule({
+    id: 'gantt_route_mock_same_start_1',
+    patientId: 'gantt_patient_same_start_1',
+    patientName: 'ガントE2E 同時A',
+    address: '東京都千代田区丸の内1-2-3 RouteMockビル 101号室',
+    unitName: '101号室',
+    pharmacistId: GANTT_PHARMACIST_A_ID,
+    routeOrder: 1,
+    start: '08:30',
+    end: '09:30',
+    prepared: true,
+  }),
+  buildGanttSchedule({
+    id: 'gantt_route_mock_same_start_2',
+    patientId: 'gantt_patient_same_start_2',
+    patientName: 'ガントE2E 同時B',
+    address: '東京都千代田区丸の内1-2-3 RouteMockビル 102号室',
+    unitName: '102号室',
+    pharmacistId: GANTT_PHARMACIST_A_ID,
+    routeOrder: 2,
+    start: '08:30',
+    end: '09:30',
+    status: 'in_preparation',
+  }),
+  buildGanttSchedule({
+    id: 'gantt_route_mock_a_later',
+    patientId: 'gantt_patient_a_later',
+    patientName: 'ガントE2E 後続確認',
+    address: '東京都中央区日本橋2-2-2 RouteMockレジデンス 1501号室',
+    unitName: '1501号室',
+    pharmacistId: GANTT_PHARMACIST_A_ID,
+    routeOrder: 3,
+    start: '10:30',
+    end: '11:30',
+    status: 'departed',
+    prepared: true,
+  }),
+  buildGanttSchedule({
+    id: 'gantt_route_mock_overlap_1',
+    patientId: 'gantt_patient_overlap_1',
+    patientName: 'ガントE2E 重なり長い患者名一号',
+    address: '東京都港区芝公園4-2-8 とても長い住所確認用マンション 西棟 2301号室',
+    unitName: '西棟2301号室',
+    pharmacistId: GANTT_PHARMACIST_B_ID,
+    routeOrder: 1,
+    start: '09:30',
+    end: '10:30',
+    priority: 'urgent',
+  }),
+  buildGanttSchedule({
+    id: 'gantt_route_mock_overlap_2',
+    patientId: 'gantt_patient_overlap_2',
+    patientName: 'ガントE2E 追従長い患者名二号',
+    address: '東京都港区芝公園4-2-8 とても長い住所確認用マンション 東棟 2402号室',
+    unitName: '東棟2402号室',
+    pharmacistId: GANTT_PHARMACIST_B_ID,
+    routeOrder: 2,
+    start: '10:00',
+    end: '11:00',
+    prepared: true,
+  }),
+  buildGanttSchedule({
+    id: 'gantt_route_mock_overlap_3',
+    patientId: 'gantt_patient_overlap_3',
+    patientName: 'ガントE2E 連鎖重なり三号',
+    address: '東京都港区芝公園4-2-8 とても長い住所確認用マンション 南棟 2503号室',
+    unitName: '南棟2503号室',
+    pharmacistId: GANTT_PHARMACIST_B_ID,
+    routeOrder: 3,
+    start: '10:30',
+    end: '11:30',
+    status: 'completed',
+    prepared: true,
+  }),
+];
+
+function buildGanttPreparationDetails(scheduleId: string) {
+  const schedule = GANTT_ROUTE_MOCK_SCHEDULES.find((item) => item.id === scheduleId);
+  if (!schedule) return null;
+
+  return {
+    preparation: schedule.preparation,
+    pack: {
+      patient: {
+        id: schedule.case_.patient.id,
+        name: schedule.case_.patient.name,
+        address: schedule.case_.patient.residences[0]?.address ?? null,
+      },
+      visit: {
+        id: schedule.id,
+        scheduled_date: schedule.scheduled_date,
+        time_window_start: schedule.time_window_start,
+        time_window_end: schedule.time_window_end,
+        visit_type: schedule.visit_type,
+        schedule_status: schedule.schedule_status,
+        priority: schedule.priority,
+        confirmed_at: schedule.confirmed_at,
+      },
+      site: schedule.site,
+      handoff: {
+        assignment_mode: schedule.assignment_mode,
+        summary: 'RouteMock Gantt preparation handoff',
+      },
+      readiness_blockers: [],
+      previous_visit: null,
+      open_tasks: [],
+      recent_contact_logs: [],
+      facility_mode: {
+        label: null,
+        same_day_patient_count: 1,
+        same_day_patient_names: [schedule.case_.patient.name],
+        route_orders: [schedule.route_order].filter((order): order is number => order !== null),
+      },
+      facility_parallel_context: null,
+      workload: {
+        same_day_visit_count: 6,
+      },
+      care_team: [],
+      conference_context: [],
+      billing_blockers: [],
+      prescription_changes: null,
+      medication_period: {
+        schedule_start_date: GANTT_DATE,
+        schedule_end_date: GANTT_DATE,
+        prescription_start_date: null,
+        prescription_end_date: null,
+      },
+      home_care_feature_highlights: [],
+      visit_brief: {
+        patient: {
+          id: schedule.case_.patient.id,
+          name: schedule.case_.patient.name,
+        },
+        context: 'schedule',
+        generated_at: `${GANTT_DATE}T00:00:00.000Z`,
+        last_prescribed_date: null,
+        baseline_context: null,
+        medication_changes: [],
+        medications: [],
+        dispensing_items: [],
+        delivery_status: [],
+        dosage_form_support: [],
+        multidisciplinary_updates: [],
+        jahis_supplemental_records: [],
+        unresolved_items: [],
+        must_check_today: [],
+        rule_summary: {
+          generation_id: 'gantt_route_mock_rule',
+          headline: 'RouteMock確認事項なし',
+          bullets: [],
+          must_check_today: [],
+          source_refs: [],
+          generated_at: `${GANTT_DATE}T00:00:00.000Z`,
+        },
+        ai_summary: {
+          generation_id: 'gantt_route_mock_ai',
+          provider: 'rule',
+          requested_provider: 'rule',
+          is_fallback: true,
+          model: null,
+          fallback_reason: null,
+          headline: 'RouteMock確認事項なし',
+          bullets: [],
+          must_check_today: [],
+          source_refs: [],
+          generated_at: `${GANTT_DATE}T00:00:00.000Z`,
+          duration_ms: null,
+          recent_generation_count_24h: 0,
+          recent_failure_count_24h: 0,
+          recent_failure_rate_24h: null,
+        },
+        conference_summary: null,
+        facility_context: null,
+        drug_cautions: [],
+      },
+      onboarding_readiness: {
+        consent_obtained: true,
+        emergency_contact_set: true,
+        first_visit_doc_delivered: true,
+        management_plan_approved: true,
+        primary_physician_set: true,
+      },
+      intake_context: {
+        initial_transition_management_expected: null,
+      },
+      emergency_contacts: [],
+      first_visit_document: null,
+    },
+  };
+}
+
+async function expectNoVisibleBoxOverlap(locator: Locator) {
+  const boxes = await locator.evaluateAll((elements) =>
+    elements
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          label: element.getAttribute('aria-label') ?? element.textContent ?? '',
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        };
+      })
+      .filter((box) => box.width > 0 && box.height > 0),
+  );
+
+  for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+      const left = boxes[leftIndex]!;
+      const right = boxes[rightIndex]!;
+      const overlaps =
+        left.left < right.right - 1 &&
+        left.right > right.left + 1 &&
+        left.top < right.bottom - 1 &&
+        left.bottom > right.top + 1;
+
+      expect(
+        overlaps,
+        `Gantt blocks should not visually overlap: "${left.label}" vs "${right.label}"`,
+      ).toBe(false);
+    }
+  }
+}
+
+async function expectNoPageHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const root = document.documentElement;
+    return {
+      clientWidth: root.clientWidth,
+      scrollWidth: root.scrollWidth,
+    };
+  });
+
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
+}
+
 async function installSharedViewerRouteMock(page: Page) {
   const viewerRequests: CapturedRouteRequest[] = [];
   const selfReportRequests: CapturedRouteRequest[] = [];
@@ -164,52 +482,49 @@ async function installSharedViewerRouteMock(page: Page) {
     },
   );
 
-  await page.route(
-    apiPathPattern(`/api/external-access/${SHARED_TOKEN}`),
-    async (route) => {
-      viewerRequests.push(captureRouteRequest(route));
-      await fulfillJson(route, {
-        data: {
-          patient: {
-            id: 'shared_route_mock_patient',
-            name: '共有E2E 患者',
-            birth_date: '1948-04-10',
-            gender: 'female',
-          },
-          allergy_info: 'ペニシリン',
-          medication_profiles: [
-            {
-              id: 'shared_med_1',
-              drug_name: 'アムロジピン錠5mg',
-              dose: '1錠',
-              frequency: '朝食後',
-              start_date: '2026-04-01',
-              end_date: null,
-              is_current: true,
-            },
-          ],
-          visit_schedules: [],
-          care_reports: [],
-          self_report_history: [],
-          shared_summary: {
-            headline: '血圧と服薬状況を家族と共有',
-            bullets: ['朝食後の服薬は継続できています'],
-            key_medications: ['アムロジピン'],
-            next_visit_date: '2026-04-30',
-          },
-          scope: {
-            allergy_info: true,
-            medication_profiles: true,
-            visit_schedules: true,
-            care_reports: false,
-            self_report_history: true,
-            shared_summary: true,
-          },
-          expires_at: '2026-05-01T09:00:00.000Z',
+  await page.route(apiPathPattern(`/api/external-access/${SHARED_TOKEN}`), async (route) => {
+    viewerRequests.push(captureRouteRequest(route));
+    await fulfillJson(route, {
+      data: {
+        patient: {
+          id: 'shared_route_mock_patient',
+          name: '共有E2E 患者',
+          birth_date: '1948-04-10',
+          gender: 'female',
         },
-      });
-    },
-  );
+        allergy_info: 'ペニシリン',
+        medication_profiles: [
+          {
+            id: 'shared_med_1',
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '朝食後',
+            start_date: '2026-04-01',
+            end_date: null,
+            is_current: true,
+          },
+        ],
+        visit_schedules: [],
+        care_reports: [],
+        self_report_history: [],
+        shared_summary: {
+          headline: '血圧と服薬状況を家族と共有',
+          bullets: ['朝食後の服薬は継続できています'],
+          key_medications: ['アムロジピン'],
+          next_visit_date: '2026-04-30',
+        },
+        scope: {
+          allergy_info: true,
+          medication_profiles: true,
+          visit_schedules: true,
+          care_reports: false,
+          self_report_history: true,
+          shared_summary: true,
+        },
+        expires_at: '2026-05-01T09:00:00.000Z',
+      },
+    });
+  });
 
   return { selfReportRequests, viewerRequests };
 }
@@ -629,22 +944,19 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
   const scheduleRequests: CapturedRouteRequest[] = [];
   const preparationRequests: CapturedRouteRequest[] = [];
 
-  await page.route(
-    apiPathPattern(`/api/visit-schedules/${OFFLINE_SCHEDULE_ID}`),
-    async (route) => {
-      scheduleRequests.push(captureRouteRequest(route));
-      await fulfillJson(route, {
-        id: OFFLINE_SCHEDULE_ID,
-        patient_id: OFFLINE_PATIENT_ID,
-        cycle_id: null,
-        scheduled_date: '2026-04-28T00:00:00.000Z',
-        schedule_status: 'ready',
-        visit_type: 'regular',
-        carry_items_status: 'ready',
-        recurrence_rule: null,
-      });
-    },
-  );
+  await page.route(apiPathPattern(`/api/visit-schedules/${OFFLINE_SCHEDULE_ID}`), async (route) => {
+    scheduleRequests.push(captureRouteRequest(route));
+    await fulfillJson(route, {
+      id: OFFLINE_SCHEDULE_ID,
+      patient_id: OFFLINE_PATIENT_ID,
+      cycle_id: null,
+      scheduled_date: '2026-04-28T00:00:00.000Z',
+      schedule_status: 'ready',
+      visit_type: 'regular',
+      carry_items_status: 'ready',
+      recurrence_rule: null,
+    });
+  });
 
   await page.route(
     apiPathPattern(`/api/visit-preparations/${OFFLINE_SCHEDULE_ID}`),
@@ -691,6 +1003,262 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
 
   return { preparationRequests, scheduleRequests, visitRecordRequests };
 }
+
+async function installScheduleDayGanttRouteMocks(page: Page) {
+  const scheduleRequests: CapturedRouteRequest[] = [];
+  const routeRequests: CapturedRouteRequest[] = [];
+
+  await page.route(apiPathPattern('/api/cases'), async (route) => {
+    await fulfillJson(route, { data: [] });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacists'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: GANTT_PHARMACIST_A_ID,
+          name: '薬剤師A',
+          site_id: GANTT_SITE_ID,
+          site_name: 'RouteMock 中央薬局',
+        },
+        {
+          id: GANTT_PHARMACIST_B_ID,
+          name: '薬剤師B',
+          site_id: GANTT_SITE_ID,
+          site_name: 'RouteMock 中央薬局',
+        },
+      ],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/visit-schedule-proposals'), async (route) => {
+    await fulfillJson(route, { data: [] });
+  });
+
+  await page.route(
+    apiPathPattern('/api/visit-schedule-proposals/billing-preview-batch'),
+    async (route) => {
+      await fulfillJson(route, { data: {} });
+    },
+  );
+
+  await page.route(apiPathPattern('/api/visit-schedules'), async (route) => {
+    if (route.request().method() !== 'GET') {
+      await fulfillJson(route, { message: 'Route-mocked Gantt smoke is read-only' }, 405);
+      return;
+    }
+
+    scheduleRequests.push(captureRouteRequest(route));
+    await fulfillJson(route, {
+      data: GANTT_ROUTE_MOCK_SCHEDULES,
+      hasMore: false,
+    });
+  });
+
+  await page.route(apiPathPattern('/api/tasks'), async (route) => {
+    await fulfillJson(route, { data: [] });
+  });
+
+  await page.route(apiPathPattern('/api/visit-preparations/brief-batch'), async (route) => {
+    await fulfillJson(route, { data: {} });
+  });
+
+  await page.route(
+    new RegExp(
+      '^(?:https?://[^/]+)?/api/visit-preparations/(?!brief-batch/?(?:\\?|$))[^/?]+/?(?:\\?.*)?$',
+    ),
+    async (route) => {
+      if (route.request().method() !== 'GET') {
+        await fulfillJson(route, { message: 'Route-mocked Gantt smoke is read-only' }, 405);
+        return;
+      }
+
+      const scheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
+      const details = buildGanttPreparationDetails(scheduleId);
+      if (!details) {
+        await fulfillJson(route, { message: 'Unknown route-mocked schedule' }, 404);
+        return;
+      }
+
+      await fulfillJson(route, { data: details });
+    },
+  );
+
+  await page.route(apiPathPattern('/api/visit-routes'), async (route) => {
+    routeRequests.push(captureRouteRequest(route));
+    const body = readRouteBody<{
+      schedule_ids?: string[];
+      travel_mode?: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+    }>(route);
+    const scheduleIds = body?.schedule_ids ?? [];
+
+    await fulfillJson(route, {
+      data: {
+        status: 'ok',
+        note: null,
+        travelMode: body?.travel_mode ?? 'DRIVE',
+        origin: null,
+        encodedPath: null,
+        orderedScheduleIds: scheduleIds,
+        totalDistanceMeters: null,
+        totalDurationSeconds: null,
+        stopSummaries: scheduleIds.map((scheduleId, index) => ({
+          scheduleId,
+          optimizedOrder: index + 1,
+          arrivalOffsetSeconds: index * 900,
+          distanceFromPreviousMeters: null,
+          durationFromPreviousSeconds: null,
+        })),
+      },
+    });
+  });
+
+  return { routeRequests, scheduleRequests };
+}
+
+test.describe('schedule day route-mocked Gantt smoke', () => {
+  test.beforeEach(async ({ context }) => {
+    await attachRouteMockSession(context);
+  });
+
+  test('keeps tablet portrait Gantt overflow inside the scroll region', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Tablet Gantt portrait proof uses an explicit chromium viewport.',
+    );
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 768, height: 1024 });
+    const { scheduleRequests } = await installScheduleDayGanttRouteMocks(page);
+
+    await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
+
+    await expect
+      .poll(() => scheduleRequests.length, {
+        message: 'schedule Gantt smoke should fetch schedules through the route mock',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+    await expect(page.getByRole('heading', { name: 'タブレット日次ガント' })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const table = page.getByRole('table', {
+      name: /日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。/,
+    });
+    await expect(table).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: /薬剤師A/ })).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: /薬剤師B/ })).toBeVisible();
+    await expect(table.getByRole('group', { name: /薬剤師 薬剤師A.*同時刻 2件/ })).toHaveCount(2);
+    await expect(table.getByRole('group', { name: /薬剤師 薬剤師B.*重なり 3件/ })).toHaveCount(3);
+
+    const scroller = table.locator(
+      'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " overflow-x-auto ")][1]',
+    );
+    await expect(scroller).toHaveAttribute('role', 'region');
+    await expect(scroller).toHaveAttribute('aria-labelledby', 'schedule-day-gantt-heading');
+    await expect(scroller).toHaveAttribute('aria-describedby', 'schedule-day-gantt-scroll-help');
+    const scrollMetrics = await scroller.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(scrollMetrics.scrollWidth).toBeGreaterThan(scrollMetrics.clientWidth + 100);
+    await scroller.evaluate((element) => {
+      element.scrollLeft = 0;
+    });
+    await scroller.focus();
+    await expect(scroller).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollLeft), {
+        message: 'focused Gantt scroll region should respond to keyboard horizontal scroll',
+        timeout: 3_000,
+      })
+      .toBeGreaterThan(0);
+    await expectNoPageHorizontalOverflow(page);
+    await expectNoVisibleBoxOverlap(table.locator('[role="group"][aria-label^="薬剤師"]'));
+
+    await page.screenshot({
+      path: testInfo.outputPath('schedule-day-gantt-tablet-portrait.png'),
+      fullPage: true,
+    });
+
+    const confirmedCard = page.locator('#schedule-gantt_route_mock_same_start_1');
+    await expect(confirmedCard).toBeVisible();
+    const preparationButton = confirmedCard.getByRole('button', {
+      name: /ガントE2E 同時A.*訪問準備を開く/,
+    });
+    await expect(preparationButton).toBeVisible();
+    await expect(preparationButton).toBeEnabled();
+    await preparationButton.focus();
+    await expect(preparationButton).toBeFocused();
+    await preparationButton.click();
+    await expect(
+      page.getByRole('dialog', { name: 'ガントE2E 同時Aの訪問準備チェック' }),
+    ).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('keeps tablet landscape Gantt labels and overlap stacks readable', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Tablet Gantt landscape proof uses an explicit chromium viewport.',
+    );
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    const { routeRequests, scheduleRequests } = await installScheduleDayGanttRouteMocks(page);
+
+    await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
+
+    await expect
+      .poll(() => scheduleRequests.length, {
+        message: 'schedule Gantt smoke should fetch schedules through the route mock',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => routeRequests.length, {
+        message: 'schedule Gantt smoke should keep route preview calls mocked',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+
+    const table = page.getByRole('table', {
+      name: /日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。/,
+    });
+    await expect(page.getByRole('heading', { name: 'タブレット日次ガント' })).toBeVisible();
+    await expect(table).toBeVisible();
+    await expect(table.getByText('同時刻 2件')).toBeVisible();
+    await expect(table.getByText('重なり 3件')).toBeVisible();
+    await expect(
+      table.getByRole('group', {
+        name: /薬剤師 薬剤師B.*患者 ガントE2E 重なり長い患者名一号.*重なり 3件.*ルート順 1/,
+      }),
+    ).toBeVisible();
+    await expect(
+      table.getByRole('group', {
+        name: /薬剤師 薬剤師B.*患者 ガントE2E 連鎖重なり三号.*重なり 3件.*ルート順 3/,
+      }),
+    ).toBeVisible();
+    await expect(table.getByRole('rowheader', { name: '09:30' })).toBeVisible();
+    await expect(table.getByRole('rowheader', { name: '10:30' })).toBeVisible();
+
+    await expectNoPageHorizontalOverflow(page);
+    await expectNoVisibleBoxOverlap(table.locator('[role="group"][aria-label^="薬剤師"]'));
+
+    await page.screenshot({
+      path: testInfo.outputPath('schedule-day-gantt-tablet-landscape.png'),
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
+  });
+});
 
 test.describe('shared external viewer route-mocked smoke', () => {
   test('strips OTP query from shared URL and sends OTP only as request header', async ({
