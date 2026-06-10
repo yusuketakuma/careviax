@@ -207,9 +207,22 @@ export function applyScheduleDayPlannerCaseSelection(
   current: ScheduleDayPlannerForm,
   caseId: string | null | undefined,
 ): ScheduleDayPlannerForm {
+  if (caseId == null) return current;
+
   return {
     ...current,
-    case_id: caseId ?? current.case_id,
+    case_id: caseId,
+    vehicle_resource_id: caseId === current.case_id ? current.vehicle_resource_id : '',
+  };
+}
+
+export function clearScheduleDayPlannerVehicleResourceSelection(
+  current: ScheduleDayPlannerForm,
+): ScheduleDayPlannerForm {
+  if (!current.vehicle_resource_id) return current;
+  return {
+    ...current,
+    vehicle_resource_id: '',
   };
 }
 

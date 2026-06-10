@@ -17,6 +17,7 @@ import {
   buildScheduleDaySelectedDateProposals,
   buildScheduleDayVehicleResourcesQueryKey,
   buildScheduleDayVehicleResourcesRequestUrl,
+  clearScheduleDayPlannerVehicleResourceSelection,
   filterScheduleDayPlannerCases,
   generateScheduleDayProposals,
   getDefaultScheduleDayPlannerForm,
@@ -214,13 +215,28 @@ describe('schedule day planner helpers', () => {
     ).toBe('/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-11');
   });
 
-  it('updates planner case and start date without changing unrelated fields', () => {
-    expect(applyScheduleDayPlannerCaseSelection(plannerForm, 'case_2')).toEqual({
+  it('updates planner case, clearing stale vehicle selection only when the case changes', () => {
+    const current = {
       ...plannerForm,
-      case_id: 'case_2',
-    });
-    expect(applyScheduleDayPlannerCaseSelection(plannerForm, undefined)).toEqual(plannerForm);
+      case_id: 'case_1',
+      vehicle_resource_id: 'vehicle_1',
+    };
 
+    expect(applyScheduleDayPlannerCaseSelection(current, 'case_2')).toEqual({
+      ...current,
+      case_id: 'case_2',
+      vehicle_resource_id: '',
+    });
+    expect(applyScheduleDayPlannerCaseSelection(current, 'case_1')).toEqual(current);
+    expect(applyScheduleDayPlannerCaseSelection(current, undefined)).toEqual(current);
+    expect(clearScheduleDayPlannerVehicleResourceSelection(current)).toEqual({
+      ...current,
+      vehicle_resource_id: '',
+    });
+    expect(clearScheduleDayPlannerVehicleResourceSelection(plannerForm)).toBe(plannerForm);
+  });
+
+  it('updates planner start date without changing unrelated fields', () => {
     expect(applyScheduleDayPlannerStartDate(plannerForm, '2026-06-20')).toEqual({
       ...plannerForm,
       start_date: '2026-06-20',

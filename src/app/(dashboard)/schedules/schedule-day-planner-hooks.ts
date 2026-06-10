@@ -57,7 +57,12 @@ export function useScheduleDayPlannerQueries({
     [cases, pharmacistSiteIdById, plannerForm],
   );
 
-  const { data: vehicleResourcesData, isLoading: vehicleResourcesLoading } = useQuery({
+  const vehicleResourcesEnabled = !!orgId && !!selectedPlannerSiteId;
+  const {
+    data: vehicleResourcesData,
+    isFetching: vehicleResourcesFetching,
+    isLoading: vehicleResourcesInitialLoading,
+  } = useQuery({
     queryKey: buildScheduleDayVehicleResourcesQueryKey({ orgId, selectedPlannerSiteId }),
     queryFn: async () => {
       const res = await fetch(buildScheduleDayVehicleResourcesRequestUrl(selectedPlannerSiteId), {
@@ -66,15 +71,22 @@ export function useScheduleDayPlannerQueries({
       if (!res.ok) throw new Error('社用車リソースの取得に失敗しました');
       return res.json() as Promise<{ data: VisitVehicleResourceOption[] }>;
     },
-    enabled: !!orgId,
+    enabled: vehicleResourcesEnabled,
   });
+  const vehicleResourcesLoading =
+    vehicleResourcesEnabled && (vehicleResourcesInitialLoading || vehicleResourcesFetching);
   const plannerVehicleResources = vehicleResourcesData?.data ?? [];
   const selectedPlannerVehicle = getScheduleDaySelectedPlannerVehicle(
     plannerForm,
     plannerVehicleResources,
   );
 
-  const { data: billingPreviewData } = useQuery({
+  const billingPreviewEnabled = !!orgId && !!resolvedPlannerCaseId && !!plannerForm.start_date;
+  const {
+    data: billingPreviewData,
+    isFetching: billingPreviewFetching,
+    isLoading: billingPreviewInitialLoading,
+  } = useQuery({
     queryKey: buildScheduleDayPlannerBillingPreviewQueryKey({
       orgId,
       resolvedPlannerCaseId,
@@ -99,8 +111,10 @@ export function useScheduleDayPlannerQueries({
       if (!res.ok) throw new Error('算定プレビューの取得に失敗しました');
       return res.json() as Promise<VisitScheduleBillingPreview>;
     },
-    enabled: !!orgId && !!resolvedPlannerCaseId && !!plannerForm.start_date,
+    enabled: billingPreviewEnabled,
   });
+  const billingPreviewLoading =
+    billingPreviewEnabled && (billingPreviewInitialLoading || billingPreviewFetching);
 
   return {
     pharmacistNameById,
@@ -110,8 +124,11 @@ export function useScheduleDayPlannerQueries({
     selectedPlannerPharmacistId,
     selectedPlannerSiteId,
     vehicleResourcesLoading,
+    vehicleResourcesEnabled,
     plannerVehicleResources,
     selectedPlannerVehicle,
     billingPreviewData,
+    billingPreviewLoading,
+    billingPreviewEnabled,
   };
 }

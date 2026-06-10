@@ -418,7 +418,7 @@ describe('ScheduleDayView', () => {
     expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '訪問候補を生成' })).toBeTruthy();
     expect(screen.getByLabelText('社用車')).toBeTruthy();
-    expect(screen.getByText('未指定の場合は患者住所とルート条件から自動割当します')).toBeTruthy();
+    expect(screen.getByText('担当薬剤師の拠点設定後に社用車を選択できます')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '運用タスク' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '関連管理' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();

@@ -161,12 +161,9 @@ describe('useScheduleDayPlannerQueries', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('omits site_id from the vehicle and billing requests when the planner pharmacist has no site', async () => {
+  it('does not fetch vehicle resources when the planner pharmacist has no site', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/visit-vehicle-resources?available=true') {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
-      }
       if (
         url ===
         '/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-11&visit_type=regular&pharmacist_id=pharmacist_2'
@@ -194,11 +191,13 @@ describe('useScheduleDayPlannerQueries', () => {
     );
 
     expect(result.current.selectedPlannerSiteId).toBeNull();
+    expect(result.current.vehicleResourcesEnabled).toBe(false);
+    expect(result.current.plannerVehicleResources).toEqual([]);
     await waitFor(() => {
       expect(result.current.billingPreviewData?.effective_revision_label).toBe('2026改定');
     });
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/visit-vehicle-resources?available=true', {
+    expect(fetchImpl).not.toHaveBeenCalledWith('/api/visit-vehicle-resources?available=true', {
       headers: { 'x-org-id': 'org_1' },
     });
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -207,5 +206,54 @@ describe('useScheduleDayPlannerQueries', () => {
         headers: { 'x-org-id': 'org_1' },
       },
     );
+  });
+
+  it('exposes billing preview loading while current planner inputs are being checked', async () => {
+    const billingPreviewResolver: { current: ((value: Response) => void) | null } = {
+      current: null,
+    };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/visit-vehicle-resources?available=true&site_id=site_2') {
+        return new Response(JSON.stringify({ data: vehicleResources }), { status: 200 });
+      }
+      if (
+        url ===
+        '/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-11&visit_type=regular&pharmacist_id=pharmacist_2&site_id=site_2'
+      ) {
+        return new Promise<Response>((resolve) => {
+          billingPreviewResolver.current = resolve;
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const { result } = renderHook(
+      () =>
+        useScheduleDayPlannerQueries({
+          orgId: 'org_1',
+          plannerForm: {
+            ...getDefaultScheduleDayPlannerForm('2026-06-11'),
+            case_id: 'case_1',
+          },
+          cases: [caseOption()],
+          pharmacists,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(billingPreviewResolver.current).toBeTypeOf('function');
+      expect(result.current.billingPreviewEnabled).toBe(true);
+      expect(result.current.billingPreviewLoading).toBe(true);
+    });
+
+    billingPreviewResolver.current?.(new Response(JSON.stringify(billingPreview), { status: 200 }));
+
+    await waitFor(() => {
+      expect(result.current.billingPreviewLoading).toBe(false);
+      expect(result.current.billingPreviewData?.effective_revision_label).toBe('2026改定');
+    });
   });
 });

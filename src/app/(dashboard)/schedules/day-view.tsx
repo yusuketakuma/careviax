@@ -453,10 +453,13 @@ export function ScheduleDayView({
     pharmacistNameById,
     resolvedPlannerCaseId,
     selectedCase,
+    selectedPlannerSiteId,
     vehicleResourcesLoading,
+    vehicleResourcesEnabled,
     plannerVehicleResources,
     selectedPlannerVehicle,
     billingPreviewData,
+    billingPreviewLoading,
   } = useScheduleDayPlannerQueries({
     orgId,
     plannerForm,
@@ -598,9 +601,17 @@ export function ScheduleDayView({
   );
   const effectivePlannerCandidateCount = getScheduleDayEffectivePlannerCandidateCount({
     plannerForm,
-    billingPreview: billingPreviewData,
+    billingPreview: billingPreviewLoading ? null : billingPreviewData,
     isManual: plannerCandidateCountManual,
   });
+  const hasInvalidPlannerVehicleSelection = Boolean(
+    plannerForm.vehicle_resource_id && !selectedPlannerVehicle,
+  );
+  const plannerGenerationBlockedByPreviewOrVehicle =
+    billingPreviewLoading || hasInvalidPlannerVehicleSelection;
+  const plannerVehicleSelectValue = selectedPlannerVehicle
+    ? plannerForm.vehicle_resource_id
+    : AUTO_VEHICLE_RESOURCE_VALUE;
   const schedulePreviewRequests = useMemo(
     () => buildScheduleBillingPreviewRequests(selectedDateSchedules),
     [selectedDateSchedules],
@@ -1623,6 +1634,7 @@ export function ScheduleDayView({
                 onValueChange={(value) => {
                   setPlannerCandidateCountManual(false);
                   setPlannerForm((current) => applyScheduleDayPlannerCaseSelection(current, value));
+                  setRouteTravelMode('DRIVE');
                 }}
               >
                 <SelectTrigger id="planner-case" className="w-full">
@@ -1658,6 +1670,7 @@ export function ScheduleDayView({
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={billingPreviewLoading}
                           onClick={() =>
                             setPlannerForm((current) =>
                               applyScheduleDayPlannerStartDate(
@@ -1673,6 +1686,7 @@ export function ScheduleDayView({
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={billingPreviewLoading}
                           onClick={() => {
                             setPlannerCandidateCountManual(false);
                             setPlannerForm((current) =>
@@ -1703,6 +1717,7 @@ export function ScheduleDayView({
                     <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
                     <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
                     <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
+                    {billingPreviewLoading ? <p>算定確認中</p> : null}
                     <p>
                       推奨設定:{' '}
                       {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
@@ -1846,7 +1861,8 @@ export function ScheduleDayView({
               <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
                 <Label htmlFor="planner-vehicle-resource">社用車</Label>
                 <Select
-                  value={plannerForm.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
+                  value={plannerVehicleSelectValue}
+                  disabled={!vehicleResourcesEnabled || vehicleResourcesLoading}
                   onValueChange={(value) => {
                     setPlannerForm((current) =>
                       applyScheduleDayPlannerVehicleResourceSelection(
@@ -1883,9 +1899,11 @@ export function ScheduleDayView({
                 <p className="text-xs text-muted-foreground">
                   {selectedPlannerVehicle
                     ? formatVehicleResourceLabel(selectedPlannerVehicle)
-                    : vehicleResourcesLoading
-                      ? '社用車候補を読み込み中'
-                      : '未指定の場合は患者住所とルート条件から自動割当します'}
+                    : !selectedPlannerSiteId
+                      ? '担当薬剤師の拠点設定後に社用車を選択できます'
+                      : vehicleResourcesLoading
+                        ? '社用車候補を読み込み中'
+                        : '未指定の場合は患者住所とルート条件から自動割当します'}
                 </p>
               </div>
             </div>
@@ -1922,9 +1940,17 @@ export function ScheduleDayView({
             <Button
               className="w-full"
               onClick={() => generateMutation.mutate()}
-              disabled={!resolvedPlannerCaseId || generateMutation.isPending}
+              disabled={
+                !resolvedPlannerCaseId ||
+                generateMutation.isPending ||
+                plannerGenerationBlockedByPreviewOrVehicle
+              }
             >
-              {generateMutation.isPending ? '候補生成中...' : '訪問候補を生成'}
+              {generateMutation.isPending
+                ? '候補生成中...'
+                : billingPreviewLoading
+                  ? '算定確認中...'
+                  : '訪問候補を生成'}
             </Button>
 
             <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
