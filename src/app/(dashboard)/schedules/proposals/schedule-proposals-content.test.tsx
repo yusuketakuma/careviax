@@ -112,6 +112,32 @@ function buildProposal(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildProposalDetail(overrides?: Record<string, unknown>) {
+  return {
+    ...buildProposal(overrides),
+    approved_at: null,
+    patient_contacted_at: null,
+    confirmed_at: null,
+    related_proposals: [],
+    pharmacist_day_schedules: [],
+    route_preview: {
+      plan: {
+        status: 'unavailable',
+        note: null,
+        travelMode: 'DRIVE',
+        origin: null,
+        encodedPath: null,
+        orderedScheduleIds: [],
+        totalDistanceMeters: null,
+        totalDurationSeconds: null,
+        stopSummaries: [],
+      },
+      points: [],
+      site: null,
+    },
+  };
+}
+
 function mockImmediateMutations() {
   useMutationMock.mockImplementation(
     (options: {
@@ -199,6 +225,22 @@ function failedProposalDetailButtonName(patientName: string, timePattern: string
   return new RegExp(`${patientName}.*2026\\/04\\/09.*${timePattern}.*未更新候補を詳細で確認`);
 }
 
+function proposalTargetName(
+  patientName: string,
+  timeRange = '18:00 - 19:00',
+  dateLabel = '2026/04/09',
+) {
+  return `${patientName} ${dateLabel} ${timeRange} / 薬剤師A / 社用車A`;
+}
+
+function proposalCheckboxName(
+  patientName: string,
+  timeRange = '18:00 - 19:00',
+  dateLabel = '2026/04/09',
+) {
+  return `${proposalTargetName(patientName, timeRange, dateLabel)} の候補を選択`;
+}
+
 function expectRouterReplacedWithSearchParam(key: string, value: string) {
   expect(
     routerReplaceMock.mock.calls.some(([url]) => {
@@ -271,6 +313,96 @@ describe('ScheduleProposalsContent', () => {
     render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
 
     expect(screen.getByTestId('schedule-proposal-active-row')).toBeTruthy();
+  });
+
+  it('labels proposal card actions with date, time, pharmacist, and vehicle context', () => {
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+        time_window_start: '2026-04-09T09:00:00',
+        time_window_end: '2026-04-09T10:00:00',
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+        time_window_start: '2026-04-09T10:30:00',
+        time_window_end: '2026-04-09T11:30:00',
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    const firstTarget = proposalTargetName('佐藤太郎', '09:00 - 10:00');
+    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    expect(screen.getByRole('checkbox', { name: `${firstTarget} の候補を選択` })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: `${secondTarget} の候補を選択` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `${firstTarget} の候補詳細を開く` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `${secondTarget} の候補詳細を開く` })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: `${firstTarget} を承認して患者連絡へ進める` }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: `${secondTarget} を承認して患者連絡へ進める` }),
+    ).toBeTruthy();
+  });
+
+  it('names the proposal detail sheet and actions with the active proposal target', () => {
+    const detail = buildProposalDetail({
+      id: 'proposal_2',
+      case_id: 'case_2',
+      case_: {
+        patient: {
+          id: 'patient_2',
+          name: '佐藤太郎',
+          residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+        },
+      },
+      time_window_start: '2026-04-09T10:30:00',
+      time_window_end: '2026-04-09T11:30:00',
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_2" />);
+
+    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    expect(screen.getByRole('dialog', { name: `${target} の訪問候補詳細` })).toBeTruthy();
+    expect(
+      screen.getAllByRole('button', { name: `${target} を承認して患者連絡へ進める` }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('shows a preset context banner when opened from a focused dashboard link', () => {
@@ -490,17 +622,25 @@ describe('ScheduleProposalsContent', () => {
       }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('山田花子') })
+        .getAttribute('aria-checked'),
     ).toBe('false');
     expect(
-      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
-      screen.getByRole('checkbox', { name: '鈴木一郎 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('鈴木一郎') })
+        .getAttribute('aria-checked'),
     ).toBe('false');
     expect(screen.getByRole('button', { name: '選択中1件の訪問候補を一括承認' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎', '09:00 - 10:00') }),
+    );
 
     expect(screen.queryByTestId('proposal-bulk-partial-failure')).toBeNull();
     expect(
@@ -805,10 +945,14 @@ describe('ScheduleProposalsContent', () => {
     expect(within(partialAlert).getByText(/社用車A/)).toBeTruthy();
     expect(within(partialAlert).getByText(/候補はすでに更新済みです/)).toBeTruthy();
     expect(
-      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('山田花子') })
+        .getAttribute('aria-checked'),
     ).toBe('false');
     expect(
-      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
     expectToastMessagesExcludeSensitiveDetails();
     expectProposalQueryInvalidations();
@@ -876,10 +1020,14 @@ describe('ScheduleProposalsContent', () => {
     expect(within(partialAlert).getByText(/勤務枠が埋まりました/)).toBeTruthy();
     expect(within(partialAlert).getByText(/候補はすでに更新済みです/)).toBeTruthy();
     expect(
-      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('山田花子') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
-      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
   });
 
@@ -936,10 +1084,14 @@ describe('ScheduleProposalsContent', () => {
     ).toHaveLength(2);
     expectAlertExcludesSensitiveDetails(partialAlert);
     expect(
-      screen.getByRole('checkbox', { name: '山田花子 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('山田花子') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
-      screen.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' }).getAttribute('aria-checked'),
+      screen
+        .getByRole('checkbox', { name: proposalCheckboxName('佐藤太郎') })
+        .getAttribute('aria-checked'),
     ).toBe('true');
   });
 

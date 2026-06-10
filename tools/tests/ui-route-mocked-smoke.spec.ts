@@ -524,6 +524,10 @@ const PROPOSAL_BULK_ROUTE_MOCK_PROPOSALS = [
   }),
 ];
 
+function proposalBulkTargetName(patientName: string, timeRange: string) {
+  return `${patientName} 2026/05/08 ${timeRange} / 薬剤師A / 社用車A`;
+}
+
 function buildProposalBulkRouteMockDetail(
   proposal: (typeof PROPOSAL_BULK_ROUTE_MOCK_PROPOSALS)[number],
 ) {
@@ -1382,14 +1386,20 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
     await selectAllCheckbox.focus();
     await expect(selectAllCheckbox).toBeFocused();
     await page.keyboard.press('Space');
-    await expect(page.getByRole('checkbox', { name: '山田花子 の候補を選択' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await expect(page.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    const successTarget = proposalBulkTargetName('山田花子', '09:00 - 10:00');
+    const failureTarget = proposalBulkTargetName('佐藤太郎', '10:30 - 11:30');
+    await expect(
+      page.getByRole('checkbox', { name: `${successTarget} の候補を選択` }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await expect(
+      page.getByRole('checkbox', { name: `${failureTarget} の候補を選択` }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await expect(
+      page.getByRole('button', { name: `${successTarget} の候補詳細を開く` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: `${failureTarget} の候補詳細を開く` }),
+    ).toBeVisible();
 
     const rejectButton = page.getByRole('button', {
       name: '選択中2件の訪問候補を一括却下',
@@ -1465,14 +1475,12 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
     await expect(partialAlert).not.toContainText('アムロジピン');
     await expect(partialAlert).not.toContainText('処方詳細');
 
-    await expect(page.getByRole('checkbox', { name: '山田花子 の候補を選択' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
-    await expect(page.getByRole('checkbox', { name: '佐藤太郎 の候補を選択' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    await expect(
+      page.getByRole('checkbox', { name: `${successTarget} の候補を選択` }),
+    ).toHaveAttribute('aria-checked', 'false');
+    await expect(
+      page.getByRole('checkbox', { name: `${failureTarget} の候補を選択` }),
+    ).toHaveAttribute('aria-checked', 'true');
 
     await partialAlert
       .getByRole('button', {
@@ -1480,7 +1488,9 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
       })
       .click();
     await expect(page.getByTestId('schedule-proposal-active-row')).toContainText('佐藤太郎');
-    await expect(page.getByRole('dialog', { name: '訪問候補の詳細' })).toBeVisible();
+    await expect(
+      page.getByRole('dialog', { name: `${failureTarget} の訪問候補詳細` }),
+    ).toBeVisible();
 
     await page.screenshot({
       path: testInfo.outputPath('schedule-proposals-bulk-reject-keyboard.png'),

@@ -535,6 +535,12 @@ function canApplyBulkProposalAction(proposal: Proposal, action: 'approve' | 'rej
   );
 }
 
+function proposalActionTargetLabel(proposal: Proposal) {
+  const pharmacistName = proposal.proposed_pharmacist?.name ?? '担当未解決';
+  const vehicleLabel = proposal.vehicle_resource?.label ?? '社用車未指定';
+  return `${proposal.case_.patient.name} ${formatDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel}`;
+}
+
 const SAFE_BULK_ACTION_FAILURE_MESSAGES = new Set([
   'この候補は承認できません',
   'この候補は却下できません',
@@ -1349,6 +1355,7 @@ export function ScheduleProposalsContent({
   const detailRouteSelectionLabel = detail
     ? `${formatDateLabel(detail.proposed_date)} / ${detail.proposed_pharmacist?.name ?? '担当未解決'}`
     : null;
+  const detailTargetLabel = detail ? proposalActionTargetLabel(detail) : null;
 
   const allVisibleSelected =
     visibleProposals.length > 0 &&
@@ -1849,6 +1856,7 @@ export function ScheduleProposalsContent({
             const impactedNames = readImpactedPatientNames(
               proposal.reschedule_source_schedule?.override_request?.impact_summary,
             );
+            const proposalTargetLabel = proposalActionTargetLabel(proposal);
 
             return (
               <Card
@@ -1875,7 +1883,7 @@ export function ScheduleProposalsContent({
                               : current.filter((id) => id !== proposal.id),
                           );
                         }}
-                        aria-label={`${proposal.case_.patient.name} の候補を選択`}
+                        aria-label={`${proposalTargetLabel} の候補を選択`}
                       />
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1918,7 +1926,12 @@ export function ScheduleProposalsContent({
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openDetail(proposal.id)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openDetail(proposal.id)}
+                        aria-label={`${proposalTargetLabel} の候補詳細を開く`}
+                      >
                         詳細
                       </Button>
                       {canApprove ? (
@@ -1931,6 +1944,7 @@ export function ScheduleProposalsContent({
                             })
                           }
                           disabled={proposalActionMutation.isPending}
+                          aria-label={`${proposalTargetLabel} を承認して患者連絡へ進める`}
                         >
                           承認して連絡へ
                         </Button>
@@ -1945,6 +1959,7 @@ export function ScheduleProposalsContent({
                             })
                           }
                           disabled={proposalActionMutation.isPending}
+                          aria-label={`${proposalTargetLabel} を日時確定する`}
                         >
                           日時確定
                         </Button>
@@ -2149,9 +2164,13 @@ export function ScheduleProposalsContent({
       >
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
           <SheetHeader>
-            <SheetTitle>訪問候補の詳細</SheetTitle>
+            <SheetTitle>
+              {detailTargetLabel ? `${detailTargetLabel} の訪問候補詳細` : '訪問候補の詳細'}
+            </SheetTitle>
             <SheetDescription>
-              候補比較、当日ルート、患者連絡、再提案までここで完結させます。
+              {detail
+                ? `${PROPOSAL_STATUS_LABELS[detail.proposal_status]} / ${CONTACT_STATUS_LABELS[detail.patient_contact_status]}。候補比較、当日ルート、患者連絡、再提案までここで完結させます。`
+                : '候補比較、当日ルート、患者連絡、再提案までここで完結させます。'}
             </SheetDescription>
           </SheetHeader>
 
@@ -2193,6 +2212,11 @@ export function ScheduleProposalsContent({
                           })
                         }
                         disabled={proposalActionMutation.isPending}
+                        aria-label={
+                          detailTargetLabel
+                            ? `${detailTargetLabel} を承認して患者連絡へ進める`
+                            : undefined
+                        }
                       >
                         承認して連絡へ
                       </Button>
@@ -2219,6 +2243,11 @@ export function ScheduleProposalsContent({
                             })
                           }
                           disabled={proposalActionMutation.isPending}
+                          aria-label={
+                            detailTargetLabel
+                              ? `${detailTargetLabel} の連絡結果を保存する`
+                              : undefined
+                          }
                         >
                           連絡結果を保存
                         </Button>
@@ -2234,6 +2263,9 @@ export function ScheduleProposalsContent({
                             proposalActionMutation.isPending ||
                             detail.patient_contact_status !== 'confirmed'
                           }
+                          aria-label={
+                            detailTargetLabel ? `${detailTargetLabel} を日時確定する` : undefined
+                          }
                         >
                           日時確定
                         </Button>
@@ -2243,6 +2275,9 @@ export function ScheduleProposalsContent({
                       <Link
                         href={`/visits/${detail.finalized_schedule.id}/record`}
                         className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40"
+                        aria-label={
+                          detailTargetLabel ? `${detailTargetLabel} の確定予定を開く` : undefined
+                        }
                       >
                         確定予定を開く
                       </Link>
