@@ -146,6 +146,102 @@ describe('schedule day visit brief cache helpers', () => {
     ]);
   });
 
+  it('isolates a decrypt failure to the failed row and keeps usable cached briefs', async () => {
+    const card = buildCachedCard({
+      scheduleId: 'schedule_valid',
+      timeWindowStart: '2026-04-09T09:30:00.000Z',
+    });
+    const repository = buildRepository([
+      {
+        id: 5,
+        scheduleId: 'schedule_broken',
+        patientId: 'patient_broken',
+        scheduledDate: selectedDate,
+        payload: 'encrypted-broken',
+        updatedAt: new Date('2026-04-09T08:05:00.000Z'),
+      },
+      {
+        id: 6,
+        scheduleId: card.scheduleId,
+        patientId: card.patientId,
+        scheduledDate: selectedDate,
+        payload: JSON.stringify(card),
+        updatedAt: new Date('2026-04-09T08:15:00.000Z'),
+      },
+    ]);
+
+    const result = await readScheduleDayCachedVisitBriefs({
+      selectedDate,
+      repository,
+      decryptPayload: async (payload) => {
+        if (payload === 'encrypted-broken') {
+          throw new Error('decrypt failed');
+        }
+        return payload;
+      },
+      isFresh: () => true,
+    });
+
+    expect(repository.deletedIds).toEqual([5]);
+    expect(result).toMatchObject({
+      cards: [card],
+      loadedDate: selectedDate,
+      updatedAt: '2026-04-09T08:15:00.000Z',
+    });
+  });
+
+  it('drops cache rows when decrypted payload identity does not match the indexed row', async () => {
+    const validCard = buildCachedCard({ scheduleId: 'schedule_valid' });
+    const repository = buildRepository([
+      {
+        id: 7,
+        scheduleId: 'schedule_patient_mismatch',
+        patientId: 'patient_expected',
+        scheduledDate: selectedDate,
+        payload: JSON.stringify(
+          buildCachedCard({
+            scheduleId: 'schedule_patient_mismatch',
+            patientId: 'patient_other',
+          }),
+        ),
+        updatedAt: new Date('2026-04-09T08:00:00.000Z'),
+      },
+      {
+        id: 8,
+        scheduleId: 'schedule_date_mismatch',
+        patientId: 'patient_date_mismatch',
+        scheduledDate: selectedDate,
+        payload: JSON.stringify(
+          buildCachedCard({
+            scheduleId: 'schedule_date_mismatch',
+            patientId: 'patient_date_mismatch',
+            scheduledDate: '2026-04-10',
+          }),
+        ),
+        updatedAt: new Date('2026-04-09T08:05:00.000Z'),
+      },
+      {
+        id: 9,
+        scheduleId: validCard.scheduleId,
+        patientId: validCard.patientId,
+        scheduledDate: selectedDate,
+        payload: JSON.stringify(validCard),
+        updatedAt: new Date('2026-04-09T08:10:00.000Z'),
+      },
+    ]);
+
+    const result = await readScheduleDayCachedVisitBriefs({
+      selectedDate,
+      repository,
+      decryptPayload: async (payload) => payload,
+      isFresh: () => true,
+    });
+
+    expect(repository.deletedIds).toEqual([7, 8]);
+    expect(result.cards).toEqual([validCard]);
+    expect(result.updatedAt).toBe('2026-04-09T08:10:00.000Z');
+  });
+
   it('fetches only missing visit brief cards and maps schedule context', async () => {
     const cached = buildCachedCard({ scheduleId: 'schedule_cached' });
     const fetchBatch = vi.fn(async () => ({

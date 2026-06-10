@@ -76,6 +76,7 @@ vi.mock('@/components/features/visits/visit-card-mobile', () => ({
     id: string;
     status: string;
     carryItemsStatus?: string | null;
+    mustCheckToday?: string[];
     actionContextLabel?: string;
     onStartVisit?: (id: string) => void;
   }) => {
@@ -2408,5 +2409,220 @@ describe('ScheduleDayView', () => {
       expect(visitBriefCacheDeleteMock).toHaveBeenCalledWith(99);
     });
     expect(screen.queryByText('山田花子')).toBeNull();
+  });
+
+  it('ignores cached visit briefs whose patient no longer matches the live schedule', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    offlineStoreState.isOffline = true;
+    useOrgIdMock.mockReturnValue('org_1');
+    visitBriefCacheToArrayMock.mockResolvedValue([
+      {
+        id: 101,
+        scheduleId: 'schedule_patient_changed',
+        patientId: 'patient_cached',
+        scheduledDate: '2026-04-09',
+        payload: JSON.stringify({
+          scheduleId: 'schedule_patient_changed',
+          patientId: 'patient_cached',
+          patientName: '誤患者',
+          scheduledDate: '2026-04-09',
+          timeWindowStart: '2026-04-09T09:00:00.000Z',
+          timeWindowEnd: '2026-04-09T10:00:00.000Z',
+          priority: 'normal',
+          facilityLabel: null,
+          siteName: null,
+          headline: '誤患者のブリーフ',
+          mustCheckToday: ['誤患者の確認事項'],
+          sourceRefs: [],
+          generatedAt: '2026-04-09T08:00:00.000Z',
+          provider: 'rule',
+          isFallback: false,
+        }),
+        updatedAt: new Date(),
+      },
+    ]);
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                id: 'schedule_patient_changed',
+                case_: {
+                  patient: {
+                    id: 'patient_live',
+                    name: '山田花子',
+                    residences: [
+                      {
+                        address: '東京都千代田区1-1-1',
+                        building_id: null,
+                        unit_name: null,
+                        lat: 35.1,
+                        lng: 139.1,
+                      },
+                    ],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    await waitFor(() => {
+      expect(visitCardMobilePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'schedule_patient_changed',
+          mustCheckToday: [],
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-preparations/brief-batch',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ schedule_ids: ['schedule_patient_changed'] }),
+        }),
+      );
+    });
+    expect(screen.queryByText('誤患者')).toBeNull();
+    expect(screen.queryByText('誤患者の確認事項')).toBeNull();
+  });
+
+  it('clears the previous day cached visit briefs when cache loading fails after a date change', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    offlineStoreState.isOffline = true;
+    useOrgIdMock.mockReturnValue('org_1');
+    visitBriefCacheToArrayMock
+      .mockResolvedValueOnce([
+        {
+          id: 102,
+          scheduleId: 'schedule_1',
+          patientId: 'patient_1',
+          scheduledDate: '2026-04-09',
+          payload: JSON.stringify({
+            scheduleId: 'schedule_1',
+            patientId: 'patient_1',
+            patientName: '山田花子',
+            scheduledDate: '2026-04-09',
+            timeWindowStart: '2026-04-09T09:00:00.000Z',
+            timeWindowEnd: '2026-04-09T10:00:00.000Z',
+            priority: 'normal',
+            facilityLabel: null,
+            siteName: null,
+            headline: '前日のブリーフ',
+            mustCheckToday: ['前日の確認事項'],
+            sourceRefs: [],
+            generatedAt: '2026-04-09T08:00:00.000Z',
+            provider: 'rule',
+            isFallback: false,
+          }),
+          updatedAt: new Date(),
+        },
+      ])
+      .mockRejectedValueOnce(new Error('idb unavailable'));
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule(),
+              buildSchedule({
+                id: 'schedule_next_day',
+                scheduled_date: '2026-04-10',
+                time_window_start: '2026-04-10T09:00:00.000Z',
+                time_window_end: '2026-04-10T10:00:00.000Z',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('前日のブリーフ')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /2026年4月10日\(金\)/ }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('前日のブリーフ')).toBeNull();
+    });
+    expect(screen.getByText('この日の軽量 brief キャッシュはまだありません。')).toBeTruthy();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[visit-brief-cache] Failed to load schedule brief cache',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('refreshes missing visit briefs when offline cache loading fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    visitBriefCacheToArrayMock.mockRejectedValue(new Error('indexeddb read failed'));
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule({ id: 'schedule_cache_recover' })] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-preparations/brief-batch',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ schedule_ids: ['schedule_cache_recover'] }),
+        }),
+      );
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[visit-brief-cache] Failed to load schedule brief cache',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
   });
 });

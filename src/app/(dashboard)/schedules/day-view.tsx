@@ -754,9 +754,29 @@ export function ScheduleDayView({
     announceFacilityPatientPosition(group, scheduleId, nextOrdered);
   }
 
+  const selectedDateSchedulePatientIdByScheduleId = useMemo(
+    () =>
+      new Map(
+        selectedDateSchedules.map((schedule) => [schedule.id, schedule.case_.patient.id] as const),
+      ),
+    [selectedDateSchedules],
+  );
+  const visibleCachedVisitBriefs = useMemo(() => {
+    if (cachedVisitBriefLoadedDate !== selectedDate) return [];
+    return cachedVisitBriefs.filter(
+      (item) => selectedDateSchedulePatientIdByScheduleId.get(item.scheduleId) === item.patientId,
+    );
+  }, [
+    cachedVisitBriefLoadedDate,
+    cachedVisitBriefs,
+    selectedDate,
+    selectedDateSchedulePatientIdByScheduleId,
+  ]);
+  const visibleCachedVisitBriefUpdatedAt =
+    cachedVisitBriefLoadedDate === selectedDate ? cachedVisitBriefUpdatedAt : null;
   const cachedVisitBriefByScheduleId = useMemo(
-    () => new Map(cachedVisitBriefs.map((item) => [item.scheduleId, item])),
-    [cachedVisitBriefs],
+    () => new Map(visibleCachedVisitBriefs.map((item) => [item.scheduleId, item])),
+    [visibleCachedVisitBriefs],
   );
   const offlineStatus = useMemo(
     () =>
@@ -764,16 +784,16 @@ export function ScheduleDayView({
         isOffline,
         pendingSyncCount,
         syncConflictCount: syncConflicts.length,
-        cachedVisitBriefCount: cachedVisitBriefs.length,
-        cachedVisitBriefUpdatedAt,
+        cachedVisitBriefCount: visibleCachedVisitBriefs.length,
+        cachedVisitBriefUpdatedAt: visibleCachedVisitBriefUpdatedAt,
         cacheTtlHours: OFFLINE_CACHE_TTL_HOURS,
       }),
     [
-      cachedVisitBriefs.length,
-      cachedVisitBriefUpdatedAt,
       isOffline,
       pendingSyncCount,
       syncConflicts.length,
+      visibleCachedVisitBriefUpdatedAt,
+      visibleCachedVisitBriefs.length,
     ],
   );
 
@@ -967,6 +987,9 @@ export function ScheduleDayView({
       .catch((error) => {
         if (active) {
           console.warn('[visit-brief-cache] Failed to load schedule brief cache', error);
+          setCachedVisitBriefs([]);
+          setCachedVisitBriefUpdatedAt(null);
+          setCachedVisitBriefLoadedDate(selectedDate);
         }
       });
 
@@ -1552,7 +1575,9 @@ export function ScheduleDayView({
               onSelectGroup={setFacilityFilter}
             />
             {mobileVisitSchedules.map((schedule) => {
-              const brief = cachedVisitBriefByScheduleId.get(schedule.id);
+              const cachedBrief = cachedVisitBriefByScheduleId.get(schedule.id);
+              const brief =
+                cachedBrief?.patientId === schedule.case_.patient.id ? cachedBrief : undefined;
               return (
                 <VisitCardMobile
                   key={schedule.id}
@@ -1591,7 +1616,7 @@ export function ScheduleDayView({
         discardConflictPending={discardConflictMutation.isPending}
         onOverwriteConflict={(itemId) => overwriteConflictMutation.mutate(itemId)}
         onDiscardConflict={(itemId) => discardConflictMutation.mutate(itemId)}
-        cachedVisitBriefs={cachedVisitBriefs}
+        cachedVisitBriefs={visibleCachedVisitBriefs}
       />
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">

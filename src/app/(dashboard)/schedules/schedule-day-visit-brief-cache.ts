@@ -111,6 +111,23 @@ export function sortScheduleDayVisitBriefCards(cards: CachedVisitBriefCard[]) {
   );
 }
 
+function isCachedVisitBriefRowMatch({
+  row,
+  payload,
+  selectedDate,
+}: {
+  row: OfflineVisitBriefCache;
+  payload: CachedVisitBriefCard;
+  selectedDate: string;
+}) {
+  return (
+    row.scheduleId === payload.scheduleId &&
+    row.patientId === payload.patientId &&
+    row.scheduledDate === selectedDate &&
+    payload.scheduledDate === selectedDate
+  );
+}
+
 export async function readScheduleDayCachedVisitBriefs({
   selectedDate,
   repository,
@@ -125,12 +142,22 @@ export async function readScheduleDayCachedVisitBriefs({
 
   const decoded = await Promise.all(
     freshRows.map(async (row) => {
-      const payload = await decryptPayload(row.payload);
-      const parsed = parseCachedVisitBriefCardPayload(payload);
-      return {
-        row,
-        payload: parsed,
-      };
+      try {
+        const payload = await decryptPayload(row.payload);
+        const parsed = parseCachedVisitBriefCardPayload(payload);
+        return {
+          row,
+          payload:
+            parsed && isCachedVisitBriefRowMatch({ row, payload: parsed, selectedDate })
+              ? parsed
+              : null,
+        };
+      } catch {
+        return {
+          row,
+          payload: null,
+        };
+      }
     }),
   );
 
