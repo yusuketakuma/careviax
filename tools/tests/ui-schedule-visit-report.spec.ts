@@ -64,6 +64,14 @@ async function expectNoLocatorHorizontalOverflow(locator: Locator) {
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 }
 
+async function expectMinTouchTargetHeight(locator: Locator, minHeight = 44) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Touch target was not measurable');
+
+  expect(box.height).toBeGreaterThanOrEqual(minHeight);
+}
+
 async function swipeVisitSwitcherToNext(page: Page) {
   await page.getByTestId('facility-visit-record-switcher').evaluate((element) => {
     element.dispatchEvent(
@@ -342,6 +350,113 @@ test.describe('schedule page', () => {
     expect(rescheduleBox.y).toBeLessThan(patientAddressBox.y);
     await expectNoPageHorizontalOverflow(page);
 
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
+  test('mobile visit start keeps blocked visits stopped and partial visits acknowledgement-gated', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'mobile-chromium',
+      'Mobile carry-item warning proof runs only in the mobile viewport project.',
+    );
+
+    const scheduledDate = formatLocalDateKey(new Date());
+    const fixture = await ensureConfirmedScheduleActionFixture(scheduledDate, {
+      carryItemsStatus: 'blocked',
+      carryItemsConfirmed: false,
+    });
+    const { page, errors } = await createInstrumentedPage(context);
+
+    await openScheduleBoard(page);
+    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
+      timeout: 90_000,
+    });
+
+    const mobileRegion = page.getByRole('region', { name: '本日の訪問リスト' });
+    await expect(mobileRegion).toBeVisible();
+    await expect(
+      mobileRegion.getByRole('article', { name: /訪問カード: 施設E2E 太郎/ }),
+    ).toBeVisible({ timeout: 90_000 });
+    await expect(mobileRegion.getByText('持参物 未確定')).toBeVisible();
+
+    const blockedStartButton = mobileRegion.getByRole('button', {
+      name: /施設E2E 太郎.*持参物未確定を確認/,
+    });
+    await expect(blockedStartButton).toBeVisible();
+    await expectMinTouchTargetHeight(blockedStartButton);
+    await blockedStartButton.click();
+
+    const blockedDialog = page.getByRole('dialog', { name: '持参薬が未確定のままです' });
+    await expect(blockedDialog).toBeVisible();
+    await expect(blockedDialog.getByText('施設E2E 太郎')).toBeVisible();
+    await expect(blockedDialog.getByText('持参物ステータス: blocked')).toBeVisible();
+    await expect(
+      blockedDialog
+        .getByRole('alert')
+        .getByText('持参物を確定するか代替手配を記録してから、訪問を開始してください。'),
+    ).toBeVisible();
+    await expect(
+      blockedDialog.getByRole('button', { name: '持参物を確定してから開始' }),
+    ).toBeDisabled();
+    await expect(
+      blockedDialog.getByRole('button', { name: '持参物を確定してから開始' }),
+    ).toHaveAttribute('aria-describedby', 'departure-warning-resolution');
+    await expectNoLocatorHorizontalOverflow(blockedDialog);
+    await expect(page).not.toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`));
+    await blockedDialog.getByRole('button', { name: '戻る' }).click();
+    await expect(blockedDialog).toBeHidden();
+
+    await ensureConfirmedScheduleActionFixture(scheduledDate, {
+      carryItemsStatus: 'partial',
+      carryItemsConfirmed: false,
+    });
+    await reloadStablePage(page);
+    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
+      timeout: 90_000,
+    });
+
+    await expect(mobileRegion.getByText('持参物 一部未確定')).toBeVisible();
+    const partialStartButton = mobileRegion.getByRole('button', {
+      name: /施設E2E 太郎.*警告を確認して訪問開始/,
+    });
+    await expect(partialStartButton).toBeVisible();
+    await expectMinTouchTargetHeight(partialStartButton);
+    await partialStartButton.click();
+
+    const partialDialog = page.getByRole('dialog', { name: '持参物の一部が未確定です' });
+    await expect(partialDialog).toBeVisible();
+    await expect(partialDialog.getByText('施設E2E 太郎')).toBeVisible();
+    await expect(partialDialog.getByText('持参物ステータス: partial')).toBeVisible();
+    const partialConfirmButton = partialDialog.getByRole('button', {
+      name: '警告を確認して訪問開始',
+    });
+    await expect(partialConfirmButton).toBeDisabled();
+    await expect(page).not.toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`));
+
+    const acknowledgement = partialDialog.getByRole('checkbox', {
+      name: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。',
+    });
+    const acknowledgementLabel = partialDialog
+      .locator('label')
+      .filter({ hasText: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。' })
+      .first();
+    await expectMinTouchTargetHeight(acknowledgementLabel);
+    await expectNoLocatorHorizontalOverflow(partialDialog);
+    await acknowledgement.focus();
+    await expect(acknowledgement).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(acknowledgement).toBeChecked();
+    await expect(partialConfirmButton).toBeEnabled();
+    await partialConfirmButton.focus();
+    await expect(partialConfirmButton).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`), {
+      timeout: 30_000,
+    });
+
+    await expectNoPageHorizontalOverflow(page);
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);
   });
