@@ -434,6 +434,16 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getAllByText('ケース 2 / 候補 2').length).toBeGreaterThan(0);
   });
 
+  it('keeps full primary residence addresses out of proposal list cards', () => {
+    mockDashboardProposals([buildProposal()]);
+
+    render(<ScheduleProposalsContent />);
+
+    expect(screen.queryByText('東京都千代田区1-1-1')).toBeNull();
+    expect(screen.queryByText('東京都千代田区2-2-2')).toBeNull();
+    expect(screen.getByText('訪問先住所は詳細・ルート確認で表示 / 担当拠点 本店')).toBeTruthy();
+  });
+
   it('disambiguates same-name case search results with safe case and patient identifiers', async () => {
     mockDashboardProposals([
       buildProposal({

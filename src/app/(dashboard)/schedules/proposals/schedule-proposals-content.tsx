@@ -69,7 +69,6 @@ import { ProposalHumanDecisionFlow } from '../proposal-human-decision-flow';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 import {
-  addressOfPatient,
   type CaseOption,
   CONTACT_STATUS_LABELS,
   PRIORITY_LABELS,
@@ -564,6 +563,13 @@ function caseOptionPrimaryPharmacistLabel(careCase: CaseOption) {
 
 function caseOptionTargetLabel(careCase: CaseOption) {
   return `${careCase.patient.name} / ケース ${shortEntityIdentifier(careCase.id)} / 患者識別 ${shortEntityIdentifier(careCase.patient.id)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
+}
+
+function proposalListVisitPlaceLabel(proposal: Proposal) {
+  const siteName = proposal.site?.name?.trim();
+  return siteName
+    ? `訪問先住所は詳細・ルート確認で表示 / 担当拠点 ${siteName}`
+    : '訪問先住所は詳細・ルート確認で表示';
 }
 
 const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
@@ -2026,7 +2032,9 @@ export function ScheduleProposalsContent({
                       <ProposalHumanDecisionFlow proposal={proposal} compact />
 
                       <ProposalReasonChips proposal={proposal} />
-                      <p className="text-sm text-muted-foreground">{addressOfPatient(proposal)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {proposalListVisitPlaceLabel(proposal)}
+                      </p>
                       {proposal.escalation_reason ? (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                           {proposal.escalation_reason}
