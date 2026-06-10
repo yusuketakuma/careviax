@@ -13,6 +13,8 @@ import { VisitStatus, VisitStep, type VisitModeView } from '@/phos/contracts/pho
 import {
   enqueuePhosOfflineEvidence,
   listPhosPendingEvidence,
+  MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES,
+  MAX_OFFLINE_EVIDENCE_QUEUE_BYTES,
   phosOfflineEvidenceDb,
   retryPhosOfflineEvidenceUploads,
 } from './offlineEvidenceQueue';
@@ -67,6 +69,18 @@ function retryClient(
     ),
     ...overrides,
   };
+}
+
+function oversizedBlob(size: number): Blob & { arrayBuffer: ReturnType<typeof vi.fn> } {
+  const blob = Object.create(Blob.prototype) as Blob & {
+    arrayBuffer: ReturnType<typeof vi.fn>;
+  };
+  Object.defineProperties(blob, {
+    size: { value: size },
+    type: { value: 'image/jpeg' },
+    arrayBuffer: { value: vi.fn(async () => new ArrayBuffer(0)) },
+  });
+  return blob;
 }
 
 describe('PH-OS offline evidence queue', () => {
@@ -164,6 +178,58 @@ describe('PH-OS offline evidence queue', () => {
       }),
     ).rejects.toThrow('must not store base64 or text payloads');
     expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
+  it('rejects oversized evidence before reading file bytes into memory', async () => {
+    const file = oversizedBlob(MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES + 1);
+
+    await expect(
+      enqueuePhosOfflineEvidence({
+        card_id: 'card_1',
+        packet_id: 'packet_1',
+        evidence_key: 'oversized_photo',
+        label: '大容量写真',
+        evidence_type: 'PHOTO',
+        file_name: 'oversized.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        offline_op_class: 'BLOCKING',
+        file,
+      }),
+    ).rejects.toThrow('exceeds the offline size limit');
+    expect(file.arrayBuffer).not.toHaveBeenCalled();
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
+  it('rejects evidence that would exceed the offline queue quota before reading bytes', async () => {
+    await phosOfflineEvidenceDb.pendingEvidence.add({
+      card_id: 'card_existing',
+      packet_id: 'packet_existing',
+      evidence_key: 'existing_photo',
+      offline_op_class: 'BLOCKING',
+      payload: 'encv1:existing',
+      size_bytes: MAX_OFFLINE_EVIDENCE_QUEUE_BYTES - 2,
+      created_at: '2026-06-10T00:00:00.000Z',
+      retry_count: 0,
+    });
+    const file = oversizedBlob(3);
+
+    await expect(
+      enqueuePhosOfflineEvidence({
+        card_id: 'card_1',
+        packet_id: 'packet_1',
+        evidence_key: 'quota_photo',
+        label: '容量超過写真',
+        evidence_type: 'PHOTO',
+        file_name: 'quota.jpg',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        offline_op_class: 'BLOCKING',
+        file,
+      }),
+    ).rejects.toThrow('exceeds the offline storage limit');
+    expect(file.arrayBuffer).not.toHaveBeenCalled();
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(1);
   });
 
   it('purges legacy plaintext evidence records instead of exposing them', async () => {

@@ -15,6 +15,8 @@ const MAX_RETRIES = 3;
 const BASE64_CHUNK_SIZE = 0x8000;
 const DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS = 30_000;
 const MAX_EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
+export const MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+export const MAX_OFFLINE_EVIDENCE_QUEUE_BYTES = 75 * 1024 * 1024;
 
 export type PhosOfflineEvidenceInput = {
   card_id: string;
@@ -82,6 +84,18 @@ function assertBlobEvidence(input: PhosOfflineEvidenceInput): void {
   }
   if (input.file.type.startsWith('text/') || input.mime_type.startsWith('text/')) {
     throw new Error('PH-OS offline evidence must not store base64 or text payloads');
+  }
+}
+
+async function assertOfflineEvidenceQuota(input: PhosOfflineEvidenceInput): Promise<void> {
+  if (input.file.size > MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES) {
+    throw new Error('PH-OS offline evidence file exceeds the offline size limit');
+  }
+
+  const records = await phosOfflineEvidenceDb.pendingEvidence.toArray();
+  const queuedBytes = records.reduce((total, record) => total + record.size_bytes, 0);
+  if (queuedBytes + input.file.size > MAX_OFFLINE_EVIDENCE_QUEUE_BYTES) {
+    throw new Error('PH-OS offline evidence queue exceeds the offline storage limit');
   }
 }
 
@@ -262,6 +276,7 @@ export async function enqueuePhosOfflineEvidence(
   input: PhosOfflineEvidenceInput,
 ): Promise<{ queue_id: number }> {
   assertBlobEvidence(input);
+  await assertOfflineEvidenceQuota(input);
   const file_bytes = await input.file.arrayBuffer();
   const payload = await encryptEvidencePayload({ evidence: input, file_bytes });
   const id = await phosOfflineEvidenceDb.pendingEvidence.add({

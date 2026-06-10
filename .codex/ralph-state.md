@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-110800
+
+- current task: bound PH-OS offline evidence enqueue memory/storage exposure before photo blobs are read into memory and base64 encoded.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, `src/phos/api/offlineActionQueue.ts`, `src/lib/offline/crypto.test.ts`, and read-only performance/security subagent reports.
+- files changed: `src/phos/api/offlineEvidenceQueue.ts`, `src/phos/api/offlineEvidenceQueue.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: offline evidence enqueue validated Blob shape but did not reject oversized evidence or total offline queue growth before calling `file.arrayBuffer()`, so large photos could be buffered, base64 encoded, encrypted, and written to IndexedDB before any backend 25 MB presign limit or device storage pressure guard applied.
+- security risks found: no auth/authz behavior changed. The queue now rejects per-file offline evidence larger than 25 MB and rejects enqueues that would push pending offline evidence over a 75 MB local queue cap before reading file bytes. Tests assert `arrayBuffer()` is not called on rejected oversized/quota-exceeding Blob-like evidence.
+- performance issues found: prevented avoidable heap pressure from original Blob bytes plus base64 string plus encrypted JSON for oversized evidence. Queue quota calculation reads only existing record metadata and runs before the expensive file byte read.
+- validation commands: `pnpm exec prettier --write src/phos/api/offlineEvidenceQueue.ts src/phos/api/offlineEvidenceQueue.test.ts`; focused `pnpm exec vitest run src/phos/api/offlineEvidenceQueue.test.ts src/phos/api/offlineActionQueue.test.ts src/lib/offline/crypto.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos src/lib/offline/crypto.test.ts --reporter=dot`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`.
+- validation results: focused offline evidence/action/crypto suite passed with 3 files / 18 tests. Standalone TypeScript passed. PH-OS plus offline crypto suite passed with 105 files passed / 1 skipped and 786 tests passed / 1 skipped. Full ESLint passed. Full Vitest passed with 754 files passed / 1 skipped and 5025 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`.
+- remaining work: locally actionable follow-ups remain from read-only reviews: handoff and visit-mode idempotency replay should become actor-bound, AWS SDK clients should use bounded transport/request timeouts, offline replay should batch IndexedDB reads, PH-OS API client response body reads should be capped, perf smoke requests should have per-request abort timeouts, and PH-OS app logs should remove or hash raw workflow object IDs. External live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI.
+- next action: checkpoint this validated offline evidence quota slice, then implement the next local high-value follow-up.
+
 ### 20260610-110300
 
 - current task: make PH-OS report-delivery idempotency replay actor-bound so cached mutation responses with report/patient context cannot be replayed by another authorized actor in the same tenant.
