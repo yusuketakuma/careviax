@@ -312,7 +312,8 @@ describe('createDynamoVisitModeRepository', () => {
 
   it('includes verified evidence status update in the visit commit transaction', async () => {
     const transactCommitVisitStep = vi.fn(async () => undefined);
-    const fakeClient = client({ transactCommitVisitStep });
+    const markEvidenceObjectTagCommitted = vi.fn(async () => undefined);
+    const fakeClient = client({ transactCommitVisitStep, markEvidenceObjectTagCommitted });
     const verifier = {
       verifyObject: vi.fn(async () => undefined),
       markObjectVerified: vi.fn(async () => undefined),
@@ -364,6 +365,21 @@ describe('createDynamoVisitModeRepository', () => {
     expect(transactCommitVisitStep.mock.invocationCallOrder[0]).toBeLessThan(
       verifier.markObjectVerified.mock.invocationCallOrder[0]!,
     );
+    expect(verifier.markObjectVerified.mock.invocationCallOrder[0]!).toBeLessThan(
+      markEvidenceObjectTagCommitted.mock.invocationCallOrder[0]!,
+    );
+    expect(markEvidenceObjectTagCommitted).toHaveBeenCalledWith({
+      table_name: 'phos_core',
+      partition_key: 'TENANT#tenant_abc123',
+      evidence_sort_key: 'EVIDENCE#evidence_1',
+      evidence: {
+        evidence_id: 'evidence_1',
+        card_id: 'card_1',
+        s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+      },
+      tagged_at: '2026-06-09T00:00:00.000Z',
+    });
   });
 
   it('does not mark S3 evidence verified when the visit commit transaction fails', async () => {
@@ -408,7 +424,8 @@ describe('createDynamoVisitModeRepository', () => {
 
   it('surfaces S3 verified tag failures only after the visit commit transaction succeeds', async () => {
     const transactCommitVisitStep = vi.fn(async () => undefined);
-    const fakeClient = client({ transactCommitVisitStep });
+    const markEvidenceObjectTagCommitted = vi.fn(async () => undefined);
+    const fakeClient = client({ transactCommitVisitStep, markEvidenceObjectTagCommitted });
     const verifier = {
       verifyObject: vi.fn(async () => undefined),
       markObjectVerified: vi.fn(async () => {
@@ -446,9 +463,11 @@ describe('createDynamoVisitModeRepository', () => {
     expect(transactCommitVisitStep.mock.invocationCallOrder[0]).toBeLessThan(
       verifier.markObjectVerified.mock.invocationCallOrder[0]!,
     );
+    expect(markEvidenceObjectTagCommitted).not.toHaveBeenCalled();
   });
 
   it('marks already committed evidence objects verified during idempotency replay', async () => {
+    const markEvidenceObjectTagCommitted = vi.fn(async () => undefined);
     const fakeClient = client({
       getEvidenceIntent: vi.fn(async () =>
         evidenceIntent({
@@ -456,6 +475,7 @@ describe('createDynamoVisitModeRepository', () => {
           s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
         }),
       ),
+      markEvidenceObjectTagCommitted,
     });
     const verifier = {
       verifyObject: vi.fn(async () => undefined),
@@ -478,6 +498,18 @@ describe('createDynamoVisitModeRepository', () => {
       tenant_id: 'tenant_abc123',
       allowed_key_prefix: 'tenants/tenant_abc123/evidence/',
       version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+    });
+    expect(markEvidenceObjectTagCommitted).toHaveBeenCalledWith({
+      table_name: 'phos_core',
+      partition_key: 'TENANT#tenant_abc123',
+      evidence_sort_key: 'EVIDENCE#evidence_1',
+      evidence: {
+        evidence_id: 'evidence_1',
+        card_id: 'card_1',
+        s3_key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        s3_version_id: '3HL4kqtJlcpXroDTDmjVBH40Nrjfkd',
+      },
+      tagged_at: expect.any(String),
     });
   });
 });

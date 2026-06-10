@@ -46,6 +46,13 @@ export type DynamoVisitModeClient = {
   getIdempotency(input: DynamoGetInput): Promise<DynamoItem | null>;
   getEvidenceIntent(input: DynamoGetInput): Promise<DynamoItem | null>;
   transactCommitVisitStep(input: DynamoVisitStepCommitTransaction): Promise<void>;
+  markEvidenceObjectTagCommitted?(input: {
+    table_name: string;
+    partition_key: string;
+    evidence_sort_key: string;
+    evidence: VerifiedEvidenceUpload;
+    tagged_at: string;
+  }): Promise<void>;
 };
 
 function objectAttr(item: DynamoItem, key: string): Record<string, unknown> {
@@ -316,6 +323,28 @@ async function markVerifiedEvidenceObject(input: {
   });
 }
 
+async function markVerifiedEvidenceObjectAndPersistTagStatus(input: {
+  client: DynamoVisitModeClient;
+  partition_key: string;
+  ctx: TenantContext;
+  verifier?: EvidenceObjectVerifier;
+  evidence: VerifiedEvidenceUpload;
+  tagged_at: string;
+}): Promise<void> {
+  await markVerifiedEvidenceObject({
+    ctx: input.ctx,
+    verifier: input.verifier,
+    evidence: input.evidence,
+  });
+  await input.client.markEvidenceObjectTagCommitted?.({
+    table_name: phosCoreTableName(),
+    partition_key: input.partition_key,
+    evidence_sort_key: evidenceSk(input.evidence.evidence_id),
+    evidence: input.evidence,
+    tagged_at: input.tagged_at,
+  });
+}
+
 function toVisitModeView(item: DynamoItem): VisitModeView {
   return objectAttr(item, 'visit_mode') as VisitModeView;
 }
@@ -415,10 +444,13 @@ export function createDynamoVisitModeRepository(
         committed_at: (options.now?.() ?? new Date()).toISOString(),
       });
       if (input.verified_evidence) {
-        await markVerifiedEvidenceObject({
+        await markVerifiedEvidenceObjectAndPersistTagStatus({
+          client,
+          partition_key,
           ctx,
           verifier: options.evidence_object_verifier,
           evidence: input.verified_evidence,
+          tagged_at: (options.now?.() ?? new Date()).toISOString(),
         });
       }
       return input.response;
@@ -435,10 +467,13 @@ export function createDynamoVisitModeRepository(
         sort_key: evidenceSk(evidence_id),
       });
       const intent = parseEvidenceObjectTagTarget(item, evidence_id);
-      await markVerifiedEvidenceObject({
+      await markVerifiedEvidenceObjectAndPersistTagStatus({
+        client,
+        partition_key,
         ctx,
         verifier: options.evidence_object_verifier,
         evidence: intent,
+        tagged_at: (options.now?.() ?? new Date()).toISOString(),
       });
     },
   };

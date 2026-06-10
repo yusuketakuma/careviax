@@ -2,6 +2,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   TransactWriteItemsCommand,
+  UpdateItemCommand,
   type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
 import { S3Client } from '@aws-sdk/client-s3';
@@ -77,16 +78,17 @@ export function createDynamoVisitModeClient(input: {
                 Update: {
                   TableName: transaction.table_name,
                   Key: dynamoKey(transaction.partition_key, transaction.evidence_sort_key),
-                  UpdateExpression: `SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at${
+                  UpdateExpression: `SET upload_status = :verified, packet_id = :packet_id, visit_step = :visit_step, verified_at = :updated_at, updated_at = :updated_at, s3_verified_tag_status = :tag_pending, s3_verified_tag_attempted_at = :updated_at${
                     transaction.verified_evidence.s3_version_id
                       ? ', s3_version_id = :s3_version_id'
                       : ''
-                  } REMOVE ttl_epoch_seconds`,
+                  } REMOVE ttl_epoch_seconds, s3_verified_tag_error`,
                   ConditionExpression:
                     'card_id = :card_id AND s3_key = :s3_key AND upload_status = :presigned AND expires_at > :updated_at',
                   ExpressionAttributeValues: {
                     ':verified': { S: 'VERIFIED' },
                     ':presigned': { S: 'PRESIGNED' },
+                    ':tag_pending': { S: 'PENDING' },
                     ':packet_id': { S: transaction.response.packet_id },
                     ':visit_step': { S: 'EVIDENCE_UPLOAD' },
                     ':updated_at': { S: transaction.committed_at },
@@ -150,6 +152,26 @@ export function createDynamoVisitModeClient(input: {
           expected_server_version: transaction.expected_server_version,
         });
       }
+    },
+
+    async markEvidenceObjectTagCommitted(tagUpdate) {
+      await input.client.send(
+        new UpdateItemCommand({
+          TableName: tagUpdate.table_name,
+          Key: dynamoKey(tagUpdate.partition_key, tagUpdate.evidence_sort_key),
+          UpdateExpression:
+            'SET s3_verified_tag_status = :tagged, s3_verified_tagged_at = :tagged_at, updated_at = :tagged_at REMOVE s3_verified_tag_error',
+          ConditionExpression:
+            'upload_status = :verified AND s3_key = :s3_key AND (attribute_not_exists(s3_version_id) OR s3_version_id = :s3_version_id)',
+          ExpressionAttributeValues: {
+            ':tagged': { S: 'TAGGED' },
+            ':tagged_at': { S: tagUpdate.tagged_at },
+            ':verified': { S: 'VERIFIED' },
+            ':s3_key': { S: tagUpdate.evidence.s3_key },
+            ':s3_version_id': { S: tagUpdate.evidence.s3_version_id ?? '' },
+          },
+        }),
+      );
     },
   };
 }
