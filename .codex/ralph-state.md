@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-112100
+
+- current task: prevent `perf:smoke` from hanging indefinitely on one stalled request by adding per-request abort timeouts and timeout reporting.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/scripts/perf-smoke.ts`, `tools/scripts/perf-smoke.test.ts`, and read-only performance subagent report.
+- files changed: `tools/scripts/perf-smoke.ts`, `tools/scripts/perf-smoke.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the perf smoke worker loop awaited `fetch` without an AbortSignal, so one stalled request could block `Promise.all(jobs)` and prevent a JSON report from being emitted.
+- security risks found: no auth or secret handling behavior changed. Existing headers are still caller-provided and are not logged separately.
+- performance issues found: `perf:smoke` now applies `PERF_REQUEST_TIMEOUT_MS` / `--request-timeout-ms` per request, defaulting to 10 seconds and capped at 120 seconds. Timed-out requests increment both `error_count` and a new `timeout_count`, preserving machine-readable failure evidence.
+- validation commands: `pnpm exec prettier --write tools/scripts/perf-smoke.ts tools/scripts/perf-smoke.test.ts`; focused `pnpm exec vitest run tools/scripts/perf-smoke.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`.
+- validation results: focused perf-smoke suite passed with 1 file / 4 tests. Standalone TypeScript passed. Full ESLint passed. Full Vitest passed with 755 files passed / 1 skipped and 5029 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`.
+- remaining work: locally actionable follow-ups remain from read-only reviews: handoff and visit-mode idempotency replay should become actor-bound, offline replay should batch IndexedDB reads, PH-OS API client response body reads should be capped, and PH-OS app logs should remove or hash raw workflow object IDs. External live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI.
+- next action: checkpoint this validated perf-smoke timeout slice, then implement the next local high-value follow-up.
+
 ### 20260610-111700
 
 - current task: add bounded PH-OS AWS SDK client send behavior so Lambda DynamoDB/S3/Secrets Manager calls do not wait indefinitely after the shared Lambda soft deadline returns.

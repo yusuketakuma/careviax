@@ -6,17 +6,37 @@ type Args = {
   requests: number;
   concurrency: number;
   targetMs: number;
+  requestTimeoutMs: number;
   method: string;
   paths: string[];
   headers: Record<string, string>;
 };
 
+export type PerfSmokeResult = {
+  base_url: string;
+  requests: number;
+  concurrency: number;
+  target_ms: number;
+  request_timeout_ms: number;
+  method: string;
+  paths: string[];
+  average_ms: number;
+  p50_ms: number;
+  p95_ms: number;
+  max_ms: number;
+  error_count: number;
+  timeout_count: number;
+  target_met: boolean;
+};
+
 const DEFAULT_REQUESTS = 40;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TARGET_MS = 500;
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const MAX_REQUESTS = 10_000;
 const MAX_CONCURRENCY = 100;
 const MAX_TARGET_MS = 300_000;
+const MAX_REQUEST_TIMEOUT_MS = 120_000;
 
 function normalizePositiveInteger(value: unknown, fallback: number, max: number) {
   const parsed = Number(value);
@@ -41,6 +61,11 @@ export function parseArgs(
       MAX_CONCURRENCY,
     ),
     targetMs: normalizePositiveInteger(env.PERF_TARGET_MS, DEFAULT_TARGET_MS, MAX_TARGET_MS),
+    requestTimeoutMs: normalizePositiveInteger(
+      env.PERF_REQUEST_TIMEOUT_MS,
+      DEFAULT_REQUEST_TIMEOUT_MS,
+      MAX_REQUEST_TIMEOUT_MS,
+    ),
     method: env.PERF_METHOD ?? 'GET',
     paths: ['/api/health'],
     headers: {},
@@ -59,6 +84,13 @@ export function parseArgs(
     }
     if (value === '--target-ms' && next) {
       args.targetMs = normalizePositiveInteger(next, DEFAULT_TARGET_MS, MAX_TARGET_MS);
+    }
+    if (value === '--request-timeout-ms' && next) {
+      args.requestTimeoutMs = normalizePositiveInteger(
+        next,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        MAX_REQUEST_TIMEOUT_MS,
+      );
     }
     if (value === '--method' && next) args.method = next.toUpperCase();
     if (value === '--path' && next) {
@@ -89,10 +121,38 @@ function percentile(values: number[], ratio: number) {
   return sorted[index] ?? 0;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function createRequestAbort(timeoutMs: number): {
+  signal: AbortSignal;
+  didTimeout: () => boolean;
+  clear: () => void;
+} {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error('PERF_SMOKE_REQUEST_TIMEOUT'));
+  }, timeoutMs);
+  maybeUnrefTimeout(timeout);
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
+export async function runPerfSmoke(
+  args: Args,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PerfSmokeResult> {
   const durations: number[] = [];
   let errorCount = 0;
+  let timeoutCount = 0;
   let cursor = 0;
 
   const jobs = Array.from({ length: Math.max(1, args.concurrency) }, async () => {
@@ -104,11 +164,13 @@ async function main() {
       const path = args.paths[current % args.paths.length]!;
       const target = new URL(path, args.baseUrl).toString();
       const startedAt = performance.now();
+      const requestAbort = createRequestAbort(args.requestTimeoutMs);
 
       try {
-        const response = await fetch(target, {
+        const response = await fetchImpl(target, {
           method: args.method,
           headers: args.headers,
+          signal: requestAbort.signal,
         });
         durations.push(Math.round(performance.now() - startedAt));
         if (!response.ok) {
@@ -117,6 +179,9 @@ async function main() {
       } catch {
         durations.push(Math.round(performance.now() - startedAt));
         errorCount += 1;
+        if (requestAbort.didTimeout()) timeoutCount += 1;
+      } finally {
+        requestAbort.clear();
       }
     }
   });
@@ -131,28 +196,30 @@ async function main() {
       ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
       : 0;
 
-  console.log(
-    JSON.stringify(
-      {
-        base_url: args.baseUrl,
-        requests: args.requests,
-        concurrency: args.concurrency,
-        target_ms: args.targetMs,
-        method: args.method,
-        paths: args.paths,
-        average_ms: average,
-        p50_ms: p50,
-        p95_ms: p95,
-        max_ms: max,
-        error_count: errorCount,
-        target_met: p95 <= args.targetMs && errorCount === 0,
-      },
-      null,
-      2,
-    ),
-  );
+  return {
+    base_url: args.baseUrl,
+    requests: args.requests,
+    concurrency: args.concurrency,
+    target_ms: args.targetMs,
+    request_timeout_ms: args.requestTimeoutMs,
+    method: args.method,
+    paths: args.paths,
+    average_ms: average,
+    p50_ms: p50,
+    p95_ms: p95,
+    max_ms: max,
+    error_count: errorCount,
+    timeout_count: timeoutCount,
+    target_met: p95 <= args.targetMs && errorCount === 0,
+  };
+}
 
-  if (p95 > args.targetMs || errorCount > 0) {
+async function main() {
+  const result = await runPerfSmoke(parseArgs(process.argv.slice(2)));
+
+  console.log(JSON.stringify(result, null, 2));
+
+  if (!result.target_met) {
     process.exitCode = 1;
   }
 }
