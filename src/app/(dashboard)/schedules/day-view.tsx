@@ -300,7 +300,7 @@ type ScheduleDayViewProps = {
 
 export function ScheduleDayView({
   initialSelectedDate,
-  initialTab = 'proposals',
+  initialTab = 'confirmed',
   highlightedScheduleId,
 }: ScheduleDayViewProps = {}) {
   const router = useRouter();
@@ -2025,7 +2025,7 @@ export function ScheduleDayView({
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="confirmed">
-              確定予定
+              当日確定予定
               <Badge variant="outline" className="ml-1.5">
                 {selectedDateSchedules.length}
               </Badge>

@@ -474,7 +474,9 @@ describe('ScheduleDayView', () => {
       };
     });
 
-    await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
 
     expect(screen.getByText('提案から確定まで')).toBeTruthy();
     expect(screen.getAllByText('患者電話確認').length).toBeGreaterThan(0);
@@ -539,7 +541,9 @@ describe('ScheduleDayView', () => {
       };
     });
 
-    await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -619,6 +623,23 @@ describe('ScheduleDayView', () => {
     expect(selectedDayButton.getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByRole('link', { name: /担当薬剤師の割当/ })).toBeNull();
     expect(screen.getByText('対象ケースを選択すると患者ケースへ移動できます')).toBeTruthy();
+  });
+
+  it('opens the confirmed schedule tab by default for daily operations', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      connected: true,
+    });
+
+    await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    const confirmedTab = screen.getByRole('tab', { name: /当日確定予定/ });
+    const proposalsTab = screen.getByRole('tab', { name: /候補一覧/ });
+    expect(confirmedTab.getAttribute('aria-selected')).toBe('true');
+    expect(proposalsTab.getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('status').textContent).toContain('4月9日(木) の確定予定はありません');
   });
 
   it('exposes the mobile visit surface selection state', async () => {

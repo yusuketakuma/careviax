@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-012151
+
+- current task: prioritize the daily confirmed schedule tab as the default schedule board view.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/components/ui/tabs.tsx`, and read-only code-mapper, accessibility/UX, and verifier findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: `/schedules` without `tab` opened the candidate proposal tab first even though the page header and PH-OS UI/UX SSOT prioritize today's confirmed visits, preparation, and immediate operational checks before candidate management.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, or persistence behavior changed. The change reduces wrong-priority operator flow by surfacing confirmed daily visits first while preserving explicit `initialTab="proposals"` behavior for proposal workflows.
+- performance issues found: no network, DB, render-loop, or unbounded computation path changed. The change only adjusts the initial tab value and visible tab label.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`; read-only verifier focused run.
+- validation results: focused day-view suite passed with 1 file / 22 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed. Verifier found no blocker in the scoped diff and independently reran the focused suite successfully.
+- remaining work: page-level grouping remains for the right-column tab area, mobile visit list still needs PageSection-style boundary/order alignment, confirmed cards still have primary actions low in the card, and proposal loading/empty states still need status semantics.
+- next action: commit this default-tab slice, then continue with the next small UI/UX slice, likely PageSection grouping around the day board or proposal empty/loading status roles.
+
 ### 20260611-011503
 
 - current task: harden the visit-preparation dialog readiness flow before the broader UI/UX overhaul.
