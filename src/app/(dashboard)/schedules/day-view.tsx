@@ -345,7 +345,8 @@ export function ScheduleDayView({
     useState<ScheduleDayVisitBriefCacheStatus>('ready');
   const [mobileVisitSurface, setMobileVisitSurface] = useState<'list' | 'map'>('list');
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
-  const [routeTravelMode, setRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
+  const [routePreviewTravelMode, setRoutePreviewTravelMode] = useState<RouteTravelMode>('DRIVE');
+  const [plannerRouteTravelMode, setPlannerRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
   const preparationRequestSeqRef = useRef(0);
   const preparationFormDirtyRef = useRef(false);
   const isOffline = useOfflineStore((state) => state.isOffline);
@@ -840,7 +841,7 @@ export function ScheduleDayView({
       orgId,
       selectedDate,
       resolvedRoutePharmacistId,
-      routeTravelMode,
+      routePreviewTravelMode,
       currentOrderedRouteScheduleIds.join(','),
     ],
     queryFn: async () => {
@@ -852,7 +853,7 @@ export function ScheduleDayView({
         },
         body: JSON.stringify({
           schedule_ids: currentOrderedRouteScheduleIds,
-          travel_mode: routeTravelMode,
+          travel_mode: routePreviewTravelMode,
         }),
       });
       if (!res.ok) {
@@ -870,7 +871,7 @@ export function ScheduleDayView({
     [routePlanData],
   );
   const routeOrderDraft = useRouteOrderDraft({
-    sourceKey: `${selectedDate}:${resolvedRoutePharmacistId}:${routeTravelMode}:${routePlanData?.orderedScheduleIds.join(',') ?? ''}:${currentOrderedRouteScheduleIds.join(',')}`,
+    sourceKey: `${selectedDate}:${resolvedRoutePharmacistId}:${routePreviewTravelMode}:${routePlanData?.orderedScheduleIds.join(',') ?? ''}:${currentOrderedRouteScheduleIds.join(',')}`,
     optimizedIds: routePlanData?.orderedScheduleIds ?? currentOrderedRouteScheduleIds,
     currentIds: currentOrderedRouteScheduleIds,
   });
@@ -1174,7 +1175,7 @@ export function ScheduleDayView({
         orgId,
         resolvedCaseId: resolvedPlannerCaseId,
         plannerForm,
-        routeTravelMode,
+        routeTravelMode: plannerRouteTravelMode,
         effectiveCandidateCount: effectivePlannerCandidateCount,
       });
     },
@@ -1565,8 +1566,8 @@ export function ScheduleDayView({
             controlId="day-mobile-route"
             routePharmacistControlId="mobile-route-pharmacist"
             routeSelectionLabel={routeSelectionLabel}
-            routeTravelMode={routeTravelMode}
-            onRouteTravelModeChange={setRouteTravelMode}
+            routeTravelMode={routePreviewTravelMode}
+            onRouteTravelModeChange={setRoutePreviewTravelMode}
             routePlan={routePlanData}
             routeMapPoints={routeMapPoints}
             routeMapSite={routeMapSite}
@@ -1653,7 +1654,7 @@ export function ScheduleDayView({
                 onValueChange={(value) => {
                   setPlannerCandidateCountManual(false);
                   setPlannerForm((current) => applyScheduleDayPlannerCaseSelection(current, value));
-                  setRouteTravelMode('DRIVE');
+                  setPlannerRouteTravelMode('DRIVE');
                 }}
               >
                 <SelectTrigger id="planner-case" className="w-full">
@@ -1890,7 +1891,7 @@ export function ScheduleDayView({
                         AUTO_VEHICLE_RESOURCE_VALUE,
                       ),
                     );
-                    setRouteTravelMode((currentRouteTravelMode) =>
+                    setPlannerRouteTravelMode((currentRouteTravelMode) =>
                       resolveScheduleDayPlannerVehicleRouteTravelMode({
                         selectedValue: value,
                         autoValue: AUTO_VEHICLE_RESOURCE_VALUE,
@@ -2632,8 +2633,8 @@ export function ScheduleDayView({
                   routePharmacistControlId="desktop-route-pharmacist"
                   className="hidden md:block"
                   routeSelectionLabel={routeSelectionLabel}
-                  routeTravelMode={routeTravelMode}
-                  onRouteTravelModeChange={setRouteTravelMode}
+                  routeTravelMode={routePreviewTravelMode}
+                  onRouteTravelModeChange={setRoutePreviewTravelMode}
                   routePlan={routePlanData}
                   routeMapPoints={routeMapPoints}
                   routeMapSite={routeMapSite}

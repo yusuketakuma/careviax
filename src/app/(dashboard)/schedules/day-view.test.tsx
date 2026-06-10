@@ -13,6 +13,7 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const visitCardMobilePropsMock = vi.hoisted(() => vi.fn());
+const scheduleDayRoutePreviewPropsMock = vi.hoisted(() => vi.fn());
 const offlineStoreState = vi.hoisted(() => ({
   isOffline: false,
   pendingSyncCount: 0,
@@ -129,6 +130,24 @@ vi.mock('./schedule-day-view.chrome', () => ({
     </ul>
   ),
   ScheduleBoardSkeleton: () => <div data-testid="schedule-board-skeleton" />,
+}));
+
+vi.mock('./schedule-day-route-preview', () => ({
+  ScheduleDayRoutePreview: (props: {
+    controlId: string;
+    routeTravelMode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+    onRouteTravelModeChange: (value: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER') => void;
+  }) => {
+    scheduleDayRoutePreviewPropsMock(props);
+    return (
+      <div data-testid={`route-preview-${props.controlId}`}>
+        <span>{props.routeTravelMode}</span>
+        <button type="button" onClick={() => props.onRouteTravelModeChange('WALK')}>
+          {props.controlId} 徒歩に変更
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('@/lib/stores/offline-db', () => ({
@@ -663,6 +682,68 @@ describe('ScheduleDayView', () => {
       case_id: 'case_1',
       start_date: '2026-04-12',
       candidate_count: 3,
+    });
+  });
+
+  it('keeps route-preview travel mode changes out of planner proposal generation', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    setupPlannerDataQueries();
+    executeMutations();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'day-desktop-route 徒歩に変更' }));
+    });
+
+    expect(
+      scheduleDayRoutePreviewPropsMock.mock.calls.some(([props]) => {
+        return (
+          (props as { controlId: string; routeTravelMode: string }).controlId ===
+            'day-desktop-route' &&
+          (props as { controlId: string; routeTravelMode: string }).routeTravelMode === 'WALK'
+        );
+      }),
+    ).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '訪問候補を生成' }));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    });
+    const proposalRequest = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/visit-schedule-proposals',
+    );
+    expect(proposalRequest).toBeDefined();
+    expect(JSON.parse(proposalRequest?.[1]?.body as string)).toMatchObject({
+      case_id: 'case_1',
+      travel_mode: 'DRIVE',
     });
   });
 
