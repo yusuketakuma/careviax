@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { QueryResultRow } from 'pg';
 import { UserRole } from '@/phos/contracts/phos_contracts';
-import { AuroraFeeRulesRepository, type AuroraFeeRulesClient } from './aurora-fee-rules-repository';
+import {
+  AuroraFeeRulesRepository,
+  DEFAULT_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+  DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS,
+  DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+  MAX_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+  MAX_PHOS_AURORA_IDLE_TIMEOUT_MS,
+  MAX_PHOS_AURORA_QUERY_TIMEOUT_MS,
+  phosAuroraPoolConfig,
+  type AuroraFeeRulesClient,
+} from './aurora-fee-rules-repository';
 import type { TenantContext } from './tenant-context';
 
 const ctx: TenantContext = {
@@ -29,6 +39,49 @@ function client(rows: QueryResultRow[] = []) {
 }
 
 describe('AuroraFeeRulesRepository', () => {
+  it('builds bounded pg pool config for the default Aurora repository', () => {
+    expect(phosAuroraPoolConfig('postgres://phos')).toEqual({
+      connectionString: 'postgres://phos',
+      max: 2,
+      connectionTimeoutMillis: DEFAULT_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+      idleTimeoutMillis: DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS,
+      query_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      statement_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      allowExitOnIdle: true,
+    });
+  });
+
+  it('normalizes Aurora timeout overrides without allowing unbounded values', () => {
+    expect(
+      phosAuroraPoolConfig('postgres://phos', {
+        PHOS_AURORA_CONNECTION_TIMEOUT_MS: String(MAX_PHOS_AURORA_CONNECTION_TIMEOUT_MS + 1),
+        PHOS_AURORA_QUERY_TIMEOUT_MS: String(MAX_PHOS_AURORA_QUERY_TIMEOUT_MS + 1),
+        PHOS_AURORA_IDLE_TIMEOUT_MS: String(MAX_PHOS_AURORA_IDLE_TIMEOUT_MS + 1),
+      }),
+    ).toMatchObject({
+      connectionTimeoutMillis: MAX_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+      idleTimeoutMillis: MAX_PHOS_AURORA_IDLE_TIMEOUT_MS,
+      query_timeout: MAX_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      statement_timeout: MAX_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: MAX_PHOS_AURORA_QUERY_TIMEOUT_MS,
+    });
+
+    expect(
+      phosAuroraPoolConfig('postgres://phos', {
+        PHOS_AURORA_CONNECTION_TIMEOUT_MS: '0',
+        PHOS_AURORA_QUERY_TIMEOUT_MS: 'not-a-number',
+        PHOS_AURORA_IDLE_TIMEOUT_MS: '-1',
+      }),
+    ).toMatchObject({
+      connectionTimeoutMillis: DEFAULT_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+      idleTimeoutMillis: DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS,
+      query_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      statement_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+    });
+  });
+
   it('sets transaction-local tenant context and keeps tenant WHERE predicates', async () => {
     const { pool, query, release } = client([
       {

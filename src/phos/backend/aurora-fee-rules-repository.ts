@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from 'pg';
+import { Pool, type PoolConfig, type QueryResultRow } from 'pg';
 import {
   SOURCE_REF_KINDS,
   type EvidenceRequirementView,
@@ -8,6 +8,7 @@ import {
   type SourceRef,
 } from '@/phos/contracts/phos_contracts';
 import { assertFeeRuleConditionAllowedFields } from '@/phos/domain/claim/feeRuleDsl';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
 import { validationError } from './input-validation';
 import type { TenantContext } from './tenant-context';
@@ -92,6 +93,47 @@ WHERE (fr.tenant_id = $1 OR (fr.tenant_scope = 'SYSTEM' AND fr.tenant_id = 'SYST
 `;
 
 const SOURCE_REF_KIND_SET = new Set<SourceRef['kind']>(SOURCE_REF_KINDS);
+export const DEFAULT_PHOS_AURORA_CONNECTION_TIMEOUT_MS = 5_000;
+export const MAX_PHOS_AURORA_CONNECTION_TIMEOUT_MS = 30_000;
+export const DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS = 15_000;
+export const MAX_PHOS_AURORA_QUERY_TIMEOUT_MS = 60_000;
+export const DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS = 10_000;
+export const MAX_PHOS_AURORA_IDLE_TIMEOUT_MS = 60_000;
+const PHOS_AURORA_POOL_MAX_CONNECTIONS = 2;
+
+type AuroraPoolEnv = Partial<
+  Record<
+    | 'PHOS_AURORA_CONNECTION_TIMEOUT_MS'
+    | 'PHOS_AURORA_QUERY_TIMEOUT_MS'
+    | 'PHOS_AURORA_IDLE_TIMEOUT_MS',
+    string | undefined
+  >
+>;
+
+export function phosAuroraPoolConfig(databaseUrl: string, env?: AuroraPoolEnv): PoolConfig {
+  const source = env ?? process.env;
+  const queryTimeoutMs = normalizePositiveTimeoutMs(source.PHOS_AURORA_QUERY_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_PHOS_AURORA_QUERY_TIMEOUT_MS,
+    maxMs: MAX_PHOS_AURORA_QUERY_TIMEOUT_MS,
+  });
+
+  return {
+    connectionString: databaseUrl,
+    max: PHOS_AURORA_POOL_MAX_CONNECTIONS,
+    connectionTimeoutMillis: normalizePositiveTimeoutMs(source.PHOS_AURORA_CONNECTION_TIMEOUT_MS, {
+      fallbackMs: DEFAULT_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+      maxMs: MAX_PHOS_AURORA_CONNECTION_TIMEOUT_MS,
+    }),
+    idleTimeoutMillis: normalizePositiveTimeoutMs(source.PHOS_AURORA_IDLE_TIMEOUT_MS, {
+      fallbackMs: DEFAULT_PHOS_AURORA_IDLE_TIMEOUT_MS,
+      maxMs: MAX_PHOS_AURORA_IDLE_TIMEOUT_MS,
+    }),
+    query_timeout: queryTimeoutMs,
+    statement_timeout: queryTimeoutMs,
+    idle_in_transaction_session_timeout: queryTimeoutMs,
+    allowExitOnIdle: true,
+  };
+}
 
 function assertSafeTenantId(tenant_id: string): void {
   if (!/^[A-Za-z0-9_-]+$/.test(tenant_id)) {
@@ -338,14 +380,10 @@ export function createAuroraFeeRulesRepository(input: {
   pool?: AuroraFeeRulesClient;
   now?: () => Date;
 }): PhosFeeRulesRepository {
-  if (!input.pool && !input.databaseUrl) {
+  if (input.pool) return new AuroraFeeRulesRepository(input.pool, input.now);
+  if (!input.databaseUrl) {
     throw new Error('PH-OS FeeRule Aurora database URL is not configured');
   }
-  const pool =
-    input.pool ??
-    new Pool({
-      connectionString: input.databaseUrl,
-      max: 2,
-    });
+  const pool = new Pool(phosAuroraPoolConfig(input.databaseUrl));
   return new AuroraFeeRulesRepository(pool, input.now);
 }
