@@ -701,9 +701,18 @@ describe('ScheduleDayView', () => {
 
     await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
 
-    expect(screen.getByRole('group', { name: '本日の訪問表示' })).toBeTruthy();
-    const listButton = screen.getByRole('button', { name: 'リスト' });
-    const mapButton = screen.getByRole('button', { name: '地図' });
+    const mobileVisitRegion = screen.getByRole('region', { name: '本日の訪問リスト' });
+    expect(
+      within(mobileVisitRegion).getByRole('heading', { name: '本日の訪問リスト' }),
+    ).toBeTruthy();
+    expect(
+      within(mobileVisitRegion).getByText(
+        '右スワイプで開始、訪問中は左スワイプで記録画面へ進みます',
+      ),
+    ).toBeTruthy();
+    const surfaceGroup = within(mobileVisitRegion).getByRole('group', { name: '本日の訪問表示' });
+    const listButton = within(surfaceGroup).getByRole('button', { name: 'リスト' });
+    const mapButton = within(surfaceGroup).getByRole('button', { name: '地図' });
     expect(listButton.getAttribute('aria-pressed')).toBe('true');
     expect(mapButton.getAttribute('aria-pressed')).toBe('false');
 

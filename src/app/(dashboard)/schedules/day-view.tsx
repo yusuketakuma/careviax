@@ -1517,16 +1517,13 @@ export function ScheduleDayView({
         onSelectDate={setSelectedDate}
       />
 
-      <section className="space-y-3 md:hidden" aria-labelledby="mobile-visit-list-heading">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 id="mobile-visit-list-heading" className="text-base font-semibold text-foreground">
-              本日の訪問リスト
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              右スワイプで開始、訪問中は左スワイプで記録画面へ進みます
-            </p>
-          </div>
+      <PageSection
+        className="md:hidden"
+        headingId="mobile-visit-list-heading"
+        title="本日の訪問リスト"
+        description="右スワイプで開始、訪問中は左スワイプで記録画面へ進みます"
+        contentClassName="space-y-3"
+        actions={
           <div className="flex items-center gap-2">
             <Badge variant="outline">{mobileVisitSchedules.length}件</Badge>
             <div
@@ -1562,8 +1559,8 @@ export function ScheduleDayView({
               </button>
             </div>
           </div>
-        </div>
-
+        }
+      >
         {mobileVisitSchedules.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -1625,7 +1622,7 @@ export function ScheduleDayView({
             })}
           </>
         )}
-      </section>
+      </PageSection>
 
       <ScheduleDayOfflinePanel
         offlineStatus={offlineStatus}

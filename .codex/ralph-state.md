@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-013303
+
+- current task: group the mobile daily visit list with the shared PageSection pattern.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/components/layout/page-section.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and read-only accessibility/UX plus frontend reviewer findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the mobile-only `本日の訪問リスト` area was still a bare section while the schedule board now uses shared PageSection grouping. That left the mobile visit work area less consistent with the PH-OS section boundary, heading, and content-order rules.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, storage, PHI response shape, or logging behavior changed. The change only adjusts mobile grouping semantics and already-visible controls.
+- performance issues found: no network, DB, render-loop, or unbounded computation path changed. Existing arrays and controls are reused, and the PageSection wrapper adds no new data work.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`; read-only accessibility/UX and frontend reviewer sidecar checks.
+- validation results: focused day-view suite passed with 1 file / 23 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed. Sidecar reviewers found no blocker when `headingId`, `contentClassName="space-y-3"`, segmented-control labels, aria-pressed states, and 44px touch targets are preserved.
+- remaining work: confirmed schedule cards still have primary actions low in the card, map view may need visual browser proof for nested panel weight, and broader ScheduleDayView visual hierarchy polish remains.
+- next action: commit this mobile visit list grouping slice, then continue with confirmed-card primary action placement or browser-backed visual proof.
+
 ### 20260611-012721
 
 - current task: announce proposal tab loading and empty states in the daily schedule board.
