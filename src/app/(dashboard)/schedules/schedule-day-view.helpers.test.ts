@@ -122,6 +122,7 @@ describe('schedule-day-view.helpers', () => {
       ttlLabel: '読取専用 TTL 24h',
       lastSyncLabel: '未実施',
       canManualSync: false,
+      manualSyncDisabledReason: '同期待ちの下書きはありません',
       showConflictResolutionHint: false,
     });
   });
@@ -144,6 +145,7 @@ describe('schedule-day-view.helpers', () => {
     expect(status.ttlLabel).toBe('読取専用 TTL 12h');
     expect(status.lastSyncLabel).toBe('4/9 08:15');
     expect(status.canManualSync).toBe(true);
+    expect(status.manualSyncDisabledReason).toBeNull();
     expect(status.showConflictResolutionHint).toBe(true);
   });
 
@@ -160,6 +162,7 @@ describe('schedule-day-view.helpers', () => {
     expect(status.visible).toBe(true);
     expect(status.networkBadgeLabel).toBe('オンライン');
     expect(status.canManualSync).toBe(false);
+    expect(status.manualSyncDisabledReason).toBe('競合を解決してから同期してください');
     expect(status.showConflictResolutionHint).toBe(true);
   });
 

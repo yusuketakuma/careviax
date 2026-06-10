@@ -206,6 +206,7 @@ export type ScheduleDayOfflineStatusViewModel = {
   ttlLabel: string;
   lastSyncLabel: string;
   canManualSync: boolean;
+  manualSyncDisabledReason: string | null;
   showConflictResolutionHint: boolean;
 };
 
@@ -262,6 +263,12 @@ export function buildScheduleDayOfflineStatus({
       ? format(parseISO(cachedVisitBriefUpdatedAt), 'M/d HH:mm', { locale: ja })
       : '未実施',
     canManualSync: pendingSyncCount > 0,
+    manualSyncDisabledReason:
+      pendingSyncCount > 0
+        ? null
+        : syncConflictCount > 0
+          ? '競合を解決してから同期してください'
+          : '同期待ちの下書きはありません',
     showConflictResolutionHint: syncConflictCount > 0,
   };
 }

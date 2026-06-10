@@ -7,8 +7,8 @@ Initialized: 20260424-143155
 - model: gpt-5.5
 - approval_policy: never
 - sandbox_mode: danger-full-access
-- web_search: live
-- service_tier: flex
+- web_search: cached
+- service_tier: fast
 
 ## Last configuration reset
 
@@ -19,6 +19,19 @@ Backup directory:
 ```
 
 ## Iterations
+
+### 20260611-000231
+
+- current task: extract the ScheduleDayView offline/mobile sync and cached-brief panel into a tested component before the broad UI/UX overhaul.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, local Next.js `use client` directive docs under `node_modules/next/dist/docs/`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.helpers.ts`, `src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts`, `src/components/ui/button.tsx`, `src/lib/utils.ts`, `src/lib/visits/visit-brief-cache.ts`, and read-only subagent findings from medical safety and accessibility/UX review.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx`, `src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.helpers.ts`, `src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: the previous inline conflict resolution buttons could execute overwrite/discard immediately and used a non-null assertion on `item.id`, so a malformed conflict could either mutate the wrong assumption path or appear actionable without an ID. The new panel requires explicit confirmation for overwrite/discard, disables both conflict actions when an ID is missing, and shows a reload message.
+- security risks found: no auth, authorization, org scoping, API endpoint, encryption, or offline storage persistence behavior changed. The slice reduces accidental PHI/data-loss risk by keeping cached briefs read-only and requiring confirmation before conflict overwrite/discard.
+- performance issues found: no new network calls, DB queries, polling, or unbounded loops were introduced. `day-view.tsx` is smaller, while the panel remains prop-driven and only renders when the offline status view model is visible.
+- validation commands: targeted Prettier for changed schedule files; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx' 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts' --reporter=dot`; `pnpm format:check`; `pnpm lint`; `pnpm typecheck`.
+- validation results: focused schedule suite passed with 3 files / 36 tests. Changed-file format check passed. Full ESLint passed. Full typecheck passed after Next route type generation.
+- remaining work: the broad UI/UX overhaul still needs larger page-level restructuring against `docs/ui-ux-design-guidelines.md`. Remaining ScheduleDayView-heavy areas include operations task handling, Gantt/table presentation polish, preparation detail panel polish, and offline/mobile runtime flows beyond this extracted panel.
+- next action: continue with the next high-leverage UI/UX slice, likely operations task action extraction or Gantt/table presentation cleanup, using read-only subagents before edits.
 
 ### 20260610-231820
 

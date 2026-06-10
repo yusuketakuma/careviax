@@ -6,14 +6,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Building2, Car, CheckCircle2, CloudOff, PlayCircle, Navigation } from 'lucide-react';
+import { Building2, Car, CheckCircle2, PlayCircle, Navigation } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HomeCareFeatureHighlights } from '@/components/home-care/home-care-feature-board';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -69,6 +69,7 @@ import {
   generateScheduleDayRescheduleProposals,
   handleScheduleDayRescheduleSuccess,
 } from './schedule-day-reschedule';
+import { ScheduleDayOfflinePanel } from './schedule-day-offline-panel';
 import { ScheduleDayRoutePreview } from './schedule-day-route-preview';
 import {
   applyScheduleDayRouteOrderDraft,
@@ -1417,165 +1418,17 @@ export function ScheduleDayView({
         )}
       </section>
 
-      {offlineStatus.visible && (
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CloudOff className="size-4 text-amber-600" aria-hidden="true" />
-                モバイル訪問モード
-              </CardTitle>
-              <CardDescription>
-                オフライン時は read-only キャッシュだけを使い、朝の事前同期状況もここで確認します
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Badge variant="outline" className={offlineStatus.networkBadgeClassName}>
-                  {offlineStatus.networkBadgeLabel}
-                </Badge>
-                <Badge variant="outline">{offlineStatus.pendingSyncLabel}</Badge>
-                <Badge variant="outline">{offlineStatus.conflictLabel}</Badge>
-                <Badge variant="outline">{offlineStatus.ttlLabel}</Badge>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground">朝の事前同期</p>
-                <p className="mt-1">
-                  当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 /
-                  持参チェック対象を read-only で参照できます。
-                </p>
-                <p className="mt-1">最終同期: {offlineStatus.lastSyncLabel}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => manualSyncMutation.mutate()}
-                  disabled={manualSyncMutation.isPending || !offlineStatus.canManualSync}
-                >
-                  {manualSyncMutation.isPending ? '同期中...' : '今すぐ同期'}
-                </Button>
-                {offlineStatus.showConflictResolutionHint && (
-                  <span className="text-xs text-amber-700">409 競合は下のカードで解決します</span>
-                )}
-              </div>
-              {syncConflicts.length > 0 ? (
-                <div className="space-y-3">
-                  {syncConflicts.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">訪問記録の競合</p>
-                          <p className="mt-1 text-xs text-amber-800/90">
-                            schedule {item.scope_id ?? '不明'} / {item.lastError ?? '競合あり'}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => overwriteConflictMutation.mutate(item.id!)}
-                            disabled={overwriteConflictMutation.isPending}
-                          >
-                            上書き
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => discardConflictMutation.mutate(item.id!)}
-                            disabled={discardConflictMutation.isPending}
-                          >
-                            破棄
-                          </Button>
-                          {item.scope_id && (
-                            <Link
-                              href={`/visits/${item.scope_id}/record`}
-                              className="inline-flex h-8 items-center rounded-lg border border-amber-300 px-3 text-sm hover:bg-white/60"
-                            >
-                              再編集
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
-                          <p className="text-xs font-medium text-amber-900">ローカル下書き</p>
-                          <p className="mt-1 text-xs text-amber-800/90">
-                            結果 {String(item.conflict?.local.outcome_status ?? '未設定')}
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-amber-800/90">
-                            {String(item.conflict?.local.soap_plan ?? 'P未入力')}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
-                          <p className="text-xs font-medium text-amber-900">サーバー版</p>
-                          <p className="mt-1 text-xs text-amber-800/90">
-                            結果 {item.conflict?.server?.outcome_status ?? '未設定'}
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-amber-800/90">
-                            {item.conflict?.server?.soap_plan ?? 'P未入力'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">競合している下書きはありません。</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">軽量訪問ブリーフ</CardTitle>
-              <CardDescription>
-                重要情報だけを端末へ AES-GCM で暗号化して保存し、オフライン時は read-only
-                で表示します
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {cachedVisitBriefs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  この日の軽量 brief キャッシュはまだありません。
-                </p>
-              ) : (
-                cachedVisitBriefs.map((item) => (
-                  <div key={item.scheduleId} className="rounded-xl border border-border px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{item.patientName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {timeLabel(item.timeWindowStart, item.timeWindowEnd)}
-                          {item.siteName ? ` / ${item.siteName}` : ''}
-                          {item.facilityLabel ? ` / ${item.facilityLabel}` : ''}
-                        </p>
-                      </div>
-                      <Badge variant={item.provider === 'openai' ? 'default' : 'outline'}>
-                        {item.provider === 'openai' && !item.isFallback ? 'AI' : 'rule'}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{item.headline}</p>
-                    {item.mustCheckToday.length > 0 && (
-                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                        {item.mustCheckToday.slice(0, 3).map((check) => (
-                          <li key={check}>- {check}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      生成 {format(parseISO(item.generatedAt), 'M/d HH:mm', { locale: ja })} / 根拠{' '}
-                      {item.sourceRefs.join(' / ')}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <ScheduleDayOfflinePanel
+        offlineStatus={offlineStatus}
+        manualSyncPending={manualSyncMutation.isPending}
+        onManualSync={() => manualSyncMutation.mutate()}
+        syncConflicts={syncConflicts}
+        overwriteConflictPending={overwriteConflictMutation.isPending}
+        discardConflictPending={discardConflictMutation.isPending}
+        onOverwriteConflict={(itemId) => overwriteConflictMutation.mutate(itemId)}
+        onDiscardConflict={(itemId) => discardConflictMutation.mutate(itemId)}
+        cachedVisitBriefs={cachedVisitBriefs}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
