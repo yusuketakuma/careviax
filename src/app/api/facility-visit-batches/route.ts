@@ -69,6 +69,13 @@ function compareUnitName(
   return leftUnit.localeCompare(rightUnit, 'ja', { numeric: true, sensitivity: 'base' });
 }
 
+function formatCarryItemsStatusForError(status: string | null) {
+  if (status === 'blocked') return '持参薬が未確定です';
+  if (status === 'partial') return '持参物の一部が未確定です';
+  if (status === 'ready') return '持参準備済み';
+  return '持参物ステータス未判定';
+}
+
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -131,6 +138,7 @@ export const POST = withAuth(
             scheduled_date: true,
             facility_batch_id: true,
             case_id: true,
+            carry_items_status: true,
             preparation: {
               select: {
                 id: true,
@@ -262,6 +270,24 @@ export const POST = withAuth(
         .map((scheduleId) => scheduleById.get(scheduleId))
         .filter((schedule): schedule is NonNullable<typeof schedule> => schedule != null);
 
+      if (parsed.data.carry_items_confirmed) {
+        const unsafeCarrySchedules = orderedSchedules.filter(
+          (schedule) => schedule.carry_items_status !== 'ready',
+        );
+        if (unsafeCarrySchedules.length > 0) {
+          return {
+            error: 'unsafe_carry_items' as const,
+            unsafeCarryItems: unsafeCarrySchedules.map((schedule) => ({
+              schedule_id: schedule.id,
+              patient_name: schedule.case_.patient.name,
+              unit_name: schedule.case_.patient.residences[0]?.unit_name ?? null,
+              carry_items_status: schedule.carry_items_status,
+              reason: formatCarryItemsStatusForError(schedule.carry_items_status),
+            })),
+          };
+        }
+      }
+
       const batch =
         existingBatchIds.length === 1
           ? await tx.facilityVisitBatch.update({
@@ -377,6 +403,11 @@ export const POST = withAuth(
       }
       if (result.error === 'mixed_facility_unit') {
         return validationError('同一ユニットの訪問予定のみを一括化できます');
+      }
+      if (result.error === 'unsafe_carry_items') {
+        return validationError('未解決の持参物があるため、施設一括の持参確認はできません', {
+          unsafe_carry_items: result.unsafeCarryItems,
+        });
       }
       if (result.error === 'not_enough_schedules') {
         return validationError('施設一括訪問を作成するには2件以上の訪問予定が必要です');

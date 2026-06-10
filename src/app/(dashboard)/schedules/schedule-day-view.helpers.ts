@@ -42,6 +42,8 @@ export type FacilityTrackerGroup = {
     patientName: string;
     unitName: string | null;
     routeOrder: number | null;
+    carryItemsStatus: VisitSchedule['carry_items_status'];
+    carryItemsConfirmed: boolean;
   }>;
   preparedCount: number;
   carryPendingCount: number;
@@ -75,7 +77,7 @@ export type ScheduleLockState = {
 };
 
 export type FacilityTrackerSchedule = FacilityTrackableSchedule &
-  Pick<VisitSchedule, 'id' | 'route_order' | 'schedule_status'> & {
+  Pick<VisitSchedule, 'id' | 'route_order' | 'schedule_status' | 'carry_items_status'> & {
     case_: FacilityTrackableSchedule['case_'] & {
       patient: FacilityTrackableSchedule['case_']['patient'] & {
         name: string;
@@ -492,6 +494,8 @@ export function buildFacilityTracker(schedules: FacilityTrackerSchedule[]): Faci
       patientName: schedule.case_.patient.name,
       unitName: schedule.case_.patient.residences[0]?.unit_name ?? null,
       routeOrder: schedule.route_order,
+      carryItemsStatus: schedule.carry_items_status,
+      carryItemsConfirmed: schedule.preparation?.carry_items_confirmed ?? false,
     });
     if (schedule.preparation?.prepared_at) existing.preparedCount += 1;
     if (!schedule.preparation?.carry_items_confirmed) existing.carryPendingCount += 1;
@@ -506,6 +510,22 @@ export function buildFacilityTracker(schedules: FacilityTrackerSchedule[]): Faci
   return Array.from(groups.values())
     .filter((group) => group.patientNames.length > 1)
     .sort((left, right) => left.label.localeCompare(right.label, 'ja'));
+}
+
+export function formatFacilityCarryItemsStatus(status: VisitSchedule['carry_items_status']) {
+  if (status === 'ready') return '持参準備済み';
+  if (status === 'partial') return '一部不足';
+  if (status === 'blocked') return '不足で出発不可';
+  return '未判定';
+}
+
+export function getUnsafeFacilityCarryPatients(group: FacilityTrackerGroup | null) {
+  if (!group) return [];
+  return group.patients.filter((patient) => patient.carryItemsStatus !== 'ready');
+}
+
+export function canBulkConfirmFacilityCarryItems(group: FacilityTrackerGroup | null) {
+  return group !== null && getUnsafeFacilityCarryPatients(group).length === 0;
 }
 
 export function buildFacilityRouteDefaults(

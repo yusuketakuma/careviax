@@ -182,13 +182,16 @@ import {
   buildScheduleDayViewModel,
   buildScheduleBillingPreviewRequests,
   buildWeekProposalStats,
+  canBulkConfirmFacilityCarryItems,
   buildDirectionsUrl,
   buildMapEmbedUrl,
+  formatFacilityCarryItemsStatus,
   type FacilityTrackerGroup,
   type ScheduleDayVisitBriefCacheStatus,
   canOverrideDepartureCarryWarning,
   getFacilityTrackerGrouping,
   getDepartureCarryWarning,
+  getUnsafeFacilityCarryPatients,
   proposalLockText,
   scheduleLockText,
   splitTrace,
@@ -768,6 +771,10 @@ export function ScheduleDayView({
     if (nextOrdered === orderedScheduleIds) return;
     setFacilityPatientOrder(group.key, nextOrdered);
     announceFacilityPatientPosition(group, scheduleId, nextOrdered);
+  }
+
+  function facilityCarryConfirmBlocked(group: FacilityTrackerGroup | null) {
+    return getUnsafeFacilityCarryPatients(group).length > 0;
   }
 
   const selectedDateSchedulePatientIdByScheduleId = useMemo(
@@ -3192,7 +3199,9 @@ export function ScheduleDayView({
                 : '持参確認を一括反映しますか'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              対象全員の持参薬・施設預かり・不足時対応を確認済みにします。患者違い、部屋違い、未確定の持参物がある場合はキャンセルして個別に確認してください。
+              {facilityCarryConfirmBlocked(facilityCarryConfirmTarget)
+                ? '不足、一部不足、未判定の持参物があるため一括反映できません。対象患者を個別に確認してください。'
+                : '対象全員の持参薬・施設預かり・不足時対応を確認済みにします。患者違い、部屋違い、未確定の持参物がある場合はキャンセルして個別に確認してください。'}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -3226,15 +3235,43 @@ export function ScheduleDayView({
               >
                 {getOrderedFacilityPatients(facilityCarryConfirmTarget).map((patient, index) => (
                   <li key={patient.scheduleId} className="rounded-md bg-muted/30 px-3 py-2 text-sm">
-                    <span className="font-medium">
-                      {index + 1}. {patient.patientName}
-                    </span>
-                    {patient.unitName ? (
-                      <span className="ml-2 text-muted-foreground">{patient.unitName}</span>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">
+                        {index + 1}. {patient.patientName}
+                      </span>
+                      {patient.unitName ? (
+                        <span className="text-muted-foreground">{patient.unitName}</span>
+                      ) : null}
+                      <Badge
+                        variant="outline"
+                        className={
+                          patient.carryItemsStatus === 'ready'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-red-200 bg-red-50 text-red-700'
+                        }
+                      >
+                        {formatFacilityCarryItemsStatus(patient.carryItemsStatus)}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      持参確認: {patient.carryItemsConfirmed ? '確認済み' : '未確認'}
+                    </p>
                   </li>
                 ))}
               </ul>
+              {facilityCarryConfirmBlocked(facilityCarryConfirmTarget) ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  <p className="font-medium">一括反映できない患者が含まれています</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {getUnsafeFacilityCarryPatients(facilityCarryConfirmTarget).map((patient) => (
+                      <li key={patient.scheduleId}>
+                        {patient.patientName} /{' '}
+                        {formatFacilityCarryItemsStatus(patient.carryItemsStatus)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <p className="text-xs leading-5 text-muted-foreground">
                 住所、薬剤名、処方詳細はこの確認画面には表示しません。対象患者と順序だけを確認し、持参物の現物確認が済んでいる場合のみ反映してください。
               </p>
@@ -3248,16 +3285,22 @@ export function ScheduleDayView({
             <AlertDialogAction
               onClick={() => {
                 if (!facilityCarryConfirmTarget) return;
+                if (!canBulkConfirmFacilityCarryItems(facilityCarryConfirmTarget)) return;
                 facilityBatchMutation.mutate({
                   groupKey: facilityCarryConfirmTarget.key,
                   carryItemsConfirmed: true,
                 });
               }}
-              disabled={!facilityCarryConfirmTarget || facilityBatchMutation.isPending}
+              disabled={
+                !canBulkConfirmFacilityCarryItems(facilityCarryConfirmTarget) ||
+                facilityBatchMutation.isPending
+              }
             >
               {facilityBatchMutation.isPending
                 ? '持参確認を反映中...'
-                : `${facilityCarryConfirmTarget?.patientNames.length ?? 0}名の持参確認を反映`}
+                : facilityCarryConfirmBlocked(facilityCarryConfirmTarget)
+                  ? '個別確認が必要'
+                  : `${facilityCarryConfirmTarget?.patientNames.length ?? 0}名の持参確認を反映`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

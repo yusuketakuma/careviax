@@ -2200,6 +2200,108 @@ describe('ScheduleDayView', () => {
     );
   });
 
+  it('blocks facility bulk carry confirmation when a target has unresolved carry status', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: { id: 'batch_1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    executeMutations();
+
+    const schedules = [
+      buildSchedule({
+        id: 'schedule_facility_1',
+        route_order: 1,
+        facility_batch_id: 'batch_1',
+        carry_items_status: 'ready',
+        case_: {
+          patient: {
+            id: 'patient_facility_1',
+            name: '青空一郎',
+            residences: [
+              {
+                address: '東京都千代田区3-3-3',
+                building_id: '青空ホーム',
+                unit_name: '101',
+                lat: 35.11,
+                lng: 139.11,
+              },
+            ],
+          },
+        },
+        facility_hint: {
+          label: '青空ホーム',
+          patient_count: 2,
+          patient_names: ['青空一郎', '青空二郎'],
+        },
+      }),
+      buildSchedule({
+        id: 'schedule_facility_2',
+        route_order: 2,
+        facility_batch_id: 'batch_1',
+        carry_items_status: 'partial',
+        time_window_start: '2026-04-09T09:30:00.000Z',
+        time_window_end: '2026-04-09T10:30:00.000Z',
+        case_: {
+          patient: {
+            id: 'patient_facility_2',
+            name: '青空二郎',
+            residences: [
+              {
+                address: '東京都千代田区3-3-3',
+                building_id: '青空ホーム',
+                unit_name: '102',
+                lat: 35.12,
+                lng: 139.12,
+              },
+            ],
+          },
+        },
+        facility_hint: {
+          label: '青空ホーム',
+          patient_count: 2,
+          patient_names: ['青空一郎', '青空二郎'],
+        },
+      }),
+    ];
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: schedules },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '青空ホーム 2名の持参確認を一括反映' }));
+
+    const dialog = screen.getByRole('alertdialog', {
+      name: '青空ホーム 2名の持参確認を一括反映しますか',
+    });
+    expect(within(dialog).getByText(/不足、一部不足、未判定の持参物があるため/)).toBeTruthy();
+    expect(within(dialog).getByText('一括反映できない患者が含まれています')).toBeTruthy();
+    expect(within(dialog).getAllByText(/青空二郎/).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText('一部不足').length).toBeGreaterThan(0);
+    expect(
+      (within(dialog).getByRole('button', { name: '個別確認が必要' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '個別確認が必要' }));
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/facility-visit-batches',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('renders same-start Gantt visits in one stacked cell', async () => {
     const schedules = [
       buildSchedule({

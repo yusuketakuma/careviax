@@ -184,6 +184,7 @@ describe('/api/facility-visit-batches POST', () => {
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
               case_id: 'case_1',
+              carry_items_status: 'ready',
               preparation: {
                 id: 'prep_1',
                 checklist: { carry_items_confirmed: false },
@@ -216,6 +217,7 @@ describe('/api/facility-visit-batches POST', () => {
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: null,
               case_id: 'case_2',
+              carry_items_status: 'ready',
               preparation: {
                 id: 'prep_2',
                 checklist: {},
@@ -289,6 +291,115 @@ describe('/api/facility-visit-batches POST', () => {
     expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    ['blocked', '持参薬が未確定です'],
+    ['partial', '持参物の一部が未確定です'],
+    [null, '持参物ステータス未判定'],
+  ] as const)(
+    'rejects bulk carry confirmation when a target carry status is %s before side effects',
+    async (carryItemsStatus, reason) => {
+      const batchCreateMock = vi.fn();
+      const scheduleUpdateMock = vi.fn();
+      const preparationUpsertMock = vi.fn();
+
+      withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+        callback({
+          visitSchedule: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: 'schedule_1',
+                site_id: 'site_1',
+                pharmacist_id: 'ph_1',
+                scheduled_date: new Date('2026-03-28T00:00:00Z'),
+                facility_batch_id: null,
+                case_id: 'case_1',
+                carry_items_status: 'ready',
+                preparation: null,
+                case_: {
+                  patient: {
+                    id: 'patient_1',
+                    name: '山田 太郎',
+                    residences: [
+                      {
+                        facility_id: 'facility_a',
+                        building_id: 'facility_a',
+                        address: '東京都港区1-1-1',
+                        unit_name: '201',
+                      },
+                    ],
+                  },
+                },
+              },
+              {
+                id: 'schedule_2',
+                site_id: 'site_1',
+                pharmacist_id: 'ph_1',
+                scheduled_date: new Date('2026-03-28T00:00:00Z'),
+                facility_batch_id: null,
+                case_id: 'case_2',
+                carry_items_status: carryItemsStatus,
+                preparation: null,
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '山田 花子',
+                    residences: [
+                      {
+                        facility_id: 'facility_a',
+                        building_id: 'facility_a',
+                        address: '東京都港区1-1-1',
+                        unit_name: '105',
+                      },
+                    ],
+                  },
+                },
+              },
+            ]),
+            count: visitScheduleCountMock,
+            update: scheduleUpdateMock,
+          },
+          facilityVisitBatch: {
+            create: batchCreateMock,
+            update: vi.fn(),
+          },
+          visitPreparation: {
+            upsert: preparationUpsertMock,
+          },
+        }),
+      );
+
+      const response = await POST(
+        createRequest({
+          schedule_ids: ['schedule_1', 'schedule_2'],
+          ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+          carry_items_confirmed: true,
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '未解決の持参物があるため、施設一括の持参確認はできません',
+        details: {
+          unsafe_carry_items: [
+            {
+              schedule_id: 'schedule_2',
+              patient_name: '山田 花子',
+              unit_name: '105',
+              carry_items_status: carryItemsStatus,
+              reason,
+            },
+          ],
+        },
+      });
+      expect(batchCreateMock).not.toHaveBeenCalled();
+      expect(scheduleUpdateMock).not.toHaveBeenCalled();
+      expect(preparationUpsertMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('groups schedules by local calendar date before creating a facility batch', async () => {
     const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_local_day' });

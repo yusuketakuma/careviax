@@ -1,5 +1,8 @@
 import { buildOrderedFacilityScheduleIds } from './calendar-view.helpers';
-import type { FacilityTrackerGroup } from './schedule-day-view.helpers';
+import {
+  getUnsafeFacilityCarryPatients,
+  type FacilityTrackerGroup,
+} from './schedule-day-view.helpers';
 
 type FetchLike = typeof fetch;
 
@@ -58,6 +61,9 @@ export async function saveScheduleDayFacilityBatch({
   const group = facilityTracker.find((candidate) => candidate.key === groupKey);
   if (!group) {
     throw new Error('訪問先グループが見つかりません');
+  }
+  if (carryItemsConfirmed && getUnsafeFacilityCarryPatients(group).length > 0) {
+    throw new Error('不足または未判定の持参物があるため、一括で持参確認を反映できません');
   }
 
   const res = await fetchImpl('/api/facility-visit-batches', {

@@ -8,11 +8,13 @@ import {
   buildScheduleDayRouteMapSite,
   buildScheduleDayViewModel,
   buildScheduleBillingPreviewRequests,
+  canBulkConfirmFacilityCarryItems,
   buildFacilityRouteDefaults,
   buildFacilityTracker,
   buildDirectionsUrl,
   buildMapEmbedUrl,
   buildWeekProposalStats,
+  getUnsafeFacilityCarryPatients,
   getDepartureCarryWarning,
   getFacilityTrackerGrouping,
   proposalLockText,
@@ -313,6 +315,7 @@ describe('schedule-day-view.helpers', () => {
         site: { id: 'site_1', name: '中央薬局' },
         route_order: 2,
         schedule_status: 'planned',
+        carry_items_status: 'ready',
         preparation: { prepared_at: '2026-04-02T09:00:00.000Z', carry_items_confirmed: true },
         case_: {
           patient: {
@@ -328,6 +331,7 @@ describe('schedule-day-view.helpers', () => {
         site: { id: 'site_1', name: '中央薬局' },
         route_order: null,
         schedule_status: 'in_preparation',
+        carry_items_status: 'partial',
         preparation: { prepared_at: null, carry_items_confirmed: false },
         case_: {
           patient: {
@@ -343,6 +347,7 @@ describe('schedule-day-view.helpers', () => {
         site: { id: 'site_1', name: '中央薬局' },
         route_order: 1,
         schedule_status: 'completed',
+        carry_items_status: 'ready',
         preparation: { prepared_at: '2026-04-02T09:00:00.000Z', carry_items_confirmed: true },
         case_: {
           patient: {
@@ -363,7 +368,27 @@ describe('schedule-day-view.helpers', () => {
       carryPendingCount: 1,
       incompleteCount: 2,
       routeOrders: [2],
+      patients: expect.arrayContaining([
+        expect.objectContaining({
+          scheduleId: 'schedule_1',
+          carryItemsStatus: 'ready',
+          carryItemsConfirmed: true,
+        }),
+        expect.objectContaining({
+          scheduleId: 'schedule_2',
+          carryItemsStatus: 'partial',
+          carryItemsConfirmed: false,
+        }),
+      ]),
     });
+    expect(canBulkConfirmFacilityCarryItems(groups[0])).toBe(false);
+    expect(getUnsafeFacilityCarryPatients(groups[0])).toEqual([
+      expect.objectContaining({
+        scheduleId: 'schedule_2',
+        patientName: '患者B',
+        carryItemsStatus: 'partial',
+      }),
+    ]);
 
     expect(buildFacilityRouteDefaults(groups)).toEqual({
       'site_1:batch_1:サンプル施設': {

@@ -19,18 +19,24 @@ const facilityGroup: FacilityTrackerGroup = {
       patientName: '患者A',
       unitName: '201',
       routeOrder: 2,
+      carryItemsStatus: 'ready',
+      carryItemsConfirmed: true,
     },
     {
       scheduleId: 'schedule_b',
       patientName: '患者B',
       unitName: '101',
       routeOrder: 1,
+      carryItemsStatus: 'ready',
+      carryItemsConfirmed: false,
     },
     {
       scheduleId: 'schedule_c',
       patientName: '患者C',
       unitName: '301',
       routeOrder: null,
+      carryItemsStatus: 'ready',
+      carryItemsConfirmed: false,
     },
   ],
   preparedCount: 1,
@@ -117,6 +123,34 @@ describe('schedule day facility batch helpers', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('訪問先グループが見つかりません');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe carry statuses before posting bulk confirmation', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      saveScheduleDayFacilityBatch({
+        orgId: 'org_1',
+        groupKey: facilityGroup.key,
+        facilityTracker: [
+          {
+            ...facilityGroup,
+            patients: [
+              facilityGroup.patients[0]!,
+              {
+                ...facilityGroup.patients[1]!,
+                carryItemsStatus: 'partial',
+              },
+            ],
+          },
+        ],
+        facilityRouteDefaults: {},
+        facilityRouteOverrides: {},
+        carryItemsConfirmed: true,
+        fetchImpl,
+      }),
+    ).rejects.toThrow('不足または未判定の持参物があるため、一括で持参確認を反映できません');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
