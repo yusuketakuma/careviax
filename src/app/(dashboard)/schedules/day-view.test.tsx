@@ -432,6 +432,28 @@ describe('ScheduleDayView', () => {
     expect(screen.getByText('対象ケースを選択すると患者ケースへ移動できます')).toBeTruthy();
   });
 
+  it('exposes the mobile visit surface selection state', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      connected: true,
+    });
+
+    await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    expect(screen.getByRole('group', { name: '本日の訪問表示' })).toBeTruthy();
+    const listButton = screen.getByRole('button', { name: 'リスト' });
+    const mapButton = screen.getByRole('button', { name: '地図' });
+    expect(listButton.getAttribute('aria-pressed')).toBe('true');
+    expect(mapButton.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(mapButton);
+
+    expect(listButton.getAttribute('aria-pressed')).toBe('false');
+    expect(mapButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('requires visible schedule context before showing override approval actions', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {

@@ -1333,9 +1333,14 @@ export function ScheduleDayView({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline">{mobileVisitSchedules.length}件</Badge>
-            <div className="inline-flex rounded-lg border border-border bg-background p-1">
+            <div
+              role="group"
+              aria-label="本日の訪問表示"
+              className="inline-flex rounded-lg border border-border bg-background p-1"
+            >
               <button
                 type="button"
+                aria-pressed={mobileVisitSurface === 'list'}
                 className={[
                   'min-h-[44px] min-w-[44px] rounded-md px-3 py-1 text-xs transition sm:min-h-0 sm:min-w-0 sm:px-2.5',
                   mobileVisitSurface === 'list'
@@ -1348,6 +1353,7 @@ export function ScheduleDayView({
               </button>
               <button
                 type="button"
+                aria-pressed={mobileVisitSurface === 'map'}
                 className={[
                   'min-h-[44px] min-w-[44px] rounded-md px-3 py-1 text-xs transition sm:min-h-0 sm:min-w-0 sm:px-2.5',
                   mobileVisitSurface === 'map'

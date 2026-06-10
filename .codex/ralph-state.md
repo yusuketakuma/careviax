@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-001822
+
+- current task: expose mobile visit list/map surface selection state to assistive technology.
+- files inspected: `git status --short`, accessibility reviewer findings, `docs/ui-ux-design-guidelines.md`, and `src/app/(dashboard)/schedules/day-view.tsx`.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the mobile `リスト` / `地図` switch used visual styling only, so assistive technology could not tell which surface was selected.
+- security risks found: no auth, authorization, org scoping, endpoint, or persistence behavior changed.
+- performance issues found: no new network calls, DB queries, or render loops were introduced.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`.
+- validation results: focused day-view suite passed with 1 file / 14 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed.
+- remaining work: repeated proposal/confirmed schedule action labels, facility route ordering keyboard/touch alternatives, Gantt table caption/scope, and preparation dialog heading structure remain from the UI/UX reviewer findings.
+- next action: continue with repeated proposal/confirmed schedule action labels or Gantt table caption/scope, whichever is lowest conflict after checking current `day-view` structure.
+
 ### 20260611-001620
 
 - current task: require explicit confirmation before approving schedule reschedule/override changes.
