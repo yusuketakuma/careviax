@@ -847,6 +847,33 @@ export function ScheduleDayView({
     return 'border-amber-300 bg-amber-50 text-amber-950 shadow-amber-100';
   }
 
+  function ganttScheduleAriaLabel(
+    schedule: VisitSchedule & {
+      blockStartMinutes: number;
+      blockEndMinutes: number;
+    },
+    pharmacistName: string,
+    overlapCount: number,
+    overlapKind: 'same_start' | 'overlap' | null,
+  ) {
+    const overlapLabel =
+      overlapCount > 1
+        ? `${overlapKind === 'same_start' ? '同時刻' : '重なり'} ${overlapCount}件`
+        : null;
+
+    return [
+      `薬剤師 ${pharmacistName}`,
+      `患者 ${schedule.case_.patient.name}`,
+      `時間 ${timeLabel(schedule.time_window_start, schedule.time_window_end)}`,
+      `状態 ${SCHEDULE_STATUS_LABELS[schedule.schedule_status]}`,
+      schedule.preparation?.prepared_at ? '準備完了' : '準備未了',
+      overlapLabel,
+      `ルート順 ${schedule.route_order ?? '未設定'}`,
+    ]
+      .filter(Boolean)
+      .join('、');
+  }
+
   useEffect(() => {
     let active = true;
     void readScheduleDayCachedVisitBriefs({
@@ -2397,14 +2424,21 @@ export function ScheduleDayView({
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
+                    <caption className="sr-only">
+                      日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。
+                    </caption>
                     <thead>
                       <tr>
-                        <th className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground">
+                        <th
+                          scope="col"
+                          className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground"
+                        >
                           時間
                         </th>
                         {ganttTableColumns.map((column) => (
                           <th
                             key={column.pharmacistId}
+                            scope="col"
                             className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -2425,7 +2459,10 @@ export function ScheduleDayView({
                     <tbody>
                       {ganttSlots.map((slot, slotIndex) => (
                         <tr key={slot} className="align-top">
-                          <th className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground">
+                          <th
+                            scope="row"
+                            className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground"
+                          >
                             {formatMinutesLabel(slot)}
                           </th>
                           {ganttTableColumns.map((column) => {
@@ -2449,6 +2486,13 @@ export function ScheduleDayView({
                                     {scheduleCell.schedules.map((schedule) => (
                                       <div
                                         key={schedule.id}
+                                        role="group"
+                                        aria-label={ganttScheduleAriaLabel(
+                                          schedule,
+                                          column.pharmacistName,
+                                          scheduleCell.schedules.length,
+                                          scheduleCell.overlapKind,
+                                        )}
                                         className={[
                                           'flex min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
                                           ganttBlockClass(schedule),
@@ -2497,6 +2541,7 @@ export function ScheduleDayView({
                             return (
                               <td
                                 key={`${column.pharmacistId}-${slot}`}
+                                aria-hidden="true"
                                 className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
                               />
                             );

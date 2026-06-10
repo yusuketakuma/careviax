@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-002101
+
+- current task: add accessible table semantics and schedule context labels to the day Gantt view.
+- files inspected: `git status --short`, accessibility reviewer findings, `docs/ui-ux-design-guidelines.md`, and the Gantt rendering block in `src/app/(dashboard)/schedules/day-view.tsx`.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: the day Gantt table lacked a caption and header scopes, and schedule blocks had no combined accessible label for pharmacist/time/patient/status/preparation/overlap context.
+- security risks found: no auth, authorization, org scoping, endpoint, mutation, or persistence behavior changed.
+- performance issues found: no new network calls, DB queries, or loops were introduced. The added label helper only formats already-rendered Gantt cells.
+- validation commands: targeted Prettier for `day-view.tsx` and `day-view.test.tsx`; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`.
+- validation results: focused day-view suite passed with 1 file / 14 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed.
+- remaining work: repeated proposal/confirmed schedule action labels, facility route ordering keyboard/touch alternatives, and preparation dialog heading structure remain from the UI/UX reviewer findings.
+- next action: continue with repeated proposal/confirmed schedule action labels or facility route ordering controls.
+
 ### 20260611-001822
 
 - current task: expose mobile visit list/map surface selection state to assistive technology.

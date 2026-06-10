@@ -773,6 +773,10 @@ describe('ScheduleDayView', () => {
       <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
     );
 
+    const ganttTable = screen.getByRole('table', { name: /日次ガント表/ });
+    expect(ganttTable.querySelector('th[scope="col"]')?.textContent).toContain('時間');
+    expect(ganttTable.querySelector('th[scope="row"]')).toBeTruthy();
+    expect(screen.getByRole('group', { name: /患者 同時刻一郎.*同時刻 2件/ })).toBeTruthy();
     const sameStartCell = screen.getByText('同時刻 2件').closest('td');
     expect(sameStartCell?.getAttribute('rowspan')).toBe('2');
     expect(sameStartCell?.textContent).toContain('同時刻一郎');
