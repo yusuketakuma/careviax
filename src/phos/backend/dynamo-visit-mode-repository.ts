@@ -34,6 +34,7 @@ export type DynamoVisitStepCommitTransaction = {
   idempotency_sort_key: string;
   evidence_sort_key?: string;
   expected_server_version: number;
+  actor_user_id: string;
   request_fingerprint: string;
   response: VisitModeView;
   verified_evidence?: VerifiedEvidenceUpload;
@@ -320,12 +321,13 @@ function toVisitModeView(item: DynamoItem): VisitModeView {
 }
 
 function toIdempotentLookup(
+  ctx: TenantContext,
   item: DynamoItem | null,
   request_fingerprint: string,
 ): IdempotentVisitStepLookup {
   if (!item) return { status: 'MISS' };
   const existing = stringAttr(item, 'request_fingerprint');
-  if (existing !== request_fingerprint) {
+  if (existing !== request_fingerprint || stringAttr(item, 'actor_user_id') !== ctx.user_id) {
     return { status: 'CONFLICT', existing_request_fingerprint: existing ?? '' };
   }
   const response = parseJsonAttr<VisitModeView>(item, 'response');
@@ -354,7 +356,7 @@ export function createDynamoVisitModeRepository(
         partition_key,
         sort_key: visitStepIdempotencySk({ packet_id, step, idempotency_key }),
       });
-      return toIdempotentLookup(item, request_fingerprint);
+      return toIdempotentLookup(ctx, item, request_fingerprint);
     },
 
     async loadVisitMode(ctx, packet_id) {
@@ -407,6 +409,7 @@ export function createDynamoVisitModeRepository(
             }
           : {}),
         expected_server_version: input.previous_visit.server_version,
+        actor_user_id: ctx.user_id,
         request_fingerprint: input.request_fingerprint,
         response: input.response,
         committed_at: (options.now?.() ?? new Date()).toISOString(),

@@ -127,11 +127,17 @@ export function createDynamoVisitModeClient(input: {
                   TableName: transaction.table_name,
                   Item: {
                     ...dynamoKey(transaction.partition_key, transaction.idempotency_sort_key),
+                    actor_user_id: { S: transaction.actor_user_id },
                     request_fingerprint: { S: transaction.request_fingerprint },
                     response: { S: JSON.stringify(transaction.response) },
                     created_at: { S: transaction.committed_at },
                   },
-                  ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+                  ConditionExpression:
+                    'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
+                  ExpressionAttributeValues: {
+                    ':actor_user_id': { S: transaction.actor_user_id },
+                    ':request_fingerprint': { S: transaction.request_fingerprint },
+                  },
                 },
               },
             ],

@@ -85,6 +85,7 @@ describe('createDynamoVisitModeRepository', () => {
     const response = visit({ server_version: 4 });
     const fakeClient = client({
       getIdempotency: vi.fn(async () => ({
+        actor_user_id: { S: 'user_1' },
         request_fingerprint: { S: 'fingerprint_1' },
         response: { S: JSON.stringify(response) },
       })),
@@ -99,6 +100,52 @@ describe('createDynamoVisitModeRepository', () => {
         'fingerprint_1',
       ),
     ).resolves.toEqual({ status: 'MATCH', response });
+  });
+
+  it('rejects visit-step idempotency replay from another or legacy actor', async () => {
+    const response = visit({ server_version: 4 });
+    const otherActorStore = createDynamoVisitModeRepository(
+      client({
+        getIdempotency: vi.fn(async () => ({
+          actor_user_id: { S: 'user_other' },
+          request_fingerprint: { S: 'fingerprint_1' },
+          response: { S: JSON.stringify(response) },
+        })),
+      }),
+    );
+
+    await expect(
+      otherActorStore.getIdempotentVisitStep(
+        ctx,
+        'VISIT_STEP:packet_1:COMPLETE_CHECK',
+        'idem_1',
+        'fingerprint_1',
+      ),
+    ).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fingerprint_1',
+    });
+
+    const legacyStore = createDynamoVisitModeRepository(
+      client({
+        getIdempotency: vi.fn(async () => ({
+          request_fingerprint: { S: 'fingerprint_1' },
+          response: { S: JSON.stringify(response) },
+        })),
+      }),
+    );
+
+    await expect(
+      legacyStore.getIdempotentVisitStep(
+        ctx,
+        'VISIT_STEP:packet_1:COMPLETE_CHECK',
+        'idem_1',
+        'fingerprint_1',
+      ),
+    ).resolves.toEqual({
+      status: 'CONFLICT',
+      existing_request_fingerprint: 'fingerprint_1',
+    });
   });
 
   it('commits visit packet and idempotency records in one transaction contract', async () => {
@@ -127,6 +174,7 @@ describe('createDynamoVisitModeRepository', () => {
         visit_packet_sort_key: 'VISIT_PACKET#packet_1',
         idempotency_sort_key: 'VISIT_STEP_IDEMPOTENCY#packet_1#COMPLETE_CHECK#idem_1',
         expected_server_version: 3,
+        actor_user_id: 'user_1',
         response,
       }),
     );

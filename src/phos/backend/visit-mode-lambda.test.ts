@@ -47,6 +47,7 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
       idempotency_sort_key: 'VISIT_STEP_IDEMPOTENCY#packet_1#EVIDENCE_UPLOAD#idem_1',
       evidence_sort_key: 'EVIDENCE#evidence_1',
       expected_server_version: 3,
+      actor_user_id: 'user_1',
       request_fingerprint: 'fingerprint_1',
       response,
       verified_evidence: {
@@ -80,5 +81,20 @@ describe('PH-OS visit-mode Lambda Dynamo client', () => {
       },
     });
     expect(command.input.TransactItems).toHaveLength(3);
+    expect(command.input.TransactItems?.[2]).toMatchObject({
+      Put: {
+        Item: {
+          SK: { S: 'VISIT_STEP_IDEMPOTENCY#packet_1#EVIDENCE_UPLOAD#idem_1' },
+          actor_user_id: { S: 'user_1' },
+          request_fingerprint: { S: 'fingerprint_1' },
+        },
+        ConditionExpression:
+          'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
+        ExpressionAttributeValues: {
+          ':actor_user_id': { S: 'user_1' },
+          ':request_fingerprint': { S: 'fingerprint_1' },
+        },
+      },
+    });
   });
 });

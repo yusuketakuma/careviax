@@ -36,6 +36,7 @@ export const HANDOFF_SEARCH_DEFAULT_LIMIT = 50;
 export const HANDOFF_SEARCH_MAX_LIMIT = 50;
 
 export type DynamoHandoffIdempotencyRecord = {
+  actor_user_id?: string;
   request_fingerprint: string;
   response?: HandoffMutationResponse;
 };
@@ -49,6 +50,7 @@ export type DynamoHandoffCreateTransaction = {
   queue_gsi_pk: string;
   idempotency_sort_key: string;
   idempotency_key: string;
+  actor_user_id: string;
   request_fingerprint: string;
   command: CreateHandoffRequest;
   response: HandoffMutationResponse;
@@ -62,6 +64,7 @@ export type DynamoHandoffTransitionTransaction = {
   queue_gsi_pk: string;
   idempotency_sort_key: string;
   idempotency_key: string;
+  actor_user_id: string;
   expected_server_version: number;
   expected_assignee_user_id?: string;
   request_fingerprint: string;
@@ -207,7 +210,11 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
       if (!item) return { status: 'MISS' };
 
       const record = mapper.toIdempotencyRecord(item);
-      if (record.request_fingerprint !== request_fingerprint || !record.response) {
+      if (
+        record.request_fingerprint !== request_fingerprint ||
+        record.actor_user_id !== ctx.user_id ||
+        !record.response
+      ) {
         return {
           status: 'CONFLICT',
           existing_request_fingerprint: record.request_fingerprint,
@@ -277,6 +284,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
           idempotency_key: command.idempotency_key,
         }),
         idempotency_key: command.idempotency_key,
+        actor_user_id: ctx.user_id,
         request_fingerprint,
         command,
         response,
@@ -329,6 +337,7 @@ export function createDynamoHandoffLifecycleStore<THandoffItem, TIdempotencyItem
           idempotency_key: input.command.idempotency_key,
         }),
         idempotency_key: input.command.idempotency_key,
+        actor_user_id: ctx.user_id,
         expected_server_version: input.previous_handoff.server_version,
         ...(input.previous_handoff.assignee_user_id
           ? { expected_assignee_user_id: input.previous_handoff.assignee_user_id }

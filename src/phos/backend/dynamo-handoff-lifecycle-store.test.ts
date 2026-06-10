@@ -22,7 +22,11 @@ import type { TenantContext } from './tenant-context';
 
 type HandoffItem = { id: string; status: HandoffStatus; version: number };
 type CardContextItem = { card_id: string; patient_name: string; version: number };
-type IdempotencyItem = { fingerprint: string; saved?: HandoffMutationResponse };
+type IdempotencyItem = {
+  actor?: string;
+  fingerprint: string;
+  saved?: HandoffMutationResponse;
+};
 
 const ctx: TenantContext = {
   tenant_id: 'tenant_abc123',
@@ -119,6 +123,7 @@ const mapper: DynamoHandoffStoreMapper<HandoffItem | CardContextItem, Idempotenc
     },
   }),
   toIdempotencyRecord: (item) => ({
+    actor_user_id: item.actor,
     request_fingerprint: item.fingerprint,
     response: item.saved,
   }),
@@ -193,26 +198,46 @@ describe('createDynamoHandoffLifecycleStore', () => {
     expect(result.items).toHaveLength(1);
   });
 
-  it('looks up handoff idempotency under the tenant PK', async () => {
+  it('returns saved handoff idempotency responses only for the original actor', async () => {
     const saved = mutationResponse(handoff({ status: HandoffStatus.RESOLVED, server_version: 2 }));
-    const fakeClient = client({
-      getIdempotency: vi.fn(async () => ({ fingerprint: 'fp_1', saved })),
+    const sameActorClient = client({
+      getIdempotency: vi.fn(async () => ({ actor: 'user_pharmacist', fingerprint: 'fp_1', saved })),
     });
-    const store = createDynamoHandoffLifecycleStore(fakeClient, mapper);
+    const sameActorStore = createDynamoHandoffLifecycleStore(sameActorClient, mapper);
 
-    const result = await store.getIdempotentMutation(
+    const result = await sameActorStore.getIdempotentMutation(
       ctx,
       'RESOLVE_HANDOFF:handoff_1',
       'idem_1',
       'fp_1',
     );
 
-    expect(fakeClient.getIdempotency).toHaveBeenCalledWith({
+    expect(sameActorClient.getIdempotency).toHaveBeenCalledWith({
       table_name: PHOS_CORE_TABLE,
       partition_key: 'TENANT#tenant_abc123',
       sort_key: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_1',
     });
     expect(result).toEqual({ status: 'MATCH', response: saved });
+
+    const otherActorStore = createDynamoHandoffLifecycleStore(
+      client({
+        getIdempotency: vi.fn(async () => ({ actor: 'user_other', fingerprint: 'fp_1', saved })),
+      }),
+      mapper,
+    );
+    await expect(
+      otherActorStore.getIdempotentMutation(ctx, 'RESOLVE_HANDOFF:handoff_1', 'idem_1', 'fp_1'),
+    ).resolves.toEqual({ status: 'CONFLICT', existing_request_fingerprint: 'fp_1' });
+
+    const legacyStore = createDynamoHandoffLifecycleStore(
+      client({
+        getIdempotency: vi.fn(async () => ({ fingerprint: 'fp_1', saved })),
+      }),
+      mapper,
+    );
+    await expect(
+      legacyStore.getIdempotentMutation(ctx, 'RESOLVE_HANDOFF:handoff_1', 'idem_1', 'fp_1'),
+    ).resolves.toEqual({ status: 'CONFLICT', existing_request_fingerprint: 'fp_1' });
   });
 
   it('builds a tenant-scoped create transaction contract', async () => {
@@ -252,6 +277,7 @@ describe('createDynamoHandoffLifecycleStore', () => {
       queue_gsi_pk: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist',
       idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#CREATE_HANDOFF:card_1#idem_create',
       idempotency_key: 'idem_create',
+      actor_user_id: 'user_pharmacist',
       request_fingerprint: 'fp_create',
       command: expect.objectContaining({ card_id: 'card_1' }),
       response,
@@ -382,6 +408,7 @@ describe('createDynamoHandoffLifecycleStore', () => {
       queue_gsi_pk: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist',
       idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve',
       idempotency_key: 'idem_resolve',
+      actor_user_id: 'user_pharmacist',
       expected_server_version: 1,
       expected_assignee_user_id: 'user_pharmacist',
       request_fingerprint: 'fp_resolve',

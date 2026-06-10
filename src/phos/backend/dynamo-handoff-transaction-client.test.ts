@@ -66,6 +66,7 @@ function createTransaction(
     queue_gsi_pk: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist',
     idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#CREATE_HANDOFF:card_1#idem_create',
     idempotency_key: 'idem_create',
+    actor_user_id: 'user_clerk',
     request_fingerprint: 'fp_create',
     command: {
       card_id: 'card_1',
@@ -110,6 +111,7 @@ function transitionTransaction(
     queue_gsi_pk: 'TENANT#tenant_abc123#HANDOFF_ASSIGNEE#user_pharmacist',
     idempotency_sort_key: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve',
     idempotency_key: 'idem_resolve',
+    actor_user_id: 'user_pharmacist',
     expected_server_version: 1,
     expected_assignee_user_id: 'user_pharmacist',
     request_fingerprint: 'fp_resolve',
@@ -244,10 +246,16 @@ describe('Dynamo handoff transaction client', () => {
           SK: { S: 'HANDOFF_IDEMPOTENCY#CREATE_HANDOFF:card_1#idem_create' },
           entity_type: { S: 'HANDOFF_IDEMPOTENCY' },
           idempotency_key: { S: 'idem_create' },
+          actor_user_id: { S: 'user_clerk' },
           request_fingerprint: { S: 'fp_create' },
           response_json: { S: JSON.stringify(response()) },
         },
-        ConditionExpression: 'attribute_not_exists(PK)',
+        ConditionExpression:
+          'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
+        ExpressionAttributeValues: {
+          ':actor_user_id': { S: 'user_clerk' },
+          ':request_fingerprint': { S: 'fp_create' },
+        },
       },
     });
   });
@@ -354,8 +362,14 @@ describe('Dynamo handoff transaction client', () => {
         Item: {
           SK: { S: 'HANDOFF_IDEMPOTENCY#RESOLVE_HANDOFF:handoff_1#idem_resolve' },
           idempotency_key: { S: 'idem_resolve' },
+          actor_user_id: { S: 'user_pharmacist' },
         },
-        ConditionExpression: 'attribute_not_exists(PK)',
+        ConditionExpression:
+          'attribute_not_exists(PK) OR (request_fingerprint = :request_fingerprint AND actor_user_id = :actor_user_id)',
+        ExpressionAttributeValues: {
+          ':actor_user_id': { S: 'user_pharmacist' },
+          ':request_fingerprint': { S: 'fp_resolve' },
+        },
       },
     });
   });

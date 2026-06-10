@@ -237,6 +237,7 @@ export function createDynamoHandoffMapper(
 
     toIdempotencyRecord(item): DynamoHandoffIdempotencyRecord {
       return {
+        actor_user_id: stringAttr(item, 'actor_user_id'),
         request_fingerprint: stringAttr(item, 'request_fingerprint') ?? '',
         response: parseJsonAttr<HandoffMutationResponse>(item, 'response_json'),
       };
