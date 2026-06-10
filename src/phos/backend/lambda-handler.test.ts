@@ -22,6 +22,7 @@ const validEvent = {
 
 describe('withTenantContext', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -438,6 +439,53 @@ describe('withTenantContext', () => {
       route_key: 'GET /cards',
       error: 'flush failed',
     });
+  });
+
+  it('returns a timeout response before the Lambda hard deadline is exhausted', async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const observability = createInMemoryObservabilitySink();
+    const handler = withTenantContext(
+      async () =>
+        new Promise(() => {
+          // Keep the handler pending so the soft deadline wins the race.
+        }),
+      { observability, deadlineBufferMs: 10 },
+    );
+
+    const responsePromise = handler(validEvent, { getRemainingTimeInMillis: () => 15 });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(5);
+    const response = await responsePromise;
+
+    expect(response.statusCode).toBe(504);
+    expect(JSON.parse(response.body)).toEqual({
+      request_id: 'req_1',
+      error_code: 'INTERNAL_ERROR',
+      message_key: 'api.error.timeout',
+      details: { reason: 'lambda_soft_deadline' },
+    });
+    expect(JSON.parse(String(errorSpy.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'ERROR',
+      message: 'PH-OS lambda boundary failed',
+      result: 'ERROR',
+      status_code: 504,
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_001',
+      request_id: 'req_1',
+      correlation_id: 'req_1',
+      route_key: 'GET /cards',
+      error_code: 'INTERNAL_ERROR',
+      details: { reason: 'lambda_soft_deadline' },
+    });
+    expect(observability.metrics).toContainEqual(
+      expect.objectContaining({
+        name: 'InternalErrorCount',
+        route_key: 'GET /cards',
+        tenant_id: 'tenant_abc123',
+        error_code: 'INTERNAL_ERROR',
+      }),
+    );
   });
 
   it('returns TENANT_CONTEXT_MISSING when API Gateway claims are absent', async () => {

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260610-104400
+
+- current task: add a PH-OS Lambda soft-deadline guard in the shared tenant-context handler so slow backend operations return a controlled timeout response before the AWS hard timeout cuts off logging/flush.
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/phos/backend/lambda-handler.ts`, `src/phos/backend/lambda-handler.test.ts`, PH-OS Lambda composition tests, and read-only performance/security subagent reports.
+- files changed: `src/phos/backend/lambda-handler.ts`, `src/phos/backend/lambda-handler.test.ts`, and `.codex/ralph-state.md`.
+- bugs found: `withTenantContext` did not use Lambda `context.getRemainingTimeInMillis()`, so a slow handler could run into the Lambda hard timeout without returning a contract-shaped response or flushing PH-OS observability.
+- security risks found: timeout responses now use the existing `ErrorResponse` shape with `INTERNAL_ERROR` / `api.error.timeout` and bounded non-PHI details (`reason: lambda_soft_deadline`). Tenant context, request id, route key, and InternalErrorCount observability still flow through the existing safe logging path before return.
+- performance issues found: shared Lambda handling now races domain handler execution against a soft deadline based on remaining Lambda time minus a default 250 ms buffer. Tests cover a pending handler returning HTTP 504 before the hard deadline. The guard is disabled when no Lambda context is supplied, preserving local/unit invocation behavior.
+- validation commands: `pnpm exec prettier --write src/phos/backend/lambda-handler.ts src/phos/backend/lambda-handler.test.ts`; focused `pnpm exec vitest run src/phos/backend/lambda-handler.test.ts --reporter=dot`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec vitest run src/phos --reporter=dot`; `pnpm lint`; `pnpm test -- --reporter=dot`; `pnpm build`; `pnpm phos:backend-live:readiness:report`; `pnpm phos:deploy-template:validate:report`; `git diff --check`; `git status --short`.
+- validation results: focused lambda-handler suite passed with 1 file / 15 tests. Standalone TypeScript passed. PH-OS suite passed with 104 files passed / 1 skipped and 779 tests passed / 1 skipped. Full ESLint passed. Full Vitest passed with 754 files passed / 1 skipped and 5019 tests passed / 1 skipped. Production `next build --webpack` passed, including TypeScript and 235 static pages. Non-strict backend live-readiness report passed local checks and still reported live AWS/JWT/API inputs missing. Non-strict deploy-template report passed template export, Secrets Manager least-privilege contract, `uvx cfn-lint`, and Lambda artifact contract; it still reported missing `aws`. Whitespace diff check passed.
+- remaining work: external live proof still needs `AWS_REGION`, `PHOS_API_BASE_URL`, `PHOS_COGNITO_ACCESS_TOKEN`, `PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN`, `PHOS_COGNITO_USER_POOL_ID`, `PHOS_JWT_AUDIENCE`, `PHOS_JWT_ISSUER`, and AWS CLI for service-side CloudFormation validation. The broader legacy Next API fail-closed behavior remains a product compatibility decision because many non-PHOS dashboard workflows still use legacy `/api/*` routes.
+- next action: checkpoint this validated Lambda soft-deadline slice, then stop local implementation on the remaining external/prod-compatibility blockers unless a product decision or live AWS/JWT/API inputs are provided.
+
 ### 20260610-103900
 
 - current task: harden PH-OS frontend/live-readiness fetch policy and offline evidence S3 replay so bearer-token requests and presigned uploads do not follow redirects, include ambient credentials, or hang indefinitely.

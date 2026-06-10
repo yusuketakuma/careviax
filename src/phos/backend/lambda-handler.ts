@@ -44,10 +44,24 @@ export type PhosHandlerInput = {
 
 export type PhosHandler = (input: PhosHandlerInput) => Promise<unknown | PhosLambdaResponse>;
 
+export type PhosLambdaContext = {
+  getRemainingTimeInMillis?: () => number;
+};
+
 export type PhosLambdaOptions = {
   observability?: PhosObservabilitySink;
   now?: () => Date;
+  deadlineBufferMs?: number;
 };
+
+const DEFAULT_LAMBDA_DEADLINE_BUFFER_MS = 250;
+
+class LambdaSoftDeadlineError extends Error {
+  constructor() {
+    super('PH-OS lambda soft deadline reached');
+    this.name = 'LambdaSoftDeadlineError';
+  }
+}
 
 function readHeader(
   headers: Record<string, string | undefined> | undefined,
@@ -240,6 +254,43 @@ function emitSuccessObservability(input: {
   });
 }
 
+function normalizeDeadlineBufferMs(value: number | undefined): number {
+  return Number.isFinite(value) && value !== undefined && value >= 0
+    ? value
+    : DEFAULT_LAMBDA_DEADLINE_BUFFER_MS;
+}
+
+function readSoftDeadlineMs(
+  lambdaContext: PhosLambdaContext | undefined,
+  deadlineBufferMs: number,
+): number | undefined {
+  const remainingMs = lambdaContext?.getRemainingTimeInMillis?.();
+  if (!Number.isFinite(remainingMs)) return undefined;
+  return Math.max(0, (remainingMs as number) - deadlineBufferMs);
+}
+
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+async function withSoftDeadline<T>(promise: Promise<T>, timeoutMs: number | undefined): Promise<T> {
+  if (timeoutMs === undefined) return promise;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new LambdaSoftDeadlineError()), timeoutMs);
+        maybeUnrefTimeout(timeout);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function readResponseErrorCode(response: PhosLambdaResponse): string | undefined {
   if (response.statusCode < 400) return undefined;
   try {
@@ -312,7 +363,7 @@ function logBoundaryError(input: {
 }
 
 export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptions = {}) {
-  return async (event: PhosHttpEvent) => {
+  return async (event: PhosHttpEvent, lambdaContext?: PhosLambdaContext) => {
     const observability = options.observability ?? createConsoleObservabilitySink();
     const start = options.now?.() ?? new Date();
     const request_id = event.requestContext?.requestId ?? randomUUID();
@@ -338,7 +389,10 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
         path: event.pathParameters,
       });
 
-      const result = await handler({ event, ctx, body });
+      const result = await withSoftDeadline(
+        handler({ event, ctx, body }),
+        readSoftDeadlineMs(lambdaContext, normalizeDeadlineBufferMs(options.deadlineBufferMs)),
+      );
       const latency_ms = (options.now?.() ?? new Date()).getTime() - start.getTime();
       emitSuccessObservability({
         observability,
@@ -392,6 +446,40 @@ export function withTenantContext(handler: PhosHandler, options: PhosLambdaOptio
           correlation_id,
         });
         return toErrorLambdaResponse(error.status, error.response);
+      }
+
+      if (error instanceof LambdaSoftDeadlineError) {
+        logBoundaryError({
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+          error_code: 'INTERNAL_ERROR',
+          status_code: 504,
+          details: { reason: 'lambda_soft_deadline' },
+        });
+        emitBoundaryObservability({
+          observability,
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+          error_code: 'INTERNAL_ERROR',
+          details: { reason: 'lambda_soft_deadline' },
+        });
+        await flushObservability({
+          observability,
+          event,
+          ctx,
+          request_id,
+          correlation_id,
+        });
+        return toErrorLambdaResponse(504, {
+          request_id,
+          error_code: 'INTERNAL_ERROR',
+          message_key: 'api.error.timeout',
+          details: { reason: 'lambda_soft_deadline' },
+        });
       }
 
       logBoundaryError({
