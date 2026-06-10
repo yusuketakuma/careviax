@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import type { VisitPreparationPack } from './day-view.shared';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
@@ -82,7 +83,31 @@ vi.mock('./schedule-metric-card', () => ({
 }));
 
 vi.mock('./schedule-day-view.chrome', () => ({
-  OnboardingWarningBadges: () => <div />,
+  getOnboardingReadinessWarnings: (readiness: Record<string, boolean>) =>
+    [
+      ['consent_obtained', '同意未取得'],
+      ['first_visit_doc_delivered', '初回文書未交付'],
+      ['emergency_contact_set', '緊急連絡先未登録'],
+      ['management_plan_approved', '管理計画未承認'],
+      ['primary_physician_set', '主治医未設定'],
+    ]
+      .filter(([key]) => !readiness[key])
+      .map(([key, label]) => ({ key, label })),
+  OnboardingWarningBadges: ({ readiness }: { readiness: Record<string, boolean> }) => (
+    <ul aria-label="訪問前提の未完了項目">
+      {[
+        ['consent_obtained', '同意未取得'],
+        ['first_visit_doc_delivered', '初回文書未交付'],
+        ['emergency_contact_set', '緊急連絡先未登録'],
+        ['management_plan_approved', '管理計画未承認'],
+        ['primary_physician_set', '主治医未設定'],
+      ]
+        .filter(([key]) => !readiness[key])
+        .map(([key, label]) => (
+          <li key={key}>{label}</li>
+        ))}
+    </ul>
+  ),
   ScheduleBoardSkeleton: () => <div data-testid="schedule-board-skeleton" />,
 }));
 
@@ -120,6 +145,16 @@ async function renderScheduleDayView(ui: ReactElement) {
     await Promise.resolve();
   });
   return result;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }
 
 function buildProposal(overrides?: Record<string, unknown>) {
@@ -236,6 +271,143 @@ function buildSchedule(overrides?: Record<string, unknown>) {
       urgent_visit_count: 0,
     },
     handoff_hint: null,
+    ...overrides,
+  };
+}
+
+function buildCompletedPreparation() {
+  return {
+    id: 'preparation_1',
+    prepared_at: '2026-04-09T08:00:00.000Z',
+    medication_changes_reviewed: true,
+    carry_items_confirmed: true,
+    previous_issues_reviewed: true,
+    route_confirmed: true,
+    offline_synced: true,
+    checklist: {},
+  };
+}
+
+function buildPreparationPack(overrides?: Partial<VisitPreparationPack>): VisitPreparationPack {
+  return {
+    patient: {
+      id: 'patient_1',
+      name: '山田花子',
+      address: '東京都千代田区1-1-1',
+    },
+    visit: {
+      id: 'schedule_1',
+      scheduled_date: '2026-04-09',
+      time_window_start: '2026-04-09T09:00:00.000Z',
+      time_window_end: '2026-04-09T10:00:00.000Z',
+      visit_type: 'regular',
+      schedule_status: 'planned',
+      priority: 'normal',
+      confirmed_at: '2026-04-08T03:00:00.000Z',
+    },
+    site: {
+      id: 'site_1',
+      name: '本店',
+      address: '東京都千代田区2-2-2',
+    },
+    handoff: {
+      assignment_mode: 'primary',
+      summary: '前回から眠気あり。服薬状況を確認。',
+    },
+    readiness_blockers: ['患者同意が未確認'],
+    previous_visit: null,
+    open_tasks: [],
+    recent_contact_logs: [],
+    facility_mode: {
+      label: null,
+      same_day_patient_count: 1,
+      same_day_patient_names: ['山田花子'],
+      route_orders: [1],
+    },
+    facility_parallel_context: null,
+    workload: {
+      same_day_visit_count: 1,
+    },
+    care_team: [],
+    conference_context: [],
+    billing_blockers: [
+      {
+        key: 'billing_evidence_missing',
+        reason: '算定根拠が未確認',
+        severity: 'high',
+        evidence_id: 'evidence_1',
+        visit_record_id: 'visit_record_1',
+        action_href: '/billing/evidence_1',
+        action_label: '算定根拠を確認',
+      },
+    ],
+    prescription_changes: null,
+    medication_period: {
+      schedule_start_date: null,
+      schedule_end_date: null,
+      prescription_start_date: null,
+      prescription_end_date: null,
+    },
+    home_care_feature_highlights: [],
+    visit_brief: {
+      patient: {
+        id: 'patient_1',
+        name: '山田花子',
+      },
+      context: 'schedule',
+      generated_at: '2026-04-09T00:00:00.000Z',
+      last_prescribed_date: null,
+      baseline_context: null,
+      medication_changes: [],
+      medications: [],
+      dispensing_items: [],
+      delivery_status: [],
+      dosage_form_support: [],
+      multidisciplinary_updates: [],
+      jahis_supplemental_records: [],
+      unresolved_items: [],
+      must_check_today: [],
+      rule_summary: {
+        generation_id: 'rule_1',
+        headline: '確認事項なし',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-04-09T00:00:00.000Z',
+      },
+      ai_summary: {
+        generation_id: 'ai_1',
+        provider: 'rule',
+        requested_provider: 'rule',
+        is_fallback: true,
+        model: null,
+        fallback_reason: null,
+        headline: '確認事項なし',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-04-09T00:00:00.000Z',
+        duration_ms: null,
+        recent_generation_count_24h: 0,
+        recent_failure_count_24h: 0,
+        recent_failure_rate_24h: null,
+      },
+      conference_summary: null,
+      facility_context: null,
+      drug_cautions: [],
+    },
+    onboarding_readiness: {
+      consent_obtained: false,
+      emergency_contact_set: true,
+      first_visit_doc_delivered: true,
+      management_plan_approved: false,
+      primary_physician_set: false,
+    },
+    intake_context: {
+      initial_transition_management_expected: null,
+    },
+    emergency_contacts: [],
+    first_visit_document: null,
     ...overrides,
   };
 }
@@ -584,6 +756,443 @@ describe('ScheduleDayView', () => {
     );
 
     expect(screen.getByRole('status').textContent).toContain('4月9日(木) の確定予定はありません');
+  });
+
+  it('structures the preparation dialog and blocks ready when readiness blockers remain', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return Response.json({
+          data: {
+            preparation: null,
+            pack: buildPreparationPack(),
+          },
+        });
+      }
+      return Response.json({ data: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialogElement = screen.getByRole('dialog');
+    const dialog = within(dialogElement);
+    expect(dialog.getByRole('heading', { name: '訪問準備チェック' })).toBeTruthy();
+    await waitFor(() => {
+      expect(dialog.getByRole('heading', { name: 'Pre-Visit Pack' })).toBeTruthy();
+    });
+
+    expect(dialog.getByRole('heading', { name: 'ready 判定' })).toBeTruthy();
+    expect(dialog.getByRole('heading', { name: '出発前チェックリスト' })).toBeTruthy();
+    expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeTruthy();
+    expect(dialog.getByRole('list', { name: 'ready 停止カテゴリ' })).toBeTruthy();
+    expect(dialog.getByText('訪問前提 1件')).toBeTruthy();
+    expect(dialog.getByText('導入準備 3件')).toBeTruthy();
+    expect(dialog.getByText('算定確認 1件')).toBeTruthy();
+    expect(dialog.getAllByText('患者同意が未確認')).toHaveLength(1);
+    expect(dialog.getByText('同意未取得')).toBeTruthy();
+    expect(dialog.getByText('管理計画未承認')).toBeTruthy();
+    expect(dialog.getByText('主治医未設定')).toBeTruthy();
+    expect(dialog.getAllByText('算定根拠が未確認')).toHaveLength(1);
+    expect(dialog.getByText('処方差分、薬歴、前回からの用法・薬剤変更を確認します。')).toBeTruthy();
+
+    expect(
+      dialog.queryByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備をreadyに進める/,
+      }),
+    ).toBeNull();
+    expect(
+      dialog.queryByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を保存/,
+      }),
+    ).toBeNull();
+    const readyButton = dialog.getByRole('button', {
+      name: 'ready に進める',
+    }) as HTMLButtonElement;
+    expect(dialog.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(readyButton.disabled).toBe(true);
+
+    for (const checkbox of dialog.getAllByRole('checkbox')) {
+      fireEvent.click(checkbox);
+    }
+
+    expect(dialog.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
+    expect(readyButton.disabled).toBe(true);
+  });
+
+  it('enables ready after all preparation checks when readiness blockers are clear', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return Response.json({
+          data: {
+            preparation: null,
+            pack: buildPreparationPack({
+              readiness_blockers: [
+                '薬歴・前回変更の確認',
+                '持参薬・物品確認',
+                '前回課題の確認',
+                'ルート確認',
+                'オフライン同期確認',
+              ],
+              billing_blockers: [],
+              onboarding_readiness: {
+                consent_obtained: true,
+                emergency_contact_set: true,
+                first_visit_doc_delivered: true,
+                management_plan_approved: true,
+                primary_physician_set: true,
+              },
+            }),
+          },
+        });
+      }
+      return Response.json({ data: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeTruthy();
+    });
+    expect(dialog.getByText('訪問前提 5件')).toBeTruthy();
+
+    const readyButton = dialog.getByRole('button', {
+      name: 'ready に進める',
+    }) as HTMLButtonElement;
+    expect(readyButton.disabled).toBe(true);
+
+    for (const checkbox of dialog.getAllByRole('checkbox')) {
+      fireEvent.click(checkbox);
+    }
+
+    expect(dialog.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
+    expect(dialog.getByText('ready に進める状態です。')).toBeTruthy();
+    expect(readyButton.disabled).toBe(false);
+  });
+
+  it('keeps ready disabled when onboarding readiness is unknown', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return Response.json({
+          data: {
+            preparation: buildCompletedPreparation(),
+            pack: buildPreparationPack({
+              readiness_blockers: [],
+              billing_blockers: [],
+              onboarding_readiness: null,
+            }),
+          },
+        });
+      }
+      return Response.json({ data: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(dialog.getByText('導入準備の状態を確認できません。')).toBeTruthy();
+    });
+
+    const readyButton = dialog.getByRole('button', {
+      name: 'ready に進める',
+    }) as HTMLButtonElement;
+    expect(dialog.getByText('導入準備 不明')).toBeTruthy();
+    expect(readyButton.disabled).toBe(true);
+  });
+
+  it('keeps ready disabled when the latest preparation pack cannot be loaded', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return Response.json({ message: 'pack unavailable' }, { status: 500 });
+      }
+      return Response.json({ data: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(
+        dialog.getByText('最新の訪問準備情報を取得できないため ready にできません。'),
+      ).toBeTruthy();
+    });
+
+    const readyButton = dialog.getByRole('button', {
+      name: 'ready に進める',
+    }) as HTMLButtonElement;
+    expect(dialog.getByRole('alert')).toBeTruthy();
+    expect(readyButton.disabled).toBe(true);
+
+    fireEvent.click(readyButton);
+
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/visit-schedules/')),
+    ).toBe(false);
+  });
+
+  it('keeps ready disabled when the preparation pack belongs to a different schedule or patient', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        return Response.json({
+          data: {
+            preparation: buildCompletedPreparation(),
+            pack: buildPreparationPack({
+              patient: {
+                id: 'patient_2',
+                name: '別患者',
+                address: '東京都港区9-9-9',
+              },
+              visit: {
+                id: 'schedule_2',
+                scheduled_date: '2026-04-09',
+                time_window_start: '2026-04-09T09:00:00.000Z',
+                time_window_end: '2026-04-09T10:00:00.000Z',
+                visit_type: 'regular',
+                schedule_status: 'planned',
+                priority: 'normal',
+                confirmed_at: '2026-04-08T03:00:00.000Z',
+              },
+            }),
+          },
+        });
+      }
+      return Response.json({ data: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    await waitFor(() => {
+      expect(
+        dialog.getByText('取得した訪問準備情報が現在の患者・訪問予定と一致しません。'),
+      ).toBeTruthy();
+    });
+
+    const readyButton = dialog.getByRole('button', {
+      name: 'ready に進める',
+    }) as HTMLButtonElement;
+    const saveButton = dialog.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    expect(dialog.queryByText('別患者')).toBeNull();
+    expect(dialog.queryByText('東京都港区9-9-9')).toBeNull();
+    expect(dialog.getByText(/未完了: 薬歴・前回変更の確認/)).toBeTruthy();
+    expect(saveButton.disabled).toBe(true);
+    expect(readyButton.disabled).toBe(true);
+
+    fireEvent.click(readyButton);
+
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/visit-schedules/')),
+    ).toBe(false);
+  });
+
+  it('ignores stale preparation responses when the same schedule is reopened', async () => {
+    const preparationResponses: Array<ReturnType<typeof createDeferred<Response>>> = [];
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      if (String(input).startsWith('/api/visit-preparations/schedule_1')) {
+        const deferred = createDeferred<Response>();
+        preparationResponses.push(deferred);
+        return deferred.promise;
+      }
+      return Promise.resolve(Response.json({ data: [] }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: [buildSchedule()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+    await waitFor(() => {
+      expect(preparationResponses).toHaveLength(1);
+    });
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '閉じる' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
+    );
+    await waitFor(() => {
+      expect(preparationResponses).toHaveLength(2);
+    });
+
+    await act(async () => {
+      preparationResponses[0].resolve(
+        Response.json({
+          data: {
+            preparation: buildCompletedPreparation(),
+            pack: buildPreparationPack({
+              readiness_blockers: [],
+              billing_blockers: [],
+              onboarding_readiness: {
+                consent_obtained: true,
+                emergency_contact_set: true,
+                first_visit_doc_delivered: true,
+                management_plan_approved: true,
+                primary_physician_set: true,
+              },
+            }),
+          },
+        }),
+      );
+      await preparationResponses[0].promise;
+    });
+
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('最新の訪問準備情報を読み込み中です。')).toBeTruthy();
+    expect(dialog.queryByText('ready に進める状態です。')).toBeNull();
+    expect(
+      (dialog.getByRole('button', { name: 'ready に進める' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      preparationResponses[1].resolve(
+        Response.json({
+          data: {
+            preparation: null,
+            pack: buildPreparationPack({
+              readiness_blockers: ['患者同意が未確認'],
+            }),
+          },
+        }),
+      );
+      await preparationResponses[1].promise;
+    });
+
+    await waitFor(() => {
+      expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeTruthy();
+    });
+    expect(dialog.getByText('訪問前提 1件')).toBeTruthy();
+    expect(dialog.queryByText('ready に進める状態です。')).toBeNull();
   });
 
   it('keeps the mobile visit mode visible when only sync conflicts remain', async () => {

@@ -159,7 +159,11 @@ import {
   type VisitScheduleBillingPreview,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
-import { OnboardingWarningBadges, ScheduleBoardSkeleton } from './schedule-day-view.chrome';
+import {
+  getOnboardingReadinessWarnings,
+  OnboardingWarningBadges,
+  ScheduleBoardSkeleton,
+} from './schedule-day-view.chrome';
 import {
   buildProposalBillingPreviewRequests,
   buildScheduleDayGanttViewModel,
@@ -228,6 +232,42 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 0, label: '日' },
 ];
 
+const PREPARATION_ITEM_DESCRIPTIONS: Record<(typeof PREPARATION_ITEMS)[number][0], string> = {
+  medication_changes_reviewed: '処方差分、薬歴、前回からの用法・薬剤変更を確認します。',
+  carry_items_confirmed: '持参薬、物品、未確定の持参物ブロッカーが残っていないか確認します。',
+  previous_issues_reviewed: '前回訪問の課題、SOAP plan、未処理タスクを訪問前に確認します。',
+  route_confirmed: '訪問先住所、施設集約、移動ルート、受入時間帯を確認します。',
+  offline_synced: '訪問先で参照する記録が端末に同期済みか確認します。',
+};
+
+const PREPARATION_PACK_MISSING_MESSAGE =
+  '最新の訪問準備情報を取得できないため ready にできません。';
+const PREPARATION_PACK_MISMATCH_MESSAGE =
+  '取得した訪問準備情報が現在の患者・訪問予定と一致しません。';
+
+type PreparationDetailsState = {
+  preparation: VisitPreparation | null;
+  pack: VisitPreparationPack | null;
+  loadError: string | null;
+  identityError: string | null;
+};
+
+function getPreparationPackIdentityError(
+  schedule: VisitSchedule,
+  pack: VisitPreparationPack | null,
+) {
+  if (!pack) return null;
+  if (pack.visit.id !== schedule.id || pack.patient.id !== schedule.case_.patient.id) {
+    return PREPARATION_PACK_MISMATCH_MESSAGE;
+  }
+  return null;
+}
+
+function isPreparationChecklistBlockerResolved(blocker: string, form: ScheduleDayPreparationForm) {
+  const preparationItem = PREPARATION_ITEMS.find(([, label]) => label === blocker);
+  return preparationItem ? form[preparationItem[0]] : false;
+}
+
 function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
   if (!vehicle) return '自動割当';
   const constraints = [
@@ -235,7 +275,7 @@ function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null 
     vehicle.max_route_duration_minutes != null
       ? `${vehicle.max_route_duration_minutes}分以内`
       : null,
-  ].filter(Boolean);
+  ].filter((category): category is string => category !== null);
   return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
 }
 
@@ -297,10 +337,9 @@ export function ScheduleDayView({
   );
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
-  const [preparationDetails, setPreparationDetails] = useState<{
-    preparation: VisitPreparation | null;
-    pack: VisitPreparationPack | null;
-  } | null>(null);
+  const [preparationDetails, setPreparationDetails] = useState<PreparationDetailsState | null>(
+    null,
+  );
   const [preparationLoading, setPreparationLoading] = useState(false);
   const [preparationForm, setPreparationForm] = useState<ScheduleDayPreparationForm>(() =>
     buildScheduleDayPreparationForm(null),
@@ -335,7 +374,7 @@ export function ScheduleDayView({
   const [mobileVisitSurface, setMobileVisitSurface] = useState<'list' | 'map'>('list');
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
   const [routeTravelMode, setRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
-  const preparationRequestIdRef = useRef<string | null>(null);
+  const preparationRequestSeqRef = useRef(0);
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
   const syncConflicts = useOfflineStore((state) => state.syncConflicts);
@@ -1058,11 +1097,14 @@ export function ScheduleDayView({
   function openPreparationDialog(schedule: VisitSchedule) {
     const initialPreparation = schedule.preparation ?? null;
     const scheduleId = schedule.id;
-    preparationRequestIdRef.current = scheduleId;
+    const requestSeq = preparationRequestSeqRef.current + 1;
+    preparationRequestSeqRef.current = requestSeq;
     setPreparationTarget(schedule);
     setPreparationDetails({
       preparation: initialPreparation,
       pack: null,
+      loadError: null,
+      identityError: null,
     });
     setPreparationForm(buildScheduleDayPreparationForm(initialPreparation));
 
@@ -1074,22 +1116,38 @@ export function ScheduleDayView({
       scheduleId,
     })
       .then((payload) => {
-        if (preparationRequestIdRef.current !== scheduleId) return;
-        setPreparationDetails(payload);
-        setPreparationForm(buildScheduleDayPreparationForm(payload.preparation));
+        if (preparationRequestSeqRef.current !== requestSeq) return;
+        const identityError = getPreparationPackIdentityError(schedule, payload.pack);
+        if (identityError) {
+          toast.error(identityError);
+        }
+        const acceptedPreparation = identityError ? initialPreparation : payload.preparation;
+        setPreparationDetails({
+          preparation: acceptedPreparation,
+          pack: identityError ? null : payload.pack,
+          loadError: null,
+          identityError,
+        });
+        setPreparationForm(buildScheduleDayPreparationForm(acceptedPreparation));
       })
       .catch((error) => {
-        if (preparationRequestIdRef.current !== scheduleId) return;
+        if (preparationRequestSeqRef.current !== requestSeq) return;
+        setPreparationDetails((current) => ({
+          preparation: current?.preparation ?? initialPreparation,
+          pack: null,
+          loadError: PREPARATION_PACK_MISSING_MESSAGE,
+          identityError: null,
+        }));
         toast.error(error instanceof Error ? error.message : '訪問準備情報の取得に失敗しました');
       })
       .finally(() => {
-        if (preparationRequestIdRef.current !== scheduleId) return;
+        if (preparationRequestSeqRef.current !== requestSeq) return;
         setPreparationLoading(false);
       });
   }
 
   function closePreparationDialog() {
-    preparationRequestIdRef.current = null;
+    preparationRequestSeqRef.current += 1;
     setPreparationLoading(false);
     setPreparationDetails(null);
     setPreparationTarget(null);
@@ -1384,6 +1442,53 @@ export function ScheduleDayView({
       toast.error(error instanceof Error ? error.message : '競合下書きの破棄に失敗しました');
     },
   });
+
+  const completedPreparationFormCount = PREPARATION_ITEMS.filter(
+    ([field]) => preparationForm[field],
+  ).length;
+  const incompletePreparationLabels = PREPARATION_ITEMS.filter(
+    ([field]) => !preparationForm[field],
+  ).map(([, label]) => label);
+  const preparationPack = preparationDetails?.pack ?? null;
+  const onboardingReadinessWarnings = preparationPack?.onboarding_readiness
+    ? getOnboardingReadinessWarnings(preparationPack.onboarding_readiness)
+    : [];
+  const onboardingReadinessUnknown = Boolean(
+    preparationPack && preparationPack.onboarding_readiness === null,
+  );
+  const unresolvedPreparationReadinessBlockers =
+    preparationPack?.readiness_blockers.filter(
+      (blocker) => !isPreparationChecklistBlockerResolved(blocker, preparationForm),
+    ) ?? [];
+  const preparationContextBlockerCount =
+    unresolvedPreparationReadinessBlockers.length +
+    onboardingReadinessWarnings.length +
+    (onboardingReadinessUnknown ? 1 : 0) +
+    (preparationPack?.billing_blockers.length ?? 0);
+  const preparationContextBlockerCategories = [
+    unresolvedPreparationReadinessBlockers.length > 0
+      ? `訪問前提 ${unresolvedPreparationReadinessBlockers.length}件`
+      : null,
+    onboardingReadinessUnknown ? '導入準備 不明' : null,
+    onboardingReadinessWarnings.length > 0
+      ? `導入準備 ${onboardingReadinessWarnings.length}件`
+      : null,
+    preparationPack && preparationPack.billing_blockers.length > 0
+      ? `算定確認 ${preparationPack.billing_blockers.length}件`
+      : null,
+  ].filter(Boolean);
+  const preparationPackStatusError =
+    preparationDetails?.loadError ??
+    preparationDetails?.identityError ??
+    (!preparationLoading && preparationTarget && !preparationPack
+      ? PREPARATION_PACK_MISSING_MESSAGE
+      : null);
+  const markReadyDisabled =
+    preparationMutation.isPending ||
+    preparationLoading ||
+    Boolean(preparationPackStatusError) ||
+    incompletePreparationLabels.length > 0 ||
+    preparationContextBlockerCount > 0;
 
   if (isScheduleBoardLoading) {
     return <ScheduleBoardSkeleton />;
@@ -3555,7 +3660,7 @@ export function ScheduleDayView({
           <DialogHeader>
             <DialogTitle>訪問準備チェック</DialogTitle>
             <DialogDescription>
-              ready に進む前に、訪問前チェックリストを完了させます。
+              ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -3589,18 +3694,73 @@ export function ScheduleDayView({
               </div>
             )}
             {getDepartureCarryWarning(preparationTarget) && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
+              <div
+                role="alert"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900"
+              >
                 <p className="font-medium">{getDepartureCarryWarning(preparationTarget)?.title}</p>
                 <p className="mt-1 leading-6">
                   {getDepartureCarryWarning(preparationTarget)?.description}
                 </p>
               </div>
             )}
+            <section
+              aria-labelledby="preparation-readiness-heading"
+              className={cn(
+                'rounded-lg border px-3 py-3 text-sm',
+                preparationPackStatusError || preparationContextBlockerCount > 0
+                  ? 'border-rose-200 bg-rose-50 text-rose-900'
+                  : incompletePreparationLabels.length > 0
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-900',
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 id="preparation-readiness-heading" className="font-medium">
+                    ready 判定
+                  </h3>
+                  <p id="preparation-readiness-summary" className="mt-1 text-xs leading-5">
+                    {preparationLoading
+                      ? '最新の訪問準備情報を読み込み中です。'
+                      : preparationPackStatusError
+                        ? preparationPackStatusError
+                        : preparationContextBlockerCount > 0
+                          ? '出発前に解決が必要な項目があります。'
+                          : incompletePreparationLabels.length > 0
+                            ? '出発前チェックリストに未完了項目があります。'
+                            : 'ready に進める状態です。'}
+                  </p>
+                </div>
+                <Badge variant={markReadyDisabled ? 'outline' : 'secondary'}>
+                  {markReadyDisabled ? 'ready 停止中' : 'ready 可能'}
+                </Badge>
+              </div>
+              {preparationPackStatusError && !preparationLoading ? (
+                <p role="alert" className="mt-2 text-xs leading-5">
+                  最新情報を再取得してからreadyへ進めてください。
+                </p>
+              ) : preparationContextBlockerCategories.length > 0 ? (
+                <ul
+                  aria-label="ready 停止カテゴリ"
+                  className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5"
+                >
+                  {preparationContextBlockerCategories.map((category) => (
+                    <li key={category}>{category}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
             {preparationDetails?.pack && (
-              <div className="grid gap-3 rounded-xl border bg-muted/20 p-4">
+              <section
+                aria-labelledby="preparation-pack-heading"
+                className="grid gap-3 rounded-xl border bg-muted/20 p-4"
+              >
                 <div className="grid gap-3 lg:grid-cols-2">
                   <div className="space-y-1 text-sm">
-                    <p className="font-medium text-foreground">Pre-Visit Pack</p>
+                    <h3 id="preparation-pack-heading" className="font-medium text-foreground">
+                      Pre-Visit Pack
+                    </h3>
                     <p className="text-muted-foreground">
                       {preparationDetails.pack.patient.address ?? '住所未登録'}
                     </p>
@@ -3616,7 +3776,7 @@ export function ScheduleDayView({
                     )}
                   </div>
                   <div className="space-y-1 text-sm">
-                    <p className="font-medium text-foreground">当日状況</p>
+                    <h3 className="font-medium text-foreground">当日状況</h3>
                     <p className="text-muted-foreground">
                       同日担当 {preparationDetails.pack.workload.same_day_visit_count} 件
                     </p>
@@ -3629,16 +3789,28 @@ export function ScheduleDayView({
                   </div>
                 </div>
 
-                {preparationDetails.pack.readiness_blockers.length > 0 && (
+                {unresolvedPreparationReadinessBlockers.length > 0 && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    未完了: {preparationDetails.pack.readiness_blockers.join(' / ')}
+                    <p className="font-medium">訪問前提の未完了</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 leading-5">
+                      {unresolvedPreparationReadinessBlockers.map((blocker) => (
+                        <li key={blocker}>{blocker}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
-                {preparationDetails.pack.onboarding_readiness && (
+                {preparationDetails.pack.onboarding_readiness ? (
                   <OnboardingWarningBadges
                     readiness={preparationDetails.pack.onboarding_readiness}
                   />
+                ) : (
+                  <div
+                    role="alert"
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                  >
+                    導入準備の状態を確認できません。
+                  </div>
                 )}
 
                 {(() => {
@@ -3753,7 +3925,7 @@ export function ScheduleDayView({
 
                 {preparationDetails.pack.billing_blockers.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">算定ブロッカー</p>
+                    <h3 className="text-xs font-medium text-muted-foreground">算定ブロッカー</h3>
                     <div className="grid gap-2 lg:grid-cols-2">
                       {preparationDetails.pack.billing_blockers.map((blocker) => (
                         <div
@@ -3945,28 +4117,71 @@ export function ScheduleDayView({
                     </div>
                   </div>
                 )}
-              </div>
+              </section>
             )}
             <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="grid gap-3">
-                {PREPARATION_ITEMS.map(([field, label]) => (
-                  <label
-                    key={field}
-                    className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm"
+              <section aria-labelledby="preparation-checklist-heading" className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 id="preparation-checklist-heading" className="text-sm font-medium">
+                      出発前チェックリスト
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      未完了が残る間は ready に進めません。
+                    </p>
+                  </div>
+                  <Badge
+                    variant={incompletePreparationLabels.length === 0 ? 'secondary' : 'outline'}
                   >
-                    <Checkbox
-                      checked={preparationForm[field as keyof typeof preparationForm]}
-                      onCheckedChange={(checked) =>
-                        setPreparationForm((current) => ({
-                          ...current,
-                          [field]: Boolean(checked),
-                        }))
-                      }
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
+                    {completedPreparationFormCount}/{PREPARATION_ITEMS.length} 完了
+                  </Badge>
+                </div>
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-xs leading-5',
+                    incompletePreparationLabels.length === 0
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-amber-200 bg-amber-50 text-amber-900',
+                  )}
+                >
+                  {incompletePreparationLabels.length === 0
+                    ? 'チェックリストはすべて完了しています。'
+                    : `未完了: ${incompletePreparationLabels.join(' / ')}`}
+                </p>
+                <div className="grid gap-3">
+                  {PREPARATION_ITEMS.map(([field, label]) => {
+                    const descriptionId = `preparation-check-${field}-description`;
+                    return (
+                      <label
+                        key={field}
+                        className="flex min-h-11 items-start gap-3 rounded-lg border border-border/70 px-3 py-3 text-sm"
+                      >
+                        <Checkbox
+                          aria-describedby={descriptionId}
+                          checked={preparationForm[field as keyof typeof preparationForm]}
+                          onCheckedChange={(checked) =>
+                            setPreparationForm((current) => ({
+                              ...current,
+                              [field]: Boolean(checked),
+                            }))
+                          }
+                        />
+                        <span className="grid gap-0.5">
+                          <span className="font-medium">{label}</span>
+                          <span
+                            id={descriptionId}
+                            className="text-xs leading-5 text-muted-foreground"
+                          >
+                            {PREPARATION_ITEM_DESCRIPTIONS[field]}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
 
               {preparationDetails?.pack?.patient.address ? (
                 <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
@@ -4015,11 +4230,12 @@ export function ScheduleDayView({
                   markReady: false,
                 })
               }
-              disabled={preparationMutation.isPending}
+              disabled={preparationMutation.isPending || Boolean(preparationPackStatusError)}
             >
               保存
             </Button>
             <Button
+              aria-describedby="preparation-readiness-summary"
               onClick={() =>
                 preparationTarget &&
                 preparationMutation.mutate({
@@ -4027,10 +4243,7 @@ export function ScheduleDayView({
                   markReady: true,
                 })
               }
-              disabled={
-                preparationMutation.isPending ||
-                Object.values(preparationForm).some((value) => !value)
-              }
+              disabled={markReadyDisabled}
             >
               ready に進める
             </Button>

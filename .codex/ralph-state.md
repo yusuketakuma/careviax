@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260611-011503
+
+- current task: harden the visit-preparation dialog readiness flow before the broader UI/UX overhaul.
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, local Next.js docs under `node_modules/next/dist/docs/`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.chrome.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/(dashboard)/schedules/schedule-day-preparation.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, and read-only code-mapper, accessibility/UX, privacy, medical-safety, and frontend-reviewer findings.
+- files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.chrome.tsx`, `src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx`, and `.codex/ralph-state.md`.
+- bugs found: `ready に進める` could be enabled from checklist state alone while preparation pack load failed, returned mismatched patient/schedule data, had unknown onboarding readiness, or had stale same-schedule async responses after close/reopen. The onboarding warning component also omitted `management_plan_approved` and `primary_physician_set`.
+- security risks found: no auth, authorization, org scoping, endpoint, or persistence behavior changed. The slice reduces wrong-patient and stale-readiness risk by rejecting mismatched preparation packs, disabling save/ready when the latest pack cannot be trusted, minimizing PHI duplication in dialog action names/title, and keeping readiness details in one canonical area.
+- performance issues found: no new network calls, DB queries, polling, or unbounded loops were introduced. The new readiness derivation is bounded to the five preparation checklist items and current pack arrays, and stale-response guarding is a constant-time sequence check.
+- validation commands: targeted Prettier for changed schedule files; focused `pnpm exec vitest run 'src/app/(dashboard)/schedules/day-view.test.tsx' 'src/app/(dashboard)/schedules/schedule-day-view.chrome.test.tsx' --reporter=dot`; `pnpm lint`; `pnpm typecheck`; `pnpm format:check`; `git diff --check`; read-only medical-safety and frontend-reviewer final re-review.
+- validation results: focused day-view/chrome suite passed with 2 files / 23 tests. Full ESLint passed. Full typecheck passed after Next route type generation. Changed-file format check passed. Whitespace diff check passed. Final medical-safety and frontend re-review found no remaining blocker in the scoped diff.
+- remaining work: broader ScheduleDayView UI/UX overhaul still remains, especially page-level grouping, dense operator workflow polish, and additional browser proof for the final visual pass. Remaining audit-plan items outside this slice include patient-detail read-model extraction, PDF builder split, Redis adapter coverage, branch-coverage raising, dependency patch/minor cadence, eventual `skipLibCheck` removal, and approval-bound webhook legacy-secret backfill/contract migration.
+- next action: commit this validated visit-preparation readiness slice, then continue with the next high-leverage UI/UX slice using read-only subagents before edits.
+
 ### 20260611-002101
 
 - current task: add accessible table semantics and schedule context labels to the day Gantt view.

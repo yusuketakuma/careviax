@@ -5,33 +5,68 @@ export type OnboardingReadiness = {
   consent_obtained: boolean;
   first_visit_doc_delivered: boolean;
   emergency_contact_set: boolean;
+  management_plan_approved: boolean;
+  primary_physician_set: boolean;
 };
 
-export function OnboardingWarningBadges({
-  readiness,
-}: {
-  readiness: OnboardingReadiness;
-}) {
-  const warnings = [
-    !readiness.consent_obtained && (
-      <Badge key="consent" variant="destructive" className="text-xs">
-        同意未取得
-      </Badge>
-    ),
-    !readiness.first_visit_doc_delivered && (
-      <Badge key="fvd" variant="outline" className="text-xs border-orange-500 text-orange-600">
-        初回文書未交付
-      </Badge>
-    ),
-    !readiness.emergency_contact_set && (
-      <Badge key="emergency" variant="outline" className="text-xs border-orange-500 text-orange-600">
-        緊急連絡先未登録
-      </Badge>
-    ),
-  ].filter(Boolean);
+const ONBOARDING_READINESS_ITEMS = [
+  {
+    key: 'consent_obtained',
+    label: '同意未取得',
+    variant: 'destructive',
+  },
+  {
+    key: 'first_visit_doc_delivered',
+    label: '初回文書未交付',
+    variant: 'outline',
+  },
+  {
+    key: 'emergency_contact_set',
+    label: '緊急連絡先未登録',
+    variant: 'outline',
+  },
+  {
+    key: 'management_plan_approved',
+    label: '管理計画未承認',
+    variant: 'outline',
+  },
+  {
+    key: 'primary_physician_set',
+    label: '主治医未設定',
+    variant: 'outline',
+  },
+] as const satisfies ReadonlyArray<{
+  key: keyof OnboardingReadiness;
+  label: string;
+  variant: 'destructive' | 'outline';
+}>;
+
+export function getOnboardingReadinessWarnings(readiness: OnboardingReadiness) {
+  return ONBOARDING_READINESS_ITEMS.filter((item) => !readiness[item.key]);
+}
+
+export function OnboardingWarningBadges({ readiness }: { readiness: OnboardingReadiness }) {
+  const warnings = getOnboardingReadinessWarnings(readiness);
 
   if (warnings.length === 0) return null;
-  return <div className="flex flex-wrap gap-1.5">{warnings}</div>;
+  return (
+    <ul className="flex flex-wrap gap-1.5" role="list" aria-label="訪問前提の未完了項目">
+      {warnings.map((warning) => (
+        <li key={warning.key}>
+          <Badge
+            variant={warning.variant}
+            className={
+              warning.variant === 'outline'
+                ? 'border-orange-500 text-xs text-orange-600'
+                : 'text-xs'
+            }
+          >
+            {warning.label}
+          </Badge>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function ScheduleBoardSkeleton() {
