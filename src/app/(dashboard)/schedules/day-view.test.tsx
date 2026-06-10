@@ -730,11 +730,215 @@ describe('ScheduleDayView', () => {
     expect(screen.getByText('確定訪問 3 件')).toBeTruthy();
     expect(screen.getAllByText('佐藤単独').length).toBeGreaterThan(0);
 
+    const facilityOrderList = screen.getByRole('list', { name: '青空ホームの訪問順序' });
+    const getFacilityPatientOrder = () =>
+      within(facilityOrderList)
+        .getAllByText(/^青空[一二]郎$/)
+        .map((element) => element.textContent);
+
+    expect(getFacilityPatientOrder()).toEqual(['青空一郎', '青空二郎']);
+    expect(within(facilityOrderList).getByText('現在 1 / 2番目')).toBeTruthy();
+    expect(within(facilityOrderList).getByText('現在 2 / 2番目')).toBeTruthy();
+    expect(
+      (
+        within(facilityOrderList).getByRole('button', {
+          name: '青空ホーム 青空一郎を1つ上へ移動',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        within(facilityOrderList).getByRole('button', {
+          name: '青空ホーム 青空二郎を1つ下へ移動',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(
+      within(facilityOrderList).getByRole('button', {
+        name: '青空ホーム 青空一郎を1つ下へ移動',
+      }),
+    );
+
+    expect(getFacilityPatientOrder()).toEqual(['青空二郎', '青空一郎']);
+    expect(screen.getByRole('status').textContent).toContain(
+      '青空ホーム 青空一郎を2 / 2番目に移動しました',
+    );
+    expect(
+      (
+        within(facilityOrderList).getByRole('spinbutton', {
+          name: '青空ホーム 青空一郎 の訪問順序',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('2');
+    expect(
+      (
+        within(facilityOrderList).getByRole('spinbutton', {
+          name: '青空ホーム 青空二郎 の訪問順序',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('1');
+
+    fireEvent.click(
+      within(facilityOrderList).getByRole('button', {
+        name: '青空ホーム 青空一郎を1つ上へ移動',
+      }),
+    );
+
+    expect(getFacilityPatientOrder()).toEqual(['青空一郎', '青空二郎']);
+    expect(screen.getByRole('status').textContent).toContain(
+      '青空ホーム 青空一郎を1 / 2番目に移動しました',
+    );
+
     fireEvent.click(screen.getByRole('button', { name: '青空ホーム' }));
 
     expect(screen.getAllByText('青空一郎').length).toBeGreaterThan(0);
     expect(screen.getAllByText('青空二郎').length).toBeGreaterThan(0);
     expect(screen.queryAllByText('佐藤単独')).toHaveLength(0);
+  });
+
+  it('saves facility visit order changed with move buttons', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: { id: 'batch_1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables: unknown) => unknown;
+        onSuccess?: (data: unknown, variables: unknown) => unknown;
+        onError?: (error: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables))
+            .then((data) => options.onSuccess?.(data, variables))
+            .catch((error: unknown) => options.onError?.(error));
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    const schedules = [
+      buildSchedule({
+        id: 'schedule_facility_1',
+        route_order: 1,
+        facility_batch_id: 'batch_1',
+        case_: {
+          patient: {
+            id: 'patient_facility_1',
+            name: '青空一郎',
+            residences: [
+              {
+                address: '東京都千代田区3-3-3',
+                building_id: '青空ホーム',
+                unit_name: '101',
+                lat: 35.11,
+                lng: 139.11,
+              },
+            ],
+          },
+        },
+        facility_hint: {
+          label: '青空ホーム',
+          patient_count: 2,
+          patient_names: ['青空一郎', '青空二郎'],
+        },
+      }),
+      buildSchedule({
+        id: 'schedule_facility_2',
+        route_order: 2,
+        facility_batch_id: 'batch_1',
+        case_: {
+          patient: {
+            id: 'patient_facility_2',
+            name: '青空二郎',
+            residences: [
+              {
+                address: '東京都千代田区3-3-3',
+                building_id: '青空ホーム',
+                unit_name: '102',
+                lat: 35.12,
+                lng: 139.12,
+              },
+            ],
+          },
+        },
+        facility_hint: {
+          label: '青空ホーム',
+          patient_count: 2,
+          patient_names: ['青空一郎', '青空二郎'],
+        },
+      }),
+    ];
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: { data: schedules },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+
+    const facilityOrderList = screen.getByRole('list', { name: '青空ホームの訪問順序' });
+    fireEvent.click(
+      within(facilityOrderList).getByRole('button', {
+        name: '青空ホーム 青空二郎を1つ上へ移動',
+      }),
+    );
+
+    expect(within(facilityOrderList).getByText('現在 1 / 2番目')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      '青空ホーム 青空二郎を1 / 2番目に移動しました',
+    );
+    expect(
+      (
+        within(facilityOrderList).getByRole('spinbutton', {
+          name: '青空ホーム 青空二郎 の訪問順序',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('1');
+    expect(
+      (
+        within(facilityOrderList).getByRole('spinbutton', {
+          name: '青空ホーム 青空一郎 の訪問順序',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('2');
+
+    fireEvent.click(screen.getByRole('button', { name: '同時訪問を保存' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/facility-visit-batches',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    const facilityBatchCall = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/facility-visit-batches',
+    );
+    expect(facilityBatchCall).toBeTruthy();
+    const requestInit = facilityBatchCall?.[1];
+    expect(requestInit).toBeTruthy();
+    expect(requestInit?.headers).toEqual(
+      expect.objectContaining({
+        'Content-Type': 'application/json',
+        'x-org-id': 'org_1',
+      }),
+    );
+    expect(JSON.parse(String(requestInit?.body))).toEqual(
+      expect.objectContaining({
+        ordered_schedule_ids: ['schedule_facility_2', 'schedule_facility_1'],
+        carry_items_confirmed: false,
+      }),
+    );
   });
 
   it('renders same-start Gantt visits in one stacked cell', async () => {

@@ -6,7 +6,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Building2, Car, CheckCircle2, PlayCircle, Navigation } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  Car,
+  CheckCircle2,
+  Navigation,
+  PlayCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,7 +64,7 @@ import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile'
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
-import { useRouteOrderDraft } from './route-order-draft';
+import { moveRouteItem, useRouteOrderDraft } from './route-order-draft';
 import {
   handleScheduleDayFacilityBatchSuccess,
   saveScheduleDayFacilityBatch,
@@ -305,6 +313,7 @@ export function ScheduleDayView({
     groupKey: string;
     scheduleId: string;
   } | null>(null);
+  const [facilityRouteAnnouncement, setFacilityRouteAnnouncement] = useState('');
   const [facilityVisitDayTarget, setFacilityVisitDayTarget] = useState<{
     key: string;
     label: string;
@@ -665,15 +674,50 @@ export function ScheduleDayView({
       !schedulesData &&
       !tasksData &&
       !callbackTasksData);
+  function getFacilityRouteDraft(group: FacilityTrackerGroup) {
+    return {
+      ...(facilityRouteDefaults[group.key] ?? {}),
+      ...(facilityRouteOverrides[group.key] ?? {}),
+    };
+  }
+
+  function setFacilityPatientOrder(groupKey: string, orderedScheduleIds: string[]) {
+    setFacilityRouteOverrides((prev) => ({
+      ...prev,
+      [groupKey]: Object.fromEntries(
+        orderedScheduleIds.map((scheduleId, index) => [scheduleId, String(index + 1)]),
+      ),
+    }));
+  }
+
+  function announceFacilityPatientPosition(
+    group: FacilityTrackerGroup,
+    scheduleId: string,
+    orderedScheduleIds: string[],
+  ) {
+    const patient = group.patients.find((candidate) => candidate.scheduleId === scheduleId);
+    const nextIndex = orderedScheduleIds.indexOf(scheduleId);
+    if (!patient || nextIndex === -1) return;
+    setFacilityRouteAnnouncement(
+      `${group.label} ${patient.patientName}を${nextIndex + 1} / ${orderedScheduleIds.length}番目に移動しました`,
+    );
+  }
+
+  function getOrderedFacilityPatients(group: FacilityTrackerGroup) {
+    const patientsByScheduleId = new Map(
+      group.patients.map((patient) => [patient.scheduleId, patient]),
+    );
+    return buildOrderedFacilityScheduleIds(group, getFacilityRouteDraft(group))
+      .map((scheduleId) => patientsByScheduleId.get(scheduleId))
+      .filter((patient): patient is FacilityTrackerGroup['patients'][number] => Boolean(patient));
+  }
+
   function reorderFacilityPatients(
     group: FacilityTrackerGroup,
     draggedScheduleId: string,
     targetScheduleId: string,
   ) {
-    const routeDraft = {
-      ...(facilityRouteDefaults[group.key] ?? {}),
-      ...(facilityRouteOverrides[group.key] ?? {}),
-    };
+    const routeDraft = getFacilityRouteDraft(group);
     const orderedScheduleIds = buildOrderedFacilityScheduleIds(group, routeDraft);
     const draggedIndex = orderedScheduleIds.indexOf(draggedScheduleId);
     const targetIndex = orderedScheduleIds.indexOf(targetScheduleId);
@@ -685,12 +729,20 @@ export function ScheduleDayView({
     const [moved] = nextOrdered.splice(draggedIndex, 1);
     nextOrdered.splice(targetIndex, 0, moved);
 
-    setFacilityRouteOverrides((prev) => ({
-      ...prev,
-      [group.key]: Object.fromEntries(
-        nextOrdered.map((scheduleId, index) => [scheduleId, String(index + 1)]),
-      ),
-    }));
+    setFacilityPatientOrder(group.key, nextOrdered);
+    announceFacilityPatientPosition(group, draggedScheduleId, nextOrdered);
+  }
+
+  function moveFacilityPatient(
+    group: FacilityTrackerGroup,
+    scheduleId: string,
+    direction: 'up' | 'down',
+  ) {
+    const orderedScheduleIds = buildOrderedFacilityScheduleIds(group, getFacilityRouteDraft(group));
+    const nextOrdered = moveRouteItem(orderedScheduleIds, scheduleId, direction);
+    if (nextOrdered === orderedScheduleIds) return;
+    setFacilityPatientOrder(group.key, nextOrdered);
+    announceFacilityPatientPosition(group, scheduleId, nextOrdered);
   }
 
   const cachedVisitBriefByScheduleId = useMemo(
@@ -2236,6 +2288,9 @@ export function ScheduleDayView({
                     </Button>
                   ))}
                 </div>
+                <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                  {facilityRouteAnnouncement}
+                </p>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {facilityTracker.map((group) => (
                     <div
@@ -2277,80 +2332,131 @@ export function ScheduleDayView({
                         </Badge>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        行をドラッグして順序を並べ替えるか、番号入力で微調整できます。
+                        上下ボタン、ドラッグ、番号入力で訪問順序を調整できます。
                       </p>
-                      <div className="mt-3 space-y-2">
-                        {group.patients.map((patient, index) => (
-                          <div
-                            key={patient.scheduleId}
-                            draggable
-                            onDragStart={() =>
-                              setDraggingFacilityPatient({
-                                groupKey: group.key,
-                                scheduleId: patient.scheduleId,
-                              })
-                            }
-                            onDragEnd={() => setDraggingFacilityPatient(null)}
-                            onDragOver={(event) => event.preventDefault()}
-                            onDrop={(event) => {
-                              event.preventDefault();
-                              if (
-                                draggingFacilityPatient?.groupKey !== group.key ||
-                                !draggingFacilityPatient?.scheduleId
-                              ) {
-                                return;
-                              }
-                              reorderFacilityPatients(
-                                group,
-                                draggingFacilityPatient.scheduleId,
-                                patient.scheduleId,
-                              );
-                              setDraggingFacilityPatient(null);
-                            }}
-                            className={[
-                              'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
-                              draggingFacilityPatient?.scheduleId === patient.scheduleId
-                                ? 'border-sky-300 bg-sky-50'
-                                : '',
-                            ].join(' ')}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-foreground">{patient.patientName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {patient.unitName ? `部屋 ${patient.unitName}` : '部屋番号未設定'}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Label
-                                htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
-                                className="text-xs text-muted-foreground"
+                      <div
+                        className="mt-3 space-y-2"
+                        role="list"
+                        aria-label={`${group.label}の訪問順序`}
+                      >
+                        {getOrderedFacilityPatients(group).map(
+                          (patient, index, orderedPatients) => {
+                            const positionDescriptionId = `facility-route-position-${group.key}-${patient.scheduleId}`;
+                            const positionText = `現在 ${index + 1} / ${orderedPatients.length}番目`;
+                            return (
+                              <div
+                                key={patient.scheduleId}
+                                role="listitem"
+                                draggable
+                                onDragStart={() =>
+                                  setDraggingFacilityPatient({
+                                    groupKey: group.key,
+                                    scheduleId: patient.scheduleId,
+                                  })
+                                }
+                                onDragEnd={() => setDraggingFacilityPatient(null)}
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  event.preventDefault();
+                                  if (
+                                    draggingFacilityPatient?.groupKey !== group.key ||
+                                    !draggingFacilityPatient?.scheduleId
+                                  ) {
+                                    return;
+                                  }
+                                  reorderFacilityPatients(
+                                    group,
+                                    draggingFacilityPatient.scheduleId,
+                                    patient.scheduleId,
+                                  );
+                                  setDraggingFacilityPatient(null);
+                                }}
+                                className={[
+                                  'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
+                                  draggingFacilityPatient?.scheduleId === patient.scheduleId
+                                    ? 'border-sky-300 bg-sky-50'
+                                    : '',
+                                ].join(' ')}
                               >
-                                順序
-                              </Label>
-                              <Input
-                                id={`facility-route-${group.key}-${patient.scheduleId}`}
-                                aria-label={`${group.label} ${patient.patientName} の訪問順序`}
-                                type="number"
-                                min={1}
-                                value={
-                                  facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
-                                  facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
-                                  String(patient.routeOrder ?? index + 1)
-                                }
-                                onChange={(event) =>
-                                  setFacilityRouteOverrides((prev) => ({
-                                    ...prev,
-                                    [group.key]: {
-                                      ...(prev[group.key] ?? {}),
-                                      [patient.scheduleId]: event.target.value,
-                                    },
-                                  }))
-                                }
-                                className="h-8 w-20"
-                              />
-                            </div>
-                          </div>
-                        ))}
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-foreground">
+                                    {patient.patientName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {patient.unitName
+                                      ? `部屋 ${patient.unitName}`
+                                      : '部屋番号未設定'}
+                                  </p>
+                                  <p
+                                    id={positionDescriptionId}
+                                    className="text-xs font-medium text-sky-700"
+                                  >
+                                    {positionText}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      size="icon-sm"
+                                      variant="outline"
+                                      className="min-h-11 min-w-11 sm:size-11"
+                                      aria-label={`${group.label} ${patient.patientName}を1つ上へ移動`}
+                                      aria-describedby={positionDescriptionId}
+                                      onClick={() =>
+                                        moveFacilityPatient(group, patient.scheduleId, 'up')
+                                      }
+                                      disabled={index === 0}
+                                    >
+                                      <ArrowUp className="size-4" aria-hidden="true" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="icon-sm"
+                                      variant="outline"
+                                      className="min-h-11 min-w-11 sm:size-11"
+                                      aria-label={`${group.label} ${patient.patientName}を1つ下へ移動`}
+                                      aria-describedby={positionDescriptionId}
+                                      onClick={() =>
+                                        moveFacilityPatient(group, patient.scheduleId, 'down')
+                                      }
+                                      disabled={index === orderedPatients.length - 1}
+                                    >
+                                      <ArrowDown className="size-4" aria-hidden="true" />
+                                    </Button>
+                                  </div>
+                                  <Label
+                                    htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    順序
+                                  </Label>
+                                  <Input
+                                    id={`facility-route-${group.key}-${patient.scheduleId}`}
+                                    aria-label={`${group.label} ${patient.patientName} の訪問順序`}
+                                    type="number"
+                                    min={1}
+                                    value={
+                                      facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
+                                      facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
+                                      String(patient.routeOrder ?? index + 1)
+                                    }
+                                    onChange={(event) =>
+                                      setFacilityRouteOverrides((prev) => ({
+                                        ...prev,
+                                        [group.key]: {
+                                          ...(prev[group.key] ?? {}),
+                                          [patient.scheduleId]: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    className="h-11 min-h-11 w-20 sm:h-11 sm:min-h-11"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          },
+                        )}
                       </div>
                       <ActionRail align="start" className="mt-3">
                         <Button
