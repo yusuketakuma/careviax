@@ -202,6 +202,7 @@ type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
 };
 type VisitVehicleResourcesResponse = { data: VisitVehicleResourceOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
+type SingleProposalConfirmAction = 'approve' | 'confirm';
 type ContactMethod = 'phone' | 'fax' | 'email';
 type ContactFormState = {
   outcome: ContactOutcome;
@@ -248,6 +249,11 @@ type ProposalActionPayload =
       note?: string;
       callback_due_at?: string;
     };
+
+type SingleProposalConfirmState = {
+  action: SingleProposalConfirmAction;
+  proposal: Proposal;
+};
 
 type ContentProps = {
   initialStatus?: string | null;
@@ -541,7 +547,7 @@ function proposalActionTargetLabel(proposal: Proposal) {
   return `${proposal.case_.patient.name} ${formatDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel}`;
 }
 
-const SAFE_BULK_ACTION_FAILURE_MESSAGES = new Set([
+const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
   'この候補は承認できません',
   'この候補は却下できません',
   '勤務枠が埋まりました',
@@ -551,17 +557,33 @@ const SAFE_BULK_ACTION_FAILURE_MESSAGES = new Set([
   '確定済み訪問の変更は承認後に新候補を確定してください',
 ]);
 
-function bulkActionFailureDisplayMessage(failure: BulkActionFailure) {
-  if (!failure.reachedServer) {
+function proposalActionFailureDisplayMessage(message: string, reachedServer: boolean) {
+  if (!reachedServer) {
     return '通信が完了しませんでした。接続を確認して再試行してください。';
   }
 
-  const trimmedMessage = failure.message.trim();
-  if (SAFE_BULK_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
+  const trimmedMessage = message.trim();
+  if (SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
     return trimmedMessage;
   }
 
   return 'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。';
+}
+
+function bulkActionFailureDisplayMessage(failure: BulkActionFailure) {
+  return proposalActionFailureDisplayMessage(failure.message, failure.reachedServer);
+}
+
+function singleProposalActionLabel(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '承認して患者連絡へ進める' : '日時確定する';
+}
+
+function singleProposalActionQuestion(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '承認して患者連絡へ進めますか' : '日時確定しますか';
+}
+
+function singleProposalActionResultLabel(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
 }
 
 export function ScheduleProposalsContent({
@@ -585,6 +607,9 @@ export function ScheduleProposalsContent({
   const [dateFrom, setDateFrom] = useState(initialDateFrom ?? '');
   const [dateTo, setDateTo] = useState(initialDateTo ?? '');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [singleConfirmAction, setSingleConfirmAction] = useState<SingleProposalConfirmState | null>(
+    null,
+  );
   const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
   const [bulkRejectReason, setBulkRejectReason] = useState('');
   const [bulkActionFailureSummary, setBulkActionFailureSummary] =
@@ -1021,21 +1046,34 @@ export function ScheduleProposalsContent({
 
   const proposalActionMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: ProposalActionPayload }) => {
-      const response = await fetch(`/api/visit-schedule-proposals/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify(payload),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`/api/visit-schedule-proposals/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '候補更新に失敗しました';
+        throw new Error(proposalActionFailureDisplayMessage(message, false));
+      }
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.message ?? '候補更新に失敗しました');
+        throw new Error(
+          proposalActionFailureDisplayMessage(error.message ?? '候補更新に失敗しました', true),
+        );
       }
-      return response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new Error(proposalActionFailureDisplayMessage('候補更新に失敗しました', true));
+      }
     },
     onSuccess: async (_data, variables) => {
+      setSingleConfirmAction(null);
       const payload = variables.payload;
       if (payload.action === 'approve') {
         toast.success('候補を承認し、患者連絡待ちへ移しました');
@@ -1389,6 +1427,18 @@ export function ScheduleProposalsContent({
   const trimmedBulkRejectReason = bulkRejectReason.trim();
   const bulkRejectReasonInvalid =
     bulkConfirmAction === 'reject' && trimmedBulkRejectReason.length === 0;
+  const singleConfirmProposal = singleConfirmAction?.proposal ?? null;
+  const singleConfirmTargetLabel = singleConfirmProposal
+    ? proposalActionTargetLabel(singleConfirmProposal)
+    : null;
+  const singleConfirmTitle =
+    singleConfirmAction && singleConfirmTargetLabel
+      ? `${singleConfirmTargetLabel} を${singleProposalActionQuestion(singleConfirmAction.action)}`
+      : '訪問候補の操作を確認します';
+  const singleConfirmDescription =
+    singleConfirmAction?.action === 'approve'
+      ? '承認後は患者連絡待ちへ進みます。日時確定ではありません。'
+      : '患者確認済みの候補を訪問予定として確定します。';
   const bulkConfirmTitle =
     bulkConfirmAction === 'approve'
       ? `選択中${bulkConfirmEligibleCount}件の訪問候補を一括承認しますか`
@@ -1937,12 +1987,7 @@ export function ScheduleProposalsContent({
                       {canApprove ? (
                         <Button
                           size="sm"
-                          onClick={() =>
-                            proposalActionMutation.mutate({
-                              id: proposal.id,
-                              payload: { action: 'approve' },
-                            })
-                          }
+                          onClick={() => setSingleConfirmAction({ proposal, action: 'approve' })}
                           disabled={proposalActionMutation.isPending}
                           aria-label={`${proposalTargetLabel} を承認して患者連絡へ進める`}
                         >
@@ -1952,12 +1997,7 @@ export function ScheduleProposalsContent({
                       {canConfirm ? (
                         <Button
                           size="sm"
-                          onClick={() =>
-                            proposalActionMutation.mutate({
-                              id: proposal.id,
-                              payload: { action: 'confirm' },
-                            })
-                          }
+                          onClick={() => setSingleConfirmAction({ proposal, action: 'confirm' })}
                           disabled={proposalActionMutation.isPending}
                           aria-label={`${proposalTargetLabel} を日時確定する`}
                         >
@@ -2007,6 +2047,104 @@ export function ScheduleProposalsContent({
           })
         )}
       </div>
+
+      <AlertDialog
+        open={singleConfirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !proposalActionMutation.isPending) {
+            setSingleConfirmAction(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{singleConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{singleConfirmDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {singleConfirmAction && singleConfirmProposal ? (
+            <div className="space-y-3 text-sm">
+              <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">操作</dt>
+                  <dd className="font-medium">
+                    {singleProposalActionLabel(singleConfirmAction.action)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">実行後</dt>
+                  <dd className="font-medium">
+                    {singleProposalActionResultLabel(singleConfirmAction.action)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">患者</dt>
+                  <dd className="font-medium">{singleConfirmProposal.case_.patient.name}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">候補日時</dt>
+                  <dd className="font-medium">
+                    {formatDateLabel(singleConfirmProposal.proposed_date)}{' '}
+                    {timeLabel(
+                      singleConfirmProposal.time_window_start,
+                      singleConfirmProposal.time_window_end,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">担当</dt>
+                  <dd className="font-medium">
+                    {singleConfirmProposal.proposed_pharmacist?.name ?? '担当未解決'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">社用車</dt>
+                  <dd className="font-medium">
+                    {singleConfirmProposal.vehicle_resource?.label ?? '社用車未指定'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">現在の候補状態</dt>
+                  <dd className="font-medium">
+                    {PROPOSAL_STATUS_LABELS[singleConfirmProposal.proposal_status]}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">患者連絡</dt>
+                  <dd className="font-medium">
+                    {CONTACT_STATUS_LABELS[singleConfirmProposal.patient_contact_status]}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs leading-5 text-muted-foreground">
+                住所や連絡先、薬剤・処方に関する細かな内容はこの確認画面には表示しません。対象患者・候補日・担当・社用車だけを確認してから実行してください。
+              </p>
+            </div>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={proposalActionMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!singleConfirmAction) return;
+                proposalActionMutation.mutate({
+                  id: singleConfirmAction.proposal.id,
+                  payload: { action: singleConfirmAction.action },
+                });
+              }}
+              disabled={!singleConfirmAction || proposalActionMutation.isPending}
+            >
+              {proposalActionMutation.isPending
+                ? '処理中...'
+                : singleConfirmAction
+                  ? singleProposalActionLabel(singleConfirmAction.action)
+                  : '実行'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={bulkConfirmAction !== null}
@@ -2206,10 +2344,7 @@ export function ScheduleProposalsContent({
                       <Button
                         size="sm"
                         onClick={() =>
-                          proposalActionMutation.mutate({
-                            id: detail.id,
-                            payload: { action: 'approve' },
-                          })
+                          setSingleConfirmAction({ proposal: detail, action: 'approve' })
                         }
                         disabled={proposalActionMutation.isPending}
                         aria-label={
@@ -2254,10 +2389,7 @@ export function ScheduleProposalsContent({
                         <Button
                           size="sm"
                           onClick={() =>
-                            proposalActionMutation.mutate({
-                              id: detail.id,
-                              payload: { action: 'confirm' },
-                            })
+                            setSingleConfirmAction({ proposal: detail, action: 'confirm' })
                           }
                           disabled={
                             proposalActionMutation.isPending ||

@@ -405,6 +405,270 @@ describe('ScheduleProposalsContent', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('requires confirmation before a single proposal card approval is submitted', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([buildProposal({ id: 'proposal_1' })]);
+
+    render(<ScheduleProposalsContent />);
+
+    const target = proposalTargetName('山田花子');
+    fireEvent.click(screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: `${target} を承認して患者連絡へ進めますか`,
+    });
+    expect(within(confirmDialog).getByText('山田花子')).toBeTruthy();
+    expect(within(confirmDialog).getAllByText(/2026\/04\/09/).length).toBeGreaterThan(0);
+    expect(within(confirmDialog).getAllByText(/18:00 - 19:00/).length).toBeGreaterThan(0);
+    expect(within(confirmDialog).getByText('薬剤師A')).toBeTruthy();
+    expect(within(confirmDialog).getByText('社用車A')).toBeTruthy();
+    expect(within(confirmDialog).getByText('提案中')).toBeTruthy();
+    expect(within(confirmDialog).getByText('患者連絡待ち')).toBeTruthy();
+    expectElementTextExcludesSensitiveDetails(confirmDialog);
+
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'キャンセル' }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }));
+    const reopenedDialog = screen.getByRole('alertdialog', {
+      name: `${target} を承認して患者連絡へ進めますか`,
+    });
+    fireEvent.click(
+      within(reopenedDialog).getByRole('button', { name: '承認して患者連絡へ進める' }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-schedule-proposals/proposal_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'approve' }),
+      }),
+    );
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('候補を承認し、患者連絡待ちへ移しました');
+    });
+    expectProposalQueryInvalidations();
+  });
+
+  it('confirms the exact same-name card before a single date confirmation is submitted', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([
+      buildProposal({
+        id: 'proposal_1',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+        time_window_start: '2026-04-09T09:00:00',
+        time_window_end: '2026-04-09T10:00:00',
+      }),
+      buildProposal({
+        id: 'proposal_2',
+        case_id: 'case_2',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '佐藤太郎',
+            residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+        time_window_start: '2026-04-09T10:30:00',
+        time_window_end: '2026-04-09T11:30:00',
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent initialStatus="patient_contact_pending" />);
+
+    const secondTarget = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    fireEvent.click(screen.getByRole('button', { name: `${secondTarget} を日時確定する` }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: `${secondTarget} を日時確定しますか`,
+    });
+    expect(within(confirmDialog).getByText('訪問予定確定')).toBeTruthy();
+    expect(within(confirmDialog).getByText('患者確認済み')).toBeTruthy();
+    expectElementTextExcludesSensitiveDetails(confirmDialog);
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '日時確定する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-schedule-proposals/proposal_2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'confirm' }),
+      }),
+    );
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('訪問予定を確定しました');
+    });
+    expectProposalQueryInvalidations();
+  });
+
+  it('routes detail sheet date confirmation through the active proposal confirmation dialog', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    const detail = buildProposalDetail({
+      id: 'proposal_2',
+      case_id: 'case_2',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'confirmed',
+      case_: {
+        patient: {
+          id: 'patient_2',
+          name: '佐藤太郎',
+          residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+        },
+      },
+      time_window_start: '2026-04-09T10:30:00',
+      time_window_end: '2026-04-09T11:30:00',
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [buildProposal({ id: 'proposal_1' }), detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(
+      <ScheduleProposalsContent
+        initialDetailId="proposal_2"
+        initialStatus="patient_contact_pending"
+      />,
+    );
+
+    const target = proposalTargetName('佐藤太郎', '10:30 - 11:30');
+    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
+    fireEvent.click(within(detailDialog).getByRole('button', { name: `${target} を日時確定する` }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: `${target} を日時確定しますか`,
+    });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '日時確定する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/visit-schedule-proposals/proposal_2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'confirm' }),
+      }),
+    );
+  });
+
+  it.each([
+    {
+      actionLabel: '承認して患者連絡へ進める',
+      dialogName: (target: string) => `${target} を承認して患者連絡へ進めますか`,
+      finalLabel: '承認して患者連絡へ進める',
+      expectedPayload: { action: 'approve' },
+    },
+    {
+      actionLabel: '日時確定する',
+      dialogName: (target: string) => `${target} を日時確定しますか`,
+      finalLabel: '日時確定する',
+      expectedPayload: { action: 'confirm' },
+      proposalStatus: 'patient_contact_pending',
+      patientContactStatus: 'confirmed',
+      initialStatus: 'patient_contact_pending',
+    },
+  ])(
+    'keeps unsafe server messages out of single $actionLabel error toasts',
+    async ({
+      actionLabel,
+      dialogName,
+      finalLabel,
+      expectedPayload,
+      proposalStatus = 'proposed',
+      patientContactStatus = 'pending',
+      initialStatus,
+    }) => {
+      const fetchMock = vi.fn<typeof fetch>(async () => {
+        return new Response(
+          JSON.stringify({
+            message:
+              '勤務枠が埋まりました 東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細 proposal_1',
+          }),
+          {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      mockImmediateMutations();
+      mockDashboardProposals([
+        buildProposal({
+          id: 'proposal_1',
+          proposal_status: proposalStatus,
+          patient_contact_status: patientContactStatus,
+        }),
+      ]);
+
+      render(<ScheduleProposalsContent initialStatus={initialStatus} />);
+
+      const target = proposalTargetName('山田花子');
+      fireEvent.click(screen.getByRole('button', { name: `${target} を${actionLabel}` }));
+      const confirmDialog = screen.getByRole('alertdialog', { name: dialogName(target) });
+      fireEvent.click(within(confirmDialog).getByRole('button', { name: finalLabel }));
+
+      await waitFor(() => {
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。',
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals/proposal_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(expectedPayload),
+        }),
+      );
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+      expectToastMessagesExcludeSensitiveDetails();
+      const toastText = JSON.stringify(toastErrorMock.mock.calls);
+      expect(toastText).not.toContain('勤務枠が埋まりました');
+      expect(toastText).not.toContain('proposal_1');
+      expect(screen.queryByText(/勤務枠が埋まりました 東京都港区2-2-2/)).toBeNull();
+    },
+  );
+
   it('shows a preset context banner when opened from a focused dashboard link', () => {
     render(
       <ScheduleProposalsContent initialPreset="contact" initialStatus="patient_contact_pending" />,
