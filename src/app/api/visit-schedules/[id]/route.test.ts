@@ -7,6 +7,7 @@ const {
   visitScheduleFindFirstMock,
   visitScheduleTxFindFirstMock,
   visitScheduleCountMock,
+  visitScheduleUpdateManyMock,
   visitScheduleUpdateMock,
   visitVehicleResourceFindFirstMock,
   pharmacistShiftFindFirstMock,
@@ -23,6 +24,7 @@ const {
   visitScheduleFindFirstMock: vi.fn(),
   visitScheduleTxFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
+  visitScheduleUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
@@ -82,6 +84,16 @@ vi.mock('@/server/services/visit-preparation-readiness', () => ({
 
 import { DELETE, GET, PATCH } from './route';
 
+const EXPECTED_PATCH_GUARD = {
+  id: 'schedule_1',
+  org_id: 'org_1',
+  version: 1,
+  confirmed_at: null,
+  pharmacist_id: 'user_1',
+  scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+  schedule_status: 'planned',
+};
+
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1', { headers });
 }
@@ -124,6 +136,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     getReadyTransitionErrorMessageMock.mockReturnValue(
       '訪問準備に未解決のブロッカーがあるため ready へ進めません',
     );
+    visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1', schedule_status: 'in_progress' });
     visitScheduleCountMock.mockResolvedValue(0);
     visitVehicleResourceFindFirstMock.mockResolvedValue({
@@ -149,11 +162,15 @@ describe('/api/visit-schedules/[id] GET', () => {
       callback({
         visitSchedule: {
           findFirst: visitScheduleTxFindFirstMock,
+          updateMany: visitScheduleUpdateManyMock,
           update: visitScheduleUpdateMock,
         },
       }),
     );
-    visitScheduleTxFindFirstMock.mockResolvedValue(null);
+    visitScheduleTxFindFirstMock.mockImplementation(async (args) => {
+      if (args?.where?.id?.not) return null;
+      return { id: 'schedule_1', schedule_status: 'in_progress', version: 2 };
+    });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -163,6 +180,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
       time_window_start: null,
       time_window_end: null,
+      version: 1,
       confirmed_at: null,
       pharmacist_id: 'user_1',
       site_id: 'site_1',
@@ -289,9 +307,9 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith(
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'schedule_1' },
+        where: EXPECTED_PATCH_GUARD,
         data: expect.objectContaining({
           schedule_status: 'in_progress',
           version: { increment: 1 },
@@ -311,6 +329,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         visitSchedule: expect.objectContaining({
+          updateMany: visitScheduleUpdateManyMock,
           update: visitScheduleUpdateMock,
         }),
       }),
@@ -320,11 +339,11 @@ describe('/api/visit-schedules/[id] GET', () => {
       },
     );
     expect(evaluateReadyTransitionMock.mock.invocationCallOrder[0]).toBeLessThan(
-      visitScheduleUpdateMock.mock.invocationCallOrder[0],
+      visitScheduleUpdateManyMock.mock.invocationCallOrder[0],
     );
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith(
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'schedule_1' },
+        where: EXPECTED_PATCH_GUARD,
         data: expect.objectContaining({
           schedule_status: 'ready',
           pre_visit_checklist_completed: true,
@@ -416,6 +435,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
         expect.objectContaining({
           visitSchedule: expect.objectContaining({
+            updateMany: visitScheduleUpdateManyMock,
             update: visitScheduleUpdateMock,
           }),
         }),
@@ -662,7 +682,7 @@ describe('/api/visit-schedules/[id] GET', () => {
         },
       },
     });
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith(
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           vehicle_resource_id: 'vehicle_1',
@@ -1016,7 +1036,50 @@ describe('/api/visit-schedules/[id] GET', () => {
       },
       select: { id: true },
     });
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when the schedule version changes before PATCH write', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: EXPECTED_PATCH_GUARD,
+      }),
+    );
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when a locked-field PATCH loses a confirmation race', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createPatchRequest({ scheduled_date: '2026-03-27' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: EXPECTED_PATCH_GUARD,
+      }),
+    );
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
