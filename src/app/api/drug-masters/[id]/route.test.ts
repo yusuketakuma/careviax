@@ -50,6 +50,75 @@ describe('/api/drug-masters/[id]', () => {
     });
   });
 
+  it('does not truncate interactions before prioritizing contraindications', async () => {
+    drugMasterFindUniqueMock.mockResolvedValue({
+      id: 'drug_1',
+      drug_name: 'アセトアミノフェン',
+      package_inserts: [],
+      interactions_as_a: [
+        {
+          id: 'interaction_caution',
+          severity: 'caution',
+          drug_b: { id: 'drug_b', drug_name: '注意薬', yj_code: '111111111111' },
+        },
+        {
+          id: 'interaction_contraindicated',
+          severity: 'contraindicated',
+          drug_b: { id: 'drug_c', drug_name: '禁忌薬', yj_code: '222222222222' },
+        },
+        {
+          id: 'interaction_minor',
+          severity: 'minor',
+          drug_b: { id: 'drug_d', drug_name: '参考薬', yj_code: '333333333333' },
+        },
+      ],
+      interactions_as_b: [
+        {
+          id: 'interaction_b_minor',
+          severity: 'minor',
+          drug_a: { id: 'drug_e', drug_name: '参考薬B', yj_code: '444444444444' },
+        },
+        {
+          id: 'interaction_b_contraindicated',
+          severity: 'contraindicated',
+          drug_a: { id: 'drug_f', drug_name: '禁忌薬B', yj_code: '555555555555' },
+        },
+      ],
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'drug_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(drugMasterFindUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          interactions_as_a: {
+            include: {
+              drug_b: { select: { id: true, drug_name: true, yj_code: true } },
+            },
+          },
+          interactions_as_b: {
+            include: {
+              drug_a: { select: { id: true, drug_name: true, yj_code: true } },
+            },
+          },
+        }),
+      }),
+    );
+    expect(body.interactions_as_a.map((interaction: { id: string }) => interaction.id)).toEqual([
+      'interaction_contraindicated',
+      'interaction_caution',
+      'interaction_minor',
+    ]);
+    expect(body.interactions_as_b.map((interaction: { id: string }) => interaction.id)).toEqual([
+      'interaction_b_contraindicated',
+      'interaction_b_minor',
+    ]);
+  });
+
   it('rejects blank drug master ids before querying safety data', async () => {
     const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: '   ' }),

@@ -477,10 +477,10 @@ describe('buildDrugMasterSelectionViewModel', () => {
         interactions_as_a: [
           {
             id: 'interaction_a',
-            severity: 'critical',
+            severity: 'contraindicated',
             mechanism: 'CYP',
             clinical_effect: '血中濃度上昇',
-            source: 'pmda',
+            source: 'pmda_xml',
             drug_a: { id: 'drug_b', name: '対象薬' },
             drug_b: { id: 'counterpart_b', name: '相手薬B' },
           },
@@ -488,10 +488,10 @@ describe('buildDrugMasterSelectionViewModel', () => {
         interactions_as_b: [
           {
             id: 'interaction_b',
-            severity: 'warning',
+            severity: 'caution',
             mechanism: null,
             clinical_effect: null,
-            source: null,
+            source: 'manual',
             drug_a: { id: 'counterpart_a', name: '相手薬A' },
             drug_b: { id: 'drug_b', name: '対象薬' },
           },
@@ -507,18 +507,18 @@ describe('buildDrugMasterSelectionViewModel', () => {
     expect(model.relatedInteractions).toEqual([
       {
         id: 'interaction_a',
-        severity: 'critical',
+        severity: 'contraindicated',
         mechanism: 'CYP',
         clinical_effect: '血中濃度上昇',
-        source: 'pmda',
+        source: 'pmda_xml',
         counterpart: { id: 'counterpart_b', name: '相手薬B' },
       },
       {
         id: 'interaction_b',
-        severity: 'warning',
+        severity: 'caution',
         mechanism: null,
         clinical_effect: null,
-        source: null,
+        source: 'manual',
         counterpart: { id: 'counterpart_a', name: '相手薬A' },
       },
     ]);
