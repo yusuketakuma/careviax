@@ -4,6 +4,7 @@ import {
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
   buildDrugMasterSiteHeaderViewModel,
+  buildDrugSafetyDisplayViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -363,7 +364,7 @@ describe('buildDrugMasterSiteHeaderViewModel', () => {
   it('derives the effective site, copy sources, and formulary header copy', () => {
     const model = buildDrugMasterSiteHeaderViewModel({
       variant: 'formulary',
-      selectedSiteId: '',
+      effectiveSelectedSiteId: 'site_1',
       sites: [
         { id: 'site_1', name: '本店' },
         { id: 'site_2', name: '分店' },
@@ -371,7 +372,6 @@ describe('buildDrugMasterSiteHeaderViewModel', () => {
     });
 
     expect(model).toEqual({
-      effectiveSelectedSiteId: 'site_1',
       copySourceSites: [{ id: 'site_2', name: '分店' }],
       headerTitle: '採用薬マスター',
       headerDescription:
@@ -383,14 +383,13 @@ describe('buildDrugMasterSiteHeaderViewModel', () => {
     expect(
       buildDrugMasterSiteHeaderViewModel({
         variant: 'master',
-        selectedSiteId: 'site_2',
+        effectiveSelectedSiteId: 'site_2',
         sites: [
           { id: 'site_1', name: '本店' },
           { id: 'site_2', name: '分店' },
         ],
       }),
     ).toEqual({
-      effectiveSelectedSiteId: 'site_2',
       copySourceSites: [{ id: 'site_1', name: '本店' }],
       headerTitle: '医薬品マスター',
       headerDescription: 'SSK基本マスター・PMDA添付文書データベースの管理',
@@ -399,10 +398,59 @@ describe('buildDrugMasterSiteHeaderViewModel', () => {
     expect(
       buildDrugMasterSiteHeaderViewModel({
         variant: 'formulary',
-        selectedSiteId: '',
+        effectiveSelectedSiteId: '',
         sites: [],
       }).copySourceSites,
     ).toEqual([]);
+  });
+});
+
+describe('buildDrugSafetyDisplayViewModel', () => {
+  const baseDrug = {
+    tall_man_name: null,
+    is_lasa_risk: false,
+    is_high_risk: false,
+    is_narcotic: false,
+    is_psychotropic: false,
+    outpatient_injection_eligible: false,
+  };
+
+  it('treats psychotropic-only drugs as safety-warning regulated drugs', () => {
+    const model = buildDrugSafetyDisplayViewModel({
+      ...baseDrug,
+      is_psychotropic: true,
+    });
+
+    expect(model).toEqual({
+      hasSafetyWarning: true,
+      safetyAttributeLabels: ['向精神薬'],
+    });
+  });
+
+  it('keeps narcotic and other safety attributes in the detail warning list', () => {
+    const model = buildDrugSafetyDisplayViewModel({
+      ...baseDrug,
+      tall_man_name: 'Tall Man Name',
+      is_lasa_risk: true,
+      is_high_risk: true,
+      is_narcotic: true,
+      outpatient_injection_eligible: true,
+    });
+
+    expect(model.hasSafetyWarning).toBe(true);
+    expect(model.safetyAttributeLabels).toEqual([
+      '類似薬剤名注意',
+      '高リスク薬',
+      '麻薬',
+      '外来/在宅自己注射確認済み',
+    ]);
+  });
+
+  it('does not show the safety warning panel when no safety attributes are present', () => {
+    expect(buildDrugSafetyDisplayViewModel(baseDrug)).toEqual({
+      hasSafetyWarning: false,
+      safetyAttributeLabels: [],
+    });
   });
 });
 

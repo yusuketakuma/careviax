@@ -142,19 +142,43 @@ type SiteHeaderSite = {
   id: string;
 };
 
+type DrugSafetyDisplaySource = {
+  tall_man_name: string | null;
+  is_lasa_risk: boolean;
+  is_high_risk: boolean;
+  is_narcotic: boolean;
+  is_psychotropic: boolean;
+  outpatient_injection_eligible: boolean;
+};
+
+export function buildDrugSafetyDisplayViewModel(drug: DrugSafetyDisplaySource) {
+  const safetyAttributeLabels = [
+    drug.is_lasa_risk ? '類似薬剤名注意' : null,
+    drug.is_high_risk ? '高リスク薬' : null,
+    drug.is_narcotic ? '麻薬' : null,
+    drug.is_psychotropic ? '向精神薬' : null,
+    drug.outpatient_injection_eligible ? '外来/在宅自己注射確認済み' : null,
+  ].filter((label): label is string => label !== null);
+
+  return {
+    hasSafetyWarning:
+      !!drug.tall_man_name ||
+      safetyAttributeLabels.length > 0 ||
+      drug.outpatient_injection_eligible,
+    safetyAttributeLabels,
+  };
+}
+
 export function buildDrugMasterSiteHeaderViewModel<TSite extends SiteHeaderSite>({
   variant,
-  selectedSiteId,
+  effectiveSelectedSiteId,
   sites,
 }: {
   variant: 'master' | 'formulary';
-  selectedSiteId: string;
+  effectiveSelectedSiteId: string;
   sites: TSite[];
 }) {
-  const effectiveSelectedSiteId = selectedSiteId || sites[0]?.id || '';
-
   return {
-    effectiveSelectedSiteId,
     copySourceSites: sites.filter((site) => site.id !== effectiveSelectedSiteId),
     headerTitle: variant === 'formulary' ? '採用薬マスター' : '医薬品マスター',
     headerDescription:

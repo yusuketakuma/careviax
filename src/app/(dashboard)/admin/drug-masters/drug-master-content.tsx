@@ -49,6 +49,7 @@ import {
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
   buildDrugMasterSiteHeaderViewModel,
+  buildDrugSafetyDisplayViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -813,13 +814,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
-  const sites = sitesData?.data ?? [];
-  const { effectiveSelectedSiteId, copySourceSites, headerTitle, headerDescription } =
-    buildDrugMasterSiteHeaderViewModel({
-      variant,
-      selectedSiteId,
-      sites,
-    });
+  const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
@@ -1752,7 +1747,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const activeImport = IMPORT_ACTIONS.find((item) => item.key === importMutation.variables);
 
   const drugs = data?.data ?? [];
+  const sites = sitesData?.data ?? [];
   const formularyTemplates = formularyTemplatesQuery.data?.data ?? [];
+  const { copySourceSites, headerTitle, headerDescription } = buildDrugMasterSiteHeaderViewModel({
+    variant,
+    effectiveSelectedSiteId,
+    sites,
+  });
   const importLogs = importLogsData?.data ?? [];
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
@@ -1814,6 +1815,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
   const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
   const ingredientGroup = ingredientGroupQuery.data ?? null;
+  const drugSafetyDisplay = detailQuery.data
+    ? buildDrugSafetyDisplayViewModel(detailQuery.data)
+    : null;
   const headerShortcuts =
     variant === 'formulary' ? getAdminFormularyShortcutLinks() : getAdminDrugMasterShortcutLinks();
 
@@ -3857,14 +3861,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <PageSection
                   title="薬剤基本情報・安全属性"
                   description="YJ/HOTコード、薬価、経過措置、高リスク・LASA属性を確認します。"
-                  tone={
-                    detailQuery.data.is_high_risk ||
-                    detailQuery.data.outpatient_injection_eligible ||
-                    detailQuery.data.is_lasa_risk ||
-                    detailQuery.data.is_narcotic
-                      ? 'warning'
-                      : 'default'
-                  }
+                  tone={drugSafetyDisplay?.hasSafetyWarning ? 'warning' : 'default'}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">YJ {detailQuery.data.yj_code}</Badge>
@@ -3892,10 +3889,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       </Badge>
                     )}
                   </div>
-                  {(detailQuery.data.tall_man_name ||
-                    detailQuery.data.is_lasa_risk ||
-                    detailQuery.data.is_high_risk ||
-                    detailQuery.data.outpatient_injection_eligible) && (
+                  {drugSafetyDisplay?.hasSafetyWarning && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
                       <h2 className="font-semibold">薬剤名・高リスク確認</h2>
                       <dl className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -3916,15 +3910,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         <div>
                           <dt className="text-xs font-medium text-amber-800">安全属性</dt>
                           <dd className="mt-0.5">
-                            {[
-                              detailQuery.data.is_lasa_risk ? '類似薬剤名注意' : null,
-                              detailQuery.data.is_high_risk ? '高リスク薬' : null,
-                              detailQuery.data.outpatient_injection_eligible
-                                ? '外来/在宅自己注射確認済み'
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' / ') || '—'}
+                            {drugSafetyDisplay.safetyAttributeLabels.join(' / ') || '—'}
                           </dd>
                         </div>
                         {detailQuery.data.outpatient_injection_note && (
