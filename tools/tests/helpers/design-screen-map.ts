@@ -1,0 +1,519 @@
+import path from 'node:path';
+import type { Page } from '@playwright/test';
+
+/**
+ * design/manifest.json の screen_id と実装ルートの対応表。
+ * docs/design-fidelity-mapping.md が運用上の SSOT。ここはその機械可読版。
+ *
+ * - route: 撮影対象 URL(null = 対応ページ未実装 or 動的 ID 未解決 → skip して報告)
+ * - auth: false のときはローカルセッションを付与せず撮影(ログイン画面など)
+ * - viewport: 省略時は 1600x1000(デザイン PNG と同寸)
+ * - setup: 撮影前の追加操作(モーダルを開く等)
+ */
+export type DesignScreenEntry = {
+  screenId: string;
+  /** design/images からの相対パス(manifest.json の file と一致) */
+  targetImage: string;
+  route: string | null;
+  auth?: boolean;
+  viewport?: { width: number; height: number };
+  setup?: (page: Page) => Promise<void>;
+  /** route が null の理由(レポートに出す) */
+  note?: string;
+};
+
+export const DESIGN_VIEWPORT = { width: 1600, height: 1000 } as const;
+export const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+
+export const DESIGN_IMAGE_ROOT = path.join(process.cwd(), 'design');
+
+export const DESIGN_FIDELITY_OUTPUT_DIR =
+  process.env.DESIGN_FIDELITY_DIR ??
+  path.join(process.cwd(), 'tools', 'tests', '.artifacts', 'design-fidelity');
+
+export const DESIGN_SCREENS: DesignScreenEntry[] = [
+  // ── 新ターゲット(design/images/new、2026-06-11〜最優先)──────
+  // route は暫定。new-design-analysis の読解結果で調整する
+  {
+    screenId: 'new_01_dashboard',
+    targetImage: 'images/new/01_dashboard.png',
+    route: '/dashboard',
+  },
+  {
+    screenId: 'new_02_patient_list',
+    targetImage: 'images/new/02_patient_list.png',
+    route: '/patients',
+  },
+  {
+    screenId: 'new_03_schedule',
+    targetImage: 'images/new/03_schedule.png',
+    route: '/schedules',
+  },
+  {
+    screenId: 'new_04_visit',
+    targetImage: 'images/new/04_visit.png',
+    route: '/visits',
+  },
+  {
+    screenId: 'new_05_import',
+    targetImage: 'images/new/05_import.png',
+    route: '/prescriptions/intake',
+  },
+  {
+    screenId: 'new_06_card',
+    targetImage: 'images/new/06_card.png',
+    // prisma/seed-design-demo.ts の田中一郎(セット監査待ちサイクル)
+    route: '/patients/cmnhdemopt001amq9ph-os',
+  },
+  {
+    screenId: 'new_07_dispense',
+    targetImage: 'images/new/07_dispense.png',
+    route: '/dispensing',
+    setup: async (page) => {
+      // 調剤キュー先頭を選択し、「いまの1件」(比較テーブル+チェックリスト)の描画まで待つ
+      await page.getByTestId('dispense-queue-row').first().click();
+      await page
+        .waitForSelector(
+          '[data-testid="dispense-comparison-table"], [data-testid="dispense-checklist"]',
+          { timeout: 20_000 },
+        )
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    screenId: 'new_08_audit',
+    targetImage: 'images/new/08_audit.png',
+    route: '/auditing',
+    setup: async (page) => {
+      // 私の監査キュー先頭(麻薬・田中)を選択して中央の監査詳細を開く
+      await page.getByTestId('audit-queue-row').first().click();
+      // workbench API 取得 → 二人制バナー/計数テーブルの描画まで待つ
+      await page
+        .waitForSelector('[data-testid="audit-count-table"], [data-testid="two-person-banner"]', {
+          timeout: 20_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    screenId: 'new_09_set',
+    targetImage: 'images/new/09_set.png',
+    route: '/medication-sets',
+  },
+  {
+    screenId: 'new_10_report',
+    targetImage: 'images/new/10_report.png',
+    route: '/reports',
+  },
+  {
+    screenId: 'new_11_billing',
+    targetImage: 'images/new/11_billing.png',
+    route: '/billing',
+  },
+  {
+    screenId: 'new_12_handoff',
+    targetImage: 'images/new/12_handoff.png',
+    route: '/handoff',
+  },
+  {
+    screenId: 'new_13_master',
+    targetImage: 'images/new/13_master.png',
+    route: '/admin',
+  },
+  {
+    screenId: 'new_14_settings',
+    targetImage: 'images/new/14_settings.png',
+    route: '/settings',
+  },
+  // ── 認証・横断 ──────────────────────────────────────────────
+  {
+    screenId: 'p0_01_login_mfa',
+    targetImage: 'images/P0/p0_01_login_mfa.png',
+    route: '/login',
+    auth: false,
+  },
+  {
+    screenId: 'p0_02_tenant_pharmacy_select',
+    targetImage: 'images/P0/p0_02_tenant_pharmacy_select.png',
+    route: null,
+    note: '薬局選択画面は未実装(新規)',
+  },
+  {
+    screenId: 'p0_03_mode_role_select',
+    targetImage: 'images/P0/p0_03_mode_role_select.png',
+    route: null,
+    note: 'モード/ロール選択画面は未実装(新規)',
+  },
+  {
+    screenId: 'p0_04_notification_center',
+    targetImage: 'images/P0/p0_04_notification_center.png',
+    route: '/notifications',
+  },
+  {
+    screenId: 'p0_05_global_search',
+    targetImage: 'images/P0/p0_05_global_search.png',
+    route: '/search',
+    setup: async (page) => {
+      // 検索ボックスへ seed 患者名を入力 → 患者カテゴリ(初期選択)に結果が出る
+      await page.fill('[data-search-input]', '田中');
+      // デバウンス + 並列 fetch 完了(「検索中...」が消える)まで待つ
+      await page
+        .waitForFunction(() => !document.body.textContent?.includes('検索中'), undefined, {
+          timeout: 20_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    screenId: 'p0_06_advanced_search_modal',
+    targetImage: 'images/P0/p0_06_advanced_search_modal.png',
+    route: '/search',
+    setup: async (page) => {
+      await page.getByRole('button', { name: '詳しく絞り込む' }).click();
+      // Dialog のフェードイン待ち
+      await page.waitForTimeout(600);
+    },
+  },
+  // ── ダッシュボード・カード ──────────────────────────────────
+  {
+    screenId: 'p0_07_dashboard_cardgrid',
+    targetImage: 'images/P0/p0_07_dashboard_cardgrid.png',
+    route: '/dashboard',
+  },
+  {
+    screenId: 'p0_08_card_detail_workspace',
+    targetImage: 'images/P0/p0_08_card_detail_workspace.png',
+    // prisma/seed-design-demo.ts の田中一郎(セット監査待ちサイクル)固定 ID
+    route: '/patients/cmnhdemopt001amq9ph-os',
+  },
+  // ── 処方 ────────────────────────────────────────────────────
+  {
+    screenId: 'p0_09_prescription_import',
+    targetImage: 'images/P0/p0_09_prescription_import.png',
+    route: '/prescriptions/new',
+  },
+  {
+    screenId: 'p0_10_prescription_entry_period',
+    targetImage: 'images/P0/p0_10_prescription_entry_period.png',
+    route: '/prescriptions/new',
+    note: '期間入力ステップの再現操作は実装フェーズで追加',
+  },
+  {
+    screenId: 'p0_11_prescription_diff_review',
+    targetImage: 'images/P0/p0_11_prescription_diff_review.png',
+    route: null,
+    note: '患者詳細配下(動的 ID)。デモ患者 seed 後にマッピング',
+  },
+  // ── 調剤・監査・セット ──────────────────────────────────────
+  {
+    screenId: 'p0_12_dispensing_workbench',
+    targetImage: 'images/P0/p0_12_dispensing_workbench.png',
+    route: '/dispensing',
+  },
+  {
+    screenId: 'p0_13_dispensing_audit',
+    targetImage: 'images/P0/p0_13_dispensing_audit.png',
+    route: '/auditing',
+  },
+  {
+    screenId: 'p0_14_set_preparation',
+    targetImage: 'images/P0/p0_14_set_preparation.png',
+    route: '/medication-sets',
+  },
+  {
+    screenId: 'p0_15_set_audit',
+    targetImage: 'images/P0/p0_15_set_audit.png',
+    route: '/medication-sets',
+    note: 'セット鑑査タブ/ビューの切替操作は実装フェーズで追加',
+  },
+  // ── スケジュール・ルート ────────────────────────────────────
+  {
+    screenId: 'p0_16_schedule_gantt_all_staff',
+    targetImage: 'images/P0/p0_16_schedule_gantt_all_staff.png',
+    route: '/schedules',
+  },
+  {
+    screenId: 'p0_17_schedule_confirmation_flow',
+    targetImage: 'images/P0/p0_17_schedule_confirmation_flow.png',
+    route: '/schedules/proposals',
+  },
+  {
+    screenId: 'p0_18_schedule_create_edit_drawer',
+    targetImage: 'images/P0/p0_18_schedule_create_edit_drawer.png',
+    route: null,
+    note: '作成/編集ドロワーの起動操作は実装フェーズで追加',
+  },
+  {
+    screenId: 'p0_19_schedule_conflict_resolution',
+    targetImage: 'images/P0/p0_19_schedule_conflict_resolution.png',
+    route: null,
+    note: '重複解消ビューの再現データ整備後にマッピング',
+  },
+  {
+    screenId: 'p0_20_emergency_route_recalculation',
+    targetImage: 'images/P0/p0_20_emergency_route_recalculation.png',
+    route: null,
+    note: '緊急差込フローの再現データ整備後にマッピング',
+  },
+  {
+    screenId: 'p0_21_route_optimization_detail',
+    targetImage: 'images/P0/p0_21_route_optimization_detail.png',
+    route: null,
+    note: 'ルート詳細の正ルート精査後にマッピング',
+  },
+  // ── 訪問 ────────────────────────────────────────────────────
+  {
+    screenId: 'p0_22_visit_mode_tablet',
+    targetImage: 'images/P0/p0_22_visit_mode_tablet.png',
+    route: '/visits',
+    note: '訪問記録(動的 ID)はデモ seed 後に record 画面へ差し替え',
+  },
+  {
+    screenId: 'p0_23_visit_mode_smartphone',
+    targetImage: 'images/P0/p0_23_visit_mode_smartphone.png',
+    route: '/visits',
+    viewport: MOBILE_VIEWPORT,
+  },
+  {
+    screenId: 'p0_24_facility_visit_packet',
+    targetImage: 'images/P0/p0_24_facility_visit_packet.png',
+    route: '/visits',
+    note: '施設一括訪問ビューの正ルート精査後に更新',
+  },
+  // ── 事務・連携 ──────────────────────────────────────────────
+  {
+    screenId: 'p0_25_clerk_support_dashboard',
+    targetImage: 'images/P0/p0_25_clerk_support_dashboard.png',
+    route: '/my-day',
+  },
+  {
+    screenId: 'p0_26_contact_delivery_target_edit',
+    targetImage: 'images/P0/p0_26_contact_delivery_target_edit.png',
+    route: '/admin/contact-profiles',
+  },
+  {
+    screenId: 'p0_27_handoff_bidirectional',
+    targetImage: 'images/P0/p0_27_handoff_bidirectional.png',
+    route: '/handoff',
+  },
+  {
+    screenId: 'p0_28_report_composer_share',
+    targetImage: 'images/P0/p0_28_report_composer_share.png',
+    route: '/reports',
+  },
+  {
+    screenId: 'p0_29_reply_followup_management',
+    targetImage: 'images/P0/p0_29_reply_followup_management.png',
+    route: '/communications/requests',
+  },
+  // ── 請求・残薬 ──────────────────────────────────────────────
+  {
+    screenId: 'p0_30_claim_billing_review',
+    targetImage: 'images/P0/p0_30_claim_billing_review.png',
+    route: '/billing',
+  },
+  {
+    screenId: 'p0_31_residual_adjustment_flow',
+    targetImage: 'images/P0/p0_31_residual_adjustment_flow.png',
+    route: null,
+    note: '残薬調整フローの正ルート精査後にマッピング',
+  },
+  // ── 安全・証跡・オフライン ──────────────────────────────────
+  {
+    screenId: 'p0_32_adverse_event_prevention_flow',
+    targetImage: 'images/P0/p0_32_adverse_event_prevention_flow.png',
+    route: null,
+    note: '/issues は空ディレクトリ(404)。D-6 でページ実装後にマッピング',
+  },
+  {
+    screenId: 'p0_33_evidence_photo_management',
+    targetImage: 'images/P0/p0_33_evidence_photo_management.png',
+    route: null,
+    note: '証跡写真管理の正ルート精査後にマッピング',
+  },
+  {
+    screenId: 'p0_34_offline_sync_center',
+    targetImage: 'images/P0/p0_34_offline_sync_center.png',
+    route: null,
+    note: 'オフライン同期センターは未実装(新規)',
+  },
+  {
+    screenId: 'p0_35_data_conflict_resolution',
+    targetImage: 'images/P0/p0_35_data_conflict_resolution.png',
+    route: null,
+    note: '同期競合解消画面は未実装(新規)',
+  },
+  {
+    screenId: 'p0_36_reject_reason_modal',
+    targetImage: 'images/P0/p0_36_reject_reason_modal.png',
+    route: null,
+    note: '差戻し理由モーダルの起動操作は実装フェーズで追加',
+  },
+  {
+    screenId: 'p0_37_cancel_reopen_reason_modal',
+    targetImage: 'images/P0/p0_37_cancel_reopen_reason_modal.png',
+    route: null,
+    note: '取消/再開理由モーダルの起動操作は実装フェーズで追加',
+  },
+  // ── マスタ・設定 ────────────────────────────────────────────
+  {
+    screenId: 'p0_38_patient_profile',
+    targetImage: 'images/P0/p0_38_patient_profile.png',
+    route: '/patients',
+    note: '患者詳細(動的 ID)はデモ seed 後に差し替え',
+  },
+  {
+    screenId: 'p0_39_medication_master',
+    targetImage: 'images/P0/p0_39_medication_master.png',
+    route: '/admin/drug-masters',
+  },
+  {
+    screenId: 'p0_40_medical_professional_master',
+    targetImage: 'images/P0/p0_40_medical_professional_master.png',
+    route: '/admin/external-professionals',
+  },
+  {
+    screenId: 'p0_41_facility_master',
+    targetImage: 'images/P0/p0_41_facility_master.png',
+    route: '/admin/facilities',
+  },
+  {
+    screenId: 'p0_42_staff_role_management',
+    targetImage: 'images/P0/p0_42_staff_role_management.png',
+    route: '/admin/staff',
+  },
+  {
+    screenId: 'p0_43_vehicle_master',
+    targetImage: 'images/P0/p0_43_vehicle_master.png',
+    route: null,
+    note: '車両マスタ管理画面の有無を精査後にマッピング',
+  },
+  {
+    screenId: 'p0_44_settings',
+    targetImage: 'images/P0/p0_44_settings.png',
+    route: '/settings',
+  },
+  {
+    screenId: 'p0_45_capacity_bottleneck_dashboard',
+    targetImage: 'images/P0/p0_45_capacity_bottleneck_dashboard.png',
+    route: '/capacity',
+    note: 'CapacityDashboard は PHOS_API_BASE_URL 依存。撮影はスタブ注入の運用判断要(D-7)',
+  },
+  {
+    screenId: 'p0_46_ui_state_reference',
+    targetImage: 'images/P0/p0_46_ui_state_reference.png',
+    route: null,
+    note: 'UI 状態リファレンス(実装対象外・参照専用)',
+  },
+  {
+    screenId: 'p0_47_print_preview',
+    targetImage: 'images/P0/p0_47_print_preview.png',
+    route: null,
+    note: '印刷プレビューの正ルート精査後にマッピング',
+  },
+  {
+    screenId: 'p0_48_mobile_evidence_capture',
+    targetImage: 'images/P0/p0_48_mobile_evidence_capture.png',
+    route: null,
+    viewport: MOBILE_VIEWPORT,
+    note: 'モバイル証跡撮影の正ルート精査後にマッピング',
+  },
+  // ── P1 ──────────────────────────────────────────────────────
+  {
+    screenId: 'p1_01_saved_views_advanced_filter',
+    targetImage: 'images/P1/p1_01_saved_views_advanced_filter.png',
+    route: null,
+    note: '保存ビューは未実装(新規・API 要)',
+  },
+  {
+    screenId: 'p1_02_multi_card_split_workspace',
+    targetImage: 'images/P1/p1_02_multi_card_split_workspace.png',
+    route: null,
+    note: '分割ワークスペースは未実装(新規)',
+  },
+  {
+    screenId: 'p1_03_ai_visit_summary_review',
+    targetImage: 'images/P1/p1_03_ai_visit_summary_review.png',
+    route: null,
+    note: 'visit-brief 画面の正ルート精査後にマッピング',
+  },
+  {
+    screenId: 'p1_04_ai_report_draft',
+    targetImage: 'images/P1/p1_04_ai_report_draft.png',
+    route: '/reports',
+    note: 'AI 下書きビューの再現操作は実装フェーズで追加',
+  },
+  {
+    screenId: 'p1_05_interprofessional_portal',
+    targetImage: 'images/P1/p1_05_interprofessional_portal.png',
+    route: null,
+    note: '外部共有ポータル(/shared/[token])はトークン seed 後にマッピング',
+  },
+  {
+    screenId: 'p1_06_management_analytics_detail',
+    targetImage: 'images/P1/p1_06_management_analytics_detail.png',
+    route: '/admin/analytics',
+  },
+  {
+    screenId: 'p1_07_inventory_linkage_prediction',
+    targetImage: 'images/P1/p1_07_inventory_linkage_prediction.png',
+    route: null,
+    note: '在庫予測画面の正ルート精査後にマッピング',
+  },
+  {
+    screenId: 'p1_08_facility_criteria_dashboard',
+    targetImage: 'images/P1/p1_08_facility_criteria_dashboard.png',
+    route: '/admin/facility-standards',
+  },
+  {
+    screenId: 'p1_09_incident_hiyarihatto',
+    targetImage: 'images/P1/p1_09_incident_hiyarihatto.png',
+    route: null,
+    note: 'ヒヤリハット管理は未実装(新規)',
+  },
+  {
+    screenId: 'p1_10_report_template_editor',
+    targetImage: 'images/P1/p1_10_report_template_editor.png',
+    route: '/admin/document-templates',
+  },
+  {
+    screenId: 'p1_11_voice_memo_transcription',
+    targetImage: 'images/P1/p1_11_voice_memo_transcription.png',
+    route: null,
+    note: '音声メモ・文字起こしは未実装(新規・バックエンド要)',
+  },
+  {
+    screenId: 'p1_12_advanced_route_scenario_compare',
+    targetImage: 'images/P1/p1_12_advanced_route_scenario_compare.png',
+    route: null,
+    note: 'ルート案比較の正ルート精査後にマッピング',
+  },
+  {
+    screenId: 'p1_13_realtime_collaboration_presence',
+    targetImage: 'images/P1/p1_13_realtime_collaboration_presence.png',
+    route: null,
+    note: 'presence 表示の対象画面精査後にマッピング',
+  },
+  {
+    screenId: 'p1_14_ai_signal_tuning',
+    targetImage: 'images/P1/p1_14_ai_signal_tuning.png',
+    route: '/admin/alert-rules',
+  },
+];
+
+/** DESIGN_SCREEN_IDS=p0_07,p0_08 のようにカンマ区切りで撮影対象を絞る */
+export function filterScreens(entries: DesignScreenEntry[]): DesignScreenEntry[] {
+  const raw = process.env.DESIGN_SCREEN_IDS;
+  if (!raw) return entries;
+  const wanted = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (wanted.length === 0) return entries;
+  return entries.filter((entry) =>
+    wanted.some((w) => entry.screenId === w || entry.screenId.startsWith(w))
+  );
+}

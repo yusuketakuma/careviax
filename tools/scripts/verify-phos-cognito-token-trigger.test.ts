@@ -93,28 +93,35 @@ describe('verify-phos-cognito-token-trigger', () => {
   });
 
   it('uses DescribeUserPool for the live proof path', async () => {
-    const send = vi.fn(async (command: DescribeUserPoolCommand) => {
-      expect(command).toBeInstanceOf(DescribeUserPoolCommand);
-      expect(command.input).toEqual({ UserPoolId: user_pool_id });
-      const response: DescribeUserPoolCommandOutput = {
-        $metadata: {},
-        UserPool: {
-          LambdaConfig: {
-            PreTokenGenerationConfig: {
-              LambdaArn: expected_lambda_arn,
-              LambdaVersion: 'V2_0',
+    const send = vi.fn(
+      async (command: DescribeUserPoolCommand, options?: { abortSignal?: AbortSignal }) => {
+        expect(command).toBeInstanceOf(DescribeUserPoolCommand);
+        expect(command.input).toEqual({ UserPoolId: user_pool_id });
+        expect(options?.abortSignal).toBeInstanceOf(AbortSignal);
+        const response: DescribeUserPoolCommandOutput = {
+          $metadata: {},
+          UserPool: {
+            LambdaConfig: {
+              PreTokenGenerationConfig: {
+                LambdaArn: expected_lambda_arn,
+                LambdaVersion: 'V2_0',
+              },
             },
           },
-        },
-      };
-      return response;
-    });
+        };
+        return response;
+      },
+    );
 
     await expect(
       verifyCognitoPreTokenGenerationLiveProof({
         user_pool_id,
         expected_lambda_arn,
-        client: { send },
+        client: {
+          send(command) {
+            return send(command, { abortSignal: new AbortController().signal });
+          },
+        },
       }),
     ).resolves.toMatchObject({ ok: true, lambda_version: 'V2_0' });
     expect(send).toHaveBeenCalledOnce();

@@ -10,10 +10,12 @@ import {
   listConnectionsByRoom,
   type VerifiedConnection,
 } from '../shared/connection-store';
+import { websocketAwsClientConfig, withWebsocketAwsClientTimeout } from '../shared/aws-client';
 
 const MAX_YJS_MESSAGE_BYTES = 64 * 1024;
 const MAX_FAN_OUT_CONCURRENCY = 10;
 const ALLOWED_YJS_MESSAGE_TYPES = new Set([0, 1, 3]);
+const apiGatewayManagementClients = new Map<string, ApiGatewayManagementApiClient>();
 
 type SyncEvent = {
   body?: string | null;
@@ -60,6 +62,20 @@ function isExpired(connection: VerifiedConnection) {
 function isAllowedYjsMessage(data: Uint8Array) {
   if (data.length === 0 || data.length > MAX_YJS_MESSAGE_BYTES) return false;
   return ALLOWED_YJS_MESSAGE_TYPES.has(data[0]);
+}
+
+function getApiGatewayManagementClient(endpoint: string) {
+  const cachedClient = apiGatewayManagementClients.get(endpoint);
+  if (cachedClient) return cachedClient;
+
+  const client = withWebsocketAwsClientTimeout(
+    new ApiGatewayManagementApiClient({
+      endpoint,
+      ...websocketAwsClientConfig(),
+    }),
+  );
+  apiGatewayManagementClients.set(endpoint, client);
+  return client;
 }
 
 async function postToPeer(args: {
@@ -144,7 +160,7 @@ export async function handler(event: SyncEvent) {
   if (!senderConnectionId || !data || !endpoint) return { statusCode: 400 };
   if (!isAllowedYjsMessage(data)) return { statusCode: 400 };
 
-  const client = new ApiGatewayManagementApiClient({ endpoint });
+  const client = getApiGatewayManagementClient(endpoint);
   const sender = await getConnection(senderConnectionId);
   if (!sender) {
     const apiCloseFailed = await closeConnectionBestEffort(client, senderConnectionId);

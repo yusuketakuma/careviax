@@ -23,6 +23,8 @@ type Env = Record<string, string | undefined>;
 type FetchLike = typeof fetch;
 
 const WRITE_OPT_IN_ENV = 'RATE_LIMIT_DDB_VERIFY_WRITE';
+const DEFAULT_DDB_VERIFY_TIMEOUT_MS = 5_000;
+const MAX_DDB_VERIFY_TIMEOUT_MS = 30_000;
 
 function requireEnv(env: Env, name: string) {
   const value = env[name];
@@ -35,6 +37,44 @@ function requireEnv(env: Env, name: string) {
 function isTruthyEnv(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase();
   return normalized === '1' || normalized === 'true';
+}
+
+function normalizePositiveInteger(
+  value: string | undefined,
+  options: {
+    fallback: number;
+    max: number;
+  },
+) {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return options.fallback;
+  return Math.min(parsed, options.max);
+}
+
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function resolveDynamoVerifyTimeoutMs(env: Env) {
+  return normalizePositiveInteger(
+    env.RATE_LIMIT_DDB_VERIFY_TIMEOUT_MS ?? env.PHOS_AWS_CLIENT_TIMEOUT_MS,
+    {
+      fallback: DEFAULT_DDB_VERIFY_TIMEOUT_MS,
+      max: MAX_DDB_VERIFY_TIMEOUT_MS,
+    },
+  );
+}
+
+function createDynamoVerifyAbort(env: Env) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), resolveDynamoVerifyTimeoutMs(env));
+  maybeUnrefTimeout(timeout);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
 }
 
 function resolveCredentials(env: Env): AwsCredentials {
@@ -50,6 +90,7 @@ async function callDynamo(args: {
   target: string;
   body: Record<string, unknown>;
   credentials: AwsCredentials;
+  env: Env;
   fetch: FetchLike;
 }) {
   const body = JSON.stringify(args.body);
@@ -60,11 +101,18 @@ async function callDynamo(args: {
     body,
     credentials: args.credentials,
   });
-  const response = await args.fetch(`https://${signed.host}/`, {
-    method: 'POST',
-    headers: signed.headers,
-    body,
-  });
+  const abort = createDynamoVerifyAbort(args.env);
+  let response: Response;
+  try {
+    response = await args.fetch(`https://${signed.host}/`, {
+      method: 'POST',
+      headers: signed.headers,
+      body,
+      signal: abort.signal,
+    });
+  } finally {
+    abort.clear();
+  }
   const payload = (await response.json().catch(() => ({}))) as DynamoResponse & {
     __type?: string;
     message?: string;
@@ -99,6 +147,7 @@ export async function verifyRateLimitDynamoDb(
     region,
     target: 'DescribeTable',
     credentials,
+    env,
     fetch: fetchImpl,
     body: { TableName: tableName },
   });
@@ -122,6 +171,7 @@ export async function verifyRateLimitDynamoDb(
     region,
     target: 'DescribeTimeToLive',
     credentials,
+    env,
     fetch: fetchImpl,
     body: { TableName: tableName },
   });
@@ -137,6 +187,7 @@ export async function verifyRateLimitDynamoDb(
       region,
       target: 'UpdateItem',
       credentials,
+      env,
       fetch: fetchImpl,
       body: {
         TableName: tableName,
@@ -158,6 +209,7 @@ export async function verifyRateLimitDynamoDb(
       region,
       target: 'DeleteItem',
       credentials,
+      env,
       fetch: fetchImpl,
       body: {
         TableName: tableName,

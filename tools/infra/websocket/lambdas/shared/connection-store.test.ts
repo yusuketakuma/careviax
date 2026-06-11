@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { dynamoSendMock, commandMocks } = vi.hoisted(() => ({
+const { dynamoClientMock, dynamoSendMock, commandMocks } = vi.hoisted(() => ({
+  dynamoClientMock: vi.fn(),
   dynamoSendMock: vi.fn(),
   commandMocks: {
     PutItemCommand: vi.fn(function MockPutItemCommand(this: { input?: unknown }, input: unknown) {
@@ -22,7 +23,7 @@ const { dynamoSendMock, commandMocks } = vi.hoisted(() => ({
 }));
 
 vi.mock('@aws-sdk/client-dynamodb', () => ({
-  DynamoDBClient: vi.fn().mockImplementation(function MockDynamoDBClient() {
+  DynamoDBClient: dynamoClientMock.mockImplementation(function MockDynamoDBClient() {
     return {
       send: dynamoSendMock,
     };
@@ -34,6 +35,63 @@ describe('websocket connection store', () => {
   afterEach(() => {
     vi.clearAllMocks();
     delete process.env.CONNECTIONS_TABLE;
+    delete process.env.AWS_REGION;
+    delete process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS;
+  });
+
+  it('does not create the DynamoDB client while importing the module', async () => {
+    vi.resetModules();
+
+    await import('./connection-store');
+
+    expect(dynamoClientMock).not.toHaveBeenCalled();
+  });
+
+  it('creates the DynamoDB client lazily with bounded retry config', async () => {
+    vi.resetModules();
+    process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS = '4';
+    process.env.CONNECTIONS_TABLE = 'ph-os-yjs-connections';
+    const { deleteConnection } = await import('./connection-store');
+
+    await deleteConnection('conn_1');
+
+    expect(dynamoClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 4,
+        requestHandler: expect.anything(),
+      }),
+    );
+  });
+
+  it('reuses DynamoDB clients within a region and separates them across regions', async () => {
+    vi.resetModules();
+    process.env.CONNECTIONS_TABLE = 'ph-os-yjs-connections';
+    const { deleteConnection } = await import('./connection-store');
+
+    process.env.AWS_REGION = 'ap-northeast-1';
+    await deleteConnection('conn_1');
+    await deleteConnection('conn_2');
+    process.env.AWS_REGION = 'us-west-2';
+    await deleteConnection('conn_3');
+
+    expect(dynamoClientMock).toHaveBeenCalledTimes(2);
+    expect(dynamoClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
+    expect(dynamoClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'us-west-2',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
   });
 
   it('stores a verified connection using the token expiry as DynamoDB TTL', async () => {
@@ -65,6 +123,9 @@ describe('websocket connection store', () => {
         expiresAt: { N: '1779321900' },
         ttl: { N: '1779321900' },
       },
+    });
+    expect(dynamoSendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
     });
   });
 

@@ -7,32 +7,38 @@ import {
 } from '../shared/connection-store';
 import { handler } from './handler';
 
-const { apiGatewaySendMock, deleteConnectionCommandMock, postToConnectionCommandMock } = vi.hoisted(
-  () => ({
-    apiGatewaySendMock: vi.fn(),
-    deleteConnectionCommandMock: vi.fn(function MockDeleteConnectionCommand(
-      this: { commandName?: string; input?: unknown },
-      input: unknown,
-    ) {
-      this.commandName = 'DeleteConnectionCommand';
-      this.input = input;
-    }),
-    postToConnectionCommandMock: vi.fn(function MockPostToConnectionCommand(
-      this: { commandName?: string; input?: unknown },
-      input: unknown,
-    ) {
-      this.commandName = 'PostToConnectionCommand';
-      this.input = input;
-    }),
+const {
+  apiGatewayClientMock,
+  apiGatewaySendMock,
+  deleteConnectionCommandMock,
+  postToConnectionCommandMock,
+} = vi.hoisted(() => ({
+  apiGatewayClientMock: vi.fn(),
+  apiGatewaySendMock: vi.fn(),
+  deleteConnectionCommandMock: vi.fn(function MockDeleteConnectionCommand(
+    this: { commandName?: string; input?: unknown },
+    input: unknown,
+  ) {
+    this.commandName = 'DeleteConnectionCommand';
+    this.input = input;
   }),
-);
+  postToConnectionCommandMock: vi.fn(function MockPostToConnectionCommand(
+    this: { commandName?: string; input?: unknown },
+    input: unknown,
+  ) {
+    this.commandName = 'PostToConnectionCommand';
+    this.input = input;
+  }),
+}));
 
 vi.mock('@aws-sdk/client-apigatewaymanagementapi', () => ({
-  ApiGatewayManagementApiClient: vi.fn().mockImplementation(function MockApiGatewayClient() {
-    return {
-      send: apiGatewaySendMock,
-    };
-  }),
+  ApiGatewayManagementApiClient: apiGatewayClientMock.mockImplementation(
+    function MockApiGatewayClient() {
+      return {
+        send: apiGatewaySendMock,
+      };
+    },
+  ),
   GoneException: class GoneException extends Error {
     constructor() {
       super('gone');
@@ -81,6 +87,19 @@ function syncEvent(body = Buffer.from([0, 1, 2]).toString('base64')) {
   };
 }
 
+function syncEventForEndpoint(endpoint: string, body = Buffer.from([0, 1, 2]).toString('base64')) {
+  const parsedEndpoint = new URL(endpoint);
+  return {
+    body,
+    isBase64Encoded: true,
+    requestContext: {
+      connectionId: 'conn_sender',
+      domainName: parsedEndpoint.hostname,
+      stage: parsedEndpoint.pathname.slice(1),
+    },
+  };
+}
+
 function sentCommandInputs(commandName: string) {
   return apiGatewaySendMock.mock.calls
     .map(([command]) => command as { commandName?: string; input?: unknown })
@@ -103,6 +122,7 @@ function sentPostConnectionIds() {
 describe('websocket sync handler', () => {
   afterEach(() => {
     vi.useRealTimers();
+    apiGatewayClientMock.mockClear();
     apiGatewaySendMock.mockReset();
     deleteConnectionMock.mockReset();
     getConnectionMock.mockReset();
@@ -110,6 +130,7 @@ describe('websocket sync handler', () => {
     deleteConnectionCommandMock.mockClear();
     postToConnectionCommandMock.mockClear();
     delete process.env.WEBSOCKET_API_ENDPOINT;
+    delete process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS;
   });
 
   it('broadcasts only to peers in the verified sender room from the connection store', async () => {
@@ -135,7 +156,59 @@ describe('websocket sync handler', () => {
     expect(deleteConnectionCommandMock).toHaveBeenCalledWith({
       ConnectionId: 'conn_expired',
     });
+    expect(apiGatewayClientMock).toHaveBeenCalledWith({
+      endpoint: 'https://abc.execute-api.ap-northeast-1.amazonaws.com/prod',
+      maxAttempts: 2,
+    });
+    expect(apiGatewaySendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
     expect(sentDeleteConnectionIds()).toContain('conn_expired');
+  });
+
+  it('reuses the timeout-wrapped API Gateway client for the same endpoint', async () => {
+    const endpoint = 'https://reuse.execute-api.ap-northeast-1.amazonaws.com/prod';
+    process.env.WEBSOCKET_API_ENDPOINT = endpoint;
+    getConnectionMock.mockResolvedValue(connection());
+    listConnectionsByRoomMock.mockResolvedValue([connection({ connectionId: 'conn_peer' })]);
+    apiGatewaySendMock.mockResolvedValue({});
+
+    await expect(handler(syncEventForEndpoint(endpoint))).resolves.toEqual({ statusCode: 200 });
+    await expect(handler(syncEventForEndpoint(endpoint))).resolves.toEqual({ statusCode: 200 });
+
+    expect(apiGatewayClientMock).toHaveBeenCalledTimes(1);
+    expect(apiGatewayClientMock).toHaveBeenCalledWith({
+      endpoint,
+      maxAttempts: 2,
+    });
+    expect(postToConnectionCommandMock).toHaveBeenCalledTimes(2);
+    expect(apiGatewaySendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
+  });
+
+  it('keeps API Gateway client reuse separated by endpoint', async () => {
+    const prodEndpoint = 'https://stage-split.execute-api.ap-northeast-1.amazonaws.com/prod';
+    const betaEndpoint = 'https://stage-split.execute-api.ap-northeast-1.amazonaws.com/beta';
+    getConnectionMock.mockResolvedValue(connection());
+    listConnectionsByRoomMock.mockResolvedValue([connection({ connectionId: 'conn_peer' })]);
+    apiGatewaySendMock.mockResolvedValue({});
+
+    process.env.WEBSOCKET_API_ENDPOINT = prodEndpoint;
+    await expect(handler(syncEventForEndpoint(prodEndpoint))).resolves.toEqual({ statusCode: 200 });
+    process.env.WEBSOCKET_API_ENDPOINT = betaEndpoint;
+    await expect(handler(syncEventForEndpoint(betaEndpoint))).resolves.toEqual({ statusCode: 200 });
+
+    expect(apiGatewayClientMock).toHaveBeenCalledTimes(2);
+    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(1, {
+      endpoint: prodEndpoint,
+      maxAttempts: 2,
+    });
+    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(2, {
+      endpoint: betaEndpoint,
+      maxAttempts: 2,
+    });
+    expect(postToConnectionCommandMock).toHaveBeenCalledTimes(2);
   });
 
   it('does not trust any room-like data in the message body', async () => {

@@ -21,10 +21,12 @@ describe('medical UI E2E release contract', () => {
 
     expect(packageJson).toContain('"medical-ui:e2e:gate"');
     expect(packageJson).toContain('db:e2e:check-care-report-duplicates');
+    expect(packageJson).toContain('db:e2e:check-visit-route-order-conflicts');
     expect(packageJson).not.toContain(
       'medical-ui:e2e:gate": "pnpm db:check-care-report-duplicates',
     );
     expect(preflight).toContain('db:e2e:check-care-report-duplicates');
+    expect(preflight).toContain('db:e2e:check-visit-route-order-conflicts');
   });
 
   it('keeps billing, PCA, and prescription guardrails inside the targeted E2E gate', () => {

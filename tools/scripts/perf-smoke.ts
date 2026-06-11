@@ -127,7 +127,7 @@ function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
   }
 }
 
-function createRequestAbort(timeoutMs: number): {
+export function createRequestAbort(timeoutMs: number): {
   signal: AbortSignal;
   didTimeout: () => boolean;
   clear: () => void;

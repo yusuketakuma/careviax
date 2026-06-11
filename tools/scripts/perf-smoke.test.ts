@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseArgs, runPerfSmoke } from './perf-smoke';
+import { createRequestAbort, parseArgs, runPerfSmoke } from './perf-smoke';
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('perf-smoke parseArgs', () => {
@@ -100,5 +101,52 @@ describe('perf-smoke parseArgs', () => {
       'http://127.0.0.1:3000/api/health',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it('creates unrefed request abort timers that can be cleared', () => {
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+
+    const abort = createRequestAbort(1234);
+    abort.clear();
+
+    expect(abort.signal).toEqual(expect.any(AbortSignal));
+    expect(abort.didTimeout()).toBe(false);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
+  it('clears request timeout timers after successful requests', async () => {
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+    const args = parseArgs(
+      ['--requests', '1', '--concurrency', '1', '--request-timeout-ms', '1234'],
+      {},
+    );
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('{}', { status: 200 }));
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      requests: 1,
+      error_count: 0,
+      timeout_count: 0,
+      target_met: true,
+    });
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 });

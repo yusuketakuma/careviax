@@ -5,7 +5,11 @@ import {
   PutItemCommand,
   QueryCommand,
   type AttributeValue,
+  type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
+import { websocketAwsClientConfig, withWebsocketAwsClientTimeout } from './aws-client';
+
+const DEFAULT_AWS_REGION = 'ap-northeast-1';
 
 export type VerifiedConnection = {
   connectionId: string;
@@ -19,7 +23,21 @@ export type VerifiedConnection = {
   ttl: number;
 };
 
-const ddb = new DynamoDBClient({});
+const cachedDynamoClients = new Map<string, Pick<AwsDynamoDBClient, 'send'>>();
+
+function getDynamoClient(region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION) {
+  const cachedClient = cachedDynamoClients.get(region);
+  if (cachedClient) return cachedClient;
+
+  const client = withWebsocketAwsClientTimeout(
+    new DynamoDBClient({
+      region,
+      ...websocketAwsClientConfig(),
+    }),
+  );
+  cachedDynamoClients.set(region, client);
+  return client;
+}
 
 function connectionsTableName() {
   const tableName = process.env.CONNECTIONS_TABLE;
@@ -56,7 +74,7 @@ function deserializeConnection(item: Record<string, AttributeValue>): VerifiedCo
 }
 
 export async function putConnection(connection: VerifiedConnection) {
-  await ddb.send(
+  await getDynamoClient().send(
     new PutItemCommand({
       TableName: connectionsTableName(),
       Item: {
@@ -75,7 +93,7 @@ export async function putConnection(connection: VerifiedConnection) {
 }
 
 export async function deleteConnection(connectionId: string) {
-  await ddb.send(
+  await getDynamoClient().send(
     new DeleteItemCommand({
       TableName: connectionsTableName(),
       Key: {
@@ -86,7 +104,7 @@ export async function deleteConnection(connectionId: string) {
 }
 
 export async function getConnection(connectionId: string) {
-  const result = await ddb.send(
+  const result = await getDynamoClient().send(
     new GetItemCommand({
       TableName: connectionsTableName(),
       Key: {
@@ -104,7 +122,7 @@ export async function listConnectionsByRoom(room: string) {
   let exclusiveStartKey: Record<string, AttributeValue> | undefined;
 
   do {
-    const result = await ddb.send(
+    const result = await getDynamoClient().send(
       new QueryCommand({
         TableName: connectionsTableName(),
         IndexName: 'room-index',

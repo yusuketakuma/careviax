@@ -26,6 +26,8 @@ describe('websocket SAM template contract', () => {
     expect(body).toContain('connect/handler.ts');
     expect(body).toContain('disconnect/handler.ts');
     expect(body).toContain('sync/handler.ts');
+    expect(body).toContain('Runtime: nodejs24.x');
+    expect(body).not.toMatch(/Runtime: nodejs(?:18|20|22)\.x/);
     expect(body).toContain("IdentitySource:\n        - 'route.request.querystring.token'");
     expect(body).not.toContain('RouteKey: yjs-sync');
   });

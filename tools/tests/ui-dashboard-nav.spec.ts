@@ -11,17 +11,15 @@ test.describe('dashboard page', () => {
     await attachLocalSession(context);
   });
 
-  test('dashboard loads with header and main content sections', async ({ context }) => {
+  test('dashboard loads with cockpit sections', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    // コックピットの条件バナーは xl 超で表示(デスクトップ基準 1600 で検証)
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
-    // Dashboard header
-    await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
-
-    // Main content area should have meaningful content
-    const main = page.locator('main');
-    const content = await main.textContent();
-    expect(content?.trim().length).toBeGreaterThan(0);
+    // 新デザインのコックピット(条件バナー+今すぐ対応)
+    await expect(page.getByRole('heading', { name: 'ダッシュボード' }).first()).toBeVisible();
+    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -38,82 +36,79 @@ test.describe('dashboard page', () => {
   });
 });
 
+// design/images/new のサイドバー: 5 グループ(今日/患者/工程/連携/管理)・フラット項目
 test.describe('sidebar navigation', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
 
-  test('sidebar shows all main workflow navigation items', async ({ context }) => {
+  test('sidebar shows the grouped navigation items', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
 
-    // Main workflow items
-    await expect(sidebar.getByRole('link', { name: 'ホーム' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '患者' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '処方登録' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: 'スケジュール' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '調剤', exact: true })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '調剤監査' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '訪問時' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '報告書' })).toBeVisible();
+    // グループ見出し
+    for (const heading of ['今日', '患者', '工程', '連携', '管理']) {
+      await expect(sidebar.getByText(heading, { exact: true })).toBeVisible();
+    }
+
+    // 主要項目(各グループの代表)
+    for (const label of [
+      'ダッシュボード',
+      'スケジュール',
+      '訪問',
+      '患者一覧',
+      '処方取込',
+      'カード',
+      '調剤',
+      '監査',
+      'セット',
+      '報告・共有',
+      '算定チェック',
+      'ハンドオフ',
+      'マスター',
+      '設定',
+    ]) {
+      // バッジ付き項目(監査 6 等)があるため部分一致
+      await expect(sidebar.getByRole('link', { name: label }).first()).toBeVisible();
+    }
 
     expect(errors).toEqual([]);
   });
 
-  test('sidebar shows workbench navigation items', async ({ context }) => {
+  test('clicking sidebar patient list link navigates to patients page', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
-
-    // Workbench section label
-    await expect(sidebar.getByText('ワークベンチ')).toBeVisible();
-
-    // Workbench items
-    await expect(sidebar.getByRole('link', { name: 'My Day' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '請求' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '通知' })).toBeVisible();
-
-    expect(errors).toEqual([]);
-  });
-
-  test('clicking sidebar patients link navigates to patients page', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dashboard');
-
     await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-      page.getByTestId('sidebar-nav-patients').click(),
+      sidebar.getByRole('link', { name: '患者一覧' }).click(),
     );
 
-    await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '患者一覧' }).first()).toBeVisible();
     expect(errors).toEqual([]);
   });
 
   test('sidebar highlights active route correctly', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/patients');
 
-    // The patients link in sidebar should have active styling
-    const patientsLink = page.getByTestId('sidebar-nav-patients');
-    await expect(patientsLink).toBeVisible();
-
-    // Check it has the active class or aria-current
-    const className = await patientsLink.getAttribute('class');
-    const ariaCurrent = await patientsLink.getAttribute('aria-current');
-
-    // Should have either active styling class or aria-current="page"
-    const isActive = className?.includes('bg-') || ariaCurrent === 'page';
-    expect(isActive).toBe(true);
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByRole('link', { name: '患者一覧' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
 
     expect(errors).toEqual([]);
   });
 
-  test('settings link at bottom of sidebar navigates to settings', async ({ context }) => {
+  test('settings link navigates to settings', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
@@ -127,6 +122,7 @@ test.describe('sidebar navigation', () => {
 
   test('logout button is visible in sidebar', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
@@ -136,51 +132,62 @@ test.describe('sidebar navigation', () => {
   });
 });
 
-test.describe('breadcrumb navigation', () => {
+// design/images/new でパンくずは廃止(上部バーはモード/検索/同期/通知)。
+// 現在地はサイドバーのアクティブ表示で示す。
+test.describe('global navigation', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
 
-  test('patient detail page shows breadcrumb with home and patients links', async ({
+  test('patient detail highlights the card nav item instead of breadcrumbs', async ({
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    // デスクトップサイドバー(展開状態)を検証するため xl 超の幅にする
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/patients');
 
-    // Navigate to patient detail
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    // Navigate to patient detail (= card workspace)
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     const href = await firstPatientLink.getAttribute('href');
     expect(href).toBeTruthy();
     await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
       firstPatientLink.click({ noWaitAfter: true }),
     );
 
-    // Breadcrumb should be visible
-    const breadcrumb = page.getByRole('navigation', { name: 'パンくずリスト' });
-    await expect(breadcrumb).toBeVisible();
+    // パンくずは描画されない
+    await expect(page.getByRole('navigation', { name: 'パンくずリスト' })).toHaveCount(0);
 
-    // Home link in breadcrumb
-    await expect(breadcrumb.getByRole('link', { name: 'ホームへ' })).toBeVisible();
-
-    // Patients link in breadcrumb
-    await expect(breadcrumb.getByRole('link', { name: '患者' })).toBeVisible();
-
-    // Current page indicated
-    await expect(breadcrumb.getByText('患者詳細')).toBeVisible();
+    // サイドバーの現在地: カード=アクティブ、患者一覧=非アクティブ
+    const sidebar = page.getByTestId('app-sidebar');
+    await expect(sidebar.getByRole('link', { name: 'カード' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(sidebar.getByRole('link', { name: '患者一覧' })).not.toHaveAttribute(
+      'aria-current',
+      'page',
+    );
 
     expect(errors).toEqual([]);
   });
 
-  test('breadcrumb home link navigates to dashboard', async ({ context }) => {
+  test('sidebar dashboard link navigates to the cockpit', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
+    // デスクトップサイドバー(展開状態)を検証するため xl 超の幅にする
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/patients');
 
-    const breadcrumb = page.getByRole('navigation', { name: 'パンくずリスト' });
+    const sidebar = page.getByTestId('app-sidebar');
     await clickAndWaitForStableRoute(page, /\/dashboard$/, () =>
-      breadcrumb.getByRole('link', { name: 'ホームへ' }).click(),
+      sidebar.getByRole('link', { name: 'ダッシュボード' }).click(),
     );
 
-    await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

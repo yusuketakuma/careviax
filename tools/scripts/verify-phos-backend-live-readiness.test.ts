@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPhosBackendLiveReadinessReport,
+  createApiSmokeAbort,
   evaluateAccessTokenReadiness,
   evaluateLegacyNextApiBoundaryReadiness,
   evaluateLocalTemplateReadiness,
@@ -13,6 +14,10 @@ function jwt(payload: Record<string, unknown>) {
 }
 
 describe('verify-phos-backend-live-readiness', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const now = new Date('2026-06-10T00:00:00.000Z');
   const validTemporalClaims = {
     token_use: 'access',
@@ -323,6 +328,26 @@ describe('verify-phos-backend-live-readiness', () => {
     );
   });
 
+  it('creates unrefed API smoke abort timers that can be cleared', () => {
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+
+    const abort = createApiSmokeAbort(1234);
+    abort.clear();
+
+    expect(abort.signal).toEqual(expect.any(AbortSignal));
+    expect(abort.didTimeout()).toBe(false);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
   it('bounds the API smoke fetch with a readiness timeout', async () => {
     vi.useFakeTimers();
     try {
@@ -369,6 +394,45 @@ describe('verify-phos-backend-live-readiness', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('clears the API smoke timeout after a successful fetch', async () => {
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+
+    const report = await buildPhosBackendLiveReadinessReport({
+      env: {
+        PHOS_COGNITO_ACCESS_TOKEN: jwt({
+          ...validTemporalClaims,
+          tenant_id: 'tenant_abc123',
+          role: 'PHARMACIST',
+          sub: 'user_001',
+          scope: 'phos/cards.read',
+        }),
+        PHOS_API_BASE_URL: 'https://api.example.test',
+        PHOS_BACKEND_LIVE_SMOKE_TIMEOUT_MS: '1234',
+      },
+      now,
+      fetch: async () => new Response('{}', { status: 200 }),
+    });
+
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api_gateway_lambda_smoke',
+          status: 'passed',
+        }),
+      ]),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 
   it('fails the API smoke check before fetch when the API base URL carries unsafe URL parts', async () => {

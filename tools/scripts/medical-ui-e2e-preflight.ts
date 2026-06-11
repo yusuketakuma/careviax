@@ -26,6 +26,11 @@ type CheckResult = {
 
 const PACKAGE_JSON_PATH = 'package.json';
 const E2E_DUPLICATE_CHECK_SCRIPT = 'db:e2e:check-care-report-duplicates';
+const E2E_ROUTE_ORDER_CONFLICT_CHECK_SCRIPT = 'db:e2e:check-visit-route-order-conflicts';
+const REQUIRED_MEDICAL_UI_GATE_PRECHECKS = [
+  E2E_DUPLICATE_CHECK_SCRIPT,
+  E2E_ROUTE_ORDER_CONFLICT_CHECK_SCRIPT,
+] as const;
 
 const REQUIRED_RLS_TABLES = [
   'AuditLog',
@@ -80,8 +85,10 @@ const REQUIRED_PACKAGE_SCRIPTS = [
   'db:e2e:seed',
   'db:e2e:prepare',
   'db:check-care-report-duplicates',
+  'db:check-visit-route-order-conflicts',
   'db:verify-migration-preconditions',
   'db:e2e:check-care-report-duplicates',
+  'db:e2e:check-visit-route-order-conflicts',
   'db:e2e:verify-migration-preconditions',
   'medical-ui:e2e:preflight',
   'medical-ui:e2e:targeted',
@@ -222,12 +229,17 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
       };
     }
 
-    if (scriptName === 'medical-ui:e2e:gate' && !script.includes(E2E_DUPLICATE_CHECK_SCRIPT)) {
-      return {
-        name: `package-script:${scriptName}`,
-        status: 'fail',
-        detail: `script must run ${E2E_DUPLICATE_CHECK_SCRIPT}`,
-      };
+    if (scriptName === 'medical-ui:e2e:gate') {
+      const missingPrechecks = REQUIRED_MEDICAL_UI_GATE_PRECHECKS.filter(
+        (precheck) => !script.includes(precheck),
+      );
+      if (missingPrechecks.length > 0) {
+        return {
+          name: `package-script:${scriptName}`,
+          status: 'fail',
+          detail: `script must run ${missingPrechecks.join(', ')}`,
+        };
+      }
     }
 
     if (scriptName === 'db:e2e:prepare' && !script.includes('db:e2e:migrate')) {
@@ -243,7 +255,7 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
       status: 'pass',
       detail:
         scriptName === 'medical-ui:e2e:gate'
-          ? `found; runs ${E2E_DUPLICATE_CHECK_SCRIPT}`
+          ? `found; runs ${REQUIRED_MEDICAL_UI_GATE_PRECHECKS.join(', ')}`
           : 'found',
     };
   });
@@ -380,7 +392,7 @@ async function main() {
         '1. Start local PostgreSQL for ph_os_e2e on localhost:5433.',
         '2. Run pnpm --config.verify-deps-before-run=false db:e2e:prepare.',
         '3. Start the app with pnpm dev:e2e:local or pnpm start:e2e:local on localhost:3012, or use pnpm medical-ui:e2e:gate:prod after preparing the database.',
-        '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates for local release evidence.',
+        '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates and db:e2e:check-visit-route-order-conflicts for local release evidence.',
         '5. Run targeted Playwright/axe specs listed above.',
       ].join('\n'),
     );

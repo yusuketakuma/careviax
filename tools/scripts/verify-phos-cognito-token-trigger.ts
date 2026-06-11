@@ -1,11 +1,11 @@
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import {
-  CognitoIdentityProviderClient,
   DescribeUserPoolCommand,
   type DescribeUserPoolCommandOutput,
   type LambdaConfigType,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { getScriptCognitoClient } from './cognito-client';
 
 const ACCESS_TOKEN_CUSTOMIZATION_VERSIONS = new Set(['V2_0', 'V3_0']);
 
@@ -93,7 +93,7 @@ async function main() {
   const proof = await verifyCognitoPreTokenGenerationLiveProof({
     user_pool_id,
     expected_lambda_arn,
-    client: new CognitoIdentityProviderClient({ region }),
+    client: getScriptCognitoClient(region),
   });
 
   console.log(JSON.stringify(proof, null, 2));

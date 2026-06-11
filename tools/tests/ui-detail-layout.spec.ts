@@ -41,7 +41,7 @@ function jsonb(value: unknown) {
   return JSON.stringify(value);
 }
 
-async function openFirstPatientDetail(page: Page) {
+async function openFirstPatientProfile(page: Page) {
   await openStableRoute(page, '/patients');
   const firstLink = page
     .locator('a[href^="/patients/"]:not([href="/patients/new"])')
@@ -50,7 +50,8 @@ async function openFirstPatientDetail(page: Page) {
   await expect(firstLink).toBeVisible({ timeout: 30_000 });
   const href = await firstLink.getAttribute('href');
   expect(href).toBeTruthy();
-  await openStableRoute(page, href!);
+  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
+  await openStableRoute(page, `${href}?view=profile`);
 
   const tablist = page.getByTestId('patient-detail-tablist');
   const loading = page.locator('main').getByText('読み込み中...');
@@ -448,9 +449,11 @@ test.describe('detail page layout', () => {
     await attachLocalSession(context);
   });
 
-  test('patient detail keeps grouped layout and visible tab navigation', async ({ context }) => {
+  test('patient profile view keeps grouped layout and visible tab navigation', async ({
+    context,
+  }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openFirstPatientDetail(page);
+    await openFirstPatientProfile(page);
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
     await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();

@@ -8,22 +8,27 @@ const TEST_ROOM_TOKEN_SECRET = 'test-collaboration-room-secret-32';
 const SECRETS_MANAGER_ROOM_TOKEN_SECRET = 'secrets-manager-room-token-secret';
 const DIRECT_PRODUCTION_SECRET = 'direct-production-room-token-secret';
 
-const { secretsManagerSendMock, getSecretValueCommandMock } = vi.hoisted(() => ({
-  secretsManagerSendMock: vi.fn(),
-  getSecretValueCommandMock: vi.fn(function MockGetSecretValueCommand(
-    this: { input?: unknown },
-    input: unknown,
-  ) {
-    this.input = input;
+const { secretsManagerClientMock, secretsManagerSendMock, getSecretValueCommandMock } = vi.hoisted(
+  () => ({
+    secretsManagerClientMock: vi.fn(),
+    secretsManagerSendMock: vi.fn(),
+    getSecretValueCommandMock: vi.fn(function MockGetSecretValueCommand(
+      this: { input?: unknown },
+      input: unknown,
+    ) {
+      this.input = input;
+    }),
   }),
-}));
+);
 
 vi.mock('@aws-sdk/client-secrets-manager', () => ({
-  SecretsManagerClient: vi.fn().mockImplementation(function MockSecretsManagerClient() {
-    return {
-      send: secretsManagerSendMock,
-    };
-  }),
+  SecretsManagerClient: secretsManagerClientMock.mockImplementation(
+    function MockSecretsManagerClient() {
+      return {
+        send: secretsManagerSendMock,
+      };
+    },
+  ),
   GetSecretValueCommand: getSecretValueCommandMock,
 }));
 
@@ -33,10 +38,12 @@ describe('lambda room-token verifier', () => {
   const originalCollaborationRoomTokenSecret = process.env.COLLABORATION_ROOM_TOKEN_SECRET;
   const originalCollaborationRoomTokenSecretArn = process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN;
   const originalAwsExecutionEnv = process.env.AWS_EXECUTION_ENV;
+  const originalAwsClientMaxAttempts = process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS;
 
   beforeEach(() => {
     clearRoomTokenSecretCache();
     secretsManagerSendMock.mockReset();
+    secretsManagerClientMock.mockClear();
     getSecretValueCommandMock.mockClear();
     process.env.COLLABORATION_ROOM_TOKEN_SECRET = TEST_ROOM_TOKEN_SECRET;
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN;
@@ -65,6 +72,8 @@ describe('lambda room-token verifier', () => {
     }
     if (originalAwsExecutionEnv === undefined) delete process.env.AWS_EXECUTION_ENV;
     else process.env.AWS_EXECUTION_ENV = originalAwsExecutionEnv;
+    if (originalAwsClientMaxAttempts === undefined) delete process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS;
+    else process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS = originalAwsClientMaxAttempts;
   });
 
   it('accepts tokens issued by the application service', async () => {
@@ -169,7 +178,7 @@ describe('lambda room-token verifier', () => {
 
   it('uses the room token secret from Secrets Manager when an ARN is configured', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
     process.env.COLLABORATION_ROOM_TOKEN_SECRET = DIRECT_PRODUCTION_SECRET;
     process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
       'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token';
@@ -204,11 +213,78 @@ describe('lambda room-token verifier', () => {
       SecretId:
         'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token',
     });
+    expect(secretsManagerClientMock).toHaveBeenCalledWith({
+      region: 'ap-northeast-1',
+      maxAttempts: 2,
+    });
+    expect(secretsManagerSendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
+  });
+
+  it('refetches the room token secret within the TTL when the Secrets Manager ARN changes', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
+    process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
+      'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/room-token-a';
+    secretsManagerSendMock
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: SECRETS_MANAGER_ROOM_TOKEN_SECRET,
+        }),
+      })
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: `${SECRETS_MANAGER_ROOM_TOKEN_SECRET}-rotated`,
+        }),
+      });
+    const firstToken = await encode({
+      secret: SECRETS_MANAGER_ROOM_TOKEN_SECRET,
+      salt: TOKEN_SALT,
+      maxAge: 300,
+      token: {
+        sub: 'user_1',
+        purpose: 'collaboration_room',
+        org_id: 'org_1',
+        user_id: 'user_1',
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        room: 'org_1:dispense_task:dt_1',
+      },
+    });
+    const rotatedToken = await encode({
+      secret: `${SECRETS_MANAGER_ROOM_TOKEN_SECRET}-rotated`,
+      salt: TOKEN_SALT,
+      maxAge: 300,
+      token: {
+        sub: 'user_1',
+        purpose: 'collaboration_room',
+        org_id: 'org_1',
+        user_id: 'user_1',
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        room: 'org_1:dispense_task:dt_1',
+      },
+    });
+
+    await expect(validateRoomToken(firstToken)).resolves.toMatchObject({ ok: true });
+
+    process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
+      'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/room-token-b';
+
+    await expect(validateRoomToken(rotatedToken)).resolves.toMatchObject({ ok: true });
+    expect(secretsManagerSendMock).toHaveBeenCalledTimes(2);
+    expect(getSecretValueCommandMock).toHaveBeenNthCalledWith(1, {
+      SecretId: 'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/room-token-a',
+    });
+    expect(getSecretValueCommandMock).toHaveBeenNthCalledWith(2, {
+      SecretId: 'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/room-token-b',
+    });
   });
 
   it('fails closed when Secrets Manager cannot resolve the signing secret', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
     process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
       'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token';
     secretsManagerSendMock.mockRejectedValue(new Error('secrets manager unavailable'));
@@ -232,7 +308,7 @@ describe('lambda room-token verifier', () => {
 
   it('fails closed for malformed or weak Secrets Manager values', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
     process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
       'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token';
     const token = await encode({
@@ -270,7 +346,7 @@ describe('lambda room-token verifier', () => {
 
   it('does not use direct secret env values in Lambda-like environments', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
     process.env.COLLABORATION_ROOM_TOKEN_SECRET = DIRECT_PRODUCTION_SECRET;
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN;
     const token = await encode({

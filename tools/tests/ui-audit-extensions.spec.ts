@@ -76,15 +76,21 @@ async function analyzeMainAccessibility(page: Page) {
   throw new Error('Axe analysis did not complete');
 }
 
-async function openFirstPatientDetail(page: Page) {
+async function openFirstPatientDetail(page: Page, options: { view?: 'card' | 'profile' } = {}) {
   await openStableRoute(page, '/patients');
 
   const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
   await patientLink.waitFor({ state: 'attached', timeout: 30_000 }).catch(() => null);
   const href = (await patientLink.getAttribute('href')) ?? FALLBACK_PATIENT_PATH;
   expect(href).toBeTruthy();
-  await openStableRoute(page, href!);
-  await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 60_000 });
+  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
+  if (options.view === 'profile') {
+    await openStableRoute(page, `${href}?view=profile`);
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 60_000 });
+  } else {
+    await openStableRoute(page, href!);
+    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
+  }
   return href!;
 }
 
@@ -316,7 +322,7 @@ test.describe('ARIA and keyboard contracts', () => {
 
     await clickAndWaitForStableRoute(page, href!, () => patientLink.click(), { timeout: 60_000 });
 
-    await expect(page.locator('main').getByText('患者詳細').first()).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
     expect(errors).toEqual([]);
   });
 
@@ -417,7 +423,8 @@ test.describe('ARIA and keyboard contracts', () => {
     await clickAndWaitForStableRoute(page, /\/patients\/[^/]+$/, () => patientLink.click(), {
       timeout: 60_000,
     });
-    await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('heading', { name: /カード — / })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -430,31 +437,30 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await openFirstPatientDetail(page);
+    await openFirstPatientDetail(page, { view: 'profile' });
 
     const tablist = page.getByTestId('patient-detail-tablist');
-    const basicTab = tablist.getByRole('tab', { name: '基本情報' });
-    const casesTab = tablist.getByRole('tab', { name: 'ケース' });
+    const memoTab = tablist.getByRole('tab', { name: '薬剤師メモ' });
+    const processTab = tablist.getByRole('tab', { name: '工程' });
 
     await expect(tablist).toBeVisible();
     await expect(tablist).toMatchAriaSnapshot(`
       - tablist "患者詳細タブ":
-        - tab "基本情報" [selected]
-        - tab "ケース"
-        - tab "処方履歴"
-        - tab "薬剤"
+        - tab "薬剤師メモ" [selected]
+        - tab "工程"
+        - tab "処方・監査"
+        - tab "セット"
         - tab "訪問"
-        - tab "連携"
-        - tab "文書"
-        - tab "タイムライン"
+        - tab "報告"
+        - tab "履歴"
     `);
 
-    await basicTab.focus();
-    await expect(basicTab).toBeFocused();
+    await memoTab.focus();
+    await expect(memoTab).toBeFocused();
     await page.keyboard.press('ArrowRight');
-    await expect(casesTab).toBeFocused();
+    await expect(processTab).toBeFocused();
     await page.keyboard.press('Space');
-    await expect(casesTab).toHaveAttribute('aria-selected', 'true');
+    await expect(processTab).toHaveAttribute('aria-selected', 'true');
 
     expect(errors).toEqual([]);
   });

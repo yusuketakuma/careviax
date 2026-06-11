@@ -1,5 +1,6 @@
 import { decode } from 'next-auth/jwt';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { websocketAwsClientConfig, withWebsocketAwsClientTimeout } from './aws-client';
 
 const COLLABORATION_ROOM_TOKEN_SALT = 'ph-os.collaboration-room-token.v1';
 const LOCAL_FALLBACK_COLLABORATION_ROOM_TOKEN_SECRET = 'ph-os-local-auth-secret';
@@ -8,6 +9,8 @@ const SECRETS_MANAGER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 let cachedSecretsManagerSecret: string | null = null;
 let cachedSecretsManagerSecretAt: number | null = null;
+let cachedSecretsManagerSecretSource: string | null = null;
+const secretsManagerClients = new Map<string, Pick<SecretsManagerClient, 'send'>>();
 
 export type CollaborationRoomTokenPayload = {
   sub: string;
@@ -33,6 +36,7 @@ type ValidationResult =
 export function clearRoomTokenSecretCache() {
   cachedSecretsManagerSecret = null;
   cachedSecretsManagerSecretAt = null;
+  cachedSecretsManagerSecretSource = null;
 }
 
 function isProductionLikeRuntime() {
@@ -77,17 +81,18 @@ function isStrongSecret(secret: string) {
 
 async function roomTokenSecretFromSecretsManager(secretArn: string) {
   const now = Date.now();
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const source = `${region}:${secretArn}`;
   if (
     cachedSecretsManagerSecret &&
     cachedSecretsManagerSecretAt &&
+    cachedSecretsManagerSecretSource === source &&
     now - cachedSecretsManagerSecretAt < SECRETS_MANAGER_CACHE_TTL_MS
   ) {
     return cachedSecretsManagerSecret;
   }
 
-  const client = new SecretsManagerClient({
-    region: process.env.AWS_REGION ?? 'ap-northeast-1',
-  });
+  const client = getSecretsManagerClient(region);
   const response = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
   const raw = response.SecretString;
   if (!raw) return null;
@@ -97,7 +102,22 @@ async function roomTokenSecretFromSecretsManager(secretArn: string) {
 
   cachedSecretsManagerSecret = secret.trim();
   cachedSecretsManagerSecretAt = now;
+  cachedSecretsManagerSecretSource = source;
   return cachedSecretsManagerSecret;
+}
+
+function getSecretsManagerClient(region: string) {
+  const cached = secretsManagerClients.get(region);
+  if (cached) return cached;
+
+  const client = withWebsocketAwsClientTimeout(
+    new SecretsManagerClient({
+      region,
+      ...websocketAwsClientConfig(),
+    }),
+  );
+  secretsManagerClients.set(region, client);
+  return client;
 }
 
 async function roomTokenSecret() {

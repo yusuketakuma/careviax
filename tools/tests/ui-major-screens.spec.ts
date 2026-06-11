@@ -647,12 +647,26 @@ async function writeScreenshot(page: Page, name: string) {
   });
 }
 
-async function openPatientDetailRoute(page: Page, patientId: string) {
-  await openStableRoute(page, `/patients/${patientId}`);
+async function openPatientDetailRoute(
+  page: Page,
+  patientId: string,
+  options: { view?: 'card' | 'profile'; tab?: string } = {},
+) {
+  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
+  const view = options.view ?? 'card';
+  const params = new URLSearchParams();
+  if (view === 'profile') {
+    params.set('view', 'profile');
+    if (options.tab) params.set('tab', options.tab);
+  }
+  const query = params.toString();
+  await openStableRoute(page, `/patients/${patientId}${query ? `?${query}` : ''}`);
 
-  const tablist = page.getByTestId('patient-detail-tablist');
+  const readyMarker = page.getByTestId(
+    view === 'profile' ? 'patient-detail-tablist' : 'card-workspace',
+  );
   const loading = page.locator('main').getByText('読み込み中...');
-  if (await tablist.isVisible({ timeout: 60_000 }).catch(() => false)) {
+  if (await readyMarker.isVisible({ timeout: 60_000 }).catch(() => false)) {
     return;
   }
 
@@ -660,7 +674,7 @@ async function openPatientDetailRoute(page: Page, patientId: string) {
     await reloadStablePage(page);
   }
 
-  await expect(tablist).toBeVisible({ timeout: 60_000 });
+  await expect(readyMarker).toBeVisible({ timeout: 60_000 });
 }
 
 async function fetchFirstPatientId(page: Page) {
@@ -757,13 +771,17 @@ test.describe('major authenticated screens', () => {
     await openPatientDetailRoute(page, patientId);
 
     await expect(page.locator('main')).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
     await writeScreenshot(page, 'patient-detail');
     expect(errors).toEqual([]);
   });
 
   test('patient detail screen surfaces representative backend data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openPatientDetailRoute(page, demoContext.patientId);
+    // The profile basic tab renders side rails at xl, so widen the viewport to keep
+    // the intake summary card columns readable (and visible to the assertions).
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openPatientDetailRoute(page, demoContext.patientId, { view: 'profile', tab: 'basic' });
     await dismissSheetOverlayIfPresent(page);
 
     await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible({

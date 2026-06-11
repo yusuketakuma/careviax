@@ -1,11 +1,11 @@
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { UserRole } from '../../src/phos/contracts/phos_contracts';
 import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
 import { PHOS_API_ROUTES } from '../../src/phos/infra/api-gateway-routes';
 import { normalizePositiveTimeoutMs } from '../../src/lib/utils/timeout';
 import { verifyCognitoPreTokenGenerationLiveProof } from './verify-phos-cognito-token-trigger';
+import { getScriptCognitoClient } from './cognito-client';
 
 type CheckStatus = 'passed' | 'failed' | 'missing' | 'skipped';
 
@@ -59,33 +59,42 @@ function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
   }
 }
 
+export function createApiSmokeAbort(timeoutMs: number) {
+  const controller = new AbortController();
+  let timed_out = false;
+  const timeout = setTimeout(() => {
+    timed_out = true;
+    controller.abort(new Error('PHOS_BACKEND_LIVE_SMOKE_TIMEOUT'));
+  }, timeoutMs);
+  maybeUnrefTimeout(timeout);
+  return {
+    signal: controller.signal,
+    didTimeout: () => timed_out,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
 async function fetchApiSmokeWithTimeout(input: {
   fetchImpl: FetchLike;
   smokeUrl: URL;
   accessToken: string;
   timeoutMs: number;
 }): Promise<{ response?: Response; timed_out: boolean }> {
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new Error('PHOS_BACKEND_LIVE_SMOKE_TIMEOUT'));
-  }, input.timeoutMs);
-  maybeUnrefTimeout(timeout);
+  const abort = createApiSmokeAbort(input.timeoutMs);
 
   try {
     const response = await input.fetchImpl(input.smokeUrl, {
       credentials: 'omit',
       headers: { Authorization: `Bearer ${input.accessToken}` },
       redirect: 'error',
-      signal: controller.signal,
+      signal: abort.signal,
     });
     return { response, timed_out: false };
   } catch (error) {
-    if (timedOut) return { timed_out: true };
+    if (abort.didTimeout()) return { timed_out: true };
     throw error;
   } finally {
-    clearTimeout(timeout);
+    abort.clear();
   }
 }
 
@@ -404,9 +413,7 @@ export async function buildPhosBackendLiveReadinessReport(
       const proof = await verifyCognitoPreTokenGenerationLiveProof({
         user_pool_id: readEnv(env, 'PHOS_COGNITO_USER_POOL_ID') ?? '',
         expected_lambda_arn: readEnv(env, 'PHOS_COGNITO_PRE_TOKEN_GENERATION_FUNCTION_ARN') ?? '',
-        client: new CognitoIdentityProviderClient({
-          region: readEnv(env, 'AWS_REGION') ?? undefined,
-        }),
+        client: getScriptCognitoClient(readEnv(env, 'AWS_REGION') ?? ''),
       });
       checks.push({
         name: 'cognito_trigger_live_attachment',

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { verifyRateLimitDynamoDb } from './verify-rate-limit-dynamodb';
 
 type DynamoCall = {
@@ -18,6 +18,7 @@ function env(overrides: Record<string, string | undefined> = {}) {
 
 function createDynamoFetch(calls: DynamoCall[]): typeof fetch {
   return async (_input, init) => {
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
     const headers = init?.headers as Record<string, string>;
     const target = headers['X-Amz-Target']?.replace('DynamoDB_20120810.', '') ?? '';
     const body =
@@ -94,5 +95,33 @@ describe('verify-rate-limit-dynamodb', () => {
     expect(calls[3]?.body).toMatchObject({
       Key: { pk: { S: '__custom_preflight__' } },
     });
+  });
+
+  it('bounds DynamoDB verifier calls with unrefed timeout timers', async () => {
+    const calls: DynamoCall[] = [];
+    const unrefMock = vi.fn();
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        void handler;
+        void timeout;
+        void args;
+        return { unref: unrefMock } as unknown as ReturnType<typeof setTimeout>;
+      });
+
+    await expect(
+      verifyRateLimitDynamoDb({
+        env: env({ RATE_LIMIT_DDB_VERIFY_TIMEOUT_MS: '999999' }),
+        fetch: createDynamoFetch(calls),
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      writePath: 'skipped',
+    });
+
+    expect(calls.map((call) => call.target)).toEqual(['DescribeTable', 'DescribeTimeToLive']);
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 30_000);
+    expect(unrefMock).toHaveBeenCalledTimes(2);
   });
 });

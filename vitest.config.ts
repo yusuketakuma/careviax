@@ -8,7 +8,7 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
-      'tools/infra/websocket/**/*.test.ts',
+      'tools/infra/**/*.test.ts',
       'tools/scripts/**/*.test.ts',
     ],
     coverage: {

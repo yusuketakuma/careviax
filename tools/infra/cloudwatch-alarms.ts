@@ -22,33 +22,132 @@ import {
 } from '@aws-sdk/client-cloudwatch';
 
 type SnsModule = {
-  SNSClient: new (args: { region: string }) => {
-    send(command: unknown): Promise<{ TopicArn?: string }>;
+  SNSClient: new (args: { region: string; maxAttempts?: number }) => {
+    send(command: unknown, options?: AwsSendOptions): Promise<{ TopicArn?: string }>;
   };
   CreateTopicCommand: new (args: { Name: string }) => unknown;
-  SubscribeCommand: new (args: {
-    TopicArn: string;
-    Protocol: string;
-    Endpoint: string;
-  }) => unknown;
+  SubscribeCommand: new (args: { TopicArn: string; Protocol: string; Endpoint: string }) => unknown;
 };
 
-const REGION = process.env.AWS_REGION ?? 'ap-northeast-1';
+type AwsSendOptions = {
+  abortSignal?: AbortSignal;
+  [key: string]: unknown;
+};
+
+type AwsSendClient = {
+  send(command: unknown, options?: AwsSendOptions): Promise<unknown>;
+};
+
+type SnsClient = {
+  send(command: unknown, options?: AwsSendOptions): Promise<{ TopicArn?: string }>;
+};
+
+const DEFAULT_INFRA_AWS_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
+const MAX_INFRA_AWS_CLIENT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_INFRA_AWS_CLIENT_MAX_ATTEMPTS = 2;
+const MAX_INFRA_AWS_CLIENT_MAX_ATTEMPTS = 5;
+const DEFAULT_AWS_REGION = 'ap-northeast-1';
+
 const ALERT_EMAIL = process.env.ALERT_EMAIL;
 const DB_INSTANCE_ID = process.env.DB_INSTANCE_ID ?? 'ph-os-prod';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? '';
 
-const cloudwatch = new CloudWatchClient({ region: REGION });
+const cachedCloudWatchClients = new Map<string, Pick<CloudWatchClient, 'send'>>();
+const cachedSnsClients = new Map<string, SnsClient>();
 let cachedSnsModule: Promise<SnsModule | null> | null = null;
+
+function currentAwsRegion() {
+  return process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
+}
+
+export function getCloudWatchClient(region = currentAwsRegion()) {
+  const cachedClient = cachedCloudWatchClients.get(region);
+  if (cachedClient) return cachedClient;
+
+  const client = withInfraAwsClientTimeout(
+    new CloudWatchClient({ region, ...infraAwsClientConfig() }),
+  );
+  cachedCloudWatchClients.set(region, client);
+  return client;
+}
+
+function normalizePositiveInteger(
+  value: string | undefined,
+  options: {
+    fallback: number;
+    max: number;
+  },
+) {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return options.fallback;
+  return Math.min(parsed, options.max);
+}
+
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function createTimeoutController(timeoutMs: number): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new Error('INFRA_AWS_CLIENT_REQUEST_TIMEOUT'));
+  }, timeoutMs);
+  maybeUnrefTimeout(timeout);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
+export function infraAwsClientConfig() {
+  return {
+    maxAttempts: normalizePositiveInteger(process.env.PHOS_AWS_CLIENT_MAX_ATTEMPTS, {
+      fallback: DEFAULT_INFRA_AWS_CLIENT_MAX_ATTEMPTS,
+      max: MAX_INFRA_AWS_CLIENT_MAX_ATTEMPTS,
+    }),
+  };
+}
+
+export function infraAwsClientRequestTimeoutMs(value = process.env.PHOS_AWS_CLIENT_TIMEOUT_MS) {
+  return normalizePositiveInteger(value, {
+    fallback: DEFAULT_INFRA_AWS_CLIENT_REQUEST_TIMEOUT_MS,
+    max: MAX_INFRA_AWS_CLIENT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export function withInfraAwsClientTimeout<TClient>(
+  client: TClient,
+  timeoutMs = infraAwsClientRequestTimeoutMs(),
+): TClient {
+  const sendClient = client as AwsSendClient;
+  return {
+    async send(command: unknown, options: AwsSendOptions = {}) {
+      if (options.abortSignal) {
+        return sendClient.send(command, options);
+      }
+
+      const timeout = createTimeoutController(timeoutMs);
+      try {
+        return await sendClient.send(command, {
+          ...options,
+          abortSignal: timeout.signal,
+        });
+      } finally {
+        timeout.clear();
+      }
+    },
+  } as TClient;
+}
 
 async function loadSnsModule(): Promise<SnsModule> {
   if (!cachedSnsModule) {
     cachedSnsModule = (async () => {
       try {
-        const dynamicImport = new Function(
-          'specifier',
-          'return import(specifier)'
-        ) as (specifier: string) => Promise<unknown>;
+        const dynamicImport = new Function('specifier', 'return import(specifier)') as (
+          specifier: string,
+        ) => Promise<unknown>;
         const loaded = await dynamicImport('@aws-sdk/client-sns');
         if (
           loaded &&
@@ -70,11 +169,22 @@ async function loadSnsModule(): Promise<SnsModule> {
   const snsModule = await cachedSnsModule;
   if (!snsModule) {
     throw new Error(
-      'SNS SDK is not installed. Add @aws-sdk/client-sns before running this script.'
+      'SNS SDK is not installed. Add @aws-sdk/client-sns before running this script.',
     );
   }
 
   return snsModule;
+}
+
+export function getSnsClient(snsModule: SnsModule, region = currentAwsRegion()) {
+  const cachedClient = cachedSnsClients.get(region);
+  if (cachedClient) return cachedClient;
+
+  const client = withInfraAwsClientTimeout(
+    new snsModule.SNSClient({ region, ...infraAwsClientConfig() }),
+  );
+  cachedSnsClients.set(region, client);
+  return client;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,11 +193,9 @@ async function loadSnsModule(): Promise<SnsModule> {
 
 async function ensureSnsTopic(): Promise<string> {
   const snsModule = await loadSnsModule();
-  const sns = new snsModule.SNSClient({ region: REGION });
+  const sns = getSnsClient(snsModule);
 
-  const res = await sns.send(
-    new snsModule.CreateTopicCommand({ Name: 'ph-os-prod-alerts' }),
-  );
+  const res = await sns.send(new snsModule.CreateTopicCommand({ Name: 'ph-os-prod-alerts' }));
   const topicArn = res.TopicArn;
   if (!topicArn) throw new Error('Failed to create SNS topic');
 
@@ -109,7 +217,7 @@ async function ensureSnsTopic(): Promise<string> {
 // 2. Alarm definitions
 // ---------------------------------------------------------------------------
 
-function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
+export function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
   const common = {
     AlarmActions: [topicArn],
     OKActions: [topicArn],
@@ -214,8 +322,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     {
       ...common,
       AlarmName: 'ph-os-ses-bounce-rate-high',
-      AlarmDescription:
-        'SES bounce rate is above 5%. Continued bounces risk sending reputation.',
+      AlarmDescription: 'SES bounce rate is above 5%. Continued bounces risk sending reputation.',
       Namespace: 'AWS/SES',
       MetricName: 'Reputation.BounceRate',
       Statistic: 'Average',
@@ -227,8 +334,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     {
       ...common,
       AlarmName: 'ph-os-ses-complaint-rate-high',
-      AlarmDescription:
-        'SES complaint rate is above 0.1%. Risk of account suspension.',
+      AlarmDescription: 'SES complaint rate is above 0.1%. Risk of account suspension.',
       Namespace: 'AWS/SES',
       MetricName: 'Reputation.ComplaintRate',
       Statistic: 'Average',
@@ -271,7 +377,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
 // 3. Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log('Creating SNS topic...');
   const topicArn = await ensureSnsTopic();
   console.log(`SNS Topic ARN: ${topicArn}`);
@@ -279,6 +385,7 @@ async function main(): Promise<void> {
   const alarms = buildAlarms(topicArn);
   console.log(`\nCreating ${alarms.length} CloudWatch alarms...`);
 
+  const cloudwatch = getCloudWatchClient();
   for (const alarm of alarms) {
     await cloudwatch.send(new PutMetricAlarmCommand(alarm));
     console.log(`  ✓ ${alarm.AlarmName}`);
@@ -288,12 +395,21 @@ async function main(): Promise<void> {
   console.log(
     '\nNext steps:',
     '\n  1. Confirm the SNS email subscription in your inbox.',
-    '\n  2. Verify alarms in the CloudWatch console (ap-northeast-1).',
+    `\n  2. Verify alarms in the CloudWatch console (${currentAwsRegion()}).`,
     '\n  3. Adjust thresholds in this file as baseline metrics become available.',
   );
 }
 
-main().catch((err) => {
-  console.error('Error:', err);
-  process.exit(1);
-});
+function isDirectRun() {
+  const scriptPath = process.argv[1] ?? '';
+  return (
+    scriptPath.endsWith('/cloudwatch-alarms.ts') || scriptPath.endsWith('/cloudwatch-alarms.js')
+  );
+}
+
+if (isDirectRun()) {
+  main().catch((err) => {
+    console.error('Error:', err);
+    process.exit(1);
+  });
+}

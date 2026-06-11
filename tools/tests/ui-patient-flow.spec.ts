@@ -10,7 +10,10 @@ import {
 
 test.setTimeout(60_000);
 
-async function openFirstPatientDetail(page: Page) {
+async function openFirstPatientDetail(
+  page: Page,
+  options: { view?: 'card' | 'profile'; tab?: string } = {},
+) {
   const firstPatientLink = page
     .locator('tbody tr')
     .first()
@@ -20,9 +23,18 @@ async function openFirstPatientDetail(page: Page) {
   const href = await firstPatientLink.getAttribute('href');
   expect(href).toBeTruthy();
 
-  await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
-    firstPatientLink.click({ noWaitAfter: true }),
-  );
+  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
+  if (options.view === 'profile') {
+    const params = new URLSearchParams({ view: 'profile' });
+    if (options.tab) params.set('tab', options.tab);
+    await openStableRoute(page, `${href}?${params.toString()}`);
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 30_000 });
+  } else {
+    await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
+      firstPatientLink.click({ noWaitAfter: true }),
+    );
+    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 30_000 });
+  }
   return href!;
 }
 
@@ -98,27 +110,28 @@ test.describe('patient list and navigation flow', () => {
     // Use specific selector for patient detail links (not other action links)
     const href = await openFirstPatientDetail(page);
 
-    // Should navigate to patient detail.
+    // Should navigate to patient detail (card workspace is the default view).
     await expect(page).toHaveURL(new RegExp(`${href}$`));
-    await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /カード — / })).toBeVisible();
 
-    // Back link should be available
-    await expect(page.getByRole('link', { name: '患者一覧へ戻る' })).toBeVisible();
+    // Link to the legacy profile view should be available
+    await expect(page.getByTestId('card-open-profile')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('patient detail back link returns to patient list', async ({ context }) => {
+  test('patient profile back link returns to patient list', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to first patient detail
-    const href = await openFirstPatientDetail(page);
-    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    // Navigate to first patient profile view (the back link lives in its mini card)
+    const href = await openFirstPatientDetail(page, { view: 'profile' });
+    expect(page.url()).toContain(`${href}?view=profile`);
 
     // Click back link
     await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-      page.getByRole('link', { name: '患者一覧へ戻る' }).click({ noWaitAfter: true }),
+      page.getByRole('link', { name: '一覧へ戻る' }).click({ noWaitAfter: true }),
     );
 
     // Should be back on patient list
@@ -262,9 +275,9 @@ test.describe('patient detail page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to first patient detail
-    await openFirstPatientDetail(page);
-    await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
+    // Navigate to the profile basic tab, where the patient master card lives
+    await openFirstPatientDetail(page, { view: 'profile', tab: 'basic' });
+    await expect(page.getByRole('heading', { name: '患者マスタ' })).toBeVisible();
 
     // The gender field in patient master card should display Japanese label via a Select component
     // Previously it was a plain <Input> showing raw "male"/"female"/"other"
@@ -289,8 +302,8 @@ test.describe('patient detail page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to first patient detail
-    await openFirstPatientDetail(page);
+    // Navigate to the profile basic tab, where the patient master card lives
+    await openFirstPatientDetail(page, { view: 'profile', tab: 'basic' });
 
     // The patient master card is the first card with a "保存" button on the detail page
     // Locate "氏名" input (first input in master card) to confirm we're in the right card
@@ -356,36 +369,33 @@ test.describe('patient detail page', () => {
   });
 });
 
-test.describe('patient detail tabs', () => {
+test.describe('patient profile tabs', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
 
+  // Visible tabs of the profile view (?view=profile). Hidden tabs (basic/cases/documents)
+  // stay reachable through ?tab= URLs only.
   const TAB_LABELS = [
-    { value: 'basic', label: '基本情報', description: '患者マスタ、保険、リスク、訪問条件' },
-    { value: 'cases', label: 'ケース', description: 'ケース進行、担当、紹介情報' },
-    { value: 'prescriptions', label: '処方履歴', description: '前回比較と薬剤ライン差分' },
-    { value: 'medications', label: '薬剤', description: '服薬一覧、残薬、管理状況' },
-    { value: 'visits', label: '訪問', description: '予定、記録、月次実績' },
-    { value: 'communications', label: '連携', description: '連絡キュー、課題、請求ブロッカー' },
-    { value: 'documents', label: '文書', description: '計画書、共有、PDF 導線' },
-    { value: 'timeline', label: 'タイムライン', description: '自己申告、共有、統合イベント' },
+    { value: 'memo', label: '薬剤師メモ' },
+    { value: 'process', label: '工程' },
+    { value: 'prescriptions', label: '処方・監査' },
+    { value: 'medications', label: 'セット' },
+    { value: 'visits', label: '訪問' },
+    { value: 'communications', label: '報告' },
+    { value: 'timeline', label: '履歴' },
   ];
 
-  test('all 8 tabs are visible on patient detail page', async ({ context }) => {
+  test('all 7 tabs are visible on the patient profile view', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to first patient
-    await openFirstPatientDetail(page);
+    // Navigate to first patient profile view
+    await openFirstPatientDetail(page, { view: 'profile' });
 
-    // All 8 tab triggers should be present (use full label+description to avoid sidebar matches)
+    const tablist = page.getByTestId('patient-detail-tablist');
     for (const tab of TAB_LABELS) {
-      await expect(
-        page.getByRole('button', {
-          name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
-        }),
-      ).toBeVisible();
+      await expect(tablist.getByRole('tab', { name: tab.label, exact: true })).toBeVisible();
     }
 
     expect(errors).toEqual([]);
@@ -395,51 +405,55 @@ test.describe('patient detail tabs', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    await openFirstPatientDetail(page);
+    await openFirstPatientDetail(page, { view: 'profile' });
 
-    // Default tab should be "基本情報" - check the card title
-    await expect(page.getByText('患者マスタ', { exact: true })).toBeVisible();
+    const tablist = page.getByTestId('patient-detail-tablist');
+
+    // Default tab should be "薬剤師メモ"
+    await expect(tablist.getByRole('tab', { name: '薬剤師メモ', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
 
     // Click each tab and verify content changes without errors
     for (const tab of TAB_LABELS.slice(1)) {
-      const tabButton = page
-        .getByRole('button', {
-          name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
-        })
-        .first();
-      await tabButton.click();
-      await expect(tabButton).toHaveAttribute('aria-pressed', 'true');
+      const tabTrigger = tablist.getByRole('tab', { name: tab.label, exact: true });
+      await tabTrigger.click();
+      await expect(tabTrigger).toHaveAttribute('aria-selected', 'true');
 
-      // The tab description should appear in the paragraph below tab header
-      await expect(page.locator('p').filter({ hasText: tab.description })).toBeVisible({
-        timeout: 5000,
-      });
+      // Only the active panel stays mounted, so the visible tabpanel follows the tab
+      await expect(page.getByRole('tabpanel')).toBeVisible({ timeout: 5000 });
     }
 
     // Switch back to first tab
-    const basicTabButton = page.getByRole('button', { name: /基本情報\s+患者マスタ/ }).first();
-    await basicTabButton.click();
-    await expect(basicTabButton).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByText('患者マスタ', { exact: true })).toBeVisible();
+    const memoTab = tablist.getByRole('tab', { name: '薬剤師メモ', exact: true });
+    await memoTab.click();
+    await expect(memoTab).toHaveAttribute('aria-selected', 'true');
 
     // No console/page errors during tab switching
     expect(errors).toEqual([]);
   });
 
-  test('tab state persists during content interaction', async ({ context }) => {
+  test('selected tab persists in the URL across reload', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    await openFirstPatientDetail(page);
+    await openFirstPatientDetail(page, { view: 'profile' });
 
-    // Switch to "ケース" tab
-    const casesTab = page.getByRole('button', { name: /ケース\s+ケース進行/ });
-    await casesTab.click();
-    await expect(page.locator('p').filter({ hasText: 'ケース進行、担当、紹介情報' })).toBeVisible();
+    // Switch to "工程" tab
+    const processTab = page
+      .getByTestId('patient-detail-tablist')
+      .getByRole('tab', { name: '工程', exact: true });
+    await processTab.click();
+    await expect(processTab).toHaveAttribute('aria-selected', 'true');
 
-    // The "ケース" tab button should indicate it's active (pressed state)
-    const isPressed = await casesTab.getAttribute('aria-pressed');
-    expect(isPressed).toBe('true');
+    // Tab selection is reflected in the URL and survives a reload
+    await expect(page).toHaveURL(/view=profile/);
+    await expect(page).toHaveURL(/tab=process/);
+    await reloadStablePage(page);
+    await expect(
+      page.getByTestId('patient-detail-tablist').getByRole('tab', { name: '工程', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
 
     expect(errors).toEqual([]);
   });

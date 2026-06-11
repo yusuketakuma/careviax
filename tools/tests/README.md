@@ -20,6 +20,7 @@
 - `pnpm test:e2e:audit:list`
 - `pnpm db:e2e:prepare`
 - `pnpm db:e2e:check-care-report-duplicates`
+- `pnpm db:e2e:check-visit-route-order-conflicts`
 - `pnpm medical-ui:e2e:preflight`
 - `pnpm medical-ui:e2e:targeted`
 - `pnpm medical-ui:e2e:gate`
@@ -31,12 +32,13 @@
 
 Run `pnpm medical-ui:e2e:preflight` before the medical UI/UX completion gate. It checks
 that the local `ph_os_e2e` database target, app port, DB port, required Playwright
-specs, and CareReport duplicate precheck script are available before running the final
-authenticated Playwright/axe pass.
+specs, CareReport duplicate precheck script, and visit route_order conflict precheck
+script are available before running the final authenticated Playwright/axe pass.
 
 After the app and local database are ready, use `pnpm medical-ui:e2e:gate` to run the
-preflight, CareReport duplicate precheck, and targeted authenticated Playwright/axe
-coverage in sequence. The gate pins `DATABASE_URL` and `DIRECT_URL` to the local
+preflight, CareReport duplicate precheck, visit route_order conflict precheck, and
+targeted authenticated Playwright/axe coverage in sequence. The gate pins
+`DATABASE_URL` and `DIRECT_URL` to the local
 `ph_os_e2e` database so it does not accidentally use the default development DB.
 
 For release-grade local evidence, prefer `pnpm medical-ui:e2e:gate:prod` after the
@@ -53,6 +55,11 @@ Use `pnpm db:e2e:check-care-report-duplicates` for local E2E release evidence. T
 generic `pnpm db:check-care-report-duplicates` command intentionally follows the active
 environment so it can be used against staging or production-like targets before applying
 the CareReport unique-index migration.
+
+Use `pnpm db:e2e:check-visit-route-order-conflicts` for local E2E route-order
+evidence. The generic `pnpm db:check-visit-route-order-conflicts` command intentionally
+follows the active environment so it can be used against staging or production-like
+targets before applying route-order invariants.
 
 ## Browser Harness
 

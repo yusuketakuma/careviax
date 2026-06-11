@@ -227,7 +227,7 @@ describe('websocket authorizer handler', () => {
 
   it('allows tokens signed with the Secrets Manager resolved room-token secret', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET;
     process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
       'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token';
@@ -275,7 +275,7 @@ describe('websocket authorizer handler', () => {
   it('does not fall back to the local application auth secret in Lambda-like environments', async () => {
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET;
     process.env.AUTH_SECRET = 'ph-os-local-auth-secret';
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
 
     const forgedToken = await encode({
       secret: 'ph-os-local-auth-secret',
