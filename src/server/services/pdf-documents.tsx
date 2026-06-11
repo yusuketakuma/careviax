@@ -1674,37 +1674,36 @@ async function getMedicationHistoryRecord(
   patientId: string,
   accessContext?: VisitScheduleAccessContext,
 ): Promise<MedicationHistoryRecord> {
-  const [patient, medications] = await Promise.all([
-    prisma.patient.findFirst({
-      where: accessContext
-        ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
-        : { id: patientId, org_id: orgId },
-      select: {
-        id: true,
-        name: true,
-        birth_date: true,
-        gender: true,
-      },
-    }),
-    prisma.medicationProfile.findMany({
-      where: { org_id: orgId, patient_id: patientId, is_current: true },
-      orderBy: [{ drug_name: 'asc' }, { created_at: 'desc' }],
-      select: {
-        id: true,
-        drug_name: true,
-        dose: true,
-        frequency: true,
-        start_date: true,
-        end_date: true,
-        prescriber: true,
-        source: true,
-      },
-    }),
-  ]);
+  const patient = await prisma.patient.findFirst({
+    where: accessContext
+      ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
+      : { id: patientId, org_id: orgId },
+    select: {
+      id: true,
+      name: true,
+      birth_date: true,
+      gender: true,
+    },
+  });
 
   if (!patient) {
     throw new PdfNotFoundError('patient');
   }
+
+  const medications = await prisma.medicationProfile.findMany({
+    where: { org_id: orgId, patient_id: patientId, is_current: true },
+    orderBy: [{ drug_name: 'asc' }, { created_at: 'desc' }],
+    select: {
+      id: true,
+      drug_name: true,
+      dose: true,
+      frequency: true,
+      start_date: true,
+      end_date: true,
+      prescriber: true,
+      source: true,
+    },
+  });
 
   return {
     patient,

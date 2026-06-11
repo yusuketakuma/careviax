@@ -7,6 +7,7 @@ const {
   pharmacySiteFindFirstMock,
   careReportFindFirstMock,
   patientFindFirstMock,
+  medicationProfileFindManyMock,
 } = vi.hoisted(() => ({
   renderToBufferMock: vi.fn(),
   fontRegisterMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   pharmacySiteFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  medicationProfileFindManyMock: vi.fn(),
 }));
 
 vi.mock('@react-pdf/renderer', async () => {
@@ -45,10 +47,14 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findFirst: patientFindFirstMock,
     },
+    medicationProfile: {
+      findMany: medicationProfileFindManyMock,
+    },
   },
 }));
 
-import { buildCareReportPdf } from './pdf-documents';
+import { buildCareReportPdf, buildMedicationHistoryPdf } from './pdf-documents';
+import { PdfNotFoundError } from './pdf-errors';
 
 const baseReport = {
   id: 'report_1',
@@ -72,6 +78,7 @@ describe('buildCareReportPdf', () => {
       birth_date: new Date('1940-01-01T00:00:00.000Z'),
       gender: 'male',
     });
+    medicationProfileFindManyMock.mockResolvedValue([]);
   });
 
   it('falls back to generic content rendering for malformed physician-report JSON', async () => {
@@ -107,5 +114,26 @@ describe('buildCareReportPdf', () => {
     expect(result.fileName).toBe('care-report-_-report_1.pdf');
     expect(result.buffer).toEqual(Buffer.from('pdf'));
     expect(renderToBufferMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('buildMedicationHistoryPdf', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    renderToBufferMock.mockResolvedValue(Buffer.from('pdf'));
+    organizationFindUniqueMock.mockResolvedValue({ name: 'ケアビア薬局' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ name: '本店' });
+  });
+
+  it('does not query medication profiles when patient access is denied', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    await expect(buildMedicationHistoryPdf('org_1', 'patient_1')).rejects.toBeInstanceOf(
+      PdfNotFoundError,
+    );
+
+    expect(patientFindFirstMock).toHaveBeenCalledOnce();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 });
