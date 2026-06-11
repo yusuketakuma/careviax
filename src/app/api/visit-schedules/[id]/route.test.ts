@@ -5,6 +5,7 @@ const {
   authMock,
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
+  visitScheduleTxFindFirstMock,
   visitScheduleCountMock,
   visitScheduleUpdateMock,
   visitVehicleResourceFindFirstMock,
@@ -20,6 +21,7 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleTxFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
@@ -146,10 +148,12 @@ describe('/api/visit-schedules/[id] GET', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
+          findFirst: visitScheduleTxFindFirstMock,
           update: visitScheduleUpdateMock,
         },
       }),
     );
+    visitScheduleTxFindFirstMock.mockResolvedValue(null);
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -306,9 +310,9 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(response.status).toBe(200);
     expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        visitSchedule: {
+        visitSchedule: expect.objectContaining({
           update: visitScheduleUpdateMock,
-        },
+        }),
       }),
       {
         orgId: 'org_1',
@@ -411,9 +415,9 @@ describe('/api/visit-schedules/[id] GET', () => {
       });
       expect(evaluateReadyTransitionMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          visitSchedule: {
+          visitSchedule: expect.objectContaining({
             update: visitScheduleUpdateMock,
-          },
+          }),
         }),
         { orgId: 'org_1', scheduleId: 'schedule_1' },
       );
@@ -963,6 +967,55 @@ describe('/api/visit-schedules/[id] GET', () => {
       select: { id: true },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks route_order conflicts inside the update transaction', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      })
+      .mockResolvedValueOnce(null);
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce({ id: 'schedule_2' });
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '同一薬剤師・同一日付で route_order は重複できません',
+    });
+    expect(visitScheduleTxFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        route_order: 2,
+      },
+      select: { id: true },
+    });
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

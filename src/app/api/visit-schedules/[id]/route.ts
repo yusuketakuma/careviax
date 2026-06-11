@@ -288,15 +288,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!vehicleValidation.ok) return vehicleValidation.response;
   }
 
-  if (rest.route_order !== undefined) {
-    const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
-    const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
+  const routeOrderTarget =
+    rest.route_order !== undefined
+      ? {
+          date: scheduled_date ? new Date(scheduled_date) : existing.scheduled_date,
+          pharmacistId: rest.pharmacist_id ?? existing.pharmacist_id,
+        }
+      : null;
+  if (routeOrderTarget) {
     const routeOrderConflict = await prisma.visitSchedule.findFirst({
       where: {
         org_id: ctx.orgId,
         id: { not: id },
-        pharmacist_id: targetPharmacistId,
-        scheduled_date: targetDate,
+        pharmacist_id: routeOrderTarget.pharmacistId,
+        scheduled_date: routeOrderTarget.date,
         route_order: rest.route_order,
       },
       select: { id: true },
@@ -322,6 +327,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               getVisitReadyTransitionErrorMessage(readyTransition.details),
               sanitizeVisitReadyTransitionDetails(readyTransition.details),
             ),
+          };
+        }
+      }
+
+      if (routeOrderTarget) {
+        const routeOrderConflict = await tx.visitSchedule.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            id: { not: id },
+            pharmacist_id: routeOrderTarget.pharmacistId,
+            scheduled_date: routeOrderTarget.date,
+            route_order: rest.route_order,
+          },
+          select: { id: true },
+        });
+        if (routeOrderConflict) {
+          return {
+            ok: false as const,
+            response: validationError('同一薬剤師・同一日付で route_order は重複できません'),
           };
         }
       }
