@@ -1316,25 +1316,36 @@ describe('ScheduleDayView', () => {
 
     const operationsSummary = screen.getByRole('region', { name: '今日の運用サマリー' });
     expect(
-      within(operationsSummary).getByRole('heading', { name: '今日の運用サマリー' }),
+      within(operationsSummary).getByRole('heading', { name: '今日の運用サマリー', level: 2 }),
     ).toBeTruthy();
     expect(
       within(operationsSummary).getByText(
         '週次進捗、選択日の状態、日付切替を先に確認してから候補生成と日次ボードへ進みます',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '週次訪問の進捗' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '日次スケジュールボード' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '週次訪問の進捗', level: 3 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '週間ルート運用', level: 3 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '週間スケジュール', level: 3 })).toBeTruthy();
+    const mainWork = screen.getByRole('region', { name: '今日の主要作業' });
+    expect(
+      within(mainWork).getByRole('heading', { name: '今日の主要作業', level: 2 }),
+    ).toBeTruthy();
+    expect(
+      within(mainWork).getByText('候補生成、未完了タスク、日次ボードをこの順で確認します'),
+    ).toBeTruthy();
+    expect(
+      within(mainWork).getByRole('heading', { name: '日次スケジュールボード', level: 3 }),
+    ).toBeTruthy();
     expect(
       screen.getByText('4月9日(木) の候補、確定予定、施設グループ、ルート順を確認します'),
     ).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '訪問候補を生成' })).toBeTruthy();
+    expect(
+      within(mainWork).getByRole('heading', { name: '訪問候補を生成', level: 3 }),
+    ).toBeTruthy();
     expect(screen.getByLabelText('社用車')).toBeTruthy();
     expect(screen.getByText('担当薬剤師の拠点設定後に社用車を選択できます')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '運用タスク' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '関連管理' })).toBeTruthy();
+    expect(within(mainWork).getByRole('heading', { name: '運用タスク', level: 3 })).toBeTruthy();
+    expect(within(mainWork).getByRole('heading', { name: '関連管理', level: 3 })).toBeTruthy();
     expect(screen.getByRole('button', { name: '前週' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '翌週' })).toBeTruthy();
     expect(screen.getByText('候補 0件')).toBeTruthy();

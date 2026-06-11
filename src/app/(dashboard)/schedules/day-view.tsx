@@ -1619,13 +1619,14 @@ export function ScheduleDayView({
         description="週次進捗、選択日の状態、日付切替を先に確認してから候補生成と日次ボードへ進みます"
         contentClassName="space-y-4"
       >
-        <ScheduleBoardMetrics stats={weekProposalStats} />
+        <ScheduleBoardMetrics stats={weekProposalStats} headingLevel={3} />
 
         <RouteBoardSummary
           weekStart={weekStart}
           weekEnd={weekEnd}
           selectedDay={selectedDay}
           pharmacistName={selectedCase?.primary_pharmacist_name ?? null}
+          headingLevel={3}
         />
 
         <WeeklyScheduleControls
@@ -1638,6 +1639,7 @@ export function ScheduleDayView({
           nextBillableDate={billingCadence?.next_billable_date ?? null}
           suggestedDateSet={suggestedDateSet}
           onSelectDate={selectScheduleDate}
+          headingLevel={3}
         />
       </PageSection>
 
@@ -1769,1525 +1771,1557 @@ export function ScheduleDayView({
         cachedVisitBriefs={visibleCachedVisitBriefs}
       />
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-6">
-          <PageSection
-            id="planner"
-            title="訪問候補を生成"
-            description="システムが候補を提案し、承認後に患者へ架電します"
-            contentClassName="space-y-4"
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="planner-case">対象ケース</Label>
-              <Select
-                value={resolvedPlannerCaseId}
-                onValueChange={(value) => {
-                  setPlannerCandidateCountManual(false);
-                  setPlannerForm((current) => applyScheduleDayPlannerCaseSelection(current, value));
-                  setPlannerRouteTravelMode('DRIVE');
-                }}
-              >
-                <SelectTrigger id="planner-case" className="w-full">
-                  <SelectValue placeholder={casesLoading ? '読み込み中...' : 'ケースを選択'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {cases.map((careCase) => (
-                    <SelectItem key={careCase.id} value={careCase.id}>
-                      {careCase.patient.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedCase && (
-                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">{selectedCase.patient.name}</p>
-                  <p>{selectedCase.patient.residences[0]?.address ?? '住所未登録'}</p>
-                  <p className="mt-1">
-                    担当薬剤師: {selectedCase.primary_pharmacist_name ?? '未設定'}
-                  </p>
-                </div>
-              )}
-              {billingCadence && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-950">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="font-medium">算定 cadence</p>
-                      <p className="mt-1 text-emerald-900/80">{billingCadence.reason}</p>
-                    </div>
-                    {billingCadence.next_billable_date && (
-                      <ActionRail align="start">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={billingPreviewLoading}
-                          onClick={() =>
-                            setPlannerForm((current) =>
-                              applyScheduleDayPlannerStartDate(
-                                current,
-                                billingCadence.next_billable_date,
-                              ),
-                            )
-                          }
-                        >
-                          次回算定可能日に設定
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={billingPreviewLoading}
-                          onClick={() => {
-                            setPlannerCandidateCountManual(false);
-                            setPlannerForm((current) =>
-                              applyScheduleDayPlannerBillingRecommendations({
-                                current: applyScheduleDayPlannerStartDate(
+      <section
+        aria-labelledby="schedule-day-main-work-heading"
+        className="space-y-4 rounded-lg border border-border/70 bg-card p-4 sm:p-5"
+      >
+        <div className="space-y-1">
+          <h2 id="schedule-day-main-work-heading" className="text-base font-semibold">
+            今日の主要作業
+          </h2>
+          <p className="text-sm leading-5 text-muted-foreground">
+            候補生成、未完了タスク、日次ボードをこの順で確認します
+          </p>
+        </div>
+
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-6">
+            <PageSection
+              id="planner"
+              title="訪問候補を生成"
+              description="システムが候補を提案し、承認後に患者へ架電します"
+              contentClassName="space-y-4"
+              headingLevel={3}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="planner-case">対象ケース</Label>
+                <Select
+                  value={resolvedPlannerCaseId}
+                  onValueChange={(value) => {
+                    setPlannerCandidateCountManual(false);
+                    setPlannerForm((current) =>
+                      applyScheduleDayPlannerCaseSelection(current, value),
+                    );
+                    setPlannerRouteTravelMode('DRIVE');
+                  }}
+                >
+                  <SelectTrigger id="planner-case" className="w-full">
+                    <SelectValue placeholder={casesLoading ? '読み込み中...' : 'ケースを選択'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cases.map((careCase) => (
+                      <SelectItem key={careCase.id} value={careCase.id}>
+                        {careCase.patient.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedCase && (
+                  <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">{selectedCase.patient.name}</p>
+                    <p>{selectedCase.patient.residences[0]?.address ?? '住所未登録'}</p>
+                    <p className="mt-1">
+                      担当薬剤師: {selectedCase.primary_pharmacist_name ?? '未設定'}
+                    </p>
+                  </div>
+                )}
+                {billingCadence && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">算定 cadence</p>
+                        <p className="mt-1 text-emerald-900/80">{billingCadence.reason}</p>
+                      </div>
+                      {billingCadence.next_billable_date && (
+                        <ActionRail align="start">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={billingPreviewLoading}
+                            onClick={() =>
+                              setPlannerForm((current) =>
+                                applyScheduleDayPlannerStartDate(
                                   current,
                                   billingCadence.next_billable_date,
                                 ),
-                                billingPreview: billingPreviewData,
-                              }),
-                            );
-                          }}
-                        >
-                          推奨値を適用
-                        </Button>
-                      </ActionRail>
-                    )}
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <p>
-                      月内算定: {billingCadence.current_month_count} / {billingCadence.monthly_cap}
-                    </p>
-                    <p>残回数: {billingCadence.remaining_month_count}</p>
-                    <p>
-                      週内算定: {billingCadence.current_week_count}
-                      {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
-                    </p>
-                    <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
-                    <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
-                    <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
-                    {billingPreviewLoading ? <p>算定確認中</p> : null}
-                    <p>
-                      推奨設定:{' '}
-                      {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
-                      {
-                        PRIORITY_LABELS[
-                          billingPreviewData?.recommended_priority ?? plannerForm.priority
-                        ]
-                      }
-                    </p>
-                    <p>
-                      推奨枠数:{' '}
-                      {billingPreviewData?.suggested_schedule_slot_count ??
-                        Number(effectivePlannerCandidateCount)}
-                      件
-                    </p>
-                  </div>
-                  {billingCadence.scheduled_dates_current_month.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {billingCadence.scheduled_dates_current_month.map((dateKey) => (
-                        <span
-                          key={dateKey}
-                          className="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-emerald-900"
-                        >
-                          算定済 {dateKey.slice(5)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {billingAlerts.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {billingAlerts.map((alert) => (
-                        <p
-                          key={`${alert.type}-${alert.message}`}
-                          className={
-                            alert.severity === 'error'
-                              ? 'text-red-700'
-                              : alert.severity === 'warning'
-                                ? 'text-amber-800'
-                                : 'text-emerald-900'
-                          }
-                        >
-                          {alert.message}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {billingPreviewWarnings.length > 0 && (
-                    <div className="mt-2 space-y-1 text-amber-900">
-                      {billingPreviewWarnings.map((warning) => (
-                        <p key={warning}>{warning}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-visit-type">訪問種別</Label>
-                <Select
-                  value={plannerForm.visit_type}
-                  onValueChange={(value) =>
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerVisitType(current, value as VisitType | null),
-                    )
-                  }
-                >
-                  <SelectTrigger id="planner-visit-type" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(VISIT_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-priority">優先度</Label>
-                <Select
-                  value={plannerForm.priority}
-                  onValueChange={(value) =>
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerPriority(current, value as VisitPriority | null),
-                    )
-                  }
-                >
-                  <SelectTrigger id="planner-priority" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-start-date">訪問起点日</Label>
-                <Input
-                  id="planner-start-date"
-                  type="date"
-                  value={plannerForm.start_date}
-                  onChange={(event) =>
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerStartDate(current, event.target.value),
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-candidate-count">候補数</Label>
-                <Select
-                  value={effectivePlannerCandidateCount}
-                  onValueChange={(value) => {
-                    setPlannerCandidateCountManual(true);
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerCandidateCount(current, value),
-                    );
-                  }}
-                >
-                  <SelectTrigger id="planner-candidate-count" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2">2件</SelectItem>
-                    <SelectItem value="3">3件</SelectItem>
-                    <SelectItem value="4">4件</SelectItem>
-                    <SelectItem value="5">5件</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
-                <Label htmlFor="planner-vehicle-resource">社用車</Label>
-                <Select
-                  value={plannerVehicleSelectValue}
-                  disabled={!vehicleResourcesEnabled || vehicleResourcesLoading}
-                  onValueChange={(value) => {
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerVehicleResourceSelection(
-                        current,
-                        value,
-                        AUTO_VEHICLE_RESOURCE_VALUE,
-                      ),
-                    );
-                    setPlannerRouteTravelMode((currentRouteTravelMode) =>
-                      resolveScheduleDayPlannerVehicleRouteTravelMode({
-                        selectedValue: value,
-                        autoValue: AUTO_VEHICLE_RESOURCE_VALUE,
-                        vehicleResources: plannerVehicleResources,
-                        currentRouteTravelMode,
-                      }),
-                    );
-                  }}
-                >
-                  <SelectTrigger id="planner-vehicle-resource" className="w-full">
-                    <Car className="mr-2 size-4 text-muted-foreground" />
-                    <SelectValue placeholder="自動割当" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={AUTO_VEHICLE_RESOURCE_VALUE}>自動割当</SelectItem>
-                    {plannerVehicleResources.map((vehicle) => (
-                      <SelectItem key={vehicle.id} value={vehicle.id}>
-                        {vehicle.site?.name
-                          ? `${vehicle.label} / ${vehicle.site.name}`
-                          : vehicle.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {selectedPlannerVehicle
-                    ? formatVehicleResourceLabel(selectedPlannerVehicle)
-                    : !selectedPlannerSiteId
-                      ? '担当薬剤師の拠点設定後に社用車を選択できます'
-                      : vehicleResourcesLoading
-                        ? '社用車候補を読み込み中'
-                        : '未指定の場合は患者住所とルート条件から自動割当します'}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-time-from">希望開始時刻</Label>
-                <Input
-                  id="planner-time-from"
-                  type="time"
-                  value={plannerForm.preferred_time_from}
-                  onChange={(event) =>
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerPreferredTimeFrom(current, event.target.value),
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="planner-time-to">希望終了時刻</Label>
-                <Input
-                  id="planner-time-to"
-                  type="time"
-                  value={plannerForm.preferred_time_to}
-                  onChange={(event) =>
-                    setPlannerForm((current) =>
-                      applyScheduleDayPlannerPreferredTimeTo(current, event.target.value),
-                    )
-                  }
-                />
-              </div>
-            </div>
-
-            <Button
-              className="w-full"
-              onClick={() => generateMutation.mutate()}
-              disabled={
-                !resolvedPlannerCaseId ||
-                generateMutation.isPending ||
-                plannerGenerationBlockedByPreviewOrVehicle
-              }
-            >
-              {generateMutation.isPending
-                ? '候補生成中...'
-                : billingPreviewLoading
-                  ? '算定確認中...'
-                  : '訪問候補を生成'}
-            </Button>
-
-            <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-              ルート候補は患者住所と既存訪問の順番から算出します。担当薬剤師に勤務枠が
-              ない場合のみ、別薬剤師へ自動エスカレーションします。
-            </div>
-          </PageSection>
-
-          <ScheduleDayOperationalTasksPanel
-            callbackTasks={callbackTasks}
-            callbackTasksLoading={callbackTasksLoading}
-            schedulingTasks={schedulingTasks}
-            tasksLoading={tasksLoading}
-            proposalById={proposalById}
-            scheduleById={scheduleById}
-            pharmacistNameById={pharmacistNameById}
-            callbackTaskPending={callbackTaskMutation.isPending}
-            rescheduleApprovalPending={rescheduleApprovalMutation.isPending}
-            onRecordCallbackTask={(task, proposal) => {
-              setSelectedDate(toDateKey(proposal.proposed_date));
-              openContactLogDialog(proposal);
-              if (task.status === 'pending') {
-                callbackTaskMutation.mutate({
-                  id: task.id,
-                  status: 'in_progress',
-                });
-              }
-            }}
-            onUpdateCallbackTaskStatus={(taskId, status) =>
-              callbackTaskMutation.mutate({
-                id: taskId,
-                status,
-              })
-            }
-            onOpenPreparation={openPreparationDialog}
-            onApproveOverride={(schedule) =>
-              setRescheduleApprovalTarget(
-                buildScheduleDayRescheduleApprovalTargetFromSchedule(schedule, '運用タスク'),
-              )
-            }
-          />
-
-          <RelatedManagementLinks selectedCase={selectedCase} />
-        </div>
-
-        <PageSection
-          title="日次スケジュールボード"
-          description={`${format(selectedDay, 'M月d日(E)', { locale: ja })} の候補、確定予定、施設グループ、ルート順を確認します`}
-          className="min-w-0"
-          contentClassName="min-w-0 space-y-4"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">候補 {selectedDateProposals.length}件</Badge>
-              <Badge variant="outline">確定 {selectedDateSchedules.length}件</Badge>
-            </div>
-          }
-        >
-          <Tabs defaultValue={initialTab}>
-            <TabsList variant="line" className="mb-4">
-              <TabsTrigger value="proposals">
-                候補一覧
-                <Badge variant="outline" className="ml-1.5">
-                  {selectedDateProposals.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="confirmed">
-                当日確定予定
-                <Badge variant="outline" className="ml-1.5">
-                  {selectedDateSchedules.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="proposals" className="min-w-0 space-y-4">
-              {proposalsLoading ? (
-                <Card>
-                  <CardContent
-                    role="status"
-                    aria-live="polite"
-                    className="py-12 text-center text-sm text-muted-foreground"
-                  >
-                    訪問候補を読み込んでいます...
-                  </CardContent>
-                </Card>
-              ) : selectedDateProposals.length === 0 ? (
-                <Card>
-                  <CardContent
-                    role="status"
-                    aria-live="polite"
-                    className="py-12 text-center text-sm text-muted-foreground"
-                  >
-                    {format(selectedDay, 'M月d日(E)', { locale: ja })} の候補はありません
-                  </CardContent>
-                </Card>
-              ) : (
-                selectedDateProposals.map((proposal) => {
-                  const proposalPreview = proposalBillingPreviewMap?.get(proposal.id);
-                  const proposalCadence = proposalPreview?.cadence ?? null;
-                  const proposalWarningMessages =
-                    proposalPreview?.alerts
-                      ?.filter((alert) => alert.severity !== 'info')
-                      .map((alert) => alert.message) ?? [];
-                  const pharmacistName =
-                    proposal.proposed_pharmacist?.name ??
-                    pharmacistNameById.get(proposal.proposed_pharmacist_id) ??
-                    '薬剤師未登録';
-                  const canApprove = ['proposed', 'reschedule_pending'].includes(
-                    proposal.proposal_status,
-                  );
-                  const canCall = proposal.proposal_status === 'patient_contact_pending';
-                  const canConfirm = canCall && proposal.patient_contact_status === 'confirmed';
-                  const impactCount = readImpactCount(
-                    proposal.reschedule_source_schedule?.override_request?.impact_summary,
-                  );
-                  const impactedPatientNames = readImpactedPatientNames(
-                    proposal.reschedule_source_schedule?.override_request?.impact_summary,
-                  );
-
-                  return (
-                    <Card key={proposal.id} className="overflow-hidden">
-                      <CardContent className="space-y-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-base font-semibold text-foreground">
-                                {proposal.case_.patient.name}
-                              </p>
-                              <Badge
-                                variant="outline"
-                                className={statusBadgeClass(proposal.proposal_status)}
-                              >
-                                {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={priorityBadgeClass(proposal.priority)}
-                              >
-                                {PRIORITY_LABELS[proposal.priority]}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  proposal.assignment_mode === 'fallback'
-                                    ? 'border-orange-200 bg-orange-50 text-orange-700'
-                                    : 'border-sky-200 bg-sky-50 text-sky-700'
-                                }
-                              >
-                                {proposal.assignment_mode === 'fallback'
-                                  ? '代替薬剤師'
-                                  : '担当薬剤師'}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={proposalLockText(proposal).className}
-                              >
-                                {proposalLockText(proposal).label}
-                              </Badge>
-                              {impactCount != null && impactCount > 0 && (
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-200 bg-amber-50 text-amber-700"
-                                >
-                                  影響 {impactCount} 件
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                              <span>{VISIT_TYPE_LABELS[proposal.visit_type]}</span>
-                              <span>
-                                {timeLabel(proposal.time_window_start, proposal.time_window_end)}
-                              </span>
-                              <span>
-                                架電状態: {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right text-sm">
-                            <p className="font-medium text-foreground">{pharmacistName}</p>
-                            <p className="text-muted-foreground">
-                              {proposal.site?.name ?? '拠点未設定'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
-                          <div className="space-y-1 text-sm">
-                            <p className="text-muted-foreground">患者住所</p>
-                            <p className="text-foreground">{addressOfPatient(proposal)}</p>
-                          </div>
-                          <div className="grid gap-1 text-sm sm:grid-cols-2">
-                            <div>
-                              <p className="text-muted-foreground">服薬最終日</p>
-                              <p className="text-foreground">
-                                {proposal.medication_end_date
-                                  ? format(parseISO(proposal.medication_end_date), 'yyyy/MM/dd', {
-                                      locale: ja,
-                                    })
-                                  : '未計算'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">訪問期限</p>
-                              <p className="text-foreground">
-                                {proposal.visit_deadline_date
-                                  ? format(parseISO(proposal.visit_deadline_date), 'yyyy/MM/dd', {
-                                      locale: ja,
-                                    })
-                                  : '未設定'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">ルート順</p>
-                              <p className="text-foreground">{proposal.route_order ?? '未設定'}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">移動スコア</p>
-                              <p className="text-foreground">
-                                {proposal.route_distance_score?.toFixed(1) ?? '0.0'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <ProposalHumanDecisionFlow proposal={proposal} compact />
-
-                        <div className="space-y-2 text-sm">
-                          <p className="font-medium text-foreground">提案理由</p>
-                          {(() => {
-                            const origin = extractConferenceProposalOrigin(
-                              proposal.proposal_reason,
-                            );
-                            return origin ? (
-                              <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
-                                <p className="font-medium">{origin.label}</p>
-                                <p className="mt-1">{origin.description}</p>
-                              </div>
-                            ) : null;
-                          })()}
-                          <div className="flex flex-wrap gap-2">
-                            {splitTrace(proposal.proposal_reason).map((part) => (
-                              <span
-                                key={part}
-                                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
-                              >
-                                {part}
-                              </span>
-                            ))}
-                          </div>
-                          {proposal.escalation_reason && (
-                            <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-orange-800">
-                              {proposal.escalation_reason}
-                            </p>
-                          )}
-                          {proposalCadence && (
-                            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-950">
-                              <p className="font-medium">算定 cadence</p>
-                              <p className="mt-1">
-                                次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
-                                残回数 {proposalCadence.remaining_month_count}
-                              </p>
-                              {proposalWarningMessages.length > 0 && (
-                                <p className="mt-1 text-amber-800">
-                                  {proposalWarningMessages.slice(0, 2).join(' / ')}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {impactedPatientNames.length > 0 && (
-                            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                              影響予定: {impactedPatientNames.join('、')}
-                            </p>
-                          )}
-                        </div>
-
-                        {proposal.contact_logs.length > 0 && (
-                          <div className="space-y-2 rounded-xl border bg-muted/20 p-4">
-                            <p className="text-sm font-medium text-foreground">架電ログ</p>
-                            <div className="space-y-2 text-sm">
-                              {proposal.contact_logs.map((log) => (
-                                <div
-                                  key={log.id}
-                                  className="rounded-lg border border-border/60 bg-background px-3 py-2"
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-medium text-foreground">
-                                      {CONTACT_STATUS_LABELS[log.outcome]}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {format(parseISO(log.called_at), 'yyyy/MM/dd HH:mm', {
-                                        locale: ja,
-                                      })}
-                                    </span>
-                                  </div>
-                                  {(log.contact_name || log.contact_phone) && (
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {log.contact_name ?? '連絡先未記録'}
-                                      {log.contact_phone ? ` / ${log.contact_phone}` : ''}
-                                    </p>
-                                  )}
-                                  {log.note && (
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      {log.note}
-                                    </p>
-                                  )}
-                                  {log.callback_due_at && (
-                                    <p className="mt-1 text-xs text-amber-700">
-                                      折返し予定:{' '}
-                                      {format(parseISO(log.callback_due_at), 'yyyy/MM/dd HH:mm', {
-                                        locale: ja,
-                                      })}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex flex-wrap gap-2 border-t pt-4">
-                          {proposal.proposal_status === 'reschedule_pending' &&
-                            proposal.reschedule_source_schedule_id && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                aria-label={proposalActionLabel(proposal, '変更承認を確認')}
-                                onClick={() => {
-                                  const target =
-                                    buildScheduleDayRescheduleApprovalTargetFromProposal(proposal);
-                                  if (target) setRescheduleApprovalTarget(target);
-                                }}
-                                disabled={rescheduleApprovalMutation.isPending}
-                              >
-                                変更承認
-                              </Button>
-                            )}
-                          {canApprove && (
-                            <Button
-                              size="sm"
-                              aria-label={proposalActionLabel(proposal, '承認して架電へ進める')}
-                              onClick={() =>
-                                setProposalConfirmAction({ proposal, action: 'approve' })
-                              }
-                              disabled={
-                                proposalActionMutation.isPending ||
-                                rescheduleApprovalMutation.isPending
-                              }
-                            >
-                              承認して架電へ
-                            </Button>
-                          )}
-                          {canCall && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                aria-label={proposalActionLabel(proposal, '架電結果を記録')}
-                                onClick={() => openContactLogDialog(proposal)}
-                                disabled={proposalActionMutation.isPending}
-                              >
-                                架電結果を記録
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                aria-label={proposalActionLabel(proposal, '辞退として記録')}
-                                onClick={() =>
-                                  proposalActionMutation.mutate({
-                                    id: proposal.id,
-                                    payload: {
-                                      action: 'contact_attempt',
-                                      outcome: 'declined',
-                                      contact_method: 'phone',
-                                    },
-                                  })
-                                }
-                                disabled={proposalActionMutation.isPending}
-                              >
-                                辞退
-                              </Button>
-                              <Button
-                                size="sm"
-                                aria-label={proposalActionLabel(proposal, '日時を確定')}
-                                onClick={() =>
-                                  setProposalConfirmAction({ proposal, action: 'confirm' })
-                                }
-                                disabled={!canConfirm || proposalActionMutation.isPending}
-                              >
-                                日時確定
-                              </Button>
-                            </>
-                          )}
-                          {proposal.proposal_status === 'confirmed' &&
-                            proposal.finalized_schedule && (
-                              <Link
-                                href={`/visits/${proposal.finalized_schedule.id}/record`}
-                                aria-label={proposalActionLabel(proposal, '確定予定を開く')}
-                                className="inline-flex h-8 items-center rounded-lg border px-3 text-sm text-foreground hover:bg-muted/30"
-                              >
-                                確定予定を開く
-                              </Link>
-                            )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-
-            <TabsContent value="confirmed" className="min-w-0 space-y-4">
-              {facilityTracker.length > 0 && (
-                <PageSection
-                  title="同時訪問グループトラッカー"
-                  headingLevel={3}
-                  description="同日・同一施設または個人宅の訪問を束ねて、未準備と未完了を訪問先単位で確認します"
-                  contentClassName="space-y-3"
-                  actions={<Building2 className="size-4 text-sky-600" aria-hidden="true" />}
-                >
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant={activeFacilityFilter === null ? 'default' : 'outline'}
-                      onClick={() => setFacilityFilter(null)}
-                      aria-pressed={activeFacilityFilter === null}
-                    >
-                      全件表示
-                    </Button>
-                    {facilityTracker.map((group) => (
-                      <Button
-                        key={group.key}
-                        size="sm"
-                        variant={activeFacilityFilter === group.key ? 'default' : 'outline'}
-                        onClick={() => setFacilityFilter(group.key)}
-                        aria-pressed={activeFacilityFilter === group.key}
-                      >
-                        {group.label}
-                      </Button>
-                    ))}
-                  </div>
-                  <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-                    {facilityRouteAnnouncement}
-                  </p>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {facilityTracker.map((group) => (
-                      <div
-                        key={group.key}
-                        className={[
-                          'rounded-xl border px-4 py-3 text-sm transition',
-                          activeFacilityFilter === group.key
-                            ? 'border-sky-300 bg-sky-50'
-                            : 'border-border bg-background',
-                        ].join(' ')}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-foreground">{group.label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {group.siteName ?? '拠点未設定'} / 対象 {group.patientNames.length} 名
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">
-                              ルート順{' '}
-                              {group.routeOrders.length > 0
-                                ? group.routeOrders.join(', ')
-                                : '未設定'}
-                            </Badge>
-                            {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <Badge variant="outline">準備完了 {group.preparedCount} 名</Badge>
-                          <Badge variant="outline">持参物未確認 {group.carryPendingCount} 名</Badge>
-                          <Badge
-                            variant="outline"
-                            className={
-                              group.incompleteCount > 0
-                                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              )
                             }
                           >
-                            未完了 {group.incompleteCount} 名
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          上下ボタン、ドラッグ、番号入力で訪問順序を調整できます。
-                        </p>
-                        <div
-                          className="mt-3 space-y-2"
-                          role="list"
-                          aria-label={`${group.label}の訪問順序`}
-                        >
-                          {getOrderedFacilityPatients(group).map(
-                            (patient, index, orderedPatients) => {
-                              const positionDescriptionId = `facility-route-position-${group.key}-${patient.scheduleId}`;
-                              const positionText = `現在 ${index + 1} / ${orderedPatients.length}番目`;
-                              return (
-                                <div
-                                  key={patient.scheduleId}
-                                  role="listitem"
-                                  draggable
-                                  onDragStart={() =>
-                                    setDraggingFacilityPatient({
-                                      groupKey: group.key,
-                                      scheduleId: patient.scheduleId,
-                                    })
-                                  }
-                                  onDragEnd={() => setDraggingFacilityPatient(null)}
-                                  onDragOver={(event) => event.preventDefault()}
-                                  onDrop={(event) => {
-                                    event.preventDefault();
-                                    if (
-                                      draggingFacilityPatient?.groupKey !== group.key ||
-                                      !draggingFacilityPatient?.scheduleId
-                                    ) {
-                                      return;
-                                    }
-                                    reorderFacilityPatients(
-                                      group,
-                                      draggingFacilityPatient.scheduleId,
-                                      patient.scheduleId,
-                                    );
-                                    setDraggingFacilityPatient(null);
-                                  }}
-                                  className={[
-                                    'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
-                                    draggingFacilityPatient?.scheduleId === patient.scheduleId
-                                      ? 'border-sky-300 bg-sky-50'
-                                      : '',
-                                  ].join(' ')}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-foreground">
-                                      {patient.patientName}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {patient.unitName
-                                        ? `部屋 ${patient.unitName}`
-                                        : '部屋番号未設定'}
-                                    </p>
-                                    <p
-                                      id={positionDescriptionId}
-                                      className="text-xs font-medium text-sky-700"
-                                    >
-                                      {positionText}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center justify-end gap-2">
-                                    <div className="flex items-center gap-1">
-                                      <Button
-                                        type="button"
-                                        size="icon-sm"
-                                        variant="outline"
-                                        className="min-h-11 min-w-11 sm:size-11"
-                                        aria-label={`${group.label} ${patient.patientName}を1つ上へ移動`}
-                                        aria-describedby={positionDescriptionId}
-                                        onClick={() =>
-                                          moveFacilityPatient(group, patient.scheduleId, 'up')
-                                        }
-                                        disabled={index === 0}
-                                      >
-                                        <ArrowUp className="size-4" aria-hidden="true" />
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        size="icon-sm"
-                                        variant="outline"
-                                        className="min-h-11 min-w-11 sm:size-11"
-                                        aria-label={`${group.label} ${patient.patientName}を1つ下へ移動`}
-                                        aria-describedby={positionDescriptionId}
-                                        onClick={() =>
-                                          moveFacilityPatient(group, patient.scheduleId, 'down')
-                                        }
-                                        disabled={index === orderedPatients.length - 1}
-                                      >
-                                        <ArrowDown className="size-4" aria-hidden="true" />
-                                      </Button>
-                                    </div>
-                                    <Label
-                                      htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
-                                      className="text-xs text-muted-foreground"
-                                    >
-                                      順序
-                                    </Label>
-                                    <Input
-                                      id={`facility-route-${group.key}-${patient.scheduleId}`}
-                                      aria-label={`${group.label} ${patient.patientName} の訪問順序`}
-                                      type="number"
-                                      min={1}
-                                      value={
-                                        facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
-                                        facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
-                                        String(patient.routeOrder ?? index + 1)
-                                      }
-                                      onChange={(event) =>
-                                        setFacilityRouteOverrides((prev) => ({
-                                          ...prev,
-                                          [group.key]: {
-                                            ...(prev[group.key] ?? {}),
-                                            [patient.scheduleId]: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                      className="h-11 min-h-11 w-20 sm:h-11 sm:min-h-11"
-                                    />
-                                  </div>
-                                </div>
+                            次回算定可能日に設定
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={billingPreviewLoading}
+                            onClick={() => {
+                              setPlannerCandidateCountManual(false);
+                              setPlannerForm((current) =>
+                                applyScheduleDayPlannerBillingRecommendations({
+                                  current: applyScheduleDayPlannerStartDate(
+                                    current,
+                                    billingCadence.next_billable_date,
+                                  ),
+                                  billingPreview: billingPreviewData,
+                                }),
                               );
-                            },
-                          )}
-                        </div>
-                        <ActionRail align="start" className="mt-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label={`${group.label}の定期訪問日を設定`}
-                            onClick={() => openFacilityVisitDayDialog(group)}
+                            }}
                           >
-                            定期訪問日を設定
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label={`${group.label} ${group.patientNames.length}名の同時訪問順序を保存`}
-                            onClick={() =>
-                              facilityBatchMutation.mutate({
-                                groupKey: group.key,
-                                carryItemsConfirmed: false,
-                              })
-                            }
-                            disabled={facilityBatchMutation.isPending}
-                          >
-                            同時訪問を保存 ({group.patientNames.length}名)
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label={`${group.label} ${group.patientNames.length}名の持参確認を一括反映`}
-                            onClick={() => setFacilityCarryConfirmTarget(group)}
-                            disabled={facilityBatchMutation.isPending}
-                          >
-                            持参確認を一括反映 ({group.patientNames.length}名)
+                            推奨値を適用
                           </Button>
                         </ActionRail>
-                      </div>
-                    ))}
-                  </div>
-                </PageSection>
-              )}
-              {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
-                <ScheduleDayRoutePreview
-                  controlId="day-desktop-route"
-                  routePharmacistControlId="desktop-route-pharmacist"
-                  className="hidden md:block"
-                  routeSelectionLabel={routeSelectionLabel}
-                  routeTravelMode={routePreviewTravelMode}
-                  onRouteTravelModeChange={setRoutePreviewTravelMode}
-                  routePlan={routePlanData}
-                  routeMapPoints={routeMapPoints}
-                  routeMapSite={routeMapSite}
-                  routeOrderDraft={routeOrderDraft}
-                  routePharmacistOptions={routePharmacistOptions}
-                  resolvedRoutePharmacistId={resolvedRoutePharmacistId}
-                  onRoutePharmacistChange={setSelectedRoutePharmacistId}
-                  routePlanLoading={routePlanLoading}
-                  routeOptimizationDirty={routeOptimizationDirty}
-                  applyPending={applyOptimizedRouteMutation.isPending}
-                  onApplyOptimizedRoute={() => setRouteOrderConfirmOpen(true)}
-                  actionLabel="最適順を反映"
-                  showRouteMapScheduleCount
-                  routeMapScheduleCount={routeMapSchedules.length}
-                />
-              )}
-              {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
-                <PageSection
-                  headingId="schedule-day-gantt-heading"
-                  title="タブレット日次ガント"
-                  headingLevel={3}
-                  description="縦軸=時間、横軸=薬剤師。予定密度を俯瞰し、下の確定予定カードで開始・準備・変更を実行します"
-                  className="hidden min-w-0 md:block"
-                  contentClassName="space-y-4"
-                >
-                  <p id="schedule-day-gantt-scroll-help" className="sr-only">
-                    横スクロールで隠れている薬剤師列を確認できます。ガント内の予定は要約表示です。
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="outline">
-                      時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
-                      {formatMinutesLabel(ganttWindow.endMinutes)}
-                    </Badge>
-                    <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
-                    <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
-                    <Badge variant="outline">横向き推奨</Badge>
-                  </div>
-                  <div
-                    role="region"
-                    tabIndex={0}
-                    aria-labelledby="schedule-day-gantt-heading"
-                    aria-describedby="schedule-day-gantt-scroll-help"
-                    className="max-w-full overflow-x-auto rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
-                      <caption className="sr-only">
-                        日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。
-                      </caption>
-                      <thead>
-                        <tr>
-                          <th
-                            scope="col"
-                            className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground"
+                      )}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <p>
+                        月内算定: {billingCadence.current_month_count} /{' '}
+                        {billingCadence.monthly_cap}
+                      </p>
+                      <p>残回数: {billingCadence.remaining_month_count}</p>
+                      <p>
+                        週内算定: {billingCadence.current_week_count}
+                        {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
+                      </p>
+                      <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
+                      <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
+                      <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
+                      {billingPreviewLoading ? <p>算定確認中</p> : null}
+                      <p>
+                        推奨設定:{' '}
+                        {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
+                        {
+                          PRIORITY_LABELS[
+                            billingPreviewData?.recommended_priority ?? plannerForm.priority
+                          ]
+                        }
+                      </p>
+                      <p>
+                        推奨枠数:{' '}
+                        {billingPreviewData?.suggested_schedule_slot_count ??
+                          Number(effectivePlannerCandidateCount)}
+                        件
+                      </p>
+                    </div>
+                    {billingCadence.scheduled_dates_current_month.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {billingCadence.scheduled_dates_current_month.map((dateKey) => (
+                          <span
+                            key={dateKey}
+                            className="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-emerald-900"
                           >
-                            時間
-                          </th>
-                          {ganttTableColumns.map((column) => (
-                            <th
-                              key={column.pharmacistId}
-                              scope="col"
-                              className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <p className="text-sm font-medium text-foreground">
-                                    {column.pharmacistName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {column.siteName ?? '拠点未設定'}
-                                  </p>
-                                </div>
-                                <Badge variant="outline">{column.schedules.length}件</Badge>
+                            算定済 {dateKey.slice(5)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {billingAlerts.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {billingAlerts.map((alert) => (
+                          <p
+                            key={`${alert.type}-${alert.message}`}
+                            className={
+                              alert.severity === 'error'
+                                ? 'text-red-700'
+                                : alert.severity === 'warning'
+                                  ? 'text-amber-800'
+                                  : 'text-emerald-900'
+                            }
+                          >
+                            {alert.message}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {billingPreviewWarnings.length > 0 && (
+                      <div className="mt-2 space-y-1 text-amber-900">
+                        {billingPreviewWarnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-visit-type">訪問種別</Label>
+                  <Select
+                    value={plannerForm.visit_type}
+                    onValueChange={(value) =>
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerVisitType(current, value as VisitType | null),
+                      )
+                    }
+                  >
+                    <SelectTrigger id="planner-visit-type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(VISIT_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-priority">優先度</Label>
+                  <Select
+                    value={plannerForm.priority}
+                    onValueChange={(value) =>
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerPriority(current, value as VisitPriority | null),
+                      )
+                    }
+                  >
+                    <SelectTrigger id="planner-priority" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-start-date">訪問起点日</Label>
+                  <Input
+                    id="planner-start-date"
+                    type="date"
+                    value={plannerForm.start_date}
+                    onChange={(event) =>
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerStartDate(current, event.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-candidate-count">候補数</Label>
+                  <Select
+                    value={effectivePlannerCandidateCount}
+                    onValueChange={(value) => {
+                      setPlannerCandidateCountManual(true);
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerCandidateCount(current, value),
+                      );
+                    }}
+                  >
+                    <SelectTrigger id="planner-candidate-count" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2件</SelectItem>
+                      <SelectItem value="3">3件</SelectItem>
+                      <SelectItem value="4">4件</SelectItem>
+                      <SelectItem value="5">5件</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
+                  <Label htmlFor="planner-vehicle-resource">社用車</Label>
+                  <Select
+                    value={plannerVehicleSelectValue}
+                    disabled={!vehicleResourcesEnabled || vehicleResourcesLoading}
+                    onValueChange={(value) => {
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerVehicleResourceSelection(
+                          current,
+                          value,
+                          AUTO_VEHICLE_RESOURCE_VALUE,
+                        ),
+                      );
+                      setPlannerRouteTravelMode((currentRouteTravelMode) =>
+                        resolveScheduleDayPlannerVehicleRouteTravelMode({
+                          selectedValue: value,
+                          autoValue: AUTO_VEHICLE_RESOURCE_VALUE,
+                          vehicleResources: plannerVehicleResources,
+                          currentRouteTravelMode,
+                        }),
+                      );
+                    }}
+                  >
+                    <SelectTrigger id="planner-vehicle-resource" className="w-full">
+                      <Car className="mr-2 size-4 text-muted-foreground" />
+                      <SelectValue placeholder="自動割当" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={AUTO_VEHICLE_RESOURCE_VALUE}>自動割当</SelectItem>
+                      {plannerVehicleResources.map((vehicle) => (
+                        <SelectItem key={vehicle.id} value={vehicle.id}>
+                          {vehicle.site?.name
+                            ? `${vehicle.label} / ${vehicle.site.name}`
+                            : vehicle.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedPlannerVehicle
+                      ? formatVehicleResourceLabel(selectedPlannerVehicle)
+                      : !selectedPlannerSiteId
+                        ? '担当薬剤師の拠点設定後に社用車を選択できます'
+                        : vehicleResourcesLoading
+                          ? '社用車候補を読み込み中'
+                          : '未指定の場合は患者住所とルート条件から自動割当します'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-time-from">希望開始時刻</Label>
+                  <Input
+                    id="planner-time-from"
+                    type="time"
+                    value={plannerForm.preferred_time_from}
+                    onChange={(event) =>
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerPreferredTimeFrom(current, event.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="planner-time-to">希望終了時刻</Label>
+                  <Input
+                    id="planner-time-to"
+                    type="time"
+                    value={plannerForm.preferred_time_to}
+                    onChange={(event) =>
+                      setPlannerForm((current) =>
+                        applyScheduleDayPlannerPreferredTimeTo(current, event.target.value),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={() => generateMutation.mutate()}
+                disabled={
+                  !resolvedPlannerCaseId ||
+                  generateMutation.isPending ||
+                  plannerGenerationBlockedByPreviewOrVehicle
+                }
+              >
+                {generateMutation.isPending
+                  ? '候補生成中...'
+                  : billingPreviewLoading
+                    ? '算定確認中...'
+                    : '訪問候補を生成'}
+              </Button>
+
+              <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+                ルート候補は患者住所と既存訪問の順番から算出します。担当薬剤師に勤務枠が
+                ない場合のみ、別薬剤師へ自動エスカレーションします。
+              </div>
+            </PageSection>
+
+            <ScheduleDayOperationalTasksPanel
+              callbackTasks={callbackTasks}
+              callbackTasksLoading={callbackTasksLoading}
+              schedulingTasks={schedulingTasks}
+              tasksLoading={tasksLoading}
+              proposalById={proposalById}
+              scheduleById={scheduleById}
+              pharmacistNameById={pharmacistNameById}
+              callbackTaskPending={callbackTaskMutation.isPending}
+              rescheduleApprovalPending={rescheduleApprovalMutation.isPending}
+              onRecordCallbackTask={(task, proposal) => {
+                setSelectedDate(toDateKey(proposal.proposed_date));
+                openContactLogDialog(proposal);
+                if (task.status === 'pending') {
+                  callbackTaskMutation.mutate({
+                    id: task.id,
+                    status: 'in_progress',
+                  });
+                }
+              }}
+              onUpdateCallbackTaskStatus={(taskId, status) =>
+                callbackTaskMutation.mutate({
+                  id: taskId,
+                  status,
+                })
+              }
+              onOpenPreparation={openPreparationDialog}
+              onApproveOverride={(schedule) =>
+                setRescheduleApprovalTarget(
+                  buildScheduleDayRescheduleApprovalTargetFromSchedule(schedule, '運用タスク'),
+                )
+              }
+              headingLevel={3}
+            />
+
+            <RelatedManagementLinks selectedCase={selectedCase} headingLevel={3} />
+          </div>
+
+          <PageSection
+            title="日次スケジュールボード"
+            description={`${format(selectedDay, 'M月d日(E)', { locale: ja })} の候補、確定予定、施設グループ、ルート順を確認します`}
+            className="min-w-0"
+            contentClassName="min-w-0 space-y-4"
+            headingLevel={3}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">候補 {selectedDateProposals.length}件</Badge>
+                <Badge variant="outline">確定 {selectedDateSchedules.length}件</Badge>
+              </div>
+            }
+          >
+            <Tabs defaultValue={initialTab}>
+              <TabsList variant="line" className="mb-4">
+                <TabsTrigger value="proposals">
+                  候補一覧
+                  <Badge variant="outline" className="ml-1.5">
+                    {selectedDateProposals.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="confirmed">
+                  当日確定予定
+                  <Badge variant="outline" className="ml-1.5">
+                    {selectedDateSchedules.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="proposals" className="min-w-0 space-y-4">
+                {proposalsLoading ? (
+                  <Card>
+                    <CardContent
+                      role="status"
+                      aria-live="polite"
+                      className="py-12 text-center text-sm text-muted-foreground"
+                    >
+                      訪問候補を読み込んでいます...
+                    </CardContent>
+                  </Card>
+                ) : selectedDateProposals.length === 0 ? (
+                  <Card>
+                    <CardContent
+                      role="status"
+                      aria-live="polite"
+                      className="py-12 text-center text-sm text-muted-foreground"
+                    >
+                      {format(selectedDay, 'M月d日(E)', { locale: ja })} の候補はありません
+                    </CardContent>
+                  </Card>
+                ) : (
+                  selectedDateProposals.map((proposal) => {
+                    const proposalPreview = proposalBillingPreviewMap?.get(proposal.id);
+                    const proposalCadence = proposalPreview?.cadence ?? null;
+                    const proposalWarningMessages =
+                      proposalPreview?.alerts
+                        ?.filter((alert) => alert.severity !== 'info')
+                        .map((alert) => alert.message) ?? [];
+                    const pharmacistName =
+                      proposal.proposed_pharmacist?.name ??
+                      pharmacistNameById.get(proposal.proposed_pharmacist_id) ??
+                      '薬剤師未登録';
+                    const canApprove = ['proposed', 'reschedule_pending'].includes(
+                      proposal.proposal_status,
+                    );
+                    const canCall = proposal.proposal_status === 'patient_contact_pending';
+                    const canConfirm = canCall && proposal.patient_contact_status === 'confirmed';
+                    const impactCount = readImpactCount(
+                      proposal.reschedule_source_schedule?.override_request?.impact_summary,
+                    );
+                    const impactedPatientNames = readImpactedPatientNames(
+                      proposal.reschedule_source_schedule?.override_request?.impact_summary,
+                    );
+
+                    return (
+                      <Card key={proposal.id} className="overflow-hidden">
+                        <CardContent className="space-y-4 py-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-base font-semibold text-foreground">
+                                  {proposal.case_.patient.name}
+                                </p>
+                                <Badge
+                                  variant="outline"
+                                  className={statusBadgeClass(proposal.proposal_status)}
+                                >
+                                  {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={priorityBadgeClass(proposal.priority)}
+                                >
+                                  {PRIORITY_LABELS[proposal.priority]}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    proposal.assignment_mode === 'fallback'
+                                      ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                      : 'border-sky-200 bg-sky-50 text-sky-700'
+                                  }
+                                >
+                                  {proposal.assignment_mode === 'fallback'
+                                    ? '代替薬剤師'
+                                    : '担当薬剤師'}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={proposalLockText(proposal).className}
+                                >
+                                  {proposalLockText(proposal).label}
+                                </Badge>
+                                {impactCount != null && impactCount > 0 && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-200 bg-amber-50 text-amber-700"
+                                  >
+                                    影響 {impactCount} 件
+                                  </Badge>
+                                )}
                               </div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ganttSlots.map((slot, slotIndex) => (
-                          <tr key={slot} className="align-top">
-                            <th
-                              scope="row"
-                              className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground"
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                <span>{VISIT_TYPE_LABELS[proposal.visit_type]}</span>
+                                <span>
+                                  {timeLabel(proposal.time_window_start, proposal.time_window_end)}
+                                </span>
+                                <span>
+                                  架電状態: {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p className="font-medium text-foreground">{pharmacistName}</p>
+                              <p className="text-muted-foreground">
+                                {proposal.site?.name ?? '拠点未設定'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
+                            <div className="space-y-1 text-sm">
+                              <p className="text-muted-foreground">患者住所</p>
+                              <p className="text-foreground">{addressOfPatient(proposal)}</p>
+                            </div>
+                            <div className="grid gap-1 text-sm sm:grid-cols-2">
+                              <div>
+                                <p className="text-muted-foreground">服薬最終日</p>
+                                <p className="text-foreground">
+                                  {proposal.medication_end_date
+                                    ? format(parseISO(proposal.medication_end_date), 'yyyy/MM/dd', {
+                                        locale: ja,
+                                      })
+                                    : '未計算'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">訪問期限</p>
+                                <p className="text-foreground">
+                                  {proposal.visit_deadline_date
+                                    ? format(parseISO(proposal.visit_deadline_date), 'yyyy/MM/dd', {
+                                        locale: ja,
+                                      })
+                                    : '未設定'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">ルート順</p>
+                                <p className="text-foreground">
+                                  {proposal.route_order ?? '未設定'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">移動スコア</p>
+                                <p className="text-foreground">
+                                  {proposal.route_distance_score?.toFixed(1) ?? '0.0'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <ProposalHumanDecisionFlow proposal={proposal} compact />
+
+                          <div className="space-y-2 text-sm">
+                            <p className="font-medium text-foreground">提案理由</p>
+                            {(() => {
+                              const origin = extractConferenceProposalOrigin(
+                                proposal.proposal_reason,
+                              );
+                              return origin ? (
+                                <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
+                                  <p className="font-medium">{origin.label}</p>
+                                  <p className="mt-1">{origin.description}</p>
+                                </div>
+                              ) : null;
+                            })()}
+                            <div className="flex flex-wrap gap-2">
+                              {splitTrace(proposal.proposal_reason).map((part) => (
+                                <span
+                                  key={part}
+                                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+                                >
+                                  {part}
+                                </span>
+                              ))}
+                            </div>
+                            {proposal.escalation_reason && (
+                              <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-orange-800">
+                                {proposal.escalation_reason}
+                              </p>
+                            )}
+                            {proposalCadence && (
+                              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-950">
+                                <p className="font-medium">算定 cadence</p>
+                                <p className="mt-1">
+                                  次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'}{' '}
+                                  / 残回数 {proposalCadence.remaining_month_count}
+                                </p>
+                                {proposalWarningMessages.length > 0 && (
+                                  <p className="mt-1 text-amber-800">
+                                    {proposalWarningMessages.slice(0, 2).join(' / ')}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {impactedPatientNames.length > 0 && (
+                              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                                影響予定: {impactedPatientNames.join('、')}
+                              </p>
+                            )}
+                          </div>
+
+                          {proposal.contact_logs.length > 0 && (
+                            <div className="space-y-2 rounded-xl border bg-muted/20 p-4">
+                              <p className="text-sm font-medium text-foreground">架電ログ</p>
+                              <div className="space-y-2 text-sm">
+                                {proposal.contact_logs.map((log) => (
+                                  <div
+                                    key={log.id}
+                                    className="rounded-lg border border-border/60 bg-background px-3 py-2"
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="font-medium text-foreground">
+                                        {CONTACT_STATUS_LABELS[log.outcome]}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {format(parseISO(log.called_at), 'yyyy/MM/dd HH:mm', {
+                                          locale: ja,
+                                        })}
+                                      </span>
+                                    </div>
+                                    {(log.contact_name || log.contact_phone) && (
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        {log.contact_name ?? '連絡先未記録'}
+                                        {log.contact_phone ? ` / ${log.contact_phone}` : ''}
+                                      </p>
+                                    )}
+                                    {log.note && (
+                                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {log.note}
+                                      </p>
+                                    )}
+                                    {log.callback_due_at && (
+                                      <p className="mt-1 text-xs text-amber-700">
+                                        折返し予定:{' '}
+                                        {format(parseISO(log.callback_due_at), 'yyyy/MM/dd HH:mm', {
+                                          locale: ja,
+                                        })}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap gap-2 border-t pt-4">
+                            {proposal.proposal_status === 'reschedule_pending' &&
+                              proposal.reschedule_source_schedule_id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  aria-label={proposalActionLabel(proposal, '変更承認を確認')}
+                                  onClick={() => {
+                                    const target =
+                                      buildScheduleDayRescheduleApprovalTargetFromProposal(
+                                        proposal,
+                                      );
+                                    if (target) setRescheduleApprovalTarget(target);
+                                  }}
+                                  disabled={rescheduleApprovalMutation.isPending}
+                                >
+                                  変更承認
+                                </Button>
+                              )}
+                            {canApprove && (
+                              <Button
+                                size="sm"
+                                aria-label={proposalActionLabel(proposal, '承認して架電へ進める')}
+                                onClick={() =>
+                                  setProposalConfirmAction({ proposal, action: 'approve' })
+                                }
+                                disabled={
+                                  proposalActionMutation.isPending ||
+                                  rescheduleApprovalMutation.isPending
+                                }
+                              >
+                                承認して架電へ
+                              </Button>
+                            )}
+                            {canCall && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  aria-label={proposalActionLabel(proposal, '架電結果を記録')}
+                                  onClick={() => openContactLogDialog(proposal)}
+                                  disabled={proposalActionMutation.isPending}
+                                >
+                                  架電結果を記録
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  aria-label={proposalActionLabel(proposal, '辞退として記録')}
+                                  onClick={() =>
+                                    proposalActionMutation.mutate({
+                                      id: proposal.id,
+                                      payload: {
+                                        action: 'contact_attempt',
+                                        outcome: 'declined',
+                                        contact_method: 'phone',
+                                      },
+                                    })
+                                  }
+                                  disabled={proposalActionMutation.isPending}
+                                >
+                                  辞退
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  aria-label={proposalActionLabel(proposal, '日時を確定')}
+                                  onClick={() =>
+                                    setProposalConfirmAction({ proposal, action: 'confirm' })
+                                  }
+                                  disabled={!canConfirm || proposalActionMutation.isPending}
+                                >
+                                  日時確定
+                                </Button>
+                              </>
+                            )}
+                            {proposal.proposal_status === 'confirmed' &&
+                              proposal.finalized_schedule && (
+                                <Link
+                                  href={`/visits/${proposal.finalized_schedule.id}/record`}
+                                  aria-label={proposalActionLabel(proposal, '確定予定を開く')}
+                                  className="inline-flex h-8 items-center rounded-lg border px-3 text-sm text-foreground hover:bg-muted/30"
+                                >
+                                  確定予定を開く
+                                </Link>
+                              )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                )}
+              </TabsContent>
+
+              <TabsContent value="confirmed" className="min-w-0 space-y-4">
+                {facilityTracker.length > 0 && (
+                  <PageSection
+                    title="同時訪問グループトラッカー"
+                    headingLevel={3}
+                    description="同日・同一施設または個人宅の訪問を束ねて、未準備と未完了を訪問先単位で確認します"
+                    contentClassName="space-y-3"
+                    actions={<Building2 className="size-4 text-sky-600" aria-hidden="true" />}
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={activeFacilityFilter === null ? 'default' : 'outline'}
+                        onClick={() => setFacilityFilter(null)}
+                        aria-pressed={activeFacilityFilter === null}
+                      >
+                        全件表示
+                      </Button>
+                      {facilityTracker.map((group) => (
+                        <Button
+                          key={group.key}
+                          size="sm"
+                          variant={activeFacilityFilter === group.key ? 'default' : 'outline'}
+                          onClick={() => setFacilityFilter(group.key)}
+                          aria-pressed={activeFacilityFilter === group.key}
+                        >
+                          {group.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                      {facilityRouteAnnouncement}
+                    </p>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {facilityTracker.map((group) => (
+                        <div
+                          key={group.key}
+                          className={[
+                            'rounded-xl border px-4 py-3 text-sm transition',
+                            activeFacilityFilter === group.key
+                              ? 'border-sky-300 bg-sky-50'
+                              : 'border-border bg-background',
+                          ].join(' ')}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-foreground">{group.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {group.siteName ?? '拠点未設定'} / 対象 {group.patientNames.length}{' '}
+                                名
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">
+                                ルート順{' '}
+                                {group.routeOrders.length > 0
+                                  ? group.routeOrders.join(', ')
+                                  : '未設定'}
+                              </Badge>
+                              {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                            <Badge variant="outline">準備完了 {group.preparedCount} 名</Badge>
+                            <Badge variant="outline">
+                              持参物未確認 {group.carryPendingCount} 名
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={
+                                group.incompleteCount > 0
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              }
                             >
-                              {formatMinutesLabel(slot)}
+                              未完了 {group.incompleteCount} 名
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            上下ボタン、ドラッグ、番号入力で訪問順序を調整できます。
+                          </p>
+                          <div
+                            className="mt-3 space-y-2"
+                            role="list"
+                            aria-label={`${group.label}の訪問順序`}
+                          >
+                            {getOrderedFacilityPatients(group).map(
+                              (patient, index, orderedPatients) => {
+                                const positionDescriptionId = `facility-route-position-${group.key}-${patient.scheduleId}`;
+                                const positionText = `現在 ${index + 1} / ${orderedPatients.length}番目`;
+                                return (
+                                  <div
+                                    key={patient.scheduleId}
+                                    role="listitem"
+                                    draggable
+                                    onDragStart={() =>
+                                      setDraggingFacilityPatient({
+                                        groupKey: group.key,
+                                        scheduleId: patient.scheduleId,
+                                      })
+                                    }
+                                    onDragEnd={() => setDraggingFacilityPatient(null)}
+                                    onDragOver={(event) => event.preventDefault()}
+                                    onDrop={(event) => {
+                                      event.preventDefault();
+                                      if (
+                                        draggingFacilityPatient?.groupKey !== group.key ||
+                                        !draggingFacilityPatient?.scheduleId
+                                      ) {
+                                        return;
+                                      }
+                                      reorderFacilityPatients(
+                                        group,
+                                        draggingFacilityPatient.scheduleId,
+                                        patient.scheduleId,
+                                      );
+                                      setDraggingFacilityPatient(null);
+                                    }}
+                                    className={[
+                                      'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
+                                      draggingFacilityPatient?.scheduleId === patient.scheduleId
+                                        ? 'border-sky-300 bg-sky-50'
+                                        : '',
+                                    ].join(' ')}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-foreground">
+                                        {patient.patientName}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {patient.unitName
+                                          ? `部屋 ${patient.unitName}`
+                                          : '部屋番号未設定'}
+                                      </p>
+                                      <p
+                                        id={positionDescriptionId}
+                                        className="text-xs font-medium text-sky-700"
+                                      >
+                                        {positionText}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          type="button"
+                                          size="icon-sm"
+                                          variant="outline"
+                                          className="min-h-11 min-w-11 sm:size-11"
+                                          aria-label={`${group.label} ${patient.patientName}を1つ上へ移動`}
+                                          aria-describedby={positionDescriptionId}
+                                          onClick={() =>
+                                            moveFacilityPatient(group, patient.scheduleId, 'up')
+                                          }
+                                          disabled={index === 0}
+                                        >
+                                          <ArrowUp className="size-4" aria-hidden="true" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="icon-sm"
+                                          variant="outline"
+                                          className="min-h-11 min-w-11 sm:size-11"
+                                          aria-label={`${group.label} ${patient.patientName}を1つ下へ移動`}
+                                          aria-describedby={positionDescriptionId}
+                                          onClick={() =>
+                                            moveFacilityPatient(group, patient.scheduleId, 'down')
+                                          }
+                                          disabled={index === orderedPatients.length - 1}
+                                        >
+                                          <ArrowDown className="size-4" aria-hidden="true" />
+                                        </Button>
+                                      </div>
+                                      <Label
+                                        htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
+                                        className="text-xs text-muted-foreground"
+                                      >
+                                        順序
+                                      </Label>
+                                      <Input
+                                        id={`facility-route-${group.key}-${patient.scheduleId}`}
+                                        aria-label={`${group.label} ${patient.patientName} の訪問順序`}
+                                        type="number"
+                                        min={1}
+                                        value={
+                                          facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
+                                          facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
+                                          String(patient.routeOrder ?? index + 1)
+                                        }
+                                        onChange={(event) =>
+                                          setFacilityRouteOverrides((prev) => ({
+                                            ...prev,
+                                            [group.key]: {
+                                              ...(prev[group.key] ?? {}),
+                                              [patient.scheduleId]: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="h-11 min-h-11 w-20 sm:h-11 sm:min-h-11"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                          <ActionRail align="start" className="mt-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={`${group.label}の定期訪問日を設定`}
+                              onClick={() => openFacilityVisitDayDialog(group)}
+                            >
+                              定期訪問日を設定
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={`${group.label} ${group.patientNames.length}名の同時訪問順序を保存`}
+                              onClick={() =>
+                                facilityBatchMutation.mutate({
+                                  groupKey: group.key,
+                                  carryItemsConfirmed: false,
+                                })
+                              }
+                              disabled={facilityBatchMutation.isPending}
+                            >
+                              同時訪問を保存 ({group.patientNames.length}名)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={`${group.label} ${group.patientNames.length}名の持参確認を一括反映`}
+                              onClick={() => setFacilityCarryConfirmTarget(group)}
+                              disabled={facilityBatchMutation.isPending}
+                            >
+                              持参確認を一括反映 ({group.patientNames.length}名)
+                            </Button>
+                          </ActionRail>
+                        </div>
+                      ))}
+                    </div>
+                  </PageSection>
+                )}
+                {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
+                  <ScheduleDayRoutePreview
+                    controlId="day-desktop-route"
+                    routePharmacistControlId="desktop-route-pharmacist"
+                    className="hidden md:block"
+                    routeSelectionLabel={routeSelectionLabel}
+                    routeTravelMode={routePreviewTravelMode}
+                    onRouteTravelModeChange={setRoutePreviewTravelMode}
+                    routePlan={routePlanData}
+                    routeMapPoints={routeMapPoints}
+                    routeMapSite={routeMapSite}
+                    routeOrderDraft={routeOrderDraft}
+                    routePharmacistOptions={routePharmacistOptions}
+                    resolvedRoutePharmacistId={resolvedRoutePharmacistId}
+                    onRoutePharmacistChange={setSelectedRoutePharmacistId}
+                    routePlanLoading={routePlanLoading}
+                    routeOptimizationDirty={routeOptimizationDirty}
+                    applyPending={applyOptimizedRouteMutation.isPending}
+                    onApplyOptimizedRoute={() => setRouteOrderConfirmOpen(true)}
+                    actionLabel="最適順を反映"
+                    showRouteMapScheduleCount
+                    routeMapScheduleCount={routeMapSchedules.length}
+                  />
+                )}
+                {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
+                  <PageSection
+                    headingId="schedule-day-gantt-heading"
+                    title="タブレット日次ガント"
+                    headingLevel={3}
+                    description="縦軸=時間、横軸=薬剤師。予定密度を俯瞰し、下の確定予定カードで開始・準備・変更を実行します"
+                    className="hidden min-w-0 md:block"
+                    contentClassName="space-y-4"
+                  >
+                    <p id="schedule-day-gantt-scroll-help" className="sr-only">
+                      横スクロールで隠れている薬剤師列を確認できます。ガント内の予定は要約表示です。
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant="outline">
+                        時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
+                        {formatMinutesLabel(ganttWindow.endMinutes)}
+                      </Badge>
+                      <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
+                      <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
+                      <Badge variant="outline">横向き推奨</Badge>
+                    </div>
+                    <div
+                      role="region"
+                      tabIndex={0}
+                      aria-labelledby="schedule-day-gantt-heading"
+                      aria-describedby="schedule-day-gantt-scroll-help"
+                      className="max-w-full overflow-x-auto rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
+                        <caption className="sr-only">
+                          日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。
+                        </caption>
+                        <thead>
+                          <tr>
+                            <th
+                              scope="col"
+                              className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground"
+                            >
+                              時間
                             </th>
-                            {ganttTableColumns.map((column) => {
-                              const scheduleCell = column.scheduleStarts.get(slotIndex);
-                              if (scheduleCell) {
+                            {ganttTableColumns.map((column) => (
+                              <th
+                                key={column.pharmacistId}
+                                scope="col"
+                                className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">
+                                      {column.pharmacistName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {column.siteName ?? '拠点未設定'}
+                                    </p>
+                                  </div>
+                                  <Badge variant="outline">{column.schedules.length}件</Badge>
+                                </div>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ganttSlots.map((slot, slotIndex) => (
+                            <tr key={slot} className="align-top">
+                              <th
+                                scope="row"
+                                className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground"
+                              >
+                                {formatMinutesLabel(slot)}
+                              </th>
+                              {ganttTableColumns.map((column) => {
+                                const scheduleCell = column.scheduleStarts.get(slotIndex);
+                                if (scheduleCell) {
+                                  return (
+                                    <td
+                                      key={`${column.pharmacistId}-${slot}`}
+                                      rowSpan={scheduleCell.span}
+                                      className="w-56 min-w-56 align-top"
+                                    >
+                                      <div className="space-y-2">
+                                        {scheduleCell.schedules.length > 1 ? (
+                                          <Badge variant="outline" className="bg-background/90">
+                                            {scheduleCell.overlapKind === 'same_start'
+                                              ? '同時刻'
+                                              : '重なり'}{' '}
+                                            {scheduleCell.schedules.length}件
+                                          </Badge>
+                                        ) : null}
+                                        {scheduleCell.schedules.map((schedule) => (
+                                          <div
+                                            key={schedule.id}
+                                            role="group"
+                                            aria-label={ganttScheduleAriaLabel(
+                                              schedule,
+                                              column.pharmacistName,
+                                              scheduleCell.schedules.length,
+                                              scheduleCell.overlapKind,
+                                            )}
+                                            className={[
+                                              'flex min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
+                                              ganttBlockClass(schedule),
+                                            ].join(' ')}
+                                          >
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium">
+                                                  {schedule.case_.patient.name}
+                                                </p>
+                                                <p className="text-[11px] opacity-80">
+                                                  {timeLabel(
+                                                    schedule.time_window_start,
+                                                    schedule.time_window_end,
+                                                  )}
+                                                </p>
+                                              </div>
+                                              <Badge
+                                                variant="outline"
+                                                className="shrink-0 bg-white/70"
+                                              >
+                                                #{schedule.route_order ?? '-'}
+                                              </Badge>
+                                            </div>
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                              <Badge variant="outline" className="bg-white/70">
+                                                {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
+                                              </Badge>
+                                              <Badge variant="outline" className="bg-white/70">
+                                                {schedule.preparation?.prepared_at
+                                                  ? '準備完了'
+                                                  : '準備未了'}
+                                              </Badge>
+                                            </div>
+                                            <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
+                                              {addressOfPatient(schedule)}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  );
+                                }
+
+                                if (column.coveredSlots.has(slotIndex)) {
+                                  return null;
+                                }
+
                                 return (
                                   <td
                                     key={`${column.pharmacistId}-${slot}`}
-                                    rowSpan={scheduleCell.span}
-                                    className="w-56 min-w-56 align-top"
-                                  >
-                                    <div className="space-y-2">
-                                      {scheduleCell.schedules.length > 1 ? (
-                                        <Badge variant="outline" className="bg-background/90">
-                                          {scheduleCell.overlapKind === 'same_start'
-                                            ? '同時刻'
-                                            : '重なり'}{' '}
-                                          {scheduleCell.schedules.length}件
-                                        </Badge>
-                                      ) : null}
-                                      {scheduleCell.schedules.map((schedule) => (
-                                        <div
-                                          key={schedule.id}
-                                          role="group"
-                                          aria-label={ganttScheduleAriaLabel(
-                                            schedule,
-                                            column.pharmacistName,
-                                            scheduleCell.schedules.length,
-                                            scheduleCell.overlapKind,
-                                          )}
-                                          className={[
-                                            'flex min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
-                                            ganttBlockClass(schedule),
-                                          ].join(' ')}
-                                        >
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                              <p className="truncate text-sm font-medium">
-                                                {schedule.case_.patient.name}
-                                              </p>
-                                              <p className="text-[11px] opacity-80">
-                                                {timeLabel(
-                                                  schedule.time_window_start,
-                                                  schedule.time_window_end,
-                                                )}
-                                              </p>
-                                            </div>
-                                            <Badge
-                                              variant="outline"
-                                              className="shrink-0 bg-white/70"
-                                            >
-                                              #{schedule.route_order ?? '-'}
-                                            </Badge>
-                                          </div>
-                                          <div className="mt-2 flex flex-wrap gap-1">
-                                            <Badge variant="outline" className="bg-white/70">
-                                              {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
-                                            </Badge>
-                                            <Badge variant="outline" className="bg-white/70">
-                                              {schedule.preparation?.prepared_at
-                                                ? '準備完了'
-                                                : '準備未了'}
-                                            </Badge>
-                                          </div>
-                                          <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
-                                            {addressOfPatient(schedule)}
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </td>
+                                    aria-hidden="true"
+                                    className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
+                                  />
                                 );
-                              }
-
-                              if (column.coveredSlots.has(slotIndex)) {
-                                return null;
-                              }
-
-                              return (
-                                <td
-                                  key={`${column.pharmacistId}-${slot}`}
-                                  aria-hidden="true"
-                                  className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
-                                />
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </PageSection>
-              )}
-              {schedulesLoading ? (
-                <Card>
-                  <CardContent
-                    role="status"
-                    aria-live="polite"
-                    className="py-12 text-center text-sm text-muted-foreground"
-                  >
-                    確定予定を読み込んでいます...
-                  </CardContent>
-                </Card>
-              ) : visibleSchedules.length === 0 ? (
-                <Card>
-                  <CardContent
-                    role="status"
-                    aria-live="polite"
-                    className="py-12 text-center text-sm text-muted-foreground"
-                  >
-                    {activeFacilityFilter
-                      ? '絞り込み条件に一致する訪問はありません'
-                      : `${format(selectedDay, 'M月d日(E)', { locale: ja })} の確定予定はありません`}
-                  </CardContent>
-                </Card>
-              ) : (
-                visibleSchedules.map((schedule) => {
-                  const schedulePreview = scheduleBillingPreviewMap?.get(schedule.id);
-                  const scheduleCadence = schedulePreview?.cadence ?? null;
-                  const scheduleWarningMessages =
-                    schedulePreview?.alerts
-                      ?.filter((alert) => alert.severity !== 'info')
-                      .map((alert) => alert.message) ?? [];
-
-                  return (
-                    <Card
-                      key={schedule.id}
-                      id={`schedule-${schedule.id}`}
-                      className={cn(
-                        'overflow-hidden scroll-mt-28',
-                        highlightedScheduleId === schedule.id ? 'ring-2 ring-primary/30' : null,
-                      )}
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </PageSection>
+                )}
+                {schedulesLoading ? (
+                  <Card>
+                    <CardContent
+                      role="status"
+                      aria-live="polite"
+                      className="py-12 text-center text-sm text-muted-foreground"
                     >
-                      <CardContent className="space-y-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-base font-semibold text-foreground">
-                                {schedule.case_.patient.name}
-                              </p>
-                              <Badge
-                                variant="outline"
-                                className={statusBadgeClass(schedule.schedule_status)}
-                              >
-                                {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={priorityBadgeClass(schedule.priority)}
-                              >
-                                {PRIORITY_LABELS[schedule.priority]}
-                              </Badge>
-                              {schedule.confirmed_at && (
+                      確定予定を読み込んでいます...
+                    </CardContent>
+                  </Card>
+                ) : visibleSchedules.length === 0 ? (
+                  <Card>
+                    <CardContent
+                      role="status"
+                      aria-live="polite"
+                      className="py-12 text-center text-sm text-muted-foreground"
+                    >
+                      {activeFacilityFilter
+                        ? '絞り込み条件に一致する訪問はありません'
+                        : `${format(selectedDay, 'M月d日(E)', { locale: ja })} の確定予定はありません`}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  visibleSchedules.map((schedule) => {
+                    const schedulePreview = scheduleBillingPreviewMap?.get(schedule.id);
+                    const scheduleCadence = schedulePreview?.cadence ?? null;
+                    const scheduleWarningMessages =
+                      schedulePreview?.alerts
+                        ?.filter((alert) => alert.severity !== 'info')
+                        .map((alert) => alert.message) ?? [];
+
+                    return (
+                      <Card
+                        key={schedule.id}
+                        id={`schedule-${schedule.id}`}
+                        className={cn(
+                          'overflow-hidden scroll-mt-28',
+                          highlightedScheduleId === schedule.id ? 'ring-2 ring-primary/30' : null,
+                        )}
+                      >
+                        <CardContent className="space-y-4 py-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-base font-semibold text-foreground">
+                                  {schedule.case_.patient.name}
+                                </p>
                                 <Badge
                                   variant="outline"
-                                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  className={statusBadgeClass(schedule.schedule_status)}
                                 >
-                                  電話確定済み
+                                  {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
                                 </Badge>
-                              )}
-                              <Badge
-                                variant="outline"
-                                className={scheduleLockText(schedule).className}
-                              >
-                                {scheduleLockText(schedule).label}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  schedule.preparation?.prepared_at
-                                    ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                    : 'border-amber-200 bg-amber-50 text-amber-700'
-                                }
-                              >
-                                {schedule.preparation?.prepared_at
-                                  ? `準備完了 ${countCompletedPreparationItems(schedule.preparation)}/5`
-                                  : `準備 ${countCompletedPreparationItems(schedule.preparation)}/5`}
-                              </Badge>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                              <span>{VISIT_TYPE_LABELS[schedule.visit_type]}</span>
-                              <span>
-                                {timeLabel(schedule.time_window_start, schedule.time_window_end)}
-                              </span>
-                              <span>ルート順 {schedule.route_order ?? '未設定'}</span>
-                              <span>当日担当 {schedule.workload_hint.daily_visit_count}件</span>
-                            </div>
-                          </div>
-                          <div className="text-right text-sm">
-                            <p className="font-medium text-foreground">
-                              {pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録'}
-                            </p>
-                            <p className="text-muted-foreground">
-                              {schedule.site?.name ?? '拠点未設定'}
-                            </p>
-                          </div>
-                        </div>
-
-                        {['completed', 'cancelled', 'rescheduled'].includes(
-                          schedule.schedule_status,
-                        ) ? null : (
-                          <ActionRail align="start" className="border-b pb-4">
-                            {['ready', 'departed'].includes(schedule.schedule_status) && (
-                              <Button
-                                size="sm"
-                                className="gap-1.5"
-                                variant={
-                                  getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
-                                }
-                                aria-label={scheduleActionLabel(
-                                  schedule,
-                                  visitStartActionText(schedule),
+                                <Badge
+                                  variant="outline"
+                                  className={priorityBadgeClass(schedule.priority)}
+                                >
+                                  {PRIORITY_LABELS[schedule.priority]}
+                                </Badge>
+                                {schedule.confirmed_at && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  >
+                                    電話確定済み
+                                  </Badge>
                                 )}
-                                onClick={() => handleVisitStart(schedule)}
-                              >
-                                <PlayCircle className="size-4" aria-hidden="true" />
-                                {visitStartActionText(schedule)}
-                              </Button>
-                            )}
-                            {schedule.schedule_status === 'in_progress' && (
-                              <Link href={`/visits/${schedule.id}/record`}>
+                                <Badge
+                                  variant="outline"
+                                  className={scheduleLockText(schedule).className}
+                                >
+                                  {scheduleLockText(schedule).label}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    schedule.preparation?.prepared_at
+                                      ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                      : 'border-amber-200 bg-amber-50 text-amber-700'
+                                  }
+                                >
+                                  {schedule.preparation?.prepared_at
+                                    ? `準備完了 ${countCompletedPreparationItems(schedule.preparation)}/5`
+                                    : `準備 ${countCompletedPreparationItems(schedule.preparation)}/5`}
+                                </Badge>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                <span>{VISIT_TYPE_LABELS[schedule.visit_type]}</span>
+                                <span>
+                                  {timeLabel(schedule.time_window_start, schedule.time_window_end)}
+                                </span>
+                                <span>ルート順 {schedule.route_order ?? '未設定'}</span>
+                                <span>当日担当 {schedule.workload_hint.daily_visit_count}件</span>
+                              </div>
+                            </div>
+                            <div className="text-right text-sm">
+                              <p className="font-medium text-foreground">
+                                {pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録'}
+                              </p>
+                              <p className="text-muted-foreground">
+                                {schedule.site?.name ?? '拠点未設定'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {['completed', 'cancelled', 'rescheduled'].includes(
+                            schedule.schedule_status,
+                          ) ? null : (
+                            <ActionRail align="start" className="border-b pb-4">
+                              {['ready', 'departed'].includes(schedule.schedule_status) && (
                                 <Button
                                   size="sm"
-                                  variant="default"
-                                  aria-label={scheduleActionLabel(schedule, '訪問完了記録を開く')}
-                                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                                  className="gap-1.5"
+                                  variant={
+                                    getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
+                                  }
+                                  aria-label={scheduleActionLabel(
+                                    schedule,
+                                    visitStartActionText(schedule),
+                                  )}
+                                  onClick={() => handleVisitStart(schedule)}
                                 >
-                                  <CheckCircle2 className="size-4" aria-hidden="true" />
-                                  訪問完了
+                                  <PlayCircle className="size-4" aria-hidden="true" />
+                                  {visitStartActionText(schedule)}
                                 </Button>
-                              </Link>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={scheduleActionLabel(schedule, '訪問準備を開く')}
-                              onClick={() => openPreparationDialog(schedule)}
-                            >
-                              訪問準備
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={scheduleActionLabel(schedule, 'リスケ候補を作る')}
-                              onClick={() => openRescheduleDialog(schedule)}
-                            >
-                              リスケ候補を作る
-                            </Button>
-                          </ActionRail>
-                        )}
-
-                        <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
-                          <div className="space-y-1 text-sm">
-                            <p className="text-muted-foreground">患者住所</p>
-                            <p className="text-foreground">{addressOfPatient(schedule)}</p>
-                          </div>
-                          <div className="space-y-1 text-sm">
-                            <p className="text-muted-foreground">運用ルール</p>
-                            <p className="text-foreground">
-                              確定後は原則変更せず、緊急割込や担当者不在時のみリスケ候補を作成します。
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {scheduleLockText(schedule).detail}
-                            </p>
-                          </div>
-                        </div>
-
-                        {(schedule.facility_hint || schedule.handoff_hint) && (
-                          <div className="grid gap-3 lg:grid-cols-2">
-                            {schedule.facility_hint && (
-                              <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                                <p className="font-medium">施設モード</p>
-                                <p className="mt-1 leading-6">
-                                  {schedule.facility_hint.label} で同日{' '}
-                                  {schedule.facility_hint.patient_count} 名を担当
-                                </p>
-                                <p className="mt-1 text-xs text-sky-800/80">
-                                  {schedule.facility_hint.patient_names.join('、')}
-                                </p>
-                              </div>
-                            )}
-                            {schedule.handoff_hint && (
-                              <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
-                                <p className="font-medium">引継ぎ・例外メモ</p>
-                                <p className="mt-1 leading-6">{schedule.handoff_hint.summary}</p>
-                                {schedule.workload_hint.urgent_visit_count > 0 && (
-                                  <p className="mt-1 text-xs text-purple-800/80">
-                                    当日至急案件 {schedule.workload_hint.urgent_visit_count} 件
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {schedule.override_request?.status === 'pending' && (
-                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium">確定済み訪問の変更承認待ち</p>
-                                <p className="mt-1 leading-6">{schedule.override_request.reason}</p>
-                                {schedule.override_request.impact_summary &&
-                                  typeof schedule.override_request.impact_summary
-                                    .impacted_schedule_count === 'number' && (
-                                    <p className="mt-1 text-xs text-amber-800/80">
-                                      影響予定:{' '}
-                                      {
-                                        schedule.override_request.impact_summary
-                                          .impacted_schedule_count as number
-                                      }
-                                      件
-                                    </p>
-                                  )}
-                                {schedule.override_request.impact_summary &&
-                                  typeof schedule.override_request.impact_summary
-                                    .proposed_replacements === 'number' && (
-                                    <p className="mt-1 text-xs text-amber-800/80">
-                                      再提案候補:{' '}
-                                      {
-                                        schedule.override_request.impact_summary
-                                          .proposed_replacements as number
-                                      }
-                                      件
-                                    </p>
-                                  )}
-                                {readImpactedPatientNames(schedule.override_request.impact_summary)
-                                  .length > 0 && (
-                                  <p className="mt-1 text-xs text-amber-800/80">
-                                    影響患者:{' '}
-                                    {readImpactedPatientNames(
-                                      schedule.override_request.impact_summary,
-                                    ).join('、')}
-                                  </p>
-                                )}
-                              </div>
+                              )}
+                              {schedule.schedule_status === 'in_progress' && (
+                                <Link href={`/visits/${schedule.id}/record`}>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    aria-label={scheduleActionLabel(schedule, '訪問完了記録を開く')}
+                                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                                    訪問完了
+                                  </Button>
+                                </Link>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                aria-label={scheduleActionLabel(schedule, '変更承認を確認')}
-                                onClick={() =>
-                                  setRescheduleApprovalTarget(
-                                    buildScheduleDayRescheduleApprovalTargetFromSchedule(
-                                      schedule,
-                                      '確定予定',
-                                    ),
-                                  )
-                                }
-                                disabled={rescheduleApprovalMutation.isPending}
+                                aria-label={scheduleActionLabel(schedule, '訪問準備を開く')}
+                                onClick={() => openPreparationDialog(schedule)}
                               >
-                                変更承認
+                                訪問準備
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                aria-label={scheduleActionLabel(schedule, 'リスケ候補を作る')}
+                                onClick={() => openRescheduleDialog(schedule)}
+                              >
+                                リスケ候補を作る
+                              </Button>
+                            </ActionRail>
+                          )}
+
+                          <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
+                            <div className="space-y-1 text-sm">
+                              <p className="text-muted-foreground">患者住所</p>
+                              <p className="text-foreground">{addressOfPatient(schedule)}</p>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <p className="text-muted-foreground">運用ルール</p>
+                              <p className="text-foreground">
+                                確定後は原則変更せず、緊急割込や担当者不在時のみリスケ候補を作成します。
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {scheduleLockText(schedule).detail}
+                              </p>
                             </div>
                           </div>
-                        )}
 
-                        <div className="rounded-xl border bg-muted/20 px-4 py-3 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-medium text-foreground">訪問準備</p>
-                            <span className="text-xs text-muted-foreground">
-                              {countCompletedPreparationItems(schedule.preparation)}/
-                              {PREPARATION_ITEMS.length} 完了
-                            </span>
-                          </div>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {PREPARATION_ITEMS.map(([field, label]) => (
-                              <div
-                                key={field}
-                                className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
-                              >
-                                <div
-                                  className={[
-                                    'size-2 rounded-full',
-                                    schedule.preparation?.[field]
-                                      ? 'bg-emerald-500'
-                                      : 'bg-slate-300',
-                                  ].join(' ')}
-                                >
-                                  <span className="sr-only">
-                                    {schedule.preparation?.[field] ? '完了' : '未完了'}
-                                  </span>
+                          {(schedule.facility_hint || schedule.handoff_hint) && (
+                            <div className="grid gap-3 lg:grid-cols-2">
+                              {schedule.facility_hint && (
+                                <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                                  <p className="font-medium">施設モード</p>
+                                  <p className="mt-1 leading-6">
+                                    {schedule.facility_hint.label} で同日{' '}
+                                    {schedule.facility_hint.patient_count} 名を担当
+                                  </p>
+                                  <p className="mt-1 text-xs text-sky-800/80">
+                                    {schedule.facility_hint.patient_names.join('、')}
+                                  </p>
                                 </div>
-                                <span className="text-xs text-foreground">{label}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {schedule.preparation?.prepared_at && (
-                            <p className="mt-3 text-xs text-muted-foreground">
-                              最終更新{' '}
-                              {format(
-                                parseISO(schedule.preparation.prepared_at),
-                                'yyyy/MM/dd HH:mm',
-                                {
-                                  locale: ja,
-                                },
                               )}
-                            </p>
+                              {schedule.handoff_hint && (
+                                <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+                                  <p className="font-medium">引継ぎ・例外メモ</p>
+                                  <p className="mt-1 leading-6">{schedule.handoff_hint.summary}</p>
+                                  {schedule.workload_hint.urgent_visit_count > 0 && (
+                                    <p className="mt-1 text-xs text-purple-800/80">
+                                      当日至急案件 {schedule.workload_hint.urgent_visit_count} 件
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </div>
 
-                        {scheduleCadence && (
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
-                            <p className="font-medium">算定 cadence</p>
-                            <p className="mt-1">
-                              次回算定可能日: {scheduleCadence.next_billable_date ?? '提案不可'} /
-                              残回数 {scheduleCadence.remaining_month_count}
-                            </p>
-                            {scheduleWarningMessages.length > 0 && (
-                              <p className="mt-1 text-amber-800">
-                                {scheduleWarningMessages.slice(0, 2).join(' / ')}
+                          {schedule.override_request?.status === 'pending' && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium">確定済み訪問の変更承認待ち</p>
+                                  <p className="mt-1 leading-6">
+                                    {schedule.override_request.reason}
+                                  </p>
+                                  {schedule.override_request.impact_summary &&
+                                    typeof schedule.override_request.impact_summary
+                                      .impacted_schedule_count === 'number' && (
+                                      <p className="mt-1 text-xs text-amber-800/80">
+                                        影響予定:{' '}
+                                        {
+                                          schedule.override_request.impact_summary
+                                            .impacted_schedule_count as number
+                                        }
+                                        件
+                                      </p>
+                                    )}
+                                  {schedule.override_request.impact_summary &&
+                                    typeof schedule.override_request.impact_summary
+                                      .proposed_replacements === 'number' && (
+                                      <p className="mt-1 text-xs text-amber-800/80">
+                                        再提案候補:{' '}
+                                        {
+                                          schedule.override_request.impact_summary
+                                            .proposed_replacements as number
+                                        }
+                                        件
+                                      </p>
+                                    )}
+                                  {readImpactedPatientNames(
+                                    schedule.override_request.impact_summary,
+                                  ).length > 0 && (
+                                    <p className="mt-1 text-xs text-amber-800/80">
+                                      影響患者:{' '}
+                                      {readImpactedPatientNames(
+                                        schedule.override_request.impact_summary,
+                                      ).join('、')}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  aria-label={scheduleActionLabel(schedule, '変更承認を確認')}
+                                  onClick={() =>
+                                    setRescheduleApprovalTarget(
+                                      buildScheduleDayRescheduleApprovalTargetFromSchedule(
+                                        schedule,
+                                        '確定予定',
+                                      ),
+                                    )
+                                  }
+                                  disabled={rescheduleApprovalMutation.isPending}
+                                >
+                                  変更承認
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-medium text-foreground">訪問準備</p>
+                              <span className="text-xs text-muted-foreground">
+                                {countCompletedPreparationItems(schedule.preparation)}/
+                                {PREPARATION_ITEMS.length} 完了
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              {PREPARATION_ITEMS.map(([field, label]) => (
+                                <div
+                                  key={field}
+                                  className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
+                                >
+                                  <div
+                                    className={[
+                                      'size-2 rounded-full',
+                                      schedule.preparation?.[field]
+                                        ? 'bg-emerald-500'
+                                        : 'bg-slate-300',
+                                    ].join(' ')}
+                                  >
+                                    <span className="sr-only">
+                                      {schedule.preparation?.[field] ? '完了' : '未完了'}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-foreground">{label}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {schedule.preparation?.prepared_at && (
+                              <p className="mt-3 text-xs text-muted-foreground">
+                                最終更新{' '}
+                                {format(
+                                  parseISO(schedule.preparation.prepared_at),
+                                  'yyyy/MM/dd HH:mm',
+                                  {
+                                    locale: ja,
+                                  },
+                                )}
                               </p>
                             )}
                           </div>
-                        )}
 
-                        {schedule.applied_override && (
-                          <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-                            <p className="font-medium">例外変更履歴</p>
-                            <p className="mt-1 leading-6">
-                              {format(
-                                parseISO(schedule.applied_override.source_schedule.scheduled_date),
-                                'yyyy/MM/dd',
-                                { locale: ja },
-                              )}{' '}
-                              {timeLabel(
-                                schedule.applied_override.source_schedule.time_window_start,
-                                schedule.applied_override.source_schedule.time_window_end,
-                              )}{' '}
-                              から再調整。理由: {schedule.applied_override.reason}
-                            </p>
-                            <p className="mt-1 text-xs text-orange-800/80">
-                              変更前担当:{' '}
-                              {pharmacistNameById.get(
-                                schedule.applied_override.source_schedule.pharmacist_id,
-                              ) ?? '薬剤師未登録'}
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-          </Tabs>
-        </PageSection>
-      </div>
+                          {scheduleCadence && (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+                              <p className="font-medium">算定 cadence</p>
+                              <p className="mt-1">
+                                次回算定可能日: {scheduleCadence.next_billable_date ?? '提案不可'} /
+                                残回数 {scheduleCadence.remaining_month_count}
+                              </p>
+                              {scheduleWarningMessages.length > 0 && (
+                                <p className="mt-1 text-amber-800">
+                                  {scheduleWarningMessages.slice(0, 2).join(' / ')}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {schedule.applied_override && (
+                            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+                              <p className="font-medium">例外変更履歴</p>
+                              <p className="mt-1 leading-6">
+                                {format(
+                                  parseISO(
+                                    schedule.applied_override.source_schedule.scheduled_date,
+                                  ),
+                                  'yyyy/MM/dd',
+                                  { locale: ja },
+                                )}{' '}
+                                {timeLabel(
+                                  schedule.applied_override.source_schedule.time_window_start,
+                                  schedule.applied_override.source_schedule.time_window_end,
+                                )}{' '}
+                                から再調整。理由: {schedule.applied_override.reason}
+                              </p>
+                              <p className="mt-1 text-xs text-orange-800/80">
+                                変更前担当:{' '}
+                                {pharmacistNameById.get(
+                                  schedule.applied_override.source_schedule.pharmacist_id,
+                                ) ?? '薬剤師未登録'}
+                              </p>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                )}
+              </TabsContent>
+            </Tabs>
+          </PageSection>
+        </div>
+      </section>
 
       <ScheduleDayRescheduleApprovalDialog
         target={rescheduleApprovalTarget}

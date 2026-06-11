@@ -23,14 +23,16 @@ import type { WeekProposalStats } from './schedule-day-view.helpers';
 
 type ScheduleBoardMetricsProps = {
   stats: WeekProposalStats;
+  headingLevel?: 2 | 3;
 };
 
-export function ScheduleBoardMetrics({ stats }: ScheduleBoardMetricsProps) {
+export function ScheduleBoardMetrics({ stats, headingLevel = 2 }: ScheduleBoardMetricsProps) {
   return (
     <PageSection
       title="週次訪問の進捗"
       description="候補、確定、変更待ち、緊急影響を同じ基準で確認します"
       contentClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-6"
+      headingLevel={headingLevel}
     >
       <ScheduleMetricCard
         title="承認待ち"
@@ -83,6 +85,7 @@ type RouteBoardSummaryProps = {
   weekEnd: Date;
   selectedDay: Date;
   pharmacistName: string | null;
+  headingLevel?: 2 | 3;
 };
 
 export function RouteBoardSummary({
@@ -90,6 +93,7 @@ export function RouteBoardSummary({
   weekEnd,
   selectedDay,
   pharmacistName,
+  headingLevel = 2,
 }: RouteBoardSummaryProps) {
   return (
     <PageSection
@@ -97,6 +101,7 @@ export function RouteBoardSummary({
       description="服薬最終日より前の訪問候補を生成し、患者住所と既存訪問順からルート効率を加味して提案します"
       className="overflow-hidden bg-[linear-gradient(135deg,rgba(245,248,255,1),rgba(248,250,252,1))] ring-1 ring-slate-200"
       contentClassName="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
+      headingLevel={headingLevel}
     >
       <div className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -141,6 +146,7 @@ type WeeklyScheduleControlsProps = {
   nextBillableDate: string | null;
   suggestedDateSet: Set<string>;
   onSelectDate: (dateKey: string) => void;
+  headingLevel?: 2 | 3;
 };
 
 export function WeeklyScheduleControls({
@@ -153,11 +159,13 @@ export function WeeklyScheduleControls({
   nextBillableDate,
   suggestedDateSet,
   onSelectDate,
+  headingLevel = 2,
 }: WeeklyScheduleControlsProps) {
   return (
     <PageSection
       title="週間スケジュール"
       description="候補件数と確定件数を見ながら日別に切り替えます"
+      headingLevel={headingLevel}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -245,14 +253,19 @@ export function WeeklyScheduleControls({
 
 type RelatedManagementLinksProps = {
   selectedCase: CaseOption | null;
+  headingLevel?: 2 | 3;
 };
 
-export function RelatedManagementLinks({ selectedCase }: RelatedManagementLinksProps) {
+export function RelatedManagementLinks({
+  selectedCase,
+  headingLevel = 2,
+}: RelatedManagementLinksProps) {
   return (
     <PageSection
       title="関連管理"
       description="ケース担当・シフト・休日設定は管理画面で更新します"
       contentClassName="space-y-3"
+      headingLevel={headingLevel}
     >
       <Link
         href="/admin/shifts"

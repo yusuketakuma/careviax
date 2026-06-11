@@ -34,6 +34,7 @@ export type ScheduleDayOperationalTasksPanelProps = {
   onUpdateCallbackTaskStatus: (taskId: string, status: CallbackTaskStatusUpdate) => void;
   onOpenPreparation: (schedule: VisitSchedule) => void;
   onApproveOverride: (schedule: VisitSchedule) => void;
+  headingLevel?: 2 | 3;
 };
 
 export function ScheduleDayOperationalTasksPanel({
@@ -50,6 +51,7 @@ export function ScheduleDayOperationalTasksPanel({
   onUpdateCallbackTaskStatus,
   onOpenPreparation,
   onApproveOverride,
+  headingLevel = 2,
 }: ScheduleDayOperationalTasksPanelProps) {
   const showEmptyState =
     !callbackTasksLoading &&
@@ -62,6 +64,7 @@ export function ScheduleDayOperationalTasksPanel({
       title="運用タスク"
       description="スケジュールに影響する未完了タスクを優先順で表示します"
       contentClassName="space-y-4"
+      headingLevel={headingLevel}
     >
       {callbackTasksLoading ? (
         <TaskLoadingState label="再架電タスクを読み込んでいます..." />
