@@ -616,6 +616,99 @@ describe('getPatientReadinessData', () => {
 });
 
 describe('getPatientTimelineData', () => {
+  it('sorts mixed timeline events and preserves representative event DTO fields', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'schedule_1',
+            visit_type: 'regular',
+            scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+            schedule_status: 'confirmed',
+            priority: 'urgent',
+            pharmacist_id: 'pharmacist_1',
+            confirmed_at: new Date('2026-04-03T09:00:00.000Z'),
+            route_order: 2,
+            created_at: new Date('2026-04-02T08:00:00.000Z'),
+            updated_at: new Date('2026-04-02T09:00:00.000Z'),
+            visit_record: {
+              id: 'visit_record_1',
+              outcome_status: 'completed',
+            },
+          },
+        ]),
+      },
+      visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'communication_1',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: '服薬時間を相談',
+            counterpart_name: '長女',
+            occurred_at: new Date('2026-04-04T10:00:00.000Z'),
+          },
+        ]),
+      },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
+      managementPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      firstVisitDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events.map((item) => item.id)).toEqual([
+      'communication:communication_1',
+      'visit_schedule:schedule_1',
+      'care_report:report_1',
+    ]);
+    expect(result?.timeline_events[1]).toMatchObject({
+      id: 'visit_schedule:schedule_1',
+      event_type: 'visit_schedule',
+      category: 'visit',
+      occurred_at: new Date('2026-04-03T09:00:00.000Z'),
+      title: '訪問予定を確定',
+      summary: '定期訪問 / 訪問日 2026/04/10 / 訪問記録あり',
+      href: '/visits/visit_record_1',
+      action_label: '訪問記録を開く',
+      status: 'confirmed',
+      status_label: 'confirmed',
+      metadata: ['優先度 至急', 'ルート順 2'],
+    });
+  });
+
   it('scopes conference notes to patient-level notes or assigned cases', async () => {
     const conferenceNoteFindManyMock = vi.fn().mockResolvedValue([]);
     const db = buildDb({
