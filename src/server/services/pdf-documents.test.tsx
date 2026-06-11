@@ -53,7 +53,11 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { buildCareReportPdf, buildMedicationHistoryPdf } from './pdf-documents';
+import {
+  buildCareReportPdf,
+  buildMedicationCalendarPdf,
+  buildMedicationHistoryPdf,
+} from './pdf-documents';
 import { PdfNotFoundError } from './pdf-errors';
 
 const baseReport = {
@@ -131,6 +135,27 @@ describe('buildMedicationHistoryPdf', () => {
     await expect(buildMedicationHistoryPdf('org_1', 'patient_1')).rejects.toBeInstanceOf(
       PdfNotFoundError,
     );
+
+    expect(patientFindFirstMock).toHaveBeenCalledOnce();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildMedicationCalendarPdf', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    renderToBufferMock.mockResolvedValue(Buffer.from('pdf'));
+    organizationFindUniqueMock.mockResolvedValue({ name: 'ケアビア薬局' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ name: '本店' });
+  });
+
+  it('does not query medication profiles when patient access is denied', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    await expect(
+      buildMedicationCalendarPdf('org_1', 'patient_1', '2026-04'),
+    ).rejects.toBeInstanceOf(PdfNotFoundError);
 
     expect(patientFindFirstMock).toHaveBeenCalledOnce();
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
