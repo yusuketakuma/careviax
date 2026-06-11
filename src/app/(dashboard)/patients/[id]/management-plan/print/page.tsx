@@ -4,8 +4,6 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { getManagementPlanPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { sortedManagementPlanSections, SECTION_LABELS } from '@/lib/validations/management-plan';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
@@ -13,6 +11,7 @@ import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
   id: string;
@@ -33,11 +32,6 @@ type ManagementPlanResponse = {
     updated_at: string;
   };
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '—';
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
 
 export default function ManagementPlanPrintPage() {
   const params = useParams<{ id: string }>();
@@ -124,13 +118,13 @@ export default function ManagementPlanPrintPage() {
               </tr>
               <tr>
                 <th className="bg-gray-100 px-2 py-1 text-left">適用開始日</th>
-                <td className="px-2 py-1">{formatDate(plan.effective_from)}</td>
+                <td className="px-2 py-1">{formatDateLabel(plan.effective_from)}</td>
                 <th className="bg-gray-100 px-2 py-1 text-left">次回見直し日</th>
-                <td className="px-2 py-1">{formatDate(plan.next_review_date)}</td>
+                <td className="px-2 py-1">{formatDateLabel(plan.next_review_date)}</td>
               </tr>
               <tr>
                 <th className="bg-gray-100 px-2 py-1 text-left">承認日</th>
-                <td className="px-2 py-1">{formatDate(plan.approved_at)}</td>
+                <td className="px-2 py-1">{formatDateLabel(plan.approved_at)}</td>
                 <th className="bg-gray-100 px-2 py-1 text-left">状態</th>
                 <td className="px-2 py-1">{plan.status}</td>
               </tr>

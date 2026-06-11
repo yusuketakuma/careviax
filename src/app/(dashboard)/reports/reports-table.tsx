@@ -4,8 +4,6 @@ import { type ReactNode, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef, type Row } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   CHANNEL_LABELS,
   REPORT_STATUS_CONFIG,
@@ -64,11 +63,6 @@ type CareReportsResponse = {
 };
 
 const ALL_VALUE = '_all';
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—';
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
 
 function buildColumns(): ColumnDef<CareReport>[] {
   return [
@@ -166,11 +160,11 @@ function buildColumns(): ColumnDef<CareReport>[] {
       header: '送付日',
       meta: {
         label: '送付日',
-        exportValue: (row: CareReport) => formatDate(row.latest_delivery_sent_at),
+        exportValue: (row: CareReport) => formatDateLabel(row.latest_delivery_sent_at),
       },
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {formatDate(row.original.latest_delivery_sent_at)}
+          {formatDateLabel(row.original.latest_delivery_sent_at)}
         </span>
       ),
     },
@@ -201,11 +195,11 @@ function buildColumns(): ColumnDef<CareReport>[] {
       header: '作成日',
       meta: {
         label: '作成日',
-        exportValue: (row: CareReport) => formatDate(row.created_at),
+        exportValue: (row: CareReport) => formatDateLabel(row.created_at),
       },
       cell: ({ row }) => (
         <span className="text-sm tabular-nums">
-          {formatDate(row.original.created_at)}
+          {formatDateLabel(row.original.created_at)}
         </span>
       ),
     },
@@ -251,7 +245,7 @@ function renderExpandedRow(row: Row<CareReport>) {
               <div className="space-y-1">
                 <p className="text-sm font-medium">{record.recipient_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {CHANNEL_LABELS[record.channel] ?? record.channel} / {formatDate(record.sent_at)}
+                  {CHANNEL_LABELS[record.channel] ?? record.channel} / {formatDateLabel(record.sent_at)}
                 </p>
               </div>
               {cfg ? <Badge variant={cfg.variant}>{cfg.label}</Badge> : <Badge variant="outline">{record.status}</Badge>}

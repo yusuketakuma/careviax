@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 
 type VisitConstraintsResponse = {
   data: {
@@ -93,21 +94,6 @@ const EMPTY_FORM: VisitConstraintsFormState = {
 function toTimeValue(value: string | null | undefined) {
   if (!value) return '';
   return value.slice(11, 16);
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '未記録';
-  try {
-    return new Intl.DateTimeFormat('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function toFormState(response?: VisitConstraintsResponse): VisitConstraintsFormState {
@@ -449,7 +435,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
             <div className="rounded-lg border border-border/70 bg-muted/10 px-3 py-2 text-sm">
               <span className="text-muted-foreground">最終ジオコード更新</span>
               <span className="ml-2 text-foreground">
-                {formatDateTime(data?.data.residence?.geocoded_at)}
+                {formatDateTimeLabel(data?.data.residence?.geocoded_at, { fallback: '未記録' })}
               </span>
             </div>
 

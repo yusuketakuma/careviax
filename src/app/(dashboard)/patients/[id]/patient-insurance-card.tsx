@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { formatDateLabel } from '@/lib/ui/date-format';
 
 type InsuranceRecord = {
   id: string;
@@ -111,15 +110,6 @@ const EMPTY_FORM: InsuranceFormState = {
   is_active: true,
   notes: '',
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '—';
-  try {
-    return format(new Date(value), 'yyyy/MM/dd', { locale: ja });
-  } catch {
-    return value;
-  }
-}
 
 function formatCopayRatio(value: number | null) {
   return value == null ? '—' : `${value}%`;
@@ -560,11 +550,11 @@ function InsuranceBlock({
                   <InsuranceRow label="自己負担" value={formatCopayRatio(item.copay_ratio)} />
                   <InsuranceRow
                     label="有効期間"
-                    value={`${formatDate(item.valid_from)} - ${formatDate(item.valid_until)}`}
+                    value={`${formatDateLabel(item.valid_from)} - ${formatDateLabel(item.valid_until)}`}
                   />
                   <InsuranceRow
                     label="申請・決定日"
-                    value={`${formatDate(item.application_submitted_at)} - ${formatDate(item.decision_at)}`}
+                    value={`${formatDateLabel(item.application_submitted_at)} - ${formatDateLabel(item.decision_at)}`}
                   />
                   <InsuranceRow label="備考" value={item.notes ?? '—'} />
                 </dl>

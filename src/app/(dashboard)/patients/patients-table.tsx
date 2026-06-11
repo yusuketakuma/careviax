@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PageSection } from '@/components/layout/page-section';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -177,11 +178,6 @@ const STATUS_FILTER_OPTIONS: Array<{ value: PatientStatusIcon; label: string }> 
 
 function toggleFilter(values: string[], target: string) {
   return values.includes(target) ? values.filter((value) => value !== target) : [...values, target];
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—';
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
 }
 
 function buildPatientColumns(args: {
@@ -338,11 +334,11 @@ function buildPatientColumns(args: {
       header: '最終訪問',
       meta: {
         label: '最終訪問',
-        exportValue: (row: PatientRow) => formatDate(row.latest_visit?.visit_date),
+        exportValue: (row: PatientRow) => formatDateLabel(row.latest_visit?.visit_date),
       },
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {formatDate(row.original.latest_visit?.visit_date)}
+          {formatDateLabel(row.original.latest_visit?.visit_date)}
         </span>
       ),
     },
@@ -353,7 +349,7 @@ function buildPatientColumns(args: {
         label: '次回訪問',
         exportValue: (row: PatientRow) =>
           row.visit_schedules[0]
-            ? `${formatDate(row.visit_schedules[0].scheduled_date)} (${PRIORITY_LABELS[row.visit_schedules[0].priority] ?? row.visit_schedules[0].priority})`
+            ? `${formatDateLabel(row.visit_schedules[0].scheduled_date)} (${PRIORITY_LABELS[row.visit_schedules[0].priority] ?? row.visit_schedules[0].priority})`
             : '—',
       },
       cell: ({ row }) => {
@@ -361,7 +357,7 @@ function buildPatientColumns(args: {
         if (!nextVisit) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="space-y-1">
-            <p className="text-sm">{formatDate(nextVisit.scheduled_date)}</p>
+            <p className="text-sm">{formatDateLabel(nextVisit.scheduled_date)}</p>
             <Badge variant={PRIORITY_VARIANTS[nextVisit.priority] ?? 'outline'}>
               {PRIORITY_LABELS[nextVisit.priority] ?? nextVisit.priority}
             </Badge>

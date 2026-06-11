@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -18,6 +16,7 @@ import {
 } from '@/lib/constants/status-labels';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { cn } from '@/lib/utils';
+import { formatDateLabel } from '@/lib/ui/date-format';
 
 type DeliveryAnalyticsResponse = {
   data: {
@@ -68,10 +67,6 @@ type DeliveryAnalyticsResponse = {
     }>;
   };
 };
-
-function formatDate(value: string) {
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
 
 export function ReportDeliveryDashboard({
   highlighted = false,
@@ -296,7 +291,7 @@ export function ReportDeliveryDashboard({
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {item.recipient_name} / {CHANNEL_LABELS[item.channel] ?? item.channel} /{' '}
-                      {formatDate(item.sent_at)}
+                      {formatDateLabel(item.sent_at)}
                     </p>
                     <p className="text-xs text-muted-foreground">{item.recipient_contact}</p>
                   </div>

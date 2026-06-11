@@ -35,6 +35,7 @@ import { ResidualMedicationChart } from '@/components/features/patients/residual
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { toast } from 'sonner';
 
 type MedicationProfile = {
@@ -207,11 +208,6 @@ function normalizePatientGender(gender: string): JahisPatient['gender'] {
   if (gender === 'male' || gender === '男性') return 'male';
   if (gender === 'female' || gender === '女性') return 'female';
   return 'other';
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return '—';
-  return format(parseISO(value), 'yyyy/MM/dd HH:mm', { locale: ja });
 }
 
 function getIssueBadgeVariant(
@@ -1078,7 +1074,7 @@ export function MedicationsContent({
                         </div>
                         <p className="text-sm text-muted-foreground">{issue.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          登録日時 {formatDateTime(issue.identified_at)}
+                          登録日時 {formatDateTimeLabel(issue.identified_at)}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1181,7 +1177,7 @@ export function MedicationsContent({
                       </div>
                       <p className="mt-2 text-sm font-medium text-foreground">{item.reason}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {item.inquiry_to_physician} / 照会日時 {formatDateTime(item.inquired_at)}
+                        {item.inquiry_to_physician} / 照会日時 {formatDateTimeLabel(item.inquired_at)}
                       </p>
                       {item.change_detail ? (
                         <p className="mt-2 text-xs text-muted-foreground">{item.change_detail}</p>

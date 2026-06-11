@@ -1,8 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
@@ -36,6 +34,7 @@ import {
 } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import {
   isOperationalMemberRole,
   roleRequiresSite,
@@ -156,13 +155,6 @@ function parseListInput(value: string) {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return '未記録';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '未記録';
-  return format(parsed, 'yyyy/MM/dd HH:mm', { locale: ja });
 }
 
 function toOptionalNumber(value: string) {
@@ -435,7 +427,7 @@ export function UsersContent() {
       header: '最終アクティブ',
       cell: ({ row }) => (
         <span className="text-xs text-muted-foreground">
-          {formatDateTime(row.original.last_active_at)}
+          {formatDateTimeLabel(row.original.last_active_at, { fallback: '未記録' })}
         </span>
       ),
     },

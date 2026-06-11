@@ -4,8 +4,6 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { CheckSquare, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/layout/page-section';
@@ -29,6 +27,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import type {
   TasksAssignedFilter,
   TasksPriorityFilter,
@@ -98,11 +97,6 @@ const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
   normal: { label: '通常', className: badgeToneClass('info') },
   low: { label: '低', className: badgeToneClass('neutral') },
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '—';
-  return format(parseISO(value), 'MM/dd', { locale: ja });
-}
 
 // --- Main ---
 
@@ -259,7 +253,7 @@ export function TasksContent({
         header: '期限',
         cell: ({ row }) => {
           const due = row.original.sla_due_at ?? row.original.due_date;
-          const label = formatDate(due);
+          const label = formatDateLabel(due, { pattern: 'MM/dd' });
           const isOverdue =
             due && row.original.status !== 'completed' ? new Date(due) < new Date() : false;
           return (
@@ -461,7 +455,7 @@ export function TasksContent({
                   <span
                     className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
                   >
-                    期限: {formatDate(due)}
+                    期限: {formatDateLabel(due, { pattern: 'MM/dd' })}
                   </span>
                   <Link href={actionHref} className="text-xs text-primary hover:underline">
                     確認する →

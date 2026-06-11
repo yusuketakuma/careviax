@@ -3,8 +3,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef, type Row } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { Filter, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
@@ -20,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 
 // --- Types ---
 
@@ -77,11 +76,6 @@ type BulkExportRunSummary = {
   successfulCount: number | null;
   failedCount: number;
 };
-
-function formatDateTime(value: string | null) {
-  if (!value) return '—';
-  return format(parseISO(value), 'MM/dd HH:mm', { locale: ja });
-}
 
 function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -215,7 +209,7 @@ export function JobsDashboardContent() {
         header: '開始',
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatDateTime(row.original.latest_run?.started_at ?? null)}
+            {formatDateTimeLabel(row.original.latest_run?.started_at ?? null, { pattern: 'MM/dd HH:mm' })}
           </span>
         ),
         size: 110,
@@ -225,7 +219,7 @@ export function JobsDashboardContent() {
         header: '完了',
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatDateTime(row.original.latest_run?.completed_at ?? null)}
+            {formatDateTimeLabel(row.original.latest_run?.completed_at ?? null, { pattern: 'MM/dd HH:mm' })}
           </span>
         ),
         size: 110,

@@ -4,14 +4,13 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { getPatientMedicationPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
   id: string;
@@ -35,11 +34,6 @@ type MedicationProfile = {
 type MedicationProfileResponse = {
   data: MedicationProfile[];
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '—';
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
 
 export default function MedicationPrintPage() {
   const params = useParams<{ id: string }>();
@@ -149,7 +143,7 @@ export default function MedicationPrintPage() {
                 <th className="bg-gray-100 px-2 py-1 text-left">フリガナ</th>
                 <td className="px-2 py-1">{patient.name_kana ?? '—'}</td>
                 <th className="bg-gray-100 px-2 py-1 text-left">生年月日</th>
-                <td className="px-2 py-1">{formatDate(patient.birth_date)}</td>
+                <td className="px-2 py-1">{formatDateLabel(patient.birth_date)}</td>
               </tr>
             </tbody>
           </table>
@@ -177,8 +171,8 @@ export default function MedicationPrintPage() {
                       <td className="px-2 py-1">{profile.drug_name}</td>
                       <td className="px-2 py-1">{profile.dose ?? '—'}</td>
                       <td className="px-2 py-1">{profile.frequency ?? '—'}</td>
-                      <td className="px-2 py-1">{formatDate(profile.start_date)}</td>
-                      <td className="px-2 py-1">{formatDate(profile.end_date)}</td>
+                      <td className="px-2 py-1">{formatDateLabel(profile.start_date)}</td>
+                      <td className="px-2 py-1">{formatDateLabel(profile.end_date)}</td>
                       <td className="px-2 py-1">{profile.prescriber ?? '—'}</td>
                       <td className="px-2 py-1">{profile.is_current ? '服薬中' : '終了'}</td>
                     </tr>

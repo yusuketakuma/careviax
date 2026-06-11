@@ -23,6 +23,7 @@ import { Loading } from '@/components/ui/loading';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import { PageSection } from '@/components/layout/page-section';
 import {
   ADMIN_MASTER_READINESS_GROUPS,
@@ -108,8 +109,8 @@ function monthParam(value: Date) {
   return format(value, 'yyyy-MM');
 }
 
-function formatDateLabel(value: string) {
-  return format(parseISO(value), 'M月d日', { locale: ja });
+function formatMonthDayLabel(value: string) {
+  return formatDateLabel(value, { pattern: 'M月d日' });
 }
 
 function formatMonthLabel(value: string) {
@@ -504,7 +505,7 @@ function UnrecordedVisitsSection({ visits }: { visits: OverdueDashboard['unrecor
                 >
                   <p className="text-sm font-medium text-foreground">{visit.patient_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    訪問日 {formatDateLabel(visit.scheduled_date)}
+                    訪問日 {formatMonthDayLabel(visit.scheduled_date)}
                   </p>
                   <Badge variant="outline">{visit.schedule_status}</Badge>
                 </Link>
@@ -538,7 +539,7 @@ function UnsentReportsSection({ reports }: { reports: OverdueDashboard['unsent_r
                   <div>
                     <p className="text-sm font-medium text-foreground">{report.patient_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {report.report_type} / 更新 {formatDateLabel(report.updated_at)}
+                      {report.report_type} / 更新 {formatMonthDayLabel(report.updated_at)}
                     </p>
                   </div>
                   <Badge
@@ -586,9 +587,9 @@ function OverdueTasksSection({ tasks }: { tasks: OverdueDashboard['overdue_tasks
                   <p className="text-xs text-muted-foreground">
                     期限{' '}
                     {task.sla_due_at
-                      ? formatDateLabel(task.sla_due_at)
+                      ? formatMonthDayLabel(task.sla_due_at)
                       : task.due_date
-                        ? formatDateLabel(task.due_date)
+                        ? formatMonthDayLabel(task.due_date)
                         : '未設定'}
                   </p>
                 </Link>
@@ -636,7 +637,7 @@ function WorkflowExceptionsSection({
                     </div>
                     <p className="text-xs text-muted-foreground">{exception.exception_type}</p>
                     <p className="text-xs text-muted-foreground">
-                      発生 {formatDateLabel(exception.created_at)}
+                      発生 {formatMonthDayLabel(exception.created_at)}
                     </p>
                   </Link>
                 </li>

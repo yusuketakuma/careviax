@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   REPORT_TYPE_LABELS,
   REPORT_STATUS_CONFIG,
@@ -149,13 +150,6 @@ function isStringRecord(value: unknown): value is Record<string, unknown> {
 function readStringField(value: Record<string, unknown> | null, field: string) {
   const fieldValue = value?.[field];
   return typeof fieldValue === 'string' && fieldValue.trim() ? fieldValue : null;
-}
-
-function formatDateLabel(value: string | null | undefined) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return format(date, 'yyyy/MM/dd', { locale: ja });
 }
 
 function hasStringFields(value: unknown, fields: string[]) {

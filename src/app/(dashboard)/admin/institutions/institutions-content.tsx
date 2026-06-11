@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel } from '@/lib/ui/date-format';
 
 type Institution = {
   id: string;
@@ -49,11 +50,6 @@ const EMPTY_FORM: FormState = {
   fax: '',
   notes: '',
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString('ja-JP');
-}
 
 export function InstitutionsContent() {
   const orgId = useOrgId();
@@ -185,7 +181,7 @@ export function InstitutionsContent() {
     {
       accessorKey: 'last_prescribed_at',
       header: '最終処方日',
-      cell: ({ row }) => formatDate(row.original.last_prescribed_at),
+      cell: ({ row }) => formatDateLabel(row.original.last_prescribed_at, { pattern: 'yyyy/M/d' }),
     },
     {
       id: 'actions',

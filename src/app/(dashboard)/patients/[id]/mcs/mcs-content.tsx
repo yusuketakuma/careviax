@@ -40,22 +40,8 @@ import {
   resolvePatientMcsSyncSource,
 } from '@/lib/patient-mcs/source';
 import { describePatientMcsStatus, describePatientMcsSyncResult } from '@/lib/patient-mcs/status';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { cn } from '@/lib/utils';
-
-function formatDateTime(value: string | null) {
-  if (!value) return '未記録';
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-
-  return new Intl.DateTimeFormat('ja-JP', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(parsed);
-}
 
 function isOtherProfessionalRole(role: string | null) {
   if (!role) return false;
@@ -136,11 +122,11 @@ function PatientMcsSyncPanel({
             </Badge>
           ) : null}
           <span className="text-xs text-muted-foreground">
-            最終試行 {formatDateTime(link?.lastSyncAttemptAt ?? null)}
+            最終試行 {formatDateTimeLabel(link?.lastSyncAttemptAt ?? null, { fallback: '未記録' })}
           </span>
           {link?.lastSyncedAt ? (
             <span className="text-xs text-muted-foreground">
-              最終成功 {formatDateTime(link.lastSyncedAt)}
+              最終成功 {formatDateTimeLabel(link.lastSyncedAt, { fallback: '未記録' })}
             </span>
           ) : null}
         </div>
@@ -348,7 +334,7 @@ function PatientMcsMessagesPanel({
                           ) : null}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {message.postedAtLabel || formatDateTime(message.postedAt)}
+                          {message.postedAtLabel || formatDateTimeLabel(message.postedAt, { fallback: '未記録' })}
                         </p>
                       </div>
 

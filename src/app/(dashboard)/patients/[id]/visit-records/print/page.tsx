@@ -4,14 +4,13 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { getPatientVisitRecordPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
   id: string;
@@ -59,13 +58,6 @@ const visitTypeLabels: Record<string, string> = {
   emergency: '緊急',
   physician_co_visit: '医師同行',
 };
-
-function formatDate(value: string | null, withTime = false) {
-  if (!value) return '—';
-  return format(parseISO(value), withTime ? 'yyyy/MM/dd HH:mm' : 'yyyy/MM/dd', {
-    locale: ja,
-  });
-}
 
 export default function PatientVisitRecordsPrintPage() {
   const params = useParams<{ id: string }>();
@@ -181,7 +173,7 @@ export default function PatientVisitRecordsPrintPage() {
                 <th className="bg-gray-100 px-2 py-1 text-left">フリガナ</th>
                 <td className="px-2 py-1">{patient.name_kana ?? '—'}</td>
                 <th className="bg-gray-100 px-2 py-1 text-left">生年月日</th>
-                <td className="px-2 py-1">{formatDate(patient.birth_date)}</td>
+                <td className="px-2 py-1">{formatDateLabel(patient.birth_date)}</td>
               </tr>
               <tr>
                 <th className="bg-gray-100 px-2 py-1 text-left">対象期間</th>
@@ -210,7 +202,7 @@ export default function PatientVisitRecordsPrintPage() {
                 {records.length > 0 ? (
                   records.map((record) => (
                     <tr key={record.id}>
-                      <td className="px-2 py-1">{formatDate(record.visit_date)}</td>
+                      <td className="px-2 py-1">{formatDateLabel(record.visit_date)}</td>
                       <td className="px-2 py-1">
                         {record.schedule
                           ? (visitTypeLabels[record.schedule.visit_type] ?? record.schedule.visit_type)
@@ -219,8 +211,8 @@ export default function PatientVisitRecordsPrintPage() {
                       <td className="px-2 py-1">
                         {outcomeLabels[record.outcome_status] ?? record.outcome_status}
                       </td>
-                      <td className="px-2 py-1">{formatDate(record.next_visit_suggestion_date)}</td>
-                      <td className="px-2 py-1">{formatDate(record.updated_at, true)}</td>
+                      <td className="px-2 py-1">{formatDateLabel(record.next_visit_suggestion_date)}</td>
+                      <td className="px-2 py-1">{formatDateTimeLabel(record.updated_at)}</td>
                     </tr>
                   ))
                 ) : (
@@ -237,7 +229,7 @@ export default function PatientVisitRecordsPrintPage() {
           {records.map((record, index) => (
             <section key={record.id}>
               <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-                【{index + 1}. {formatDate(record.visit_date)} / {outcomeLabels[record.outcome_status] ?? record.outcome_status}】
+                【{index + 1}. {formatDateLabel(record.visit_date)} / {outcomeLabels[record.outcome_status] ?? record.outcome_status}】
               </h2>
               <div className="space-y-2 border border-gray-400 px-3 py-2 text-xs">
                 <p><span className="font-semibold">S:</span> {record.soap_subjective ?? '記録なし'}</p>
