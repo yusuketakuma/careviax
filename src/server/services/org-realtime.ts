@@ -30,6 +30,7 @@ export const WORKFLOW_REALTIME_SOURCES = [
   'visit_schedule_proposals_create',
   'visit_schedule_proposals_reject',
   'visit_schedule_proposals_reorder',
+  'visit_routes_mixed_reorder',
   'visit_schedules_create',
   'visit_schedules_delete',
   'visit_schedules_generate',

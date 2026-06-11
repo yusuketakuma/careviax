@@ -10,6 +10,12 @@ export type VisitScheduleProposalRouteUpdate = {
   route_order: number;
 };
 
+export type VisitMixedRouteUpdate = {
+  item_type: 'schedule' | 'proposal';
+  id: string;
+  route_order: number;
+};
+
 export type VisitRouteConfirmationContext = {
   source: string;
   date?: string;
@@ -43,6 +49,29 @@ export async function applyVisitScheduleRouteUpdates(args: {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message ?? '訪問予定の順路更新に失敗しました');
+  }
+  return response.json();
+}
+
+export async function applyMixedVisitRouteUpdates(args: {
+  orgId: string;
+  updates: VisitMixedRouteUpdate[];
+  confirmationContext?: VisitRouteConfirmationContext;
+}) {
+  const response = await fetch('/api/visit-routes/reorder', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': args.orgId,
+    },
+    body: JSON.stringify({
+      updates: args.updates,
+      ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? '混在ルート順の更新に失敗しました');
   }
   return response.json();
 }

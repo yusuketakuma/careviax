@@ -16,6 +16,16 @@ import { ja } from 'date-fns/locale';
 import { CalendarClock, Car, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
@@ -34,10 +44,7 @@ import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import type { VisitRoutePlan } from '@/server/services/visit-route-engine';
-import {
-  applyVisitScheduleProposalRouteUpdates,
-  applyVisitScheduleRouteUpdates,
-} from '../visit-route-client';
+import { applyMixedVisitRouteUpdates, applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { useRouteOrderDraft } from '../route-order-draft';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import {
@@ -124,6 +131,16 @@ type RouteCellSelection = {
   dateKey: string;
 };
 
+type MixedRouteItem = {
+  routeId: string;
+  itemType: 'schedule' | 'proposal';
+  itemId: string;
+  patientName: string;
+  timeWindowStart: string | null;
+  timeWindowEnd: string | null;
+  routeOrder: number | null;
+};
+
 type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
 
 const EMPTY_CASES: CaseOption[] = [];
@@ -159,6 +176,12 @@ function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null 
       : null,
   ].filter(Boolean);
   return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
+}
+
+function shortEntityIdentifier(value: string | null | undefined) {
+  const candidate = value?.trim();
+  if (!candidate) return '未設定';
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
 }
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
@@ -317,6 +340,43 @@ function buildRouteReorderPayloads(args: {
   return Array.from(uniquePayloads.values());
 }
 
+function compareMixedRouteItems(left: MixedRouteItem, right: MixedRouteItem) {
+  const leftOrder = left.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  const rightOrder = right.routeOrder ?? Number.MAX_SAFE_INTEGER;
+  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  const leftTime = left.timeWindowStart ?? '';
+  const rightTime = right.timeWindowStart ?? '';
+  if (leftTime !== rightTime) return leftTime.localeCompare(rightTime);
+  if (left.itemType !== right.itemType) return left.itemType === 'schedule' ? -1 : 1;
+  return left.itemId.localeCompare(right.itemId);
+}
+
+function buildMixedRouteItems(args: {
+  schedules: VisitSchedule[];
+  proposals: Proposal[];
+}): MixedRouteItem[] {
+  return [
+    ...args.schedules.map((schedule) => ({
+      routeId: schedule.id,
+      itemType: 'schedule' as const,
+      itemId: schedule.id,
+      patientName: schedule.case_.patient.name,
+      timeWindowStart: schedule.time_window_start,
+      timeWindowEnd: schedule.time_window_end,
+      routeOrder: schedule.route_order,
+    })),
+    ...args.proposals.map((proposal) => ({
+      routeId: `proposal:${proposal.id}`,
+      itemType: 'proposal' as const,
+      itemId: proposal.id,
+      patientName: proposal.case_.patient.name,
+      timeWindowStart: proposal.time_window_start,
+      timeWindowEnd: proposal.time_window_end,
+      routeOrder: proposal.route_order,
+    })),
+  ].sort(compareMixedRouteItems);
+}
+
 export function ScheduleWeeklyOptimizer({
   initialDate,
   initialCaseId,
@@ -363,6 +423,7 @@ export function ScheduleWeeklyOptimizer({
   const [draggingSchedule, setDraggingSchedule] = useState<DragSchedule | null>(null);
   const [hoveredCell, setHoveredCell] = useState<string | null>(null);
   const [selectedRouteCell, setSelectedRouteCell] = useState<RouteCellSelection | null>(null);
+  const [routeApplyConfirmOpen, setRouteApplyConfirmOpen] = useState(false);
   const [lastPlannerDiagnostics, setLastPlannerDiagnostics] =
     useState<ProposalGenerationDiagnostics | null>(null);
   const deferredCaseSearchInput = useDeferredValue(caseSearchInput.trim());
@@ -636,12 +697,14 @@ export function ScheduleWeeklyOptimizer({
       ) ?? []
     );
   }, [effectiveSelectedRouteCell, proposalsByCell]);
-  const currentSelectedCellOrderedIds = useMemo(
-    () => [
-      ...selectedCellSchedules.map((schedule) => schedule.id),
-      ...selectedCellProposals.map((proposal) => `proposal:${proposal.id}`),
-    ],
+  const selectedCellMixedRouteItems = useMemo(
+    () =>
+      buildMixedRouteItems({ schedules: selectedCellSchedules, proposals: selectedCellProposals }),
     [selectedCellProposals, selectedCellSchedules],
+  );
+  const currentSelectedCellOrderedIds = useMemo(
+    () => selectedCellMixedRouteItems.map((item) => item.routeId),
+    [selectedCellMixedRouteItems],
   );
 
   const routePreviewQuery = useQuery<VisitRoutePlan>({
@@ -684,6 +747,26 @@ export function ScheduleWeeklyOptimizer({
     optimizedIds: routePreviewQuery.data?.orderedScheduleIds ?? currentSelectedCellOrderedIds,
     currentIds: currentSelectedCellOrderedIds,
   });
+  const selectedCellRouteItemById = useMemo(
+    () => new Map(selectedCellMixedRouteItems.map((item) => [item.routeId, item])),
+    [selectedCellMixedRouteItems],
+  );
+  const selectedCellRouteApplyRows = useMemo(
+    () =>
+      selectedCellRouteDraft.draftIds
+        .map((routeId, index) => {
+          const item = selectedCellRouteItemById.get(routeId);
+          if (!item) return null;
+          const currentIndex = selectedCellRouteDraft.currentIds.indexOf(routeId);
+          return {
+            ...item,
+            currentOrder: currentIndex >= 0 ? currentIndex + 1 : null,
+            nextOrder: index + 1,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null),
+    [selectedCellRouteDraft.currentIds, selectedCellRouteDraft.draftIds, selectedCellRouteItemById],
+  );
 
   const createProposalMutation = useMutation({
     mutationFn: async (payload: ProposalPayload) => {
@@ -836,57 +919,37 @@ export function ScheduleWeeklyOptimizer({
       if (!routePreviewQuery.data || selectedCellRouteDraft.draftIds.length === 0) {
         throw new Error('反映できるルート順がありません');
       }
-      const scheduleUpdates = selectedCellRouteDraft.draftIds
-        .map((scheduleId, index) => {
-          if (scheduleId.startsWith('proposal:')) return null;
-          const schedule = selectedCellSchedules.find((item) => item.id === scheduleId);
-          if (!schedule) return null;
-          return {
-            scheduleId,
-            scheduled_date: schedule.scheduled_date.slice(0, 10),
-            pharmacist_id: schedule.pharmacist_id,
-            route_order: index + 1,
-          };
-        })
-        .filter(
-          (
-            item,
-          ): item is {
-            scheduleId: string;
-            scheduled_date: string;
-            pharmacist_id: string;
-            route_order: number;
-          } => item != null,
-        );
-      const proposalUpdates = selectedCellRouteDraft.draftIds
-        .map((scheduleId, index) =>
-          scheduleId.startsWith('proposal:')
-            ? {
-                proposal_id: scheduleId.replace('proposal:', ''),
-                route_order: index + 1,
-              }
-            : null,
-        )
-        .filter(
-          (
-            item,
-          ): item is {
-            proposal_id: string;
-            route_order: number;
-          } => item != null,
-        );
+      if (!effectiveSelectedRouteCell) throw new Error('対象セルが選択されていません');
 
-      if (scheduleUpdates.length > 0) {
-        await applyVisitScheduleRouteUpdates({ orgId, updates: scheduleUpdates });
-      }
-      if (proposalUpdates.length > 0) {
-        await applyVisitScheduleProposalRouteUpdates({
-          orgId,
-          routeOrderUpdates: proposalUpdates,
-        });
-      }
+      const updates = selectedCellRouteDraft.draftIds.map((routeId, index) =>
+        routeId.startsWith('proposal:')
+          ? {
+              item_type: 'proposal' as const,
+              id: routeId.replace('proposal:', ''),
+              route_order: index + 1,
+            }
+          : {
+              item_type: 'schedule' as const,
+              id: routeId,
+              route_order: index + 1,
+            },
+      );
+
+      await applyMixedVisitRouteUpdates({
+        orgId,
+        updates,
+        confirmationContext: {
+          source: 'weekly_optimizer_mixed_route_preview',
+          date: effectiveSelectedRouteCell.dateKey,
+          pharmacist_id: effectiveSelectedRouteCell.pharmacistId,
+          travel_mode: plannerSettings.travel_mode,
+          target_count: updates.length,
+          route_order_diff_count: selectedCellRouteDraft.diffCount,
+        },
+      });
     },
     onSuccess: async () => {
+      setRouteApplyConfirmOpen(false);
       toast.success('セル内の route_order を更新しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'weekly-optimizer', orgId] }),
@@ -1591,7 +1654,7 @@ export function ScheduleWeeklyOptimizer({
           routeError={
             routePreviewQuery.error instanceof Error ? routePreviewQuery.error.message : null
           }
-          onApplyRoute={() => applySelectedRouteMutation.mutate()}
+          onApplyRoute={() => setRouteApplyConfirmOpen(true)}
           applyRouteDisabled={
             !routePreviewQuery.data ||
             selectedCellRouteDraft.draftIds.length === 0 ||
@@ -1632,6 +1695,101 @@ export function ScheduleWeeklyOptimizer({
           onSelectAlternatePharmacist={selectAlternatePharmacist}
         />
       ) : null}
+
+      <AlertDialog
+        open={routeApplyConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !applySelectedRouteMutation.isPending) {
+            setRouteApplyConfirmOpen(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>週間ルートの route_order を反映しますか</AlertDialogTitle>
+            <AlertDialogDescription>
+              確定予定と未確定候補を同じ順路として扱います。対象セル、順序、件数を確認してから反映してください。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs text-muted-foreground">対象セル</dt>
+                <dd className="font-medium">{selectedRouteCellSummary ?? '薬剤師・日付未選択'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">移動手段</dt>
+                <dd className="font-medium">{plannerSettings.travel_mode}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">差分</dt>
+                <dd className="font-medium">{selectedCellRouteDraft.diffCount}件</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">確定予定</dt>
+                <dd className="font-medium">{selectedCellSchedules.length}件</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">未確定候補</dt>
+                <dd className="font-medium">{selectedCellProposals.length}件</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">反映対象</dt>
+                <dd className="font-medium">{selectedCellRouteApplyRows.length}件</dd>
+              </div>
+            </dl>
+
+            <div className="max-h-[18rem] space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-background p-2">
+              {selectedCellRouteApplyRows.map((row) => (
+                <div
+                  key={row.routeId}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        {row.itemType === 'schedule' ? '確定予定' : '候補'}
+                      </Badge>
+                      <p className="font-medium text-foreground">{row.patientName}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {timeRangeLabel(row.timeWindowStart, row.timeWindowEnd)} / ID{' '}
+                      {shortEntityIdentifier(row.itemId)}
+                    </p>
+                  </div>
+                  <p className="text-sm font-medium text-foreground">
+                    #{row.currentOrder ?? '-'} → #{row.nextOrder}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象セルと順路が一致している場合のみ反映してください。
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applySelectedRouteMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => applySelectedRouteMutation.mutate()}
+              disabled={
+                !routePreviewQuery.data ||
+                selectedCellRouteDraft.draftIds.length === 0 ||
+                applySelectedRouteMutation.isPending ||
+                !selectedCellRouteDraft.differsFromCurrent
+              }
+            >
+              {applySelectedRouteMutation.isPending
+                ? 'route_order 反映中...'
+                : `${selectedCellRouteApplyRows.length}件の route_order を反映`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
