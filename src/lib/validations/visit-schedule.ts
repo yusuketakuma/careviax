@@ -85,7 +85,7 @@ export const updateVisitScheduleSchema = createVisitScheduleBaseSchema
   .partial()
   .extend({
     schedule_status: z.enum(scheduleStatusValues).optional(),
-    route_order: z.number().int().nonnegative().optional(),
+    route_order: z.number().int().positive().optional(),
     vehicle_resource_id: z.string().trim().min(1).nullable().optional(),
   })
   .superRefine(validateTimeWindowOrder);

@@ -967,6 +967,24 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects zero route_order values before loading the schedule', async () => {
+    const response = await PATCH(createPatchRequest({ route_order: 0 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed JSON patch payloads before loading the schedule', async () => {
     const response = await PATCH(createMalformedJsonPatchRequest(), {
       params: Promise.resolve({ id: 'schedule_1' }),
