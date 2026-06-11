@@ -38,6 +38,12 @@ import {
   readPdfJsonObjectField,
   readPdfJsonObjects,
 } from '@/server/services/pdf-document-json';
+import {
+  MEDICATION_CALENDAR_SLOT_KEYS,
+  MEDICATION_CALENDAR_SLOT_LABELS,
+  buildMedicationCalendarSlots,
+  enumerateMedicationCalendarMonthDays,
+} from '@/server/services/pdf-medication-calendar';
 
 type PdfRenderResult = {
   buffer: Buffer;
@@ -244,16 +250,6 @@ const CONFERENCE_NOTE_TYPE_LABELS: Record<string, string> = {
   care_team: '多職種カンファレンス',
   emergency: '緊急カンファレンス',
   death_conference: 'デスカンファレンス',
-};
-
-const SLOT_KEYS = ['morning', 'noon', 'evening', 'bedtime'] as const;
-type CalendarSlot = (typeof SLOT_KEYS)[number];
-
-const SLOT_LABELS: Record<CalendarSlot, string> = {
-  morning: '朝',
-  noon: '昼',
-  evening: '夕',
-  bedtime: '眠前',
 };
 
 const VISIT_OUTCOME_LABELS: Record<string, string> = {
@@ -547,88 +543,6 @@ function parseConferenceStructuredSections(raw: unknown): ConferenceNoteStructur
       },
     ];
   });
-}
-
-function inferCalendarSlots(frequency?: string | null): CalendarSlot[] {
-  const text = frequency ?? '';
-  const slots = new Set<CalendarSlot>();
-
-  if (text.includes('毎食')) {
-    slots.add('morning');
-    slots.add('noon');
-    slots.add('evening');
-  }
-  if (text.includes('朝')) slots.add('morning');
-  if (text.includes('昼')) slots.add('noon');
-  if (text.includes('夕') || text.includes('夜')) slots.add('evening');
-  if (text.includes('眠前') || text.includes('就寝')) slots.add('bedtime');
-
-  if (slots.size === 0) {
-    slots.add('morning');
-  }
-
-  return [...slots];
-}
-
-function isMedicationActiveOnDate(profile: MedicationProfileRow, date: Date) {
-  const start = profile.start_date ? new Date(profile.start_date) : null;
-  const end = profile.end_date ? new Date(profile.end_date) : null;
-  const compare = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-
-  if (start) {
-    const startValue = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
-    if (compare < startValue) return false;
-  }
-
-  if (end) {
-    const endValue = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
-    if (compare > endValue) return false;
-  }
-
-  return true;
-}
-
-function enumerateMonthDays(month: Date) {
-  const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-  const daysInMonth = last.getDate();
-  const offset = first.getDay();
-  const cells: Array<Date | null> = [];
-
-  for (let index = 0; index < offset; index += 1) {
-    cells.push(null);
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(new Date(month.getFullYear(), month.getMonth(), day));
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(null);
-  }
-
-  return cells;
-}
-
-function buildMedicationCalendarSlots(
-  medications: MedicationProfileRow[],
-  date: Date | null,
-): Partial<Record<CalendarSlot, string[]>> {
-  if (!date) return {};
-
-  const slots: Partial<Record<CalendarSlot, string[]>> = {};
-
-  for (const profile of medications) {
-    if (!isMedicationActiveOnDate(profile, date)) continue;
-    for (const slot of inferCalendarSlots(profile.frequency)) {
-      if (!slots[slot]) {
-        slots[slot] = [];
-      }
-      slots[slot].push([profile.drug_name, profile.dose].filter(Boolean).join(' '));
-    }
-  }
-
-  return slots;
 }
 
 function PdfShell({
@@ -1221,7 +1135,7 @@ function renderMedicationHistoryContent(record: MedicationHistoryRecord) {
 }
 
 function renderMedicationCalendarContent(record: MedicationCalendarRecord) {
-  const calendarCells = enumerateMonthDays(record.month);
+  const calendarCells = enumerateMedicationCalendarMonthDays(record.month);
   const weekRows = Array.from({ length: calendarCells.length / 7 }, (_, index) =>
     calendarCells.slice(index * 7, index * 7 + 7),
   );
@@ -1267,9 +1181,11 @@ function renderMedicationCalendarContent(record: MedicationCalendarRecord) {
                 <View key={`day-${weekIndex}-${dayIndex}`} style={styles.calendarDayCell}>
                   <Text style={styles.calendarDayNumber}>{date ? date.getDate() : ''}</Text>
                   {date
-                    ? SLOT_KEYS.map((slot) => (
+                    ? MEDICATION_CALENDAR_SLOT_KEYS.map((slot) => (
                         <View key={`${date.toISOString()}-${slot}`} style={styles.calendarSlotBox}>
-                          <Text style={styles.calendarSlotLabel}>{SLOT_LABELS[slot]}</Text>
+                          <Text style={styles.calendarSlotLabel}>
+                            {MEDICATION_CALENDAR_SLOT_LABELS[slot]}
+                          </Text>
                           {(slots[slot] ?? []).slice(0, 3).map((line, lineIndex) => (
                             <Text key={`${slot}-${lineIndex}`} style={styles.calendarDrugLine}>
                               {line}
