@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useForm, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -314,7 +314,9 @@ export function VisitRecordForm({
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<VisitAttachmentDraft[]>([]);
   const [visitGeoLog, setVisitGeoLog] = useState<VisitGeoLog | null>(null);
-  const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(false);
+  const [locationTrackingEnabled] = useState(() =>
+    typeof window === 'undefined' ? false : getVisitLocationTrackingPreference(),
+  );
   const [locationCaptureState, setLocationCaptureState] = useState<
     'idle' | 'capturing-start' | 'capturing-end'
   >('idle');
@@ -410,11 +412,6 @@ export function VisitRecordForm({
     }
 
     toast.error(error instanceof Error ? error.message : 'オフライン下書きの保存に失敗しました');
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setLocationTrackingEnabled(getVisitLocationTrackingPreference());
   }, []);
 
   const form = useForm<FormValues>({
@@ -770,6 +767,43 @@ export function VisitRecordForm({
     } satisfies UploadedVisitAttachment;
   }
 
+  const structuredSoapDraft = buildStructuredSoap(watchedValues);
+  const visitPreparationPack = visitPreparationSnapshot?.data.pack;
+  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
+  const billingBlockers = visitPreparationPack?.billing_blockers ?? [];
+  const conferenceContext = visitPreparationPack?.conference_context ?? [];
+  const medicationPeriod = visitPreparationPack?.medication_period ?? null;
+  const prescriptionChanges = visitPreparationPack?.prescription_changes ?? null;
+  const previousVisitSummary = visitPreparationPack?.previous_visit?.summary ?? null;
+  const facilityParallelContext = visitPreparationPack?.facility_parallel_context ?? null;
+  const effectiveFacilityVisitContext: FacilityVisitContext | null =
+    facilityParallelContext && facilityParallelContext.patients.length > 1
+      ? {
+          label: facilityParallelContext.label ?? '同一施設',
+          siteName: facilityParallelContext.site_name,
+          placeKind: facilityParallelContext.place_kind,
+          commonNotes: facilityParallelContext.common_notes,
+          patients: facilityParallelContext.patients.map((patient) => ({
+            scheduleId: patient.schedule_id,
+            patientId: patient.patient_id,
+            patientName: patient.patient_name,
+            patientNameKana: patient.patient_name_kana,
+            birthDate: patient.patient_birth_date,
+            gender: patient.patient_gender,
+            unitName: patient.unit_name,
+            routeOrder: patient.route_order,
+            scheduleStatus: patient.schedule_status,
+            medicationStartDate: patient.medication_start_date,
+            medicationEndDate: patient.medication_end_date,
+            preparationBlockersCount: patient.preparation_blockers_count,
+            visitRecordId: patient.visit_record_id,
+            visitOutcomeStatus: patient.visit_outcome_status,
+          })),
+        }
+      : facilityVisitContext;
+  const intakeInitialTransitionExpected =
+    visitPreparationPack?.intake_context?.initial_transition_management_expected ?? null;
+
   // Create visit record mutation
   const createRecord = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -1084,6 +1118,10 @@ export function VisitRecordForm({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [form, notifyDraftSaveFailure, saveDraft, scrollToErrorSummary]);
 
+  function handleVisitRecordFormSubmit(event: FormEvent<HTMLFormElement>) {
+    void form.handleSubmit(onSubmit, scrollToErrorSummary)(event);
+  }
+
   const attachmentsField = (
     <VisitAttachmentsField
       disabled={createRecord.isPending}
@@ -1107,42 +1145,6 @@ export function VisitRecordForm({
   const voiceRecognition = useSpeechRecognition({
     onTranscript: handleAppendTranscript,
   });
-  const structuredSoapDraft = buildStructuredSoap(watchedValues);
-  const visitPreparationPack = visitPreparationSnapshot?.data.pack;
-  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
-  const billingBlockers = visitPreparationPack?.billing_blockers ?? [];
-  const conferenceContext = visitPreparationPack?.conference_context ?? [];
-  const medicationPeriod = visitPreparationPack?.medication_period ?? null;
-  const prescriptionChanges = visitPreparationPack?.prescription_changes ?? null;
-  const previousVisitSummary = visitPreparationPack?.previous_visit?.summary ?? null;
-  const facilityParallelContext = visitPreparationPack?.facility_parallel_context ?? null;
-  const effectiveFacilityVisitContext: FacilityVisitContext | null =
-    facilityParallelContext && facilityParallelContext.patients.length > 1
-      ? {
-          label: facilityParallelContext.label ?? '同一施設',
-          siteName: facilityParallelContext.site_name,
-          placeKind: facilityParallelContext.place_kind,
-          commonNotes: facilityParallelContext.common_notes,
-          patients: facilityParallelContext.patients.map((patient) => ({
-            scheduleId: patient.schedule_id,
-            patientId: patient.patient_id,
-            patientName: patient.patient_name,
-            patientNameKana: patient.patient_name_kana,
-            birthDate: patient.patient_birth_date,
-            gender: patient.patient_gender,
-            unitName: patient.unit_name,
-            routeOrder: patient.route_order,
-            scheduleStatus: patient.schedule_status,
-            medicationStartDate: patient.medication_start_date,
-            medicationEndDate: patient.medication_end_date,
-            preparationBlockersCount: patient.preparation_blockers_count,
-            visitRecordId: patient.visit_record_id,
-            visitOutcomeStatus: patient.visit_outcome_status,
-          })),
-        }
-      : facilityVisitContext;
-  const intakeInitialTransitionExpected =
-    visitPreparationPack?.intake_context?.initial_transition_management_expected ?? null;
   const residualMedicationCount = watchedValues.residual_medications?.length ?? 0;
   const homeVisit2026ReadinessItems = buildHomeVisit2026ReadinessItems({
     structuredSoap: structuredSoapDraft,
@@ -1266,7 +1268,7 @@ export function VisitRecordForm({
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit, scrollToErrorSummary)} noValidate>
+      <form onSubmit={handleVisitRecordFormSubmit} noValidate>
         {/* Hidden fields */}
         <input type="hidden" {...form.register('schedule_id')} />
         <input type="hidden" {...form.register('patient_id')} />

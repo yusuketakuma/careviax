@@ -41,8 +41,8 @@ describe('WeeklyCellInspector', () => {
       priority: 'normal',
       schedule_status: 'planned',
       scheduled_date: '2026-04-09',
-      time_window_start: '2026-04-09T09:00:00.000Z',
-      time_window_end: '2026-04-09T10:00:00.000Z',
+      time_window_start: '2026-04-09T09:00:00',
+      time_window_end: '2026-04-09T10:00:00',
       pharmacist_id: 'pharmacist_1',
       assignment_mode: 'primary',
       route_order: 1,
@@ -70,8 +70,8 @@ describe('WeeklyCellInspector', () => {
       proposal_status: 'proposed',
       patient_contact_status: 'pending',
       proposed_date: '2026-04-09',
-      time_window_start: '2026-04-09T11:00:00.000Z',
-      time_window_end: '2026-04-09T12:00:00.000Z',
+      time_window_start: '2026-04-09T11:00:00',
+      time_window_end: '2026-04-09T12:00:00',
       proposed_pharmacist_id: 'pharmacist_1',
       proposed_pharmacist: null,
       assignment_mode: 'primary',
@@ -154,6 +154,8 @@ describe('WeeklyCellInspector', () => {
     expect(screen.getByText('選択セルのルートプレビュー')).toBeTruthy();
     expect(screen.getByText('確定予定')).toBeTruthy();
     expect(screen.getByText('未確定候補')).toBeTruthy();
+    expect(screen.getByText('09:00 - 10:00')).toBeTruthy();
+    expect(screen.getByText('11:00 - 12:00')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'このセルに提案' }));
     expect(generateMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: '希望枠を09:00-18:00へ広げる' }));

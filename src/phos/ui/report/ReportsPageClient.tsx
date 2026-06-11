@@ -24,6 +24,11 @@ export type ReportsPageClientProps = {
 };
 
 type ReportsPagePhase = 'LOADING' | 'READY' | 'ERROR';
+type ReportsLoadState = {
+  key: string;
+  phase: Exclude<ReportsPagePhase, 'LOADING'>;
+  errorMessage?: string;
+};
 
 function buildReportDeliveryIdempotencyKey(deliveryId: string, operation: string): string {
   const suffix =
@@ -69,20 +74,24 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
     return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken });
   }, [apiBaseUrl, client, configurationError, getAccessToken]);
   const [deliveries, setDeliveries] = useState<ReportDeliveryView[]>([]);
-  const [phase, setPhase] = useState<ReportsPagePhase>(apiClient ? 'LOADING' : 'ERROR');
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(configurationError);
+  const requestKey = apiClient ? 'reports:waiting-action-required' : 'unconfigured';
+  const [loadState, setLoadState] = useState<ReportsLoadState>({
+    key: 'unconfigured',
+    phase: 'ERROR',
+    errorMessage: configurationError,
+  });
+  const phase: ReportsPagePhase = configurationError
+    ? 'ERROR'
+    : loadState.key === requestKey
+      ? loadState.phase
+      : 'LOADING';
+  const errorMessage = configurationError ?? loadState.errorMessage;
   const [submittingDeliveryId, setSubmittingDeliveryId] = useState<string | undefined>();
 
   useEffect(() => {
-    if (!apiClient) {
-      setPhase('ERROR');
-      setErrorMessage(configurationError);
-      return;
-    }
+    if (!apiClient) return;
 
     let active = true;
-    setPhase('LOADING');
-    setErrorMessage(undefined);
 
     void Promise.all([
       apiClient.getReportDeliveries({ status: ReportDeliveryStatus.WAITING_REPLY }),
@@ -91,18 +100,21 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
       .then(([waitingResponse, actionRequiredResponse]) => {
         if (!active) return;
         setDeliveries([...waitingResponse.items, ...actionRequiredResponse.items]);
-        setPhase('READY');
+        setLoadState({ key: requestKey, phase: 'READY' });
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setPhase('ERROR');
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState({
+          key: requestKey,
+          phase: 'ERROR',
+          errorMessage: actionErrorMessage(error),
+        });
       });
 
     return () => {
       active = false;
     };
-  }, [apiClient, configurationError]);
+  }, [apiClient, requestKey]);
 
   const handleOpenCard = useCallback(
     (cardId: string) => {
@@ -116,7 +128,7 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
       if (!apiClient || submittingDeliveryId) return;
 
       setSubmittingDeliveryId(delivery.delivery_id);
-      setErrorMessage(undefined);
+      setLoadState((current) => ({ ...current, errorMessage: undefined }));
       try {
         const response = await apiClient.registerReportReply(delivery.delivery_id, {
           ...input,
@@ -128,7 +140,7 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
         });
         setDeliveries((current) => upsertActiveReportDelivery(current, response));
       } catch (error) {
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState((current) => ({ ...current, errorMessage: actionErrorMessage(error) }));
       } finally {
         setSubmittingDeliveryId(undefined);
       }
@@ -141,7 +153,7 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
       if (!apiClient || submittingDeliveryId) return;
 
       setSubmittingDeliveryId(delivery.delivery_id);
-      setErrorMessage(undefined);
+      setLoadState((current) => ({ ...current, errorMessage: undefined }));
       try {
         const response = await apiClient.markReportActionDone(delivery.delivery_id, {
           ...input,
@@ -153,7 +165,7 @@ export function ReportsPageClient({ apiBaseUrl, client, getAccessToken }: Report
         });
         setDeliveries((current) => upsertActiveReportDelivery(current, response));
       } catch (error) {
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState((current) => ({ ...current, errorMessage: actionErrorMessage(error) }));
       } finally {
         setSubmittingDeliveryId(undefined);
       }

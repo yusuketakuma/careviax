@@ -393,7 +393,7 @@ export function BillingDashboardContent() {
       </PageSection>
 
       <PageSection
-        title="月次推移と主要ブロッカー"
+        title="月次推移と主な止まっている理由"
         description="最近の推移と、算定不可の主因を並べて確認する補助グループです。"
         contentClassName="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]"
       >
@@ -452,7 +452,7 @@ export function BillingDashboardContent() {
 
         <Card>
           <CardHeader>
-            <h3 className="font-heading text-base leading-snug font-medium">主要ブロッカー</h3>
+            <h3 className="font-heading text-base leading-snug font-medium">主な止まっている理由</h3>
             <CardDescription>算定不可の主因を上位から表示します。</CardDescription>
           </CardHeader>
           <CardContent>
@@ -475,7 +475,7 @@ export function BillingDashboardContent() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">現在の算定ブロッカーはありません。</p>
+              <p className="text-sm text-muted-foreground">現在の算定を止めている理由はありません。</p>
             )}
           </CardContent>
         </Card>

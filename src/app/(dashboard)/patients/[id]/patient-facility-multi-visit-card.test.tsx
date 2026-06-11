@@ -157,6 +157,7 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
     },
     lab_summary: [],
     jahis_supplemental_records: [],
+    workspace: null,
     privacy: {
       sensitive_fields_masked: false,
       address_fields_masked: false,

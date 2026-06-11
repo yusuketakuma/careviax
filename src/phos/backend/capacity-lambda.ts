@@ -1,8 +1,4 @@
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  type DynamoDBClient as AwsDynamoDBClient,
-} from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, type DynamoDBClient as AwsDynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { createCapacityHandler } from './capacity-handlers';
 import type { PhosCapacityRepository } from './capacity-repository';
 import { createDynamoCapacityRepository } from './dynamo-capacity-repository';
@@ -13,7 +9,7 @@ import {
   type PhosLambdaRuntimeDependencies,
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient } from './phos-aws-clients';
 
 type CapacityLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosCapacityRepository;
@@ -41,8 +37,7 @@ export function createCapacityRepository(
   deps: CapacityLambdaDependencies = {},
 ): PhosCapacityRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient =
-    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
+  const dynamoClient = deps.dynamo_client ?? getDefaultPhosDynamoClient();
   const storeClient = deps.store_client ?? createDynamoCapacityClient({ client: dynamoClient });
   return createDynamoCapacityRepository(storeClient, { now: deps.now });
 }

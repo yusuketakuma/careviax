@@ -8,7 +8,12 @@ import {
 import { assertRouteAccess, PhosAuthorizationError } from './authorization';
 import { PhosDomainError } from './cards-repository';
 import { toErrorLambdaResponse } from './error-response';
-import { parseIdempotencyKey, parsePositiveVersion, validationError } from './input-validation';
+import {
+  parseIdempotencyKey,
+  parsePositiveVersion,
+  parseRequiredString,
+  validationError,
+} from './input-validation';
 import type { PhosHandler, PhosHttpEvent } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
@@ -64,14 +69,12 @@ function parsePayload(step: VisitStep, value: unknown): VisitStepMutationPayload
   const reason_code = typeof input.reason_code === 'string' ? input.reason_code.trim() : undefined;
   const reason_note = typeof input.reason_note === 'string' ? input.reason_note.trim() : undefined;
   const evidence_key =
-    typeof input.evidence_key === 'string' ? input.evidence_key.trim() : undefined;
+    step === VisitStep.EVIDENCE_UPLOAD
+      ? parseRequiredString(input.evidence_key, { field: 'payload.evidence_key' })
+      : typeof input.evidence_key === 'string' && input.evidence_key.trim()
+        ? input.evidence_key.trim()
+        : undefined;
 
-  if (
-    step === VisitStep.EVIDENCE_UPLOAD &&
-    (typeof input.evidence_key !== 'string' || !evidence_key)
-  ) {
-    throw validationError({ field: 'payload.evidence_key' });
-  }
   if (
     step === VisitStep.EVIDENCE_UPLOAD &&
     evidence_key &&

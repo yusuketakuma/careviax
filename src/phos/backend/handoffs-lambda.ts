@@ -1,5 +1,4 @@
 import {
-  DynamoDBClient,
   GetItemCommand,
   QueryCommand,
   type AttributeValue,
@@ -43,7 +42,7 @@ import {
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
 import type { TenantContext } from './tenant-context';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient } from './phos-aws-clients';
 
 type DynamoItem = Record<string, AttributeValue>;
 type HandoffLambdaHandler = ReturnType<typeof withTenantContext>;
@@ -303,8 +302,7 @@ export function createHandoffRepository(
   if (deps.repository) return deps.repository;
 
   const now = deps.now ?? (() => new Date());
-  const dynamoClient =
-    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
+  const dynamoClient = deps.dynamo_client ?? getDefaultPhosDynamoClient();
   const storeClient =
     deps.store_client ?? createDynamoHandoffStoreClient({ client: dynamoClient, now });
   const mapper = deps.mapper ?? createDynamoHandoffMapper({ now });

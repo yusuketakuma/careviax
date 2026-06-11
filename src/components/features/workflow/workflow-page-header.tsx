@@ -18,6 +18,8 @@ type WorkflowPageHeaderProps = {
   title: string;
   description: string;
   action?: WorkflowPageHeaderAction;
+  /** 複数アクション。先頭のみ primary(主操作は 1 画面 1 つ)、以降は outline。 */
+  actions?: WorkflowPageHeaderAction[];
   supportingContent?: ReactNode;
   childrenLabel?: string;
   children?: ReactNode;
@@ -31,6 +33,7 @@ export function WorkflowPageHeader({
   title,
   description,
   action,
+  actions,
   supportingContent,
   childrenLabel,
   children,
@@ -38,6 +41,7 @@ export function WorkflowPageHeader({
   mainWorkflowDescription,
   className,
 }: WorkflowPageHeaderProps) {
+  const resolvedActions = actions ?? (action ? [action] : []);
   const effectiveChildrenLabel = children ? (childrenLabel ?? '関連導線') : undefined;
   return (
     <div className={cn('space-y-5', className)} data-page-header="true">
@@ -63,14 +67,24 @@ export function WorkflowPageHeader({
           ) : null}
         </div>
 
-        {action ? (
-          <Link
-            href={action.href}
-            className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:w-auto sm:px-3.5"
-          >
-            {action.icon}
-            {action.label}
-          </Link>
+        {resolvedActions.length > 0 ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {resolvedActions.map((item, index) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:w-auto sm:px-3.5',
+                  index === 0
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'border border-border bg-background text-foreground hover:bg-muted',
+                )}
+              >
+                {item.icon}
+                {item.label}
+              </Link>
+            ))}
+          </div>
         ) : null}
       </div>
 

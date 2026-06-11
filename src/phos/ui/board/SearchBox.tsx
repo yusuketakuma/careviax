@@ -13,11 +13,8 @@ export function SearchBox({ query, onQueryChange }: SearchBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
-  const [draft, setDraft] = useState(query);
-
-  useEffect(() => {
-    setDraft(query);
-  }, [query]);
+  const [draftState, setDraftState] = useState({ sourceQuery: query, draft: query });
+  const draft = draftState.sourceQuery === query ? draftState.draft : query;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -53,6 +50,10 @@ export function SearchBox({ query, onQueryChange }: SearchBoxProps) {
     onQueryChange(value);
   }
 
+  function updateDraft(value: string) {
+    setDraftState({ sourceQuery: query, draft: value });
+  }
+
   return (
     <label className="flex min-h-11 items-center gap-2 rounded-md border border-border/70 bg-background px-3 text-sm focus-within:ring-3 focus-within:ring-ring/50">
       <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -67,9 +68,9 @@ export function SearchBox({ query, onQueryChange }: SearchBoxProps) {
         }}
         onCompositionEnd={(event) => {
           composingRef.current = false;
-          setDraft(event.currentTarget.value);
+          updateDraft(event.currentTarget.value);
         }}
-        onChange={(event) => setDraft(event.currentTarget.value)}
+        onChange={(event) => updateDraft(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' || composingRef.current) return;
           commitNow(event.currentTarget.value);

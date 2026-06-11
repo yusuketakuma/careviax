@@ -1,3 +1,8 @@
+/**
+ * @deprecated /search ページへ移行。p0_05。
+ * 配線は app-shell の Cmd+K → router.push('/search')。
+ * ファイル削除は後続の掃除タスクで実施可能。
+ */
 'use client';
 
 import Link from 'next/link';
@@ -170,25 +175,33 @@ export function GlobalSearchModal({ open, onOpenChange, pathname }: GlobalSearch
   const resultRefs = useRef<(HTMLAnchorElement | null)[]>([]);
 
   useEffect(() => {
-    setRecentOperations(saveRecentOperation(pathname));
+    const timer = window.setTimeout(() => {
+      setRecentOperations(saveRecentOperation(pathname));
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setPatients([]);
-      setDrugs([]);
-      setFacilities([]);
-      setStaff([]);
-      setTasks([]);
-      setPrescriptions([]);
-      setVisitRecords([]);
-      setSearchError(null);
-      setActiveIndex(-1);
-      return;
-    }
+    const timer = window.setTimeout(() => {
+      if (!open) {
+        setQuery('');
+        setPatients([]);
+        setDrugs([]);
+        setFacilities([]);
+        setStaff([]);
+        setTasks([]);
+        setPrescriptions([]);
+        setVisitRecords([]);
+        setSearchError(null);
+        setActiveIndex(-1);
+        return;
+      }
 
-    setRecentOperations(readRecentOperations());
+      setRecentOperations(readRecentOperations());
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -198,17 +211,20 @@ export function GlobalSearchModal({ open, onOpenChange, pathname }: GlobalSearch
 
     const normalized = query.trim();
     if (!normalized) {
-      setPatients([]);
-      setDrugs([]);
-      setFacilities([]);
-      setStaff([]);
-      setTasks([]);
-      setPrescriptions([]);
-      setVisitRecords([]);
-      setSearchError(null);
-      setIsLoading(false);
-      setActiveIndex(-1);
-      return;
+      const timer = window.setTimeout(() => {
+        setPatients([]);
+        setDrugs([]);
+        setFacilities([]);
+        setStaff([]);
+        setTasks([]);
+        setPrescriptions([]);
+        setVisitRecords([]);
+        setSearchError(null);
+        setIsLoading(false);
+        setActiveIndex(-1);
+      }, 0);
+
+      return () => window.clearTimeout(timer);
     }
 
     const controller = new AbortController();

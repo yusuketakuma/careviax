@@ -1,10 +1,9 @@
 import {
-  DynamoDBClient,
   GetItemCommand,
   type AttributeValue,
   type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
-import { S3Client } from '@aws-sdk/client-s3';
+import type { S3Client } from '@aws-sdk/client-s3';
 import { UserRole } from '@/phos/contracts/phos_contracts';
 import {
   createEvidencePresignUploadHandler,
@@ -26,7 +25,7 @@ import { cardSk, tenantPk } from './dynamodb-keys';
 import { phosCoreTableName } from './dynamo-cards-repository';
 import { PhosDomainError } from './cards-repository';
 import type { TenantContext } from './tenant-context';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient, getDefaultPhosS3Client } from './phos-aws-clients';
 
 type EvidenceLambdaDependencies = PhosLambdaRuntimeDependencies & {
   presigner?: EvidenceUploadPresigner;
@@ -55,7 +54,7 @@ export function createEvidenceUploadPresigner(
     throw new Error('PH-OS evidence KMS key ARN is not configured');
   }
   return createS3EvidenceUploadPresigner({
-    client: deps.s3_client ?? withPhosAwsClientTimeout(new S3Client(phosAwsClientConfig())),
+    client: deps.s3_client ?? getDefaultPhosS3Client(),
     bucket,
     kms_key_arn,
     expires_in_seconds: deps.expires_in_seconds,
@@ -131,9 +130,7 @@ function createLazyEvidenceUploadAuthorizer(
       authorizer ??=
         deps.upload_authorizer ??
         createDynamoEvidenceUploadAuthorizer({
-          client:
-            deps.dynamo_client ??
-            withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig())),
+          client: deps.dynamo_client ?? getDefaultPhosDynamoClient(),
         });
       return authorizer.authorizeEvidenceUpload(ctx, card_id);
     },
@@ -145,8 +142,7 @@ export function createEvidenceUploadIntentStore(
 ): EvidenceUploadIntentStore {
   if (deps.upload_intent_store) return deps.upload_intent_store;
   return createDynamoEvidenceUploadIntentStore({
-    client:
-      deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig())),
+    client: deps.dynamo_client ?? getDefaultPhosDynamoClient(),
     now: deps.now,
   });
 }

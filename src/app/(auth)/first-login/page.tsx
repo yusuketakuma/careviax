@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
@@ -13,9 +13,8 @@ import { AlertCircle, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
 import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
-  readStoredCognitoChallenge,
-  type CognitoChallengePayload,
 } from '@/lib/auth/cognito-challenge';
+import { useSafeCallbackUrl, useStoredCognitoChallenge } from '@/lib/auth/browser-auth-state';
 
 interface PasswordStrength {
   score: 0 | 1 | 2 | 3 | 4;
@@ -47,37 +46,19 @@ function evaluatePasswordStrength(password: string): PasswordStrength {
 
 export default function FirstLoginPage() {
   const router = useRouter();
-  const [callbackUrl, setCallbackUrl] = useState('/dashboard');
+  const callbackUrl = useSafeCallbackUrl();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [passwordChanged, setPasswordChanged] = useState(false);
-  const [challenge, setChallenge] = useState<CognitoChallengePayload | null>(null);
-
-  useEffect(() => {
-    const rawCallbackUrl =
-      new URLSearchParams(window.location.search).get('callbackUrl') ?? '/dashboard';
-    setCallbackUrl(rawCallbackUrl.startsWith('/') ? rawCallbackUrl : '/dashboard');
-
-    const raw = window.sessionStorage.getItem(COGNITO_CHALLENGE_STORAGE_KEY);
-    if (!raw) {
-      setError('初回パスワード設定セッションが見つかりません。ログインからやり直してください。');
-      return;
-    }
-
-    const parsed = readStoredCognitoChallenge(raw);
-    if (!parsed) {
-      setError('初回パスワード設定セッションが壊れています。ログインからやり直してください。');
-      return;
-    }
-    if (parsed.type !== 'NEW_PASSWORD_REQUIRED') {
-      setError('初回パスワード設定セッションが無効です。ログインからやり直してください。');
-      return;
-    }
-    setChallenge(parsed);
-  }, []);
+  const { challenge, error: challengeError } = useStoredCognitoChallenge('NEW_PASSWORD_REQUIRED', {
+    missing: '初回パスワード設定セッションが見つかりません。ログインからやり直してください。',
+    malformed: '初回パスワード設定セッションが壊れています。ログインからやり直してください。',
+    invalid: '初回パスワード設定セッションが無効です。ログインからやり直してください。',
+  });
+  const error = submitError ?? challengeError;
 
   const strength = evaluatePasswordStrength(newPassword);
   const passwordsMatch = newPassword === confirmPassword;
@@ -89,7 +70,7 @@ export default function FirstLoginPage() {
     e.preventDefault();
     if (!canSubmit) return;
 
-    setError(null);
+    setSubmitError(null);
     setIsLoading(true);
 
     try {
@@ -97,8 +78,6 @@ export default function FirstLoginPage() {
         throw new Error('SESSION_MISSING');
       }
 
-      const callbackUrl =
-        new URLSearchParams(window.location.search).get('callbackUrl') ?? '/dashboard';
       const result = await signIn('credentials', {
         email: challenge.email,
         mode: 'new_password',
@@ -125,7 +104,7 @@ export default function FirstLoginPage() {
       window.sessionStorage.removeItem(COGNITO_CHALLENGE_STORAGE_KEY);
       setPasswordChanged(true);
     } catch {
-      setError('パスワードの設定に失敗しました。もう一度お試しください。');
+      setSubmitError('パスワードの設定に失敗しました。もう一度お試しください。');
     } finally {
       setIsLoading(false);
     }

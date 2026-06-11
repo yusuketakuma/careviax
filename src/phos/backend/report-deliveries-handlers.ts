@@ -12,6 +12,7 @@ import {
   parseIdempotencyKey,
   parseOptionalIsoDate,
   parsePositiveVersion,
+  parseRequiredString,
   parseSourceRefs,
   readQueryParam,
   validationError,
@@ -51,25 +52,20 @@ function parseRegisterReplyRequest(body: unknown): RegisterReportReplyRequest {
       ],
     });
   }
-  if (typeof input.reply_summary !== 'string' || input.reply_summary.trim().length === 0) {
-    throw validationError({ field: 'reply_summary' });
-  }
-  if (
-    input.result_status === ReportDeliveryStatus.ACTION_REQUIRED &&
-    (typeof input.action_required_note !== 'string' ||
-      input.action_required_note.trim().length === 0)
-  ) {
-    throw validationError({ field: 'action_required_note' });
-  }
+  const reply_summary = parseRequiredString(input.reply_summary, { field: 'reply_summary' });
+  const action_required_note =
+    input.result_status === ReportDeliveryStatus.ACTION_REQUIRED
+      ? parseRequiredString(input.action_required_note, { field: 'action_required_note' })
+      : typeof input.action_required_note === 'string' && input.action_required_note.trim()
+        ? input.action_required_note.trim()
+        : undefined;
   const reply_received_at = parseOptionalIsoDate(input.reply_received_at, 'reply_received_at');
   const source_refs = parseSourceRefs(input.source_refs);
 
   return {
     result_status: input.result_status,
-    reply_summary: input.reply_summary.trim(),
-    ...(input.action_required_note
-      ? { action_required_note: input.action_required_note.trim() }
-      : {}),
+    reply_summary,
+    ...(action_required_note ? { action_required_note } : {}),
     ...(reply_received_at ? { reply_received_at } : {}),
     ...(source_refs ? { source_refs } : {}),
     idempotency_key: parseIdempotencyKey(input.idempotency_key),
@@ -82,11 +78,8 @@ function parseMarkActionDoneRequest(body: unknown): MarkReportActionDoneRequest 
     throw validationError({ field: 'body' });
   }
   const input = body as Partial<MarkReportActionDoneRequest>;
-  if (typeof input.action_note !== 'string' || input.action_note.trim().length === 0) {
-    throw validationError({ field: 'action_note' });
-  }
   return {
-    action_note: input.action_note.trim(),
+    action_note: parseRequiredString(input.action_note, { field: 'action_note' }),
     idempotency_key: parseIdempotencyKey(input.idempotency_key),
     client_version: parsePositiveVersion(input.client_version),
   };

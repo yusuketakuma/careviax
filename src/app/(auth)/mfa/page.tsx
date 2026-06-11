@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,20 +8,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
-import {
-  COGNITO_CHALLENGE_STORAGE_KEY,
-  readStoredCognitoChallenge,
-  type CognitoChallengePayload,
-} from '@/lib/auth/cognito-challenge';
+import { COGNITO_CHALLENGE_STORAGE_KEY } from '@/lib/auth/cognito-challenge';
+import { useSafeCallbackUrl, useStoredCognitoChallenge } from '@/lib/auth/browser-auth-state';
 
 export default function MfaPage() {
   const router = useRouter();
+  const callbackUrl = useSafeCallbackUrl();
   const [mode, setMode] = useState<'totp' | 'recovery'>('totp');
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [recoveryCode, setRecoveryCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [challenge, setChallenge] = useState<CognitoChallengePayload | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { challenge, error: challengeError } = useStoredCognitoChallenge('SOFTWARE_TOKEN_MFA', {
+    missing: 'MFA認証セッションが見つかりません。ログインからやり直してください。',
+    malformed: 'MFA認証セッションが壊れています。ログインからやり直してください。',
+    invalid: 'MFA認証セッションが無効です。ログインからやり直してください。',
+  });
+  const error = submitError ?? challengeError;
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const setRef = useCallback(
@@ -30,25 +33,6 @@ export default function MfaPage() {
     },
     [],
   );
-
-  useEffect(() => {
-    const raw = window.sessionStorage.getItem(COGNITO_CHALLENGE_STORAGE_KEY);
-    if (!raw) {
-      setError('MFA認証セッションが見つかりません。ログインからやり直してください。');
-      return;
-    }
-
-    const parsed = readStoredCognitoChallenge(raw);
-    if (!parsed) {
-      setError('MFA認証セッションが壊れています。ログインからやり直してください。');
-      return;
-    }
-    if (parsed.type !== 'SOFTWARE_TOKEN_MFA') {
-      setError('MFA認証セッションが無効です。ログインからやり直してください。');
-      return;
-    }
-    setChallenge(parsed);
-  }, []);
 
   function handleDigitChange(index: number, value: string) {
     if (value.length > 1) {
@@ -88,7 +72,7 @@ export default function MfaPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    setError(null);
+    setSubmitError(null);
     setIsLoading(true);
 
     try {
@@ -98,7 +82,7 @@ export default function MfaPage() {
 
       if (mode === 'recovery') {
         if (!recoveryCode.trim()) {
-          setError('リカバリーコードを入力してください。');
+          setSubmitError('リカバリーコードを入力してください。');
           return;
         }
 
@@ -123,18 +107,16 @@ export default function MfaPage() {
 
       const code = digits.join('');
       if (code.length !== 6) {
-        setError('6桁のコードを入力してください。');
+        setSubmitError('6桁のコードを入力してください。');
         return;
       }
 
-      const callbackUrl =
-        new URLSearchParams(window.location.search).get('callbackUrl') ?? '/dashboard';
       const result = await signIn('credentials', {
         email: challenge.email,
         mode: 'mfa',
         code,
         challengeSession: challenge.session,
-        callbackUrl: callbackUrl.startsWith('/') ? callbackUrl : '/dashboard',
+        callbackUrl,
         redirect: false,
       });
 
@@ -150,7 +132,7 @@ export default function MfaPage() {
 
       router.push('/dashboard');
     } catch (err) {
-      setError(
+      setSubmitError(
         err instanceof Error
           ? err.message
           : mode === 'recovery'
@@ -191,7 +173,7 @@ export default function MfaPage() {
                 className="flex-1"
                 onClick={() => {
                   setMode('totp');
-                  setError(null);
+                  setSubmitError(null);
                 }}
               >
                 認証コード
@@ -202,7 +184,7 @@ export default function MfaPage() {
                 className="flex-1"
                 onClick={() => {
                   setMode('recovery');
-                  setError(null);
+                  setSubmitError(null);
                 }}
               >
                 リカバリーコード

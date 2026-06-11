@@ -41,6 +41,11 @@ async function getDashboardViewer() {
   };
 }
 
+/**
+ * /dashboard。ビューポート最上部は new_01_dashboard の運用コックピット
+ * (DashboardContent 先頭の DashboardCockpit)。旧ホームヘッダー(主要導線・
+ * 職種フォーカス)はナビゲーションハブとして下部に温存する。
+ */
 export default async function DashboardPage() {
   const viewer = await getDashboardViewer();
   const todayLabel = new Intl.DateTimeFormat('ja-JP', {
@@ -50,13 +55,18 @@ export default async function DashboardPage() {
   }).format(new Date());
 
   return (
-    <div>
-      <div className="border-b border-border bg-[radial-gradient(circle_at_top_left,rgba(34,113,177,0.10),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_26%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))] px-6 py-5">
+    <PageScaffold variant="bare">
+      <DashboardContent focusRole={viewer.focusRole} />
+      <div className="rounded-xl border border-border bg-[radial-gradient(circle_at_top_left,rgba(34,113,177,0.10),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_26%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))] px-6 py-5">
         <WorkflowPageHeader
           className="mb-0 space-y-0"
           eyebrow="Daily Operations Home"
           title="PH-OS ホーム"
           description={`今日の優先対応、予定、担当別の入口を最初に確認するための運用トップです。現在は ${viewer.roleLabel} 向けの見方を強調しています。`}
+          actions={[
+            { href: '/prescriptions/new', label: '処方を取り込む' },
+            { href: '/schedules', label: 'スケジュール管理' },
+          ]}
           supportingContent={
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
               <div className="space-y-1">
@@ -104,21 +114,18 @@ export default async function DashboardPage() {
           <PageShortcutLinks links={DASHBOARD_HEADER_SHORTCUTS} />
         </WorkflowPageHeader>
       </div>
-      <PageScaffold variant="bare">
-        <DashboardContent focusRole={viewer.focusRole} />
-        <OnboardingDismissable>
-          <OnboardingChecklist />
-        </OnboardingDismissable>
-        <DashboardSectionGroup
-          id="dashboard-environment-guidance"
-          eyebrow="Reference"
-          title="利用環境の目安"
-          description="主要業務の推奨端末を補足情報として分離し、日次オペレーションの情報と混ざらないようにしています。"
-          tone="reference"
-        >
-          <DeviceSupportMatrix embedded />
-        </DashboardSectionGroup>
-      </PageScaffold>
-    </div>
+      <OnboardingDismissable>
+        <OnboardingChecklist />
+      </OnboardingDismissable>
+      <DashboardSectionGroup
+        id="dashboard-environment-guidance"
+        eyebrow="Reference"
+        title="利用環境の目安"
+        description="主要業務の推奨端末を補足情報として分離し、日次オペレーションの情報と混ざらないようにしています。"
+        tone="reference"
+      >
+        <DeviceSupportMatrix embedded />
+      </DashboardSectionGroup>
+    </PageScaffold>
   );
 }

@@ -6,7 +6,9 @@ import { HelpPopover } from '@/components/ui/help-popover';
 import { Separator } from '@/components/ui/separator';
 import { AdminNavigation } from './admin-navigation';
 import { BillingKpiSection } from './billing-kpi-section';
+import { DashboardCockpit } from './dashboard-cockpit';
 import { DashboardSectionGroup } from './dashboard-section-group';
+import { DashboardSummaryBadges } from './dashboard-summary-badges';
 import { PatientGridSection } from './patient-grid-section';
 import { CoordinationNavigation } from './coordination-navigation';
 import { DashboardRoleGuide } from './dashboard-role-guide';
@@ -77,16 +79,40 @@ function NavigationCluster({
   );
 }
 
+/**
+ * /dashboard 本文。最上部は new_01_dashboard の運用コックピット
+ * (2 カラム: 条件バナー/今すぐ対応/今日の流れ/工程の今 + 右レール)。
+ * 旧構成(集計バッジ・患者カード・ナビゲーションハブ・請求 KPI)は
+ * 機能温存のためビューポート下部へ残置する。
+ */
 export function DashboardContent({ focusRole = 'common' }: { focusRole?: DashboardFocusRole }) {
   return (
     <div className="space-y-8">
+      <DashboardCockpit />
+
       <DashboardSectionGroup
         id="dashboard-daily-operations"
         eyebrow="Daily Operations"
         title="今日の運用"
-        description="緊急度、今日の予定、優先作業をひとまとまりにし、出勤直後にその日の動きを決めやすい配置へ整理しています。"
+        description="今日の件数と患者カードを最初に置き、出勤直後に「誰の何を進めるか」をカードの主操作からそのまま始められる配置にしています。"
         tone="daily"
+        contentClassName="space-y-6"
       >
+        <DashboardSummaryBadges />
+
+        <section className="space-y-4" aria-labelledby="dashboard-patients-section">
+          <SectionHeader
+            icon={Users}
+            title="患者カード"
+            description="リスク順に患者を並べ、カードの主操作から処方受付や個別確認へそのまま遷移します。"
+          />
+          <div id="dashboard-patients-section">
+            <PatientGridSection />
+          </div>
+        </section>
+
+        <Separator />
+
         <div
           className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.95fr)]"
           data-testid="dashboard-priority-actions"
@@ -183,46 +209,24 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
         </div>
       </DashboardSectionGroup>
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
-        <DashboardSectionGroup
-          id="dashboard-patients-group"
-          eyebrow="Patient Monitoring"
-          title="患者確認"
-          description="患者検索とリスク確認を横断監視として独立させ、日次業務を回し始めた後に見直しやすくしています。"
-          tone="monitoring"
-        >
-          <section className="space-y-4" aria-labelledby="dashboard-patients-section">
-            <SectionHeader
-              icon={Users}
-              title="患者カード"
-              description="リスク順に患者を並べ、検索しながら処方受付や個別確認へそのまま遷移します。"
-            />
-            <div id="dashboard-patients-section">
-              <PatientGridSection />
-            </div>
-          </section>
-        </DashboardSectionGroup>
-
-        <DashboardSectionGroup
-          id="dashboard-billing-kpi"
-          eyebrow="Billing KPI"
-          title="請求状況"
-          description="当月の請求候補、未確定、締めブロッカーを補助監視として分離し、月次締め前の確認を独立して行えるようにしています。"
-          tone="reference"
-          className="self-start"
-        >
-          <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
-            <SectionHeader
-              icon={Receipt}
-              title="当月請求 KPI"
-              description="候補数、未確定、ブロッカーを見て、月次締め前に対処が必要な項目を把握します。"
-            />
-            <div id="dashboard-billing-kpi-section">
-              <BillingKpiSection />
-            </div>
-          </section>
-        </DashboardSectionGroup>
-      </div>
+      <DashboardSectionGroup
+        id="dashboard-billing-kpi"
+        eyebrow="Billing KPI"
+        title="請求状況"
+        description="当月の請求候補、未確定、締めを止めている理由を補助監視として分離し、月次締め前の確認を独立して行えるようにしています。"
+        tone="reference"
+      >
+        <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
+          <SectionHeader
+            icon={Receipt}
+            title="当月請求 KPI"
+            description="候補数、未確定、止まっている理由を見て、月次締め前に対処が必要な項目を把握します。"
+          />
+          <div id="dashboard-billing-kpi-section">
+            <BillingKpiSection />
+          </div>
+        </section>
+      </DashboardSectionGroup>
     </div>
   );
 }

@@ -278,12 +278,19 @@ export function PrescriptionIntakeForm() {
   // Patient selection state
   const [patientSelection, setPatientSelection] = useState({
     patientSearch: '',
-    selectedPatientId: '',
+    selectedPatientId: initialPatientId,
     selectedPatientName: '',
-    selectedCaseId: '',
+    selectedCaseId: initialCaseId,
   });
-  const { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId } =
-    patientSelection;
+  const {
+    patientSearch: patientSearchDraft,
+    selectedPatientId,
+    selectedPatientName: selectedPatientNameDraft,
+    selectedCaseId: selectedCaseIdDraft,
+  } = patientSelection;
+  const patientSearch = patientSearchDraft;
+  const selectedPatientName = selectedPatientNameDraft;
+  const selectedCaseId = selectedCaseIdDraft;
   const updatePatientSelection = useCallback(
     (patch: Partial<typeof patientSelection>) =>
       setPatientSelection((prev) => ({ ...prev, ...patch })),
@@ -563,66 +570,64 @@ export function PrescriptionIntakeForm() {
   });
 
   useEffect(() => {
-    if (!orgId || selectedPatientId || !initialPatientId) return;
-    updatePatientSelection({ selectedPatientId: initialPatientId });
-  }, [initialPatientId, orgId, selectedPatientId, updatePatientSelection]);
-
-  useEffect(() => {
     if (!selectedPatientData) return;
-    updatePatientSelection({
-      selectedPatientName: selectedPatientData.name,
-      ...(!patientSearch.trim()
-        ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` }
-        : {}),
-    });
-  }, [patientSearch, selectedPatientData, updatePatientSelection]);
+    const timer = window.setTimeout(() => {
+      updatePatientSelection({
+        selectedPatientName: selectedPatientData.name,
+        ...(!patientSearch.trim()
+          ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` }
+          : {}),
+      });
+    }, 0);
 
-  useEffect(() => {
-    if (!initialCaseId || !casesData?.data || selectedCaseId) return;
-    if (casesData.data.some((candidate) => candidate.id === initialCaseId)) {
-      updatePatientSelection({ selectedCaseId: initialCaseId });
-    }
-  }, [casesData?.data, initialCaseId, selectedCaseId, updatePatientSelection]);
+    return () => window.clearTimeout(timer);
+  }, [patientSearch, selectedPatientData, updatePatientSelection]);
 
   useEffect(() => {
     if (!qrDraftData || appliedQrDraftId === qrDraftData.id) return;
 
-    const qrLines = (qrDraftData.parsed_data.lines ?? []).map(mapQrLineToForm);
-    updatePatientSelection({
-      selectedPatientId: qrDraftData.patient_id ?? '',
-      selectedPatientName: qrDraftData.parsed_data.patientName ?? '',
-      patientSearch:
-        qrDraftData.parsed_data.patientName && qrDraftData.parsed_data.patientNameKana
-          ? `${qrDraftData.parsed_data.patientName} (${qrDraftData.parsed_data.patientNameKana})`
-          : (qrDraftData.parsed_data.patientName ?? ''),
-    });
-    updatePrescriptionMeta({
-      sourceType: 'qr_scan',
-      prescribedDate: qrDraftData.parsed_data.prescriptionDate || format(new Date(), 'yyyy-MM-dd'),
-      prescriberName: qrDraftData.parsed_data.prescriberName ?? '',
-      selectedPrescriberInstitutionId: qrDraftData.parsed_data.prescriberInstitutionId ?? '',
-      prescriberInstitution: qrDraftData.parsed_data.prescriberInstitution ?? '',
-    });
-    setLines(
-      qrLines.length > 0
-        ? qrLines.map((line, index) => ({ ...line, line_number: index + 1 }))
-        : [emptyLine()],
-    );
-    updateInquiry({
-      inquiryReason: '',
-      inquiryToPhysician: '',
-      inquiryContent: '',
-      inquiryDueDate: '',
-      proposalOrigin: 'post_inquiry',
-      residualAdjustment: false,
-    });
-    setError(
-      qrDraftData.patient_id
-        ? null
-        : 'QR下書きに患者紐付けがありません。患者・ケースを選択して内容を確認してください',
-    );
-    setAppliedQrDraftId(qrDraftData.id);
-    setQrDraftSubmissionId(qrDraftData.id);
+    const timer = window.setTimeout(() => {
+      const qrLines = (qrDraftData.parsed_data.lines ?? []).map(mapQrLineToForm);
+      updatePatientSelection({
+        selectedPatientId: qrDraftData.patient_id ?? '',
+        selectedPatientName: qrDraftData.parsed_data.patientName ?? '',
+        patientSearch:
+          qrDraftData.parsed_data.patientName && qrDraftData.parsed_data.patientNameKana
+            ? `${qrDraftData.parsed_data.patientName} (${qrDraftData.parsed_data.patientNameKana})`
+            : (qrDraftData.parsed_data.patientName ?? ''),
+        selectedCaseId: '',
+      });
+      updatePrescriptionMeta({
+        sourceType: 'qr_scan',
+        prescribedDate:
+          qrDraftData.parsed_data.prescriptionDate || format(new Date(), 'yyyy-MM-dd'),
+        prescriberName: qrDraftData.parsed_data.prescriberName ?? '',
+        selectedPrescriberInstitutionId: qrDraftData.parsed_data.prescriberInstitutionId ?? '',
+        prescriberInstitution: qrDraftData.parsed_data.prescriberInstitution ?? '',
+      });
+      setLines(
+        qrLines.length > 0
+          ? qrLines.map((line, index) => ({ ...line, line_number: index + 1 }))
+          : [emptyLine()],
+      );
+      updateInquiry({
+        inquiryReason: '',
+        inquiryToPhysician: '',
+        inquiryContent: '',
+        inquiryDueDate: '',
+        proposalOrigin: 'post_inquiry',
+        residualAdjustment: false,
+      });
+      setError(
+        qrDraftData.patient_id
+          ? null
+          : 'QR下書きに患者紐付けがありません。患者・ケースを選択して内容を確認してください',
+      );
+      setAppliedQrDraftId(qrDraftData.id);
+      setQrDraftSubmissionId(qrDraftData.id);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [
     appliedQrDraftId,
     mapQrLineToForm,

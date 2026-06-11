@@ -675,6 +675,39 @@ describe('ScheduleProposalsContent', () => {
     );
   });
 
+  it('keeps unassigned proposal card vehicles labeled as unassigned', () => {
+    const detail = buildProposalDetail({
+      id: 'proposal_without_vehicle',
+      vehicle_resource: null,
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_without_vehicle" />);
+
+    expect(screen.getByRole('dialog', { name: /訪問候補詳細/ })).toBeTruthy();
+    expect(screen.getByText('未割当')).toBeTruthy();
+  });
+
   it('requires confirmation before a single proposal card approval is submitted', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);

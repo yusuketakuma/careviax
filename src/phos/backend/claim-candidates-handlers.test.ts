@@ -161,8 +161,8 @@ describe('PH-OS claim-candidates handler', () => {
           pathParameters: { candidate_id: 'claim_1' },
         },
         body: {
-          reason_code: 'NOT_ELIGIBLE',
-          reason_note: '対象外',
+          reason_code: ' NOT_ELIGIBLE ',
+          reason_note: ' 対象外 ',
           idempotency_key: 'idem_1',
           client_version: 1,
         },

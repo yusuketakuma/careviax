@@ -291,7 +291,7 @@ function TaskAndIssueCard({
                 key={evidence.id}
                 className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm"
               >
-                <p className="font-medium text-rose-900">算定ブロッカー</p>
+                <p className="font-medium text-rose-900">算定を止めている理由</p>
                 <p className="mt-1 text-xs text-rose-800">
                   改定 {evidence.effective_revision_code ?? '—'} / 設定{' '}
                   {evidence.site_config_status ?? '—'}

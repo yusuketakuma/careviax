@@ -4,11 +4,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { Sidebar } from './sidebar';
+import type { NavBadgeCounts } from './use-nav-badges';
 
 setupDomTestEnv();
 
 let mockPathname = '/dashboard';
 let mockSidebarPinned = false;
+let mockNavBadges: NavBadgeCounts = {};
 const mockSetSidebarOpen = vi.fn();
 
 vi.mock('next/link', () => ({
@@ -37,17 +39,22 @@ vi.mock('@/lib/stores/ui-store', () => ({
   }),
 }));
 
+vi.mock('./use-nav-badges', () => ({
+  useNavBadges: () => mockNavBadges,
+}));
+
 describe('Sidebar', () => {
   beforeEach(() => {
     mockPathname = '/dashboard';
     mockSidebarPinned = false;
+    mockNavBadges = {};
     mockSetSidebarOpen.mockClear();
   });
 
   it('closes the compact sidebar sheet after a navigation click', () => {
     render(<Sidebar />);
 
-    fireEvent.click(screen.getByRole('link', { name: '患者' }));
+    fireEvent.click(screen.getByRole('link', { name: 'スケジュール' }));
 
     expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
   });
@@ -56,7 +63,7 @@ describe('Sidebar', () => {
     mockSidebarPinned = true;
     render(<Sidebar />);
 
-    fireEvent.click(screen.getByRole('link', { name: '患者' }));
+    fireEvent.click(screen.getByRole('link', { name: 'スケジュール' }));
 
     expect(mockSetSidebarOpen).not.toHaveBeenCalled();
   });
@@ -65,110 +72,162 @@ describe('Sidebar', () => {
     mockSidebarPinned = true;
     render(<Sidebar closeOnNavigate />);
 
-    fireEvent.click(screen.getByRole('link', { name: '患者' }));
+    fireEvent.click(screen.getByRole('link', { name: 'スケジュール' }));
 
     expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
   });
 
-  it('treats prescription list, form, and QR drafts as the same nav group', () => {
-    for (const pathname of ['/prescriptions', '/prescriptions/new', '/prescriptions/qr-drafts']) {
+  it('shows the design/images/new grouped menu with headings in fixed order', () => {
+    render(<Sidebar />);
+
+    for (const heading of ['今日', '患者', '工程', '連携', '管理']) {
+      expect(screen.getByText(heading)).toBeTruthy();
+    }
+    // 日本語見出しなので uppercase は適用しない
+    expect(screen.getByText('今日').className).not.toContain('uppercase');
+
+    const labels = [
+      'ダッシュボード',
+      'スケジュール',
+      '訪問',
+      '患者一覧',
+      '処方取込',
+      'カード',
+      '調剤',
+      '監査',
+      'セット',
+      '報告・共有',
+      '算定チェック',
+      'ハンドオフ',
+      'マスター',
+      '設定',
+    ];
+    const links = labels.map((label) => screen.getByRole('link', { name: label }));
+
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/dashboard',
+      '/schedules',
+      '/visits',
+      '/patients',
+      '/prescriptions/intake',
+      '/prescriptions',
+      '/dispensing',
+      '/auditing',
+      '/medication-sets',
+      '/reports',
+      '/billing',
+      '/handoff',
+      '/admin',
+      '/settings',
+    ]);
+  });
+
+  it('keeps the dashboard item active for workflow and notification pages', () => {
+    for (const pathname of ['/workflow', '/notifications']) {
       mockPathname = pathname;
       const { unmount } = render(<Sidebar />);
 
-      const prescriptionsLink = screen.getByRole('link', { name: '処方登録' });
-      expect(prescriptionsLink.getAttribute('href')).toEqual('/prescriptions');
-      expect(prescriptionsLink.getAttribute('aria-current')).toEqual('page');
+      expect(
+        screen.getByRole('link', { name: 'ダッシュボード' }).getAttribute('aria-current'),
+      ).toEqual('page');
 
       unmount();
     }
   });
 
-  it('keeps handoff detail routes in the handoff nav group instead of visits', () => {
+  it('activates 患者一覧 on the list page and カード on patient detail pages', () => {
+    mockPathname = '/patients';
+    const { unmount } = render(<Sidebar />);
+
+    expect(screen.getByRole('link', { name: '患者一覧' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'カード' }).getAttribute('aria-current')).toBeNull();
+    unmount();
+
+    mockPathname = '/patients/patient_1';
+    render(<Sidebar />);
+    expect(screen.getByRole('link', { name: 'カード' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
+    expect(
+      screen.getByRole('link', { name: '患者一覧' }).getAttribute('aria-current'),
+    ).toBeNull();
+  });
+
+  it('separates prescription intake from the card item', () => {
+    mockPathname = '/prescriptions/new';
+    const { unmount } = render(<Sidebar />);
+
+    expect(screen.getByRole('link', { name: '処方取込' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'カード' }).getAttribute('aria-current')).toBeNull();
+    unmount();
+
+    mockPathname = '/qr-scan';
+    render(<Sidebar />);
+    expect(screen.getByRole('link', { name: '処方取込' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
+  });
+
+  it('keeps handoff detail routes in the handoff nav item instead of visits', () => {
     mockPathname = '/visits/handoffs/visit-record-1';
     render(<Sidebar />);
 
-    expect(
-      screen.getByRole('link', { name: '申し送り' }).getAttribute('aria-current')
-    ).toEqual('page');
-    expect(screen.getByRole('link', { name: '訪問時' }).getAttribute('aria-current')).toBeNull();
-  });
-
-  it('shows the main business route before support links in fixed order', () => {
-    mockPathname = '/dashboard';
-    render(<Sidebar />);
-
-    expect(screen.getByText('主業務ルート')).toBeTruthy();
-    expect(screen.getByText('補助導線')).toBeTruthy();
-
-    const routeLabels = [
-      '処方登録',
-      '調剤',
-      '調剤監査',
-      'セット',
-      'セット監査',
-      'スケジュール',
-      '訪問時',
-      '報告書',
-    ];
-    const links = routeLabels.map((label) => screen.getByRole('link', { name: label }));
-
-    expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/prescriptions',
-      '/dispensing',
-      '/auditing',
-      '/medication-sets',
-      '/medication-sets',
-      '/schedules',
-      '/visits',
-      '/reports',
-    ]);
-  });
-
-  it('separates set management and set audit active states', () => {
-    mockPathname = '/medication-sets/audit/plan_1';
-    render(<Sidebar />);
-
-    expect(screen.getByRole('link', { name: 'セット監査' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('link', { name: 'ハンドオフ' }).getAttribute('aria-current')).toEqual(
       'page',
     );
-    expect(screen.getByRole('link', { name: 'セット' }).getAttribute('aria-current')).toBeNull();
+    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBeNull();
   });
 
-  it('keeps communication requests in the support navigation group', () => {
+  it('keeps communication requests inside the handoff nav item', () => {
     mockPathname = '/communications/requests';
     render(<Sidebar />);
 
-    const communicationLink = screen.getByRole('link', { name: '依頼・照会' });
-    expect(communicationLink.getAttribute('href')).toBe('/communications/requests');
-    expect(communicationLink.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'ハンドオフ' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
   });
 
-  it('keeps workflow as a primary navigation entry', () => {
-    mockPathname = '/workflow';
+  it('keeps admin analytics pages active under マスター after the report item removal', () => {
+    mockPathname = '/admin/analytics';
     render(<Sidebar />);
 
-    const workflowLink = screen.getByRole('link', { name: 'ワークフロー' });
-    expect(workflowLink.getAttribute('href')).toBe('/workflow');
-    expect(workflowLink.getAttribute('aria-current')).toBe('page');
+    expect(screen.queryByRole('link', { name: 'レポート' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'マスター' }).getAttribute('aria-current')).toEqual(
+      'page',
+    );
   });
 
-  it('surfaces and activates the admin dashboard entry inside the admin group', () => {
-    mockPathname = '/admin';
+  it('renders dynamic badges for auditing (red) and handoff (amber)', () => {
+    mockNavBadges = { '/auditing': 6, '/handoff': 3 };
     render(<Sidebar />);
 
-    const workbenchAdminLink = screen.getByRole('link', { name: '管理' });
-    expect(workbenchAdminLink.getAttribute('href')).toEqual('/admin');
-    expect(workbenchAdminLink.getAttribute('aria-current')).toEqual('page');
+    const auditingBadge = screen.getByTestId('sidebar-nav-badge--auditing');
+    expect(auditingBadge.textContent).toBe('6');
+    expect(auditingBadge.className).toContain('bg-red-500');
 
-    const adminDashboardLink = screen
-      .getAllByRole('link', { name: '管理ダッシュボード' })
-      .find((link) => link.getAttribute('href') === '/admin' && link.getAttribute('aria-current') === 'page');
+    const handoffBadge = screen.getByTestId('sidebar-nav-badge--handoff');
+    expect(handoffBadge.textContent).toBe('3');
+    expect(handoffBadge.className).toContain('bg-amber-500');
+  });
 
-    expect(adminDashboardLink).toBeDefined();
-    if (!adminDashboardLink) {
-      throw new Error('管理ダッシュボードリンクが見つかりません');
-    }
-    expect(adminDashboardLink.getAttribute('href')).toEqual('/admin');
-    expect(adminDashboardLink.getAttribute('aria-current')).toEqual('page');
+  it('hides the badge on the active item', () => {
+    mockNavBadges = { '/auditing': 6, '/handoff': 3 };
+    mockPathname = '/auditing';
+    render(<Sidebar />);
+
+    expect(screen.queryByTestId('sidebar-nav-badge--auditing')).toBeNull();
+    expect(screen.getByTestId('sidebar-nav-badge--handoff')).toBeTruthy();
+  });
+
+  it('hides badges entirely when counts are unavailable', () => {
+    mockNavBadges = {};
+    render(<Sidebar />);
+
+    expect(screen.queryByTestId('sidebar-nav-badge--auditing')).toBeNull();
+    expect(screen.queryByTestId('sidebar-nav-badge--handoff')).toBeNull();
   });
 });

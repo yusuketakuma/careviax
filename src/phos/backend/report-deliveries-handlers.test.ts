@@ -173,7 +173,7 @@ describe('PH-OS report-deliveries handler', () => {
         },
         body: {
           result_status: ReportDeliveryStatus.ACTION_DONE,
-          reply_summary: '問題ありません。',
+          reply_summary: ' 問題ありません。 ',
           idempotency_key: 'idem_reply',
           client_version: 1,
         },
@@ -256,7 +256,7 @@ describe('PH-OS report-deliveries handler', () => {
         event: { pathParameters: { delivery_id: 'delivery_1' } },
         body: {
           result_status: ReportDeliveryStatus.ACTION_DONE,
-          reply_summary: '問題ありません。',
+          reply_summary: ' 問題ありません。 ',
           source_refs: [
             {
               kind: 'EVIDENCE_FILE',
@@ -314,7 +314,7 @@ describe('PH-OS report-deliveries handler', () => {
           pathParameters: { delivery_id: 'delivery_1' },
         },
         body: {
-          action_note: '確認済み。',
+          action_note: ' 確認済み。 ',
           idempotency_key: 'idem_done',
           client_version: 2,
         },

@@ -1,0 +1,228 @@
+'use client';
+
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { format, isSameDay, parseISO } from 'date-fns';
+import { Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
+import {
+  WorkspaceActionRail,
+  type BlockedReason,
+  type EvidenceItem,
+} from '@/components/features/workspace/action-rail';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+import { cn } from '@/lib/utils';
+import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
+
+/**
+ * 13_master のマスター鮮度ハブ(docs/design-gap-analysis-new.md)。
+ * 本文(マスターカード 2 列グリッド → 鮮度の注意バナー)+ 右レール
+ * (次にやること / 止まっている理由 / 根拠・記録)の 2 カラム構成。
+ * 主操作(青)は右レールの麻薬監査ボタン 1 つ。カード側の導線はすべて outline。
+ * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
+ */
+
+export async function fetchMasterHub(orgId: string): Promise<MasterHubResponse> {
+  const res = await fetch('/api/admin/master-hub', {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) throw new Error('マスター鮮度集計の取得に失敗しました');
+  const json = await res.json();
+  return json.data;
+}
+
+/** 経過時間ラベル(「1日」「30分」)。 */
+function formatAgeLabel(minutes: number): string {
+  if (minutes < 60) return `${Math.max(minutes, 0)}分`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}時間`;
+  return `${Math.floor(minutes / (24 * 60))}日`;
+}
+
+/** 最終更新: 当日は M/d HH:mm、それ以外は M/d。 */
+export function formatLastUpdatedLabel(value: string | null, now: Date = new Date()): string {
+  if (!value) return '—';
+  const date = parseISO(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return isSameDay(date, now) ? format(date, 'M/d HH:mm') : format(date, 'M/d');
+}
+
+const STATUS_BADGE_CLASSES: Record<MasterHubCard['status'], string> = {
+  healthy: 'bg-emerald-100 text-emerald-700',
+  checking: 'bg-amber-100 text-amber-800',
+  due_soon: 'bg-amber-100 text-amber-800',
+};
+
+function statusBadgeLabel(card: MasterHubCard): string {
+  if (card.status === 'healthy') return '健全';
+  if (card.status === 'due_soon') return '期限接近';
+  return card.status_count != null ? `確認中 ${card.status_count}` : '確認中';
+}
+
+function MasterCard({ card }: { card: MasterHubCard }) {
+  return (
+    <article
+      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-4"
+      data-testid="master-hub-card"
+      data-master-key={card.key}
+      data-status={card.status}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-[15px] font-bold leading-6 text-foreground">{card.title}</h3>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center rounded px-2 py-0.5 text-[11px] font-bold',
+            STATUS_BADGE_CLASSES[card.status],
+          )}
+        >
+          {statusBadgeLabel(card)}
+        </span>
+      </div>
+      <p className="text-xs leading-5">
+        <span className="font-semibold text-foreground">
+          {card.count.toLocaleString('ja-JP')}
+          {card.count_unit}
+        </span>
+        <span className="text-muted-foreground">
+          {' '}
+          / 最終更新 {formatLastUpdatedLabel(card.last_updated_at)}
+        </span>
+      </p>
+      <p className="flex-1 text-sm leading-6 text-muted-foreground">{card.note}</p>
+      <div>
+        <Button asChild variant="outline" size="sm" className="min-h-9 text-primary">
+          <Link href={card.action_href}>{card.action_label}</Link>
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function MasterHubSkeleton() {
+  return (
+    <div
+      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]"
+      role="status"
+      aria-label="マスター読み込み中"
+    >
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-36 w-full rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-12 w-full rounded-lg" />
+      </div>
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-32 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function MasterHubContent() {
+  const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
+
+  const hubQuery = useQuery({
+    queryKey: ['admin', 'master-hub', orgId],
+    queryFn: () => fetchMasterHub(orgId),
+    staleTime: 30_000,
+    enabled: !isBootstrappingOrg,
+  });
+
+  const data = hubQuery.data ?? null;
+  const blockedReasons: BlockedReason[] = (data?.rail.blocked_reasons ?? []).map((reason) => ({
+    id: reason.id,
+    label: reason.label,
+    severity: reason.severity,
+    categoryLabel: reason.category,
+    ageLabel: formatAgeLabel(reason.age_minutes),
+    actionLabel: reason.action_label,
+    actionHref: reason.action_href,
+  }));
+  const evidence: EvidenceItem[] = data
+    ? [
+        {
+          id: 'change-log',
+          label: '変更履歴',
+          meta: `今月${data.change_log_month_count}件`,
+          href: '/admin/audit-logs',
+        },
+        {
+          id: 'freshness-rule',
+          label: '鮮度ルール',
+          meta: '90日で再確認',
+          href: '/admin/settings',
+        },
+      ]
+    : [];
+
+  return (
+    <section aria-label="マスター" data-testid="master-hub">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-xl font-bold text-foreground">マスター</h2>
+          <p className="text-sm text-muted-foreground">
+            · {data ? data.masters.length : 5}マスター — 鮮度がすべて
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="rounded-full">
+          <Link href="/admin/data-explorer">
+            <Search className="size-3.5" aria-hidden="true" />
+            マスター横断検索
+          </Link>
+        </Button>
+      </div>
+
+      <div className="mt-4 xl:min-h-[920px]">
+        {isBootstrappingOrg || hubQuery.isLoading ? (
+          <MasterHubSkeleton />
+        ) : hubQuery.isError || !data ? (
+          <div className="rounded-lg border border-border/70 bg-card p-4">
+            <ErrorState
+              variant="server"
+              title="マスターを表示できません"
+              description="マスター鮮度の集計取得に失敗しました。再試行してください。"
+              detail={hubQuery.error instanceof Error ? hubQuery.error.message : undefined}
+              action={{ label: '再試行', onClick: () => void hubQuery.refetch() }}
+            />
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+            <div className="min-w-0 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2" data-testid="master-hub-grid">
+                {data.masters.map((card) => (
+                  <MasterCard key={card.key} card={card} />
+                ))}
+              </div>
+              <p
+                className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm leading-6 text-sky-900"
+                data-testid="master-hub-freshness-note"
+              >
+                <strong className="font-bold">マスターは鮮度の画面:</strong>{' '}
+                古い住所・古い送付先・期限切れの車両は現場の事故になります。鮮度警告は放置するとダッシュボードの「止まっている理由」に昇格します。
+              </p>
+            </div>
+            <div className="space-y-4">
+              <WorkspaceActionRail
+                nextAction={{
+                  actionLabel: data.rail.next_action.label,
+                  description: data.rail.next_action.description,
+                  actionHref: data.rail.next_action.href,
+                }}
+                blockedReasons={blockedReasons}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={evidence}
+                evidenceOpenLabel="開く"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}

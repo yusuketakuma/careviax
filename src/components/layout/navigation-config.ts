@@ -7,11 +7,9 @@ import {
   Calendar,
   CalendarOff,
   Car,
-  CheckSquare,
   ClipboardCheck,
   ClipboardList,
   ClipboardPlus,
-  Clock3,
   Cog,
   Database,
   FileText,
@@ -19,11 +17,9 @@ import {
   Home,
   Hospital,
   LineChart,
-  ListChecks,
   MessageSquare,
   Package,
   Pill,
-  QrCode,
   Receipt,
   ScrollText,
   Settings,
@@ -33,13 +29,23 @@ import {
   Users,
 } from 'lucide-react';
 
+export type LayoutNavBadgeTone = 'critical' | 'caution';
+
 export type LayoutNavItem = {
   label: string;
   href: string;
   icon: ElementType;
+  /** Active when pathname matches one of these prefixes (defaults to [href]). */
   activePrefixes?: string[];
+  /** Never active when pathname matches one of these prefixes. */
   excludePrefixes?: string[];
+  /** Never active when pathname equals one of these paths exactly. */
+  excludeExact?: string[];
+  /** When true, activePrefixes must equal the pathname exactly (sub paths do not match). */
+  exact?: boolean;
   badge?: number;
+  /** Badge color semantics: critical = red (要対応), caution = amber (注意). */
+  badgeTone?: LayoutNavBadgeTone;
 };
 
 export type LayoutNavGroup = {
@@ -47,30 +53,11 @@ export type LayoutNavGroup = {
   items: LayoutNavItem[];
 };
 
-export type TopWorkflowLink = {
-  label: string;
-  href: string;
-  activePrefixes: string[];
-  excludePrefixes?: string[];
-};
-
-export const TOP_WORKFLOW_LINKS: readonly TopWorkflowLink[] = [
-  { label: '業務本流', href: '/workflow', activePrefixes: ['/workflow'] },
-  { label: 'スケジュール', href: '/schedules', activePrefixes: ['/schedules'] },
-  {
-    label: '訪問時',
-    href: '/visits',
-    activePrefixes: ['/visits', '/my-day'],
-    excludePrefixes: ['/visits/handoffs'],
-  },
-  { label: '報告書', href: '/reports', activePrefixes: ['/reports'] },
-];
-
 export const MOBILE_BOTTOM_NAV_ITEMS: readonly LayoutNavItem[] = [
   { label: 'ホーム', href: '/dashboard', icon: Home },
   { label: 'スケジュール', href: '/schedules', icon: Calendar },
   {
-    label: '訪問時',
+    label: '訪問',
     href: '/visits',
     icon: Car,
     activePrefixes: ['/visits', '/my-day'],
@@ -79,71 +66,102 @@ export const MOBILE_BOTTOM_NAV_ITEMS: readonly LayoutNavItem[] = [
   { label: '患者', href: '/patients', icon: Users },
 ];
 
+/**
+ * design/images/new のサイドバー構成(01/02/06/08/12 共通)。
+ * グループ見出し付き(今日/患者/工程/連携/管理)。デザインのメニューに無い
+ * 既存ページは activePrefixes で最も近い項目のアクティブ範囲に含める
+ * (到達導線はダッシュボード/検索/上部バー)。
+ *
+ * 患者一覧とカードのアクティブ分離:
+ * - 患者一覧 = /patients(一覧・新規登録の完全一致系)
+ * - カード   = /patients/[id](患者詳細 = 処方サイクル作業台)と /prescriptions
+ */
 export const SIDEBAR_MAIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
   {
-    label: '主要',
-    items: [
-      { label: 'ホーム', href: '/dashboard', icon: Home },
-      { label: '患者', href: '/patients', icon: Users },
-      { label: 'ワークフロー', href: '/workflow', icon: ListChecks },
-    ],
-  },
-  {
-    label: '主業務ルート',
+    label: '今日',
     items: [
       {
-        label: '処方登録',
-        href: '/prescriptions',
-        icon: ClipboardPlus,
-        activePrefixes: ['/prescriptions'],
-      },
-      { label: '調剤', href: '/dispensing', icon: Pill },
-      { label: '調剤監査', href: '/auditing', icon: ClipboardCheck },
-      {
-        label: 'セット',
-        href: '/medication-sets',
-        icon: Package,
-        excludePrefixes: ['/medication-sets/audit'],
-      },
-      {
-        label: 'セット監査',
-        href: '/medication-sets',
-        icon: ClipboardCheck,
-        activePrefixes: ['/medication-sets/audit'],
+        label: 'ダッシュボード',
+        href: '/dashboard',
+        icon: Home,
+        activePrefixes: ['/dashboard', '/workflow', '/tasks', '/today', '/notifications'],
       },
       { label: 'スケジュール', href: '/schedules', icon: Calendar },
       {
-        label: '訪問時',
+        label: '訪問',
         href: '/visits',
         icon: Car,
+        activePrefixes: ['/visits', '/my-day'],
         excludePrefixes: ['/visits/handoffs'],
       },
-      { label: '報告書', href: '/reports', icon: FileText },
     ],
   },
   {
-    label: '補助導線',
+    label: '患者',
     items: [
-      { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
       {
-        label: '申し送り',
-        href: '/handoff',
-        icon: ClipboardList,
-        activePrefixes: ['/handoff', '/visits/handoffs'],
+        label: '患者一覧',
+        href: '/patients',
+        icon: Users,
+        exact: true,
+        activePrefixes: ['/patients', '/patients/new'],
       },
-      { label: '多職種連携', href: '/conferences', icon: Users },
-      { label: '依頼・照会', href: '/communications/requests', icon: MessageSquare },
-      { label: '外部連携', href: '/external', icon: Stethoscope },
     ],
   },
-];
-
-export const SIDEBAR_WORKBENCH_NAV_ITEMS: readonly LayoutNavItem[] = [
-  { label: 'My Day', href: '/my-day', icon: Clock3 },
-  { label: 'タスク', href: '/tasks', icon: CheckSquare },
-  { label: '請求', href: '/billing', icon: ScrollText },
-  { label: '管理', href: '/admin', icon: Shield, activePrefixes: ['/admin'] },
-  { label: '通知', href: '/notifications', icon: Bell },
+  {
+    label: '工程',
+    items: [
+      {
+        label: '処方取込',
+        href: '/prescriptions/intake',
+        icon: ClipboardPlus,
+        activePrefixes: ['/prescriptions/intake', '/prescriptions/new', '/qr-scan'],
+      },
+      {
+        label: 'カード',
+        href: '/prescriptions',
+        icon: ScrollText,
+        activePrefixes: ['/prescriptions', '/patients'],
+        excludePrefixes: ['/prescriptions/new', '/prescriptions/intake'],
+        excludeExact: ['/patients', '/patients/new'],
+      },
+      { label: '調剤', href: '/dispensing', icon: Pill },
+      { label: '監査', href: '/auditing', icon: ClipboardCheck, badgeTone: 'critical' },
+      { label: 'セット', href: '/medication-sets', icon: Package },
+      { label: '報告・共有', href: '/reports', icon: FileText },
+      { label: '算定チェック', href: '/billing', icon: Receipt },
+    ],
+  },
+  {
+    label: '連携',
+    items: [
+      {
+        label: 'ハンドオフ',
+        href: '/handoff',
+        icon: ClipboardList,
+        activePrefixes: [
+          '/handoff',
+          '/visits/handoffs',
+          '/communications',
+          '/conferences',
+          '/external',
+        ],
+        badgeTone: 'caution',
+      },
+    ],
+  },
+  {
+    label: '管理',
+    items: [
+      {
+        label: 'マスター',
+        href: '/admin',
+        icon: Database,
+        activePrefixes: ['/admin'],
+      },
+      { label: '設定', href: '/settings', icon: Settings },
+    ],
+  },
 ];
 
 export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [

@@ -1,0 +1,349 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useAuthStore } from '@/lib/stores/auth-store';
+import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import { HandoffWorkspace } from './handoff-workspace';
+import {
+  buildHeaderMeta,
+  buildItemSubText,
+  buildItemTitle,
+  buildStatusBadge,
+  progressPercent,
+  remainingLabel,
+  type HandoffBoardItem,
+  type HandoffBoardResponse,
+} from './handoff-workspace.helpers';
+
+setupDomTestEnv();
+
+vi.mock('@/lib/hooks/use-org-id', () => ({
+  useOrgId: () => 'org_1',
+}));
+
+function buildItem(overrides: Partial<HandoffBoardItem>): HandoffBoardItem {
+  return {
+    id: 'item_x',
+    content: '件名',
+    priority: 'normal',
+    entity_type: null,
+    entity_id: null,
+    read_by: [],
+    created_by: 'user_1',
+    created_by_name: '山田 花子',
+    created_at: '2026-06-11T00:38:00.000Z',
+    recipient_user_id: null,
+    recipient_label: null,
+    recipient_name: null,
+    lifecycle_status: null,
+    scope: null,
+    rationale: null,
+    deadline: null,
+    progress_done: null,
+    progress_total: null,
+    direction: 'outgoing',
+    ...overrides,
+  };
+}
+
+const BOARD: HandoffBoardResponse = {
+  id: 'board_1',
+  shift_date: '2026-06-11',
+  items: [
+    buildItem({
+      id: 'item_1',
+      content: '判断キュー 定型12件',
+      recipient_label: '佐藤さん',
+      lifecycle_status: 'proposed',
+      rationale: '判断WIP 18/目安12 — あなたの余白11分では捌けないため',
+      entity_type: 'dashboard',
+      entity_id: 'dashboard',
+    }),
+    buildItem({
+      id: 'item_2',
+      content: 'セット先行準備(施設GH)',
+      recipient_label: '鈴木さん(事務)',
+      lifecycle_status: 'in_progress',
+      scope: '数量セットまで。最終確認は薬剤師(あなた)',
+      progress_done: 9,
+      progress_total: 12,
+      entity_type: 'medication_set',
+      entity_id: 'set_1',
+    }),
+    buildItem({
+      id: 'item_3',
+      content: '送付先の確認(やまもと内科)',
+      recipient_label: '事務',
+      lifecycle_status: 'confirming',
+      rationale: '完了しないと田中様の本日報告書が送れません',
+      deadline: new Date(Date.now() + 30 * 60_000).toISOString(),
+      entity_type: 'reports',
+      entity_id: 'reports',
+    }),
+  ],
+  month_item_count: 31,
+  summary: { outgoing_count: 3, incoming_count: 0 },
+};
+
+const COCKPIT: DashboardCockpitResponse = {
+  generated_at: '2026-06-11T00:00:00.000Z',
+  cycle_status_counts: {},
+  audit_pending_count: 1,
+  narcotic_audit_count: 1,
+  audit_queue: [
+    {
+      task_id: 'task_1',
+      cycle_id: 'cycle_1',
+      patient_name: '田中 一郎',
+      priority: 'normal',
+      due_at: '2026-06-11T03:00:00.000Z',
+      intake_id: 'intake_1',
+      prescribed_date: '2026-06-01',
+      handling_tags: ['narcotic'],
+      has_narcotic: true,
+      waiting_since: null,
+    },
+  ],
+  today_visits: [],
+  blocked_reasons: [
+    {
+      id: 'block_1',
+      label: 'ご家族の同意待ち(新規契約)',
+      severity: 'critical',
+      category: '患者',
+      age_minutes: 25 * 60,
+      action_label: '再連絡する →',
+      action_href: '/communications/requests',
+    },
+  ],
+  carryover_count: 0,
+};
+
+function stubFetch(board: HandoffBoardResponse = BOARD) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/handoff-board')) {
+      return new Response(JSON.stringify({ data: board }), { status: 200 });
+    }
+    if (url.includes('/api/dashboard/cockpit')) {
+      return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function renderWorkspace() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <HandoffWorkspace />
+    </QueryClientProvider>,
+  );
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  useAuthStore.getState().resetAuth();
+});
+
+describe('HandoffWorkspace', () => {
+  it('renders 私が渡した cards with status badges, 3-point summaries and rule bar', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch();
+    renderWorkspace();
+
+    expect(screen.getByText('ハンドオフ')).toBeTruthy();
+    // 主操作(青)は「+ 仕事を渡す」1 つだけ
+    expect(screen.getByTestId('handoff-open-transfer')).toBeTruthy();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    // ヘッダーメタ(渡した/来た)
+    expect(screen.getByText(/渡した3・来た0/)).toBeTruthy();
+    expect(
+      screen.getByText(/3件 — 渡す=責任の移動。受領確認と根拠が必ず記録されます/),
+    ).toBeTruthy();
+
+    // 状態バッジ: 承諾待ち(紫)/作業中 9\/12(青)/確認中(橙)
+    expect(screen.getByText('承諾待ち')).toBeTruthy();
+    expect(screen.getByText('作業中 9/12')).toBeTruthy();
+    expect(screen.getByText(/^確認中/)).toBeTruthy();
+
+    // 件名 → 宛先
+    expect(screen.getByText('判断キュー 定型12件 → 佐藤さん')).toBeTruthy();
+    expect(screen.getByText('セット先行準備(施設GH) → 鈴木さん(事務)')).toBeTruthy();
+    expect(screen.getByText('送付先の確認(やまもと内科) → 事務')).toBeTruthy();
+
+    // 3点セット要約と戻り先リンク
+    expect(
+      screen.getByText('根拠: 判断WIP 18/目安12 — あなたの余白11分では捌けないため'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('許可済みの範囲: 数量セットまで。最終確認は薬剤師(あなた)'),
+    ).toBeTruthy();
+    expect(screen.getByText('→ ダッシュボードへ')).toBeTruthy();
+    expect(screen.getByText('→ セットへ')).toBeTruthy();
+    expect(screen.getByText('→ 報告・共有へ')).toBeTruthy();
+    expect(screen.getByText('状況を聞く')).toBeTruthy();
+
+    // 私に来た: 0 件は緑の empty バー + チームルール注記
+    expect(screen.getByTestId('handoff-incoming-empty').textContent).toBe(
+      'なし — 受け取り待ちはありません',
+    );
+    expect(
+      screen.getByText(/口頭やメモではなくハンドオフで渡すのがチームのルールです/),
+    ).toBeTruthy();
+
+    // 3点セットのルール帯
+    expect(screen.getByTestId('handoff-rule-bar').textContent).toContain(
+      '3つ揃わないと送信できません',
+    );
+
+    // 右レール 根拠・記録
+    expect(screen.getByText('ハンドオフ履歴')).toBeTruthy();
+    expect(screen.getByText('今月31件')).toBeTruthy();
+    expect(screen.getByText('許可済み事務作業の範囲')).toBeTruthy();
+  });
+
+  it('disables transfer submission until the 3-point set is complete', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+    const submit = await screen.findByRole('button', { name: '渡す(責任を移す)' });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('件名'), {
+      target: { value: 'セット先行準備(施設GH)' },
+    });
+    fireEvent.change(screen.getByLabelText('宛先(誰に渡すか)'), {
+      target: { value: '鈴木さん(事務)' },
+    });
+    fireEvent.change(screen.getByLabelText('①何を(作業の範囲)'), {
+      target: { value: '数量セットまで' },
+    });
+    fireEvent.change(screen.getByLabelText('②なぜ(根拠)'), {
+      target: { value: '判断WIPが目安超過のため' },
+    });
+    // 期限が無い間は送信できない
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('③いつまで(期限)'), {
+      target: { value: '2026-06-11T17:00' },
+    });
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows 受領確認 action for incoming items', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'item_in',
+          content: '疑義照会の判断をお願いします',
+          created_by: 'user_2',
+          created_by_name: '鈴木 一郎',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          lifecycle_status: 'proposed',
+          rationale: '判断が必要なため',
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByText('疑義照会の判断をお願いします → 山田さん(薬剤師)')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
+    expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+});
+
+describe('handoff-workspace helpers', () => {
+  it('builds header meta with summary', () => {
+    expect(
+      buildHeaderMeta(new Date(2026, 5, 11), { outgoing_count: 3, incoming_count: 0 }),
+    ).toBe('6/11(木) — 渡した3・来た0');
+  });
+
+  it('maps lifecycle status to badge labels and tones', () => {
+    const now = new Date('2026-06-11T09:00:00');
+    expect(buildStatusBadge(buildItem({ lifecycle_status: 'proposed' }), now).label).toBe(
+      '承諾待ち',
+    );
+    const inProgress = buildStatusBadge(
+      buildItem({ lifecycle_status: 'in_progress', progress_done: 9, progress_total: 12 }),
+      now,
+    );
+    expect(inProgress.label).toBe('作業中 9/12');
+    expect(inProgress.className).toContain('blue');
+    const confirming = buildStatusBadge(
+      buildItem({
+        lifecycle_status: 'confirming',
+        deadline: new Date(now.getTime() + 30 * 60_000).toISOString(),
+      }),
+      now,
+    );
+    expect(confirming.label).toBe('確認中 30分');
+    expect(confirming.className).toContain('amber');
+    // legacy 項目は優先度バッジへフォールバック
+    expect(buildStatusBadge(buildItem({ priority: 'urgent' }), now).label).toBe('緊急');
+  });
+
+  it('computes remaining deadline labels including overdue', () => {
+    const now = new Date('2026-06-11T09:00:00');
+    expect(remainingLabel(new Date(now.getTime() + 90 * 60_000).toISOString(), now)).toBe(
+      '1時間',
+    );
+    expect(remainingLabel(new Date(now.getTime() - 60_000).toISOString(), now)).toBe('超過');
+  });
+
+  it('computes progress percent only for in-progress items', () => {
+    expect(
+      progressPercent(
+        buildItem({ lifecycle_status: 'in_progress', progress_done: 9, progress_total: 12 }),
+      ),
+    ).toBe(75);
+    expect(progressPercent(buildItem({ lifecycle_status: 'proposed' }))).toBeNull();
+  });
+
+  it('builds title and sub text per status', () => {
+    expect(
+      buildItemTitle(buildItem({ content: 'A', recipient_label: 'Bさん' })),
+    ).toBe('A → Bさん');
+    expect(
+      buildItemSubText(
+        buildItem({ lifecycle_status: 'proposed', rationale: 'WIP超過' }),
+      ),
+    ).toBe('根拠: WIP超過');
+    expect(
+      buildItemSubText(
+        buildItem({ lifecycle_status: 'in_progress', scope: '数量セットまで' }),
+      ),
+    ).toBe('許可済みの範囲: 数量セットまで');
+    expect(
+      buildItemSubText(
+        buildItem({ lifecycle_status: 'confirming', rationale: '報告が止まるため' }),
+      ),
+    ).toBe('報告が止まるため');
+  });
+});

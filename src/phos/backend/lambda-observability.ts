@@ -1,4 +1,4 @@
-import { DynamoDBClient, type DynamoDBClient as AwsDynamoDBClient } from '@aws-sdk/client-dynamodb';
+import type { DynamoDBClient as AwsDynamoDBClient } from '@aws-sdk/client-dynamodb';
 import * as xray from 'aws-xray-sdk-core';
 import {
   createConsoleObservabilitySink,
@@ -11,7 +11,7 @@ import {
   type PhosTraceAnnotationSink,
 } from './observability';
 import { recordDynamoSecurityEvent } from './security-events';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient } from './phos-aws-clients';
 
 export type PhosLambdaRuntimeDependencies = {
   observability?: PhosObservabilitySink;
@@ -24,12 +24,23 @@ export type PhosLambdaRuntimeDependencies = {
 
 const DEFAULT_SECURITY_EVENT_FLUSH_TIMEOUT_MS = 250;
 
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
 function shouldPersistSecurityEvents(): boolean {
   return process.env.PHOS_SECURITY_EVENTS_DYNAMO === '1';
 }
 
 function securityEventTableName(deps: PhosLambdaRuntimeDependencies): string | undefined {
   return deps.security_event_table_name ?? process.env.PHOS_SECURITY_EVENT_TABLE_NAME?.trim();
+}
+
+function defaultSecurityEventClient(): Pick<AwsDynamoDBClient, 'send'> | null {
+  if (!shouldPersistSecurityEvents()) return null;
+  return getDefaultPhosDynamoClient();
 }
 
 export function createLambdaObservabilitySink(
@@ -39,11 +50,7 @@ export function createLambdaObservabilitySink(
   const consoleSink = createConsoleObservabilitySink({
     trace_annotation_sink: deps.trace_annotation_sink ?? createXRayTraceAnnotationSink(),
   });
-  const securityEventClient =
-    deps.security_event_client ??
-    (shouldPersistSecurityEvents()
-      ? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()))
-      : null);
+  const securityEventClient = deps.security_event_client ?? defaultSecurityEventClient();
   const pendingSecurityEvents = new Set<Promise<void>>();
   const securityEventFlushTimeoutMs = Math.max(
     1,
@@ -103,6 +110,7 @@ export function createLambdaObservabilitySink(
               );
               resolve();
             }, securityEventFlushTimeoutMs);
+            maybeUnrefTimeout(timeout);
           }),
         ]);
       } finally {

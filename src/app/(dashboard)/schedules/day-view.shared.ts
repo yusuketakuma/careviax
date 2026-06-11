@@ -28,6 +28,7 @@ export type PatientContactStatus =
   | 'declined'
   | 'change_requested'
   | 'unreachable';
+export type SingleProposalConfirmAction = 'approve' | 'confirm';
 export type AssignmentMode = 'primary' | 'fallback';
 export type ScheduleStatus =
   | 'planned'
@@ -542,6 +543,98 @@ export function timeLabel(start: string | null, end: string | null) {
   return right ? `${left} - ${right}` : left;
 }
 
+export function formatNullableTimeOfDay(value: string | null | undefined) {
+  if (!value) return null;
+  return format(parseISO(value), 'HH:mm');
+}
+
+export function formatNullableTimeRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+) {
+  const normalizedStart = formatNullableTimeOfDay(start);
+  const normalizedEnd = formatNullableTimeOfDay(end);
+  if (!normalizedStart && !normalizedEnd) return null;
+  if (normalizedStart && normalizedEnd) return `${normalizedStart} - ${normalizedEnd}`;
+  return normalizedStart ?? normalizedEnd;
+}
+
+export function formatNullableDateLabel(value: string | null | undefined, emptyLabel = '未設定') {
+  if (!value) return emptyLabel;
+  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
+}
+
+export function formatNullableDateTimeLabel(
+  value: string | null | undefined,
+  emptyLabel = '未設定',
+) {
+  if (!value) return emptyLabel;
+  return format(parseISO(value), 'yyyy/MM/dd HH:mm', { locale: ja });
+}
+
+export function formatDistanceScoreLabel(value: number | null | undefined) {
+  if (value == null) return '0.0';
+  return value.toFixed(1);
+}
+
+export function isPriorityRouteProposal(proposal: Pick<Proposal, 'priority' | 'proposal_reason'>) {
+  return (
+    (proposal.priority === 'emergency' || proposal.priority === 'urgent') &&
+    proposal.proposal_reason.includes('即応枠')
+  );
+}
+
+export function isPatientPreferenceAlignedProposal(proposal: Pick<Proposal, 'proposal_reason'>) {
+  return proposal.proposal_reason.includes('患者条件');
+}
+
+export function proposalRouteDecisionLabel(
+  proposal: Pick<Proposal, 'priority' | 'proposal_reason' | 'route_order'>,
+) {
+  if (isPriorityRouteProposal(proposal)) {
+    return `緊急度優先で順路 ${proposal.route_order ?? '未設定'}`;
+  }
+  if (isPatientPreferenceAlignedProposal(proposal)) {
+    return `患者希望枠で順路 ${proposal.route_order ?? '未設定'}`;
+  }
+  return `順路 ${proposal.route_order ?? '未設定'}`;
+}
+
+export function singleProposalActionLabel(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '承認して患者連絡へ進める' : '日時確定する';
+}
+
+export function singleProposalActionQuestion(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '承認して患者連絡へ進めますか' : '日時確定しますか';
+}
+
+export function singleProposalActionResultLabel(action: SingleProposalConfirmAction) {
+  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
+}
+
+const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
+  'この候補は承認できません',
+  'この候補は却下できません',
+  '勤務枠が埋まりました',
+  '候補はすでに更新済みです',
+  '訪問候補が見つかりません',
+  '確定済み訪問の変更は管理者承認後に進めてください',
+  '確定済み訪問の変更は承認後に新候補を確定してください',
+]);
+
+export function proposalActionFailureDisplayMessage(message: string, reachedServer: boolean) {
+  if (!reachedServer) {
+    return '通信が完了しませんでした。接続を確認して再試行してください。';
+  }
+
+  const trimmedMessage = message.trim();
+  if (SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
+    return trimmedMessage;
+  }
+
+  return 'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。';
+}
+
 export function addressOfPatient(item: {
   case_: {
     patient: {
@@ -631,4 +724,68 @@ export function priorityBadgeClass(priority: VisitPriority) {
     default:
       return 'border-slate-200 bg-slate-50 text-slate-700';
   }
+}
+
+export const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
+
+export function normalizeVehicleResourceSelectValue(
+  selectedValue: string | null | undefined,
+  autoValue = AUTO_VEHICLE_RESOURCE_VALUE,
+) {
+  return selectedValue && selectedValue !== autoValue ? selectedValue : '';
+}
+
+export function formatShortEntityIdentifier(
+  value: string | null | undefined,
+  options: { stripKnownPrefixes?: boolean } = {},
+) {
+  const normalized = value?.trim();
+  if (!normalized) return '未設定';
+  const candidate = options.stripKnownPrefixes
+    ? normalized.replace(/^(proposal|case|patient)[_-]/u, '') || normalized
+    : normalized;
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+}
+
+export function proposalShortEntityIdentifier(value: string | null | undefined) {
+  return formatShortEntityIdentifier(value, { stripKnownPrefixes: true });
+}
+
+export function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
+  return `ケース ${proposalShortEntityIdentifier(proposal.case_id)} / 候補 ${proposalShortEntityIdentifier(proposal.id)}`;
+}
+
+export function proposalActionTargetLabel(proposal: Proposal) {
+  const pharmacistName = proposal.proposed_pharmacist?.name ?? '担当未解決';
+  const vehicleLabel = proposal.vehicle_resource?.label ?? '社用車未指定';
+  return `${proposal.case_.patient.name} ${formatNullableDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel} / ${proposalSafeIdentifierLabel(proposal)}`;
+}
+
+export function caseOptionPrimaryPharmacistLabel(careCase: CaseOption) {
+  return careCase.primary_pharmacist_name ?? '主担当未設定';
+}
+
+export function caseOptionTargetLabel(careCase: CaseOption) {
+  return `${careCase.patient.name} / ケース ${proposalShortEntityIdentifier(careCase.id)} / 患者識別 ${proposalShortEntityIdentifier(careCase.patient.id)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
+}
+
+export function proposalListVisitPlaceLabel(proposal: Pick<Proposal, 'site'>) {
+  const siteName = proposal.site?.name?.trim();
+  return siteName
+    ? `訪問先住所は詳細・ルート確認で表示 / 担当拠点 ${siteName}`
+    : '訪問先住所は詳細・ルート確認で表示';
+}
+
+export function formatVehicleResourceLabel(
+  vehicle: VisitVehicleResourceSummary | null | undefined,
+  emptyLabel = '自動割当',
+) {
+  if (!vehicle) return emptyLabel;
+  const constraints = [
+    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
+    vehicle.max_route_duration_minutes != null
+      ? `${vehicle.max_route_duration_minutes}分以内`
+      : null,
+  ].filter((constraint): constraint is string => constraint !== null);
+  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
 }

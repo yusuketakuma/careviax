@@ -1,6 +1,5 @@
 import {
   GetSecretValueCommand,
-  SecretsManagerClient,
   type SecretsManagerClient as AwsSecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import {
@@ -14,7 +13,7 @@ import {
   type PhosLambdaRuntimeDependencies,
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosSecretsManagerClient } from './phos-aws-clients';
 
 type FeeRulesLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosFeeRulesRepository;
@@ -49,8 +48,7 @@ async function loadAuroraDatabaseUrl(deps: FeeRulesLambdaDependencies): Promise<
   if (!secretArn) {
     throw new Error('PH-OS FeeRule Aurora database secret ARN is not configured');
   }
-  const client =
-    deps.secretsClient ?? withPhosAwsClientTimeout(new SecretsManagerClient(phosAwsClientConfig()));
+  const client = deps.secretsClient ?? getDefaultPhosSecretsManagerClient();
   const secret = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
   if (typeof secret.SecretString !== 'string') {
     throw new Error('PH-OS FeeRule Aurora database secret string is not configured');

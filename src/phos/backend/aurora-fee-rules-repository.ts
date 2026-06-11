@@ -10,7 +10,7 @@ import {
 import { assertFeeRuleConditionAllowedFields } from '@/phos/domain/claim/feeRuleDsl';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import type { FeeRuleSearchQuery, PhosFeeRulesRepository } from './fee-rules-repository';
-import { validationError } from './input-validation';
+import { parseRequiredString, validationError } from './input-validation';
 import type { TenantContext } from './tenant-context';
 
 export type AuroraFeeRulesClient = {
@@ -188,10 +188,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function readString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Invalid FeeRule ${field}`);
-  }
-  return value;
+  return parseRequiredString(value, {
+    field,
+    errorFactory: () => new Error(`Invalid FeeRule ${field}`),
+  });
 }
 
 function readOptionalString(value: unknown, field: string): string | undefined {

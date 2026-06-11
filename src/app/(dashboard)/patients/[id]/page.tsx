@@ -1,40 +1,33 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
-import { getPatientHubShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
+import { CardWorkspace } from './card-workspace';
 import { PatientDetailTabs } from './patient-detail-tabs';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Loading } from '@/components/ui/loading';
 
 export const metadata: Metadata = {
-  title: '患者詳細 — PH-OS',
+  title: 'カード — PH-OS',
 };
 
-export default async function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+/**
+ * /patients/[id] は 2 ビュー構成(docs/design-gap-analysis-new.md 06_card):
+ * - 既定: カード = その患者の進行中 RX サイクルの作業台(CardWorkspace)
+ * - ?view=profile(または旧来の ?tab= 直リンク): 患者プロフィール = 旧タブ構成(PatientDetailTabs)
+ */
+export default async function PatientDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string; tab?: string }>;
+}) {
+  const [{ id }, { view, tab }] = await Promise.all([params, searchParams]);
+  const showProfile = view === 'profile' || Boolean(tab);
 
   return (
     <PageScaffold>
-      <WorkflowPageIntro
-        backHref="/patients"
-        backLabel="患者一覧へ戻る"
-        eyebrow="Patient Hub"
-        title="患者詳細"
-        description="患者の基本情報、ケース進行、服薬と共有状態を横断して確認できます。"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">確認の流れ</p>
-            <p className="text-sm text-muted-foreground">
-              基本情報とケース状況を確認し、必要に応じて服薬管理、共有履歴、個別作業へ進みます。
-            </p>
-          </div>
-        }
-        shortcuts={getPatientHubShortcutLinks(id)}
-        className="mb-6"
-      />
-
       <Suspense fallback={<Loading />}>
-        <PatientDetailTabs patientId={id} />
+        {showProfile ? <PatientDetailTabs patientId={id} /> : <CardWorkspace patientId={id} />}
       </Suspense>
     </PageScaffold>
   );

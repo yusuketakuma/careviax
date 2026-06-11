@@ -108,7 +108,12 @@ export function NotificationBell() {
 
   // SSE connection via fetch (EventSource does not support custom headers)
   useEffect(() => {
-    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
+    if (!orgId) return;
+    if (NOTIFICATION_STREAM_DISABLED) {
+      // stream 無効環境(E2E 等)でも未読数バッジは初回取得で表示する
+      void refreshNotifications();
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -179,15 +184,20 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setNotificationDrawerOpen(true)}
-        className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 hover:bg-accent"
+        className={cn(
+          'flex min-h-[44px] items-center gap-1.5 rounded-md px-2 text-sm font-medium hover:bg-accent sm:min-h-9',
+          unreadCount > 0 ? 'text-destructive' : 'text-muted-foreground',
+        )}
         aria-label={`通知${unreadCount > 0 ? ` ${unreadCount}件の未読` : ''}`}
         aria-expanded={notificationDrawerOpen}
         aria-haspopup="true"
+        data-testid="app-header-notifications"
       >
-        <Bell className="size-5" aria-hidden="true" />
+        <Bell className="size-4 md:hidden" aria-hidden="true" />
+        <span className="hidden md:inline">通知{unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
         {unreadCount > 0 && (
           <span
-            className="absolute -right-0.5 -top-0.5 flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground"
+            className="flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground md:hidden"
             aria-hidden="true"
           >
             {unreadCount > 99 ? '99+' : unreadCount}

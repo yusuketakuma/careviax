@@ -148,11 +148,14 @@ import {
 } from './schedule-day-preparation';
 import {
   addressOfPatient,
+  AUTO_VEHICLE_RESOURCE_VALUE,
   CONTACT_STATUS_LABELS,
   countCompletedPreparationItems,
+  formatVehicleResourceLabel,
   PREPARATION_ITEMS,
   PRIORITY_LABELS,
   priorityBadgeClass,
+  proposalSafeIdentifierLabel,
   readImpactCount,
   readImpactedPatientNames,
   PROPOSAL_STATUS_LABELS,
@@ -167,7 +170,6 @@ import {
   type ScheduleTask,
   type ScheduleTaskStatus,
   type VisitPriority,
-  type VisitVehicleResourceSummary,
   type VisitSchedule,
   type VisitType,
   type VisitScheduleBillingPreview,
@@ -235,8 +237,6 @@ type VisitRoutePlan = {
   }>;
 };
 
-const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
-
 const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 1, label: '月' },
   { value: 2, label: '火' },
@@ -246,17 +246,6 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 6, label: '土' },
   { value: 0, label: '日' },
 ];
-
-function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
-  if (!vehicle) return '自動割当';
-  const constraints = [
-    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
-    vehicle.max_route_duration_minutes != null
-      ? `${vehicle.max_route_duration_minutes}分以内`
-      : null,
-  ].filter((category): category is string => category !== null);
-  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
-}
 
 function visitStartActionText(schedule: Pick<VisitSchedule, 'carry_items_status'>) {
   if (!getDepartureCarryWarning(schedule)) return '訪問開始';
@@ -297,16 +286,6 @@ function canExecuteProposalConfirmAction(action: ProposalConfirmAction) {
     action.proposal.proposal_status === 'patient_contact_pending' &&
     action.proposal.patient_contact_status === 'confirmed'
   );
-}
-
-function shortEntityIdentifier(value: string | null | undefined) {
-  const candidate = value?.trim();
-  if (!candidate) return '未設定';
-  return candidate.length <= 8 ? candidate : candidate.slice(-8);
-}
-
-function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
-  return `ケース ${shortEntityIdentifier(proposal.case_id)} / 候補 ${shortEntityIdentifier(proposal.id)}`;
 }
 
 export function ScheduleDayView({
@@ -4531,7 +4510,7 @@ export function ScheduleDayView({
 
                   {preparationDetails.pack.billing_blockers.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">算定ブロッカー</p>
+                      <p className="text-xs font-medium text-muted-foreground">算定を止めている理由</p>
                       <div className="grid gap-2 lg:grid-cols-2">
                         {preparationDetails.pack.billing_blockers.map((blocker) => (
                           <div

@@ -349,10 +349,16 @@ export default function QRScanPage() {
 
   // ── ライフサイクル ──
   useEffect(() => {
-    if (phase === 'camera') {
-      startCamera();
+    if (phase !== 'camera') {
+      return;
     }
-    return () => stopCamera();
+
+    const timer = window.setTimeout(() => startCamera(), 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      stopCamera();
+    };
   }, [phase, startCamera, stopCamera]);
 
   // ── 新規患者登録へ遷移 ──

@@ -33,7 +33,8 @@ export function SessionTimeoutModal() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const expiryRef = useRef<number>(Date.now() + SESSION_DURATION_MS);
+  const [initialExpiry] = useState(() => Date.now() + SESSION_DURATION_MS);
+  const expiryRef = useRef<number>(initialExpiry);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const resetTimer = useCallback(() => {
@@ -113,10 +114,7 @@ export function SessionTimeoutModal() {
       if (result?.error) {
         const challenge = decodeCognitoChallenge(result.error);
         if (challenge) {
-          window.sessionStorage.setItem(
-            COGNITO_CHALLENGE_STORAGE_KEY,
-            JSON.stringify(challenge)
-          );
+          window.sessionStorage.setItem(COGNITO_CHALLENGE_STORAGE_KEY, JSON.stringify(challenge));
           window.location.href = `/mfa?callbackUrl=${encodeURIComponent(callbackUrl)}`;
           return;
         }
@@ -175,9 +173,7 @@ export function SessionTimeoutModal() {
           {/* Re-auth form */}
           <form onSubmit={handleExtendSession} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="session-password">
-                パスワードを入力してセッションを延長
-              </Label>
+              <Label htmlFor="session-password">パスワードを入力してセッションを延長</Label>
               <Input
                 id="session-password"
                 type="password"
@@ -203,12 +199,7 @@ export function SessionTimeoutModal() {
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full"
-            onClick={handleLogout}
-          >
+          <Button variant="outline" size="lg" className="w-full" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
             ログアウト
           </Button>

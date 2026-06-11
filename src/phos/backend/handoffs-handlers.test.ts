@@ -181,9 +181,9 @@ describe('PH-OS handoffs Lambda handlers', () => {
           },
         },
         body: JSON.stringify({
-          card_id: 'card_1',
-          reason_code: 'DIFF_REVIEW',
-          summary: '薬剤師確認が必要です。',
+          card_id: ' card_1 ',
+          reason_code: ' DIFF_REVIEW ',
+          summary: ' 薬剤師確認が必要です。 ',
           source_refs: [{ kind: 'PRESCRIPTION', ref_id: 'rx_1', label: '処方箋 1' }],
           urgency: HandoffUrgency.HIGH,
           requested_action: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
@@ -199,6 +199,8 @@ describe('PH-OS handoffs Lambda handlers', () => {
       expect.objectContaining({ user_id: 'user_clerk' }),
       expect.objectContaining({
         card_id: 'card_1',
+        reason_code: 'DIFF_REVIEW',
+        summary: '薬剤師確認が必要です。',
         idempotency_key: 'idem_1',
         client_version: 1,
         related_blocker_code: 'MISSING_EVIDENCE',
@@ -443,8 +445,8 @@ describe('PH-OS handoffs Lambda handlers', () => {
         routeKey: 'POST /handoffs/{handoff_id}/return',
         pathParameters: { handoff_id: 'handoff_1' },
         body: JSON.stringify({
-          return_reason_code: 'NEED_MORE_INFO',
-          return_note: '施設連絡先を確認してください。',
+          return_reason_code: ' NEED_MORE_INFO ',
+          return_note: ' 施設連絡先を確認してください。 ',
           idempotency_key: 'idem_return',
           client_version: 1,
         }),

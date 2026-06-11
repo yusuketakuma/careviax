@@ -48,8 +48,15 @@ import { applyMixedVisitRouteUpdates, applyVisitScheduleRouteUpdates } from '../
 import { useRouteOrderDraft } from '../route-order-draft';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import {
+  AUTO_VEHICLE_RESOURCE_VALUE,
+  formatNullableTimeOfDay,
+  formatNullableTimeRange,
+  formatShortEntityIdentifier,
+  formatVehicleResourceLabel,
+  normalizeVehicleResourceSelectValue,
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
+  toDateKey,
   type CaseOption,
   type Proposal,
   type VisitPriority,
@@ -148,49 +155,14 @@ const EMPTY_SCHEDULES: VisitSchedule[] = [];
 const EMPTY_PROPOSALS: Proposal[] = [];
 const EMPTY_SHIFTS: PharmacistShift[] = [];
 const EMPTY_VEHICLE_RESOURCES: VisitVehicleResourceOption[] = [];
-const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
-
-function dateKey(value: string) {
-  return value.slice(0, 10);
-}
-
-function timeLabel(value: string | null | undefined) {
-  if (!value) return null;
-  return format(parseISO(value), 'HH:mm');
-}
-
-function timeRangeLabel(start: string | null | undefined, end: string | null | undefined) {
-  const normalizedStart = timeLabel(start);
-  const normalizedEnd = timeLabel(end);
-  if (!normalizedStart && !normalizedEnd) return null;
-  if (normalizedStart && normalizedEnd) return `${normalizedStart} - ${normalizedEnd}`;
-  return normalizedStart ?? normalizedEnd;
-}
-
-function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
-  if (!vehicle) return '自動割当';
-  const constraints = [
-    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
-    vehicle.max_route_duration_minutes != null
-      ? `${vehicle.max_route_duration_minutes}分以内`
-      : null,
-  ].filter(Boolean);
-  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
-}
-
-function shortEntityIdentifier(value: string | null | undefined) {
-  const candidate = value?.trim();
-  if (!candidate) return '未設定';
-  return candidate.length <= 8 ? candidate : candidate.slice(-8);
-}
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
   if (!shift || !shift.available) return false;
   if (!schedule.timeWindowStart || !shift.available_from || !shift.available_to) return true;
-  const scheduleStart = timeLabel(schedule.timeWindowStart);
-  const scheduleEnd = timeLabel(schedule.timeWindowEnd) ?? scheduleStart;
-  const shiftStart = timeLabel(shift.available_from);
-  const shiftEnd = timeLabel(shift.available_to);
+  const scheduleStart = formatNullableTimeOfDay(schedule.timeWindowStart);
+  const scheduleEnd = formatNullableTimeOfDay(schedule.timeWindowEnd) ?? scheduleStart;
+  const shiftStart = formatNullableTimeOfDay(shift.available_from);
+  const shiftEnd = formatNullableTimeOfDay(shift.available_to);
   if (!scheduleStart || !scheduleEnd || !shiftStart || !shiftEnd) return true;
   return scheduleStart >= shiftStart && scheduleEnd <= shiftEnd;
 }
@@ -249,7 +221,7 @@ function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[]
       const counts = new Map<string, number>();
       const pharmacistCounts = new Map<string, number>();
       for (const proposal of group.proposals) {
-        const key = dateKey(proposal.proposed_date);
+        const key = toDateKey(proposal.proposed_date);
         counts.set(key, (counts.get(key) ?? 0) + 1);
         pharmacistCounts.set(
           proposal.proposed_pharmacist_id,
@@ -268,7 +240,7 @@ function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[]
       const [targetPharmacistId] =
         [...pharmacistCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
       const outliers = group.proposals.filter(
-        (proposal) => dateKey(proposal.proposed_date) !== targetDate,
+        (proposal) => toDateKey(proposal.proposed_date) !== targetDate,
       );
       if (outliers.length === 0 || !targetPharmacistId) return null;
 
@@ -302,7 +274,7 @@ function buildRouteReorderPayloads(args: {
   sourceRemaining.forEach((schedule, index) => {
     payloads.push({
       scheduleId: schedule.id,
-      scheduled_date: schedule.scheduled_date.slice(0, 10),
+      scheduled_date: toDateKey(schedule.scheduled_date),
       pharmacist_id: schedule.pharmacist_id,
       route_order: index + 1,
     });
@@ -312,7 +284,7 @@ function buildRouteReorderPayloads(args: {
     .filter((schedule) => schedule.id !== args.draggedSchedule.id)
     .map((schedule) => ({
       scheduleId: schedule.id,
-      scheduled_date: schedule.scheduled_date.slice(0, 10),
+      scheduled_date: toDateKey(schedule.scheduled_date),
       pharmacist_id: schedule.pharmacist_id,
       route_order: 0,
     }));
@@ -623,7 +595,7 @@ export function ScheduleWeeklyOptimizer({
   const shiftsByCell = useMemo(() => {
     const map = new Map<string, PharmacistShift>();
     for (const shift of shifts) {
-      map.set(`${shift.user_id}:${dateKey(shift.date)}`, shift);
+      map.set(`${shift.user_id}:${toDateKey(shift.date)}`, shift);
     }
     return map;
   }, [shifts]);
@@ -631,7 +603,7 @@ export function ScheduleWeeklyOptimizer({
   const schedulesByCell = useMemo(() => {
     const map = new Map<string, VisitSchedule[]>();
     for (const schedule of schedules) {
-      const key = `${schedule.pharmacist_id}:${dateKey(schedule.scheduled_date)}`;
+      const key = `${schedule.pharmacist_id}:${toDateKey(schedule.scheduled_date)}`;
       const list = map.get(key);
       if (list) {
         list.push(schedule);
@@ -662,7 +634,7 @@ export function ScheduleWeeklyOptimizer({
       ) {
         continue;
       }
-      const key = `${proposal.proposed_pharmacist_id}:${dateKey(proposal.proposed_date)}`;
+      const key = `${proposal.proposed_pharmacist_id}:${toDateKey(proposal.proposed_date)}`;
       const list = map.get(key);
       if (list) {
         list.push(proposal);
@@ -857,7 +829,7 @@ export function ScheduleWeeklyOptimizer({
           status: schedule.schedule_status,
           priority: schedule.priority,
           pointKind: 'schedule' as const,
-          timeLabel: timeRangeLabel(schedule.time_window_start, schedule.time_window_end),
+          timeLabel: formatNullableTimeRange(schedule.time_window_start, schedule.time_window_end),
           etaLabel:
             !selectedCellRouteDraft.manualDirty && summary?.arrivalOffsetSeconds != null
               ? `${Math.round(summary.arrivalOffsetSeconds / 60)}分`
@@ -879,7 +851,7 @@ export function ScheduleWeeklyOptimizer({
           status: 'planned' as const,
           priority: proposal.priority,
           pointKind: 'proposal' as const,
-          timeLabel: timeRangeLabel(proposal.time_window_start, proposal.time_window_end),
+          timeLabel: formatNullableTimeRange(proposal.time_window_start, proposal.time_window_end),
           etaLabel:
             !selectedCellRouteDraft.manualDirty && summary?.arrivalOffsetSeconds != null
               ? `${Math.round(summary.arrivalOffsetSeconds / 60)}分`
@@ -1198,8 +1170,10 @@ export function ScheduleWeeklyOptimizer({
               <Select
                 value={plannerSettings.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
                 onValueChange={(value) => {
-                  const selectedVehicleResourceId =
-                    value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
+                  const selectedVehicleResourceId = normalizeVehicleResourceSelectValue(
+                    value,
+                    AUTO_VEHICLE_RESOURCE_VALUE,
+                  );
                   const selectedVehicle = vehicleResources.find(
                     (vehicle) => vehicle.id === selectedVehicleResourceId,
                   );
@@ -1422,7 +1396,7 @@ export function ScheduleWeeklyOptimizer({
                               </p>
                               <p className="text-[11px] text-muted-foreground">
                                 {shift?.available
-                                  ? `${timeLabel(shift.available_from) ?? '09:00'} - ${timeLabel(shift.available_to) ?? '18:00'}`
+                                  ? `${formatNullableTimeOfDay(shift.available_from) ?? '09:00'} - ${formatNullableTimeOfDay(shift.available_to) ?? '18:00'}`
                                   : '勤務シフトなし'}
                               </p>
                             </div>
@@ -1482,9 +1456,10 @@ export function ScheduleWeeklyOptimizer({
                                       {schedule.case_.patient.name}
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">
-                                      {timeLabel(schedule.time_window_start) ?? '時間未定'}
+                                      {formatNullableTimeOfDay(schedule.time_window_start) ??
+                                        '時間未定'}
                                       {schedule.time_window_end
-                                        ? ` - ${timeLabel(schedule.time_window_end)}`
+                                        ? ` - ${formatNullableTimeOfDay(schedule.time_window_end)}`
                                         : ''}
                                     </p>
                                   </div>
@@ -1575,10 +1550,10 @@ export function ScheduleWeeklyOptimizer({
                           start_date: suggestion.targetDate,
                           locked_date: suggestion.targetDate,
                           preferred_time_from:
-                            timeLabel(proposal.time_window_start) ??
+                            formatNullableTimeOfDay(proposal.time_window_start) ??
                             plannerSettings.preferred_time_from,
                           preferred_time_to:
-                            timeLabel(proposal.time_window_end) ??
+                            formatNullableTimeOfDay(proposal.time_window_end) ??
                             plannerSettings.preferred_time_to,
                           preferred_pharmacist_id: suggestion.targetPharmacistId,
                           vehicle_resource_id:
@@ -1754,8 +1729,8 @@ export function ScheduleWeeklyOptimizer({
                       <p className="font-medium text-foreground">{row.patientName}</p>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {timeRangeLabel(row.timeWindowStart, row.timeWindowEnd)} / ID{' '}
-                      {shortEntityIdentifier(row.itemId)}
+                      {formatNullableTimeRange(row.timeWindowStart, row.timeWindowEnd)} / ID{' '}
+                      {formatShortEntityIdentifier(row.itemId)}
                     </p>
                   </div>
                   <p className="text-sm font-medium text-foreground">

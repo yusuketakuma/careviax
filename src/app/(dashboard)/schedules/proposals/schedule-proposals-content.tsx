@@ -74,16 +74,37 @@ import { ProposalHumanDecisionFlow } from '../proposal-human-decision-flow';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 import {
+  AUTO_VEHICLE_RESOURCE_VALUE,
+  caseOptionPrimaryPharmacistLabel,
+  caseOptionTargetLabel,
   type CaseOption,
   CONTACT_STATUS_LABELS,
+  formatDistanceScoreLabel,
+  formatNullableDateLabel,
+  formatNullableDateTimeLabel,
+  formatVehicleResourceLabel,
+  isPatientPreferenceAlignedProposal,
+  isPriorityRouteProposal,
+  normalizeVehicleResourceSelectValue,
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
+  proposalActionFailureDisplayMessage,
+  proposalActionTargetLabel,
+  proposalListVisitPlaceLabel,
+  proposalRouteDecisionLabel,
+  proposalSafeIdentifierLabel,
+  proposalShortEntityIdentifier,
   readImpactCount,
   readImpactedPatientNames,
+  singleProposalActionLabel,
+  singleProposalActionQuestion,
+  singleProposalActionResultLabel,
   splitProposalReason,
   statusBadgeClass,
   timeLabel,
+  toDateKey,
   type Proposal,
+  type SingleProposalConfirmAction,
   type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
 } from '../day-view.shared';
@@ -206,7 +227,6 @@ type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
 };
 type VisitVehicleResourcesResponse = { data: VisitVehicleResourceOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
-type SingleProposalConfirmAction = 'approve' | 'confirm';
 type ContactMethod = 'phone' | 'fax' | 'email';
 type ContactFormState = {
   outcome: ContactOutcome;
@@ -301,23 +321,6 @@ const CONTACT_METHOD_LABELS: Record<ContactMethod, string> = {
   email: 'メール',
 };
 
-const AUTO_VEHICLE_RESOURCE_VALUE = '__auto_vehicle_resource__';
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '未設定';
-  return format(parseISO(value), 'yyyy/MM/dd HH:mm', { locale: ja });
-}
-
-function formatDateLabel(value: string | null | undefined) {
-  if (!value) return '未設定';
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
-
-function formatDistanceLabel(value: number | null | undefined) {
-  if (value == null) return '0.0';
-  return value.toFixed(1);
-}
-
 function formatEtaLabel(
   baseDate: string,
   timeWindowStart: string | null,
@@ -330,40 +333,6 @@ function formatEtaLabel(
   const parsed = parseISO(`${baseDate}T09:00:00`);
   const eta = new Date(parsed.getTime() + offsetSeconds * 1000);
   return format(eta, 'HH:mm', { locale: ja });
-}
-
-function formatVehicleResourceLabel(vehicle: VisitVehicleResourceSummary | null | undefined) {
-  if (!vehicle) return '未割当';
-  const constraints = [
-    vehicle.max_stops != null ? `最大${vehicle.max_stops}件` : null,
-    vehicle.max_route_duration_minutes != null
-      ? `${vehicle.max_route_duration_minutes}分以内`
-      : null,
-  ].filter(Boolean);
-  return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
-}
-
-function isPriorityRouteProposal(proposal: Pick<Proposal, 'priority' | 'proposal_reason'>) {
-  return (
-    (proposal.priority === 'emergency' || proposal.priority === 'urgent') &&
-    proposal.proposal_reason.includes('即応枠')
-  );
-}
-
-function isPatientPreferenceAlignedProposal(proposal: Pick<Proposal, 'proposal_reason'>) {
-  return proposal.proposal_reason.includes('患者条件');
-}
-
-function proposalRouteDecisionLabel(
-  proposal: Pick<Proposal, 'priority' | 'proposal_reason' | 'route_order'>,
-) {
-  if (isPriorityRouteProposal(proposal)) {
-    return `緊急度優先で順路 ${proposal.route_order ?? '未設定'}`;
-  }
-  if (isPatientPreferenceAlignedProposal(proposal)) {
-    return `患者希望枠で順路 ${proposal.route_order ?? '未設定'}`;
-  }
-  return `順路 ${proposal.route_order ?? '未設定'}`;
 }
 
 function ProposalDecisionBadges({ proposal }: { proposal: Proposal }) {
@@ -417,7 +386,7 @@ function ProposalRankingCard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-foreground">
-            {rank}位 {formatDateLabel(candidate.proposed_date)}{' '}
+            {rank}位 {formatNullableDateLabel(candidate.proposed_date)}{' '}
             {timeLabel(candidate.time_window_start, candidate.time_window_end)}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -427,7 +396,7 @@ function ProposalRankingCard({
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">
-            移動 {formatDistanceLabel(candidate.route_distance_score)}
+            移動 {formatDistanceScoreLabel(candidate.route_distance_score)}
           </Badge>
           <Badge variant="outline">
             配置 {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
@@ -448,7 +417,9 @@ function ProposalRankingCard({
               {candidate.vehicle_resource.label}
             </Badge>
           ) : null}
-          <Badge variant="outline">期限 {formatDateLabel(candidate.visit_deadline_date)}</Badge>
+          <Badge variant="outline">
+            期限 {formatNullableDateLabel(candidate.visit_deadline_date)}
+          </Badge>
         </div>
       </div>
       <ProposalReasonChips proposal={candidate} className="mt-3" />
@@ -485,19 +456,19 @@ function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
       <div className="flex items-center justify-between gap-4">
         <span className="text-muted-foreground">社用車</span>
         <span className="text-right font-medium text-foreground">
-          {formatVehicleResourceLabel(proposal.vehicle_resource)}
+          {formatVehicleResourceLabel(proposal.vehicle_resource, '未割当')}
         </span>
       </div>
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">期限</span>
         <span className="font-medium text-foreground">
-          {formatDateLabel(proposal.visit_deadline_date)}
+          {formatNullableDateLabel(proposal.visit_deadline_date)}
         </span>
       </div>
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">服薬最終日</span>
         <span className="font-medium text-foreground">
-          {formatDateLabel(proposal.medication_end_date)}
+          {formatNullableDateLabel(proposal.medication_end_date)}
         </span>
       </div>
       <div className="flex items-center justify-between">
@@ -553,76 +524,8 @@ function canApplyBulkProposalAction(proposal: Proposal, action: 'approve' | 'rej
   );
 }
 
-function shortEntityIdentifier(value: string | null | undefined) {
-  const normalized = value?.trim();
-  if (!normalized) return '未設定';
-  const withoutKnownPrefix = normalized.replace(/^(proposal|case|patient)[_-]/u, '');
-  const candidate = withoutKnownPrefix || normalized;
-  return candidate.length <= 8 ? candidate : candidate.slice(-8);
-}
-
-function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
-  return `ケース ${shortEntityIdentifier(proposal.case_id)} / 候補 ${shortEntityIdentifier(proposal.id)}`;
-}
-
-function proposalActionTargetLabel(proposal: Proposal) {
-  const pharmacistName = proposal.proposed_pharmacist?.name ?? '担当未解決';
-  const vehicleLabel = proposal.vehicle_resource?.label ?? '社用車未指定';
-  return `${proposal.case_.patient.name} ${formatDateLabel(proposal.proposed_date)} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${pharmacistName} / ${vehicleLabel} / ${proposalSafeIdentifierLabel(proposal)}`;
-}
-
-function caseOptionPrimaryPharmacistLabel(careCase: CaseOption) {
-  return careCase.primary_pharmacist_name ?? '主担当未設定';
-}
-
-function caseOptionTargetLabel(careCase: CaseOption) {
-  return `${careCase.patient.name} / ケース ${shortEntityIdentifier(careCase.id)} / 患者識別 ${shortEntityIdentifier(careCase.patient.id)} / 主担当 ${caseOptionPrimaryPharmacistLabel(careCase)}`;
-}
-
-function proposalListVisitPlaceLabel(proposal: Proposal) {
-  const siteName = proposal.site?.name?.trim();
-  return siteName
-    ? `訪問先住所は詳細・ルート確認で表示 / 担当拠点 ${siteName}`
-    : '訪問先住所は詳細・ルート確認で表示';
-}
-
-const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
-  'この候補は承認できません',
-  'この候補は却下できません',
-  '勤務枠が埋まりました',
-  '候補はすでに更新済みです',
-  '訪問候補が見つかりません',
-  '確定済み訪問の変更は管理者承認後に進めてください',
-  '確定済み訪問の変更は承認後に新候補を確定してください',
-]);
-
-function proposalActionFailureDisplayMessage(message: string, reachedServer: boolean) {
-  if (!reachedServer) {
-    return '通信が完了しませんでした。接続を確認して再試行してください。';
-  }
-
-  const trimmedMessage = message.trim();
-  if (SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
-    return trimmedMessage;
-  }
-
-  return 'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。';
-}
-
 function bulkActionFailureDisplayMessage(failure: BulkActionFailure) {
   return proposalActionFailureDisplayMessage(failure.message, failure.reachedServer);
-}
-
-function singleProposalActionLabel(action: SingleProposalConfirmAction) {
-  return action === 'approve' ? '承認して患者連絡へ進める' : '日時確定する';
-}
-
-function singleProposalActionQuestion(action: SingleProposalConfirmAction) {
-  return action === 'approve' ? '承認して患者連絡へ進めますか' : '日時確定しますか';
-}
-
-function singleProposalActionResultLabel(action: SingleProposalConfirmAction) {
-  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
 }
 
 export function ScheduleProposalsContent({
@@ -774,7 +677,7 @@ export function ScheduleProposalsContent({
     () =>
       proposals.filter(
         (proposal) =>
-          matchesTab(proposal, 'unapproved') && proposal.proposed_date.slice(0, 10) === todayKey(),
+          matchesTab(proposal, 'unapproved') && toDateKey(proposal.proposed_date) === todayKey(),
       ).length,
     [proposals],
   );
@@ -790,7 +693,7 @@ export function ScheduleProposalsContent({
         if (filterPreset === 'reschedule' && proposal.reschedule_source_schedule_id == null) {
           return false;
         }
-        if (filterPreset === 'today' && proposal.proposed_date.slice(0, 10) !== todayKey()) {
+        if (filterPreset === 'today' && toDateKey(proposal.proposed_date) !== todayKey()) {
           return false;
         }
         return true;
@@ -802,7 +705,7 @@ export function ScheduleProposalsContent({
       visibleProposals.map((proposal) => ({
         key: proposal.id,
         case_id: proposal.case_id,
-        proposed_date: proposal.proposed_date.slice(0, 10),
+        proposed_date: toDateKey(proposal.proposed_date),
         pharmacist_id: proposal.proposed_pharmacist_id,
         site_id: proposal.site?.id ?? undefined,
         visit_type: proposal.visit_type,
@@ -945,7 +848,7 @@ export function ScheduleProposalsContent({
   const reproposalForm = useMemo(() => {
     if (reproposalFormDraft) return reproposalFormDraft;
     return {
-      start_date: detail?.proposed_date.slice(0, 10) ?? initialDateFrom ?? '',
+      start_date: detail ? toDateKey(detail.proposed_date) : (initialDateFrom ?? ''),
       priority: detail?.priority ?? 'normal',
       preferred_time_from: '09:00',
       preferred_time_to: '12:00',
@@ -1308,7 +1211,7 @@ export function ScheduleProposalsContent({
           visit_type: detail.visit_type,
           priority: reproposalForm.priority,
           travel_mode: routeTravelMode,
-          start_date: reproposalForm.start_date || detail.proposed_date.slice(0, 10),
+          start_date: reproposalForm.start_date || toDateKey(detail.proposed_date),
           preferred_time_from: reproposalForm.preferred_time_from || undefined,
           preferred_time_to: reproposalForm.preferred_time_to || undefined,
           vehicle_resource_id: reproposalForm.vehicle_resource_id || undefined,
@@ -1410,7 +1313,7 @@ export function ScheduleProposalsContent({
           id: proposal.id,
           patientName: proposal.case_.patient.name,
           safeIdentifier: proposalSafeIdentifierLabel(proposal),
-          time: `${formatDateLabel(proposal.proposed_date)} ${timeLabel(
+          time: `${formatNullableDateLabel(proposal.proposed_date)} ${timeLabel(
             proposal.time_window_start,
             proposal.time_window_end,
           )}`,
@@ -1424,7 +1327,7 @@ export function ScheduleProposalsContent({
     if (!detail) return null;
     return {
       source: 'proposal_detail_route_preview',
-      date: detail.proposed_date.slice(0, 10),
+      date: toDateKey(detail.proposed_date),
       pharmacist_id: detail.proposed_pharmacist_id,
       travel_mode: routeTravelMode,
       target_count: detailProposalRouteUpdates.length,
@@ -1454,14 +1357,14 @@ export function ScheduleProposalsContent({
       etaLabel: detailRouteDraft.manualDirty
         ? null
         : formatEtaLabel(
-            detail.proposed_date.slice(0, 10),
+            toDateKey(detail.proposed_date),
             point.time_window_start,
             planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null,
           ),
     }));
   }, [detail, detailRouteDraft.draftIds, detailRouteDraft.manualDirty]);
   const detailRouteSelectionLabel = detail
-    ? `${formatDateLabel(detail.proposed_date)} / ${detail.proposed_pharmacist?.name ?? '担当未解決'}`
+    ? `${formatNullableDateLabel(detail.proposed_date)} / ${detail.proposed_pharmacist?.name ?? '担当未解決'}`
     : null;
   const detailTargetLabel = detail ? proposalActionTargetLabel(detail) : null;
 
@@ -1519,8 +1422,8 @@ export function ScheduleProposalsContent({
       : '却下すると選択候補から外れます。患者連絡中の候補は辞退扱いとして記録される場合があります。対象患者、候補日、担当、社用車を確認してください。';
   const bulkConfirmDateRange =
     dateFrom || dateTo
-      ? `${dateFrom ? formatDateLabel(dateFrom) : '開始日未指定'} - ${
-          dateTo ? formatDateLabel(dateTo) : '終了日未指定'
+      ? `${dateFrom ? formatNullableDateLabel(dateFrom) : '開始日未指定'} - ${
+          dateTo ? formatNullableDateLabel(dateTo) : '終了日未指定'
         }`
       : '日付指定なし';
   const bulkRejectButtonLabel =
@@ -1632,9 +1535,10 @@ export function ScheduleProposalsContent({
                   <p className="text-xs text-muted-foreground">
                     ケース固定中
                     {' / '}
-                    ケース {shortEntityIdentifier(effectiveSelectedCaseSummary.id)}
+                    ケース {proposalShortEntityIdentifier(effectiveSelectedCaseSummary.id)}
                     {' / '}
-                    患者識別 {shortEntityIdentifier(effectiveSelectedCaseSummary.patient.id)}
+                    患者識別{' '}
+                    {proposalShortEntityIdentifier(effectiveSelectedCaseSummary.patient.id)}
                     {' / '}
                     主担当 {caseOptionPrimaryPharmacistLabel(effectiveSelectedCaseSummary)}
                   </p>
@@ -1670,8 +1574,8 @@ export function ScheduleProposalsContent({
                         <span className="flex flex-col items-start leading-tight">
                           <span>{careCase.patient.name}</span>
                           <span className="text-xs font-normal text-muted-foreground">
-                            ケース {shortEntityIdentifier(careCase.id)} / 患者識別{' '}
-                            {shortEntityIdentifier(careCase.patient.id)} / 主担当{' '}
+                            ケース {proposalShortEntityIdentifier(careCase.id)} / 患者識別{' '}
+                            {proposalShortEntityIdentifier(careCase.patient.id)} / 主担当{' '}
                             {caseOptionPrimaryPharmacistLabel(careCase)}
                           </span>
                         </span>
@@ -1887,10 +1791,10 @@ export function ScheduleProposalsContent({
                   >
                     <p className="font-medium">{failure.patientName}</p>
                     <p className="text-xs leading-5">
-                      {formatDateLabel(failure.proposedDate)}{' '}
+                      {formatNullableDateLabel(failure.proposedDate)}{' '}
                       {timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} /{' '}
                       {failure.pharmacistName} / {failure.vehicleLabel} / 候補{' '}
-                      {shortEntityIdentifier(failure.id)}
+                      {proposalShortEntityIdentifier(failure.id)}
                     </p>
                     <p className="text-xs leading-5">未更新理由: {failure.message}</p>
                     <Button
@@ -1902,7 +1806,7 @@ export function ScheduleProposalsContent({
                         'mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100',
                       )}
                       onClick={() => openDetail(failure.id)}
-                      aria-label={`${failure.patientName} ${formatDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${shortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
+                      aria-label={`${failure.patientName} ${formatNullableDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${proposalShortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
                     >
                       該当候補を確認
                       <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
@@ -2045,7 +1949,7 @@ export function ScheduleProposalsContent({
                         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                           <span className="inline-flex items-center gap-1">
                             <CalendarClock className="size-4" />
-                            {formatDateLabel(proposal.proposed_date)}{' '}
+                            {formatNullableDateLabel(proposal.proposed_date)}{' '}
                             {timeLabel(proposal.time_window_start, proposal.time_window_end)}
                           </span>
                           <span className="inline-flex items-center gap-1">
@@ -2054,7 +1958,7 @@ export function ScheduleProposalsContent({
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <Route className="size-4" />
-                            スコア {formatDistanceLabel(proposal.route_distance_score)}
+                            スコア {formatDistanceScoreLabel(proposal.route_distance_score)}
                           </span>
                           {proposal.vehicle_resource ? (
                             <span className="inline-flex items-center gap-1">
@@ -2180,7 +2084,7 @@ export function ScheduleProposalsContent({
                 <div>
                   <dt className="text-xs text-muted-foreground">候補日時</dt>
                   <dd className="font-medium">
-                    {formatDateLabel(singleConfirmProposal.proposed_date)}{' '}
+                    {formatNullableDateLabel(singleConfirmProposal.proposed_date)}{' '}
                     {timeLabel(
                       singleConfirmProposal.time_window_start,
                       singleConfirmProposal.time_window_end,
@@ -2304,7 +2208,7 @@ export function ScheduleProposalsContent({
                     <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDateLabel(proposal.proposed_date)}{' '}
+                    {formatNullableDateLabel(proposal.proposed_date)}{' '}
                     {timeLabel(proposal.time_window_start, proposal.time_window_end)} /{' '}
                     {proposal.proposed_pharmacist?.name ?? '担当未解決'} /{' '}
                     {proposal.vehicle_resource?.label ?? '社用車未指定'}
@@ -2508,7 +2412,7 @@ export function ScheduleProposalsContent({
                     {detail.case_.patient.name}
                   </h2>
                   <CardDescription>
-                    {formatDateLabel(detail.proposed_date)}{' '}
+                    {formatNullableDateLabel(detail.proposed_date)}{' '}
                     {timeLabel(detail.time_window_start, detail.time_window_end)} /{' '}
                     {detail.proposed_pharmacist?.name ?? '担当未解決'}
                   </CardDescription>
@@ -2868,7 +2772,7 @@ export function ScheduleProposalsContent({
                               <Badge variant="outline">{CONTACT_STATUS_LABELS[log.outcome]}</Badge>
                             </div>
                             <span className="text-xs text-muted-foreground">
-                              {formatDateTime(log.called_at)}
+                              {formatNullableDateTimeLabel(log.called_at)}
                             </span>
                           </div>
                           {log.contact_name || log.contact_phone ? (
@@ -2989,8 +2893,10 @@ export function ScheduleProposalsContent({
                       <Select
                         value={reproposalForm.vehicle_resource_id || AUTO_VEHICLE_RESOURCE_VALUE}
                         onValueChange={(value) => {
-                          const selectedVehicleResourceId =
-                            value && value !== AUTO_VEHICLE_RESOURCE_VALUE ? value : '';
+                          const selectedVehicleResourceId = normalizeVehicleResourceSelectValue(
+                            value,
+                            AUTO_VEHICLE_RESOURCE_VALUE,
+                          );
                           setReproposalFormDraft((current) => ({
                             ...(current ?? reproposalForm),
                             vehicle_resource_id: selectedVehicleResourceId,
@@ -3013,7 +2919,7 @@ export function ScheduleProposalsContent({
                       </Select>
                       <p className="text-xs text-muted-foreground">
                         {selectedReproposalVehicle
-                          ? formatVehicleResourceLabel(selectedReproposalVehicle)
+                          ? formatVehicleResourceLabel(selectedReproposalVehicle, '未割当')
                           : vehicleResourcesQuery.isLoading
                             ? '社用車候補を読み込み中'
                             : '未指定の場合は患者希望時間とルート条件から自動割当します'}

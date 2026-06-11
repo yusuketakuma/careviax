@@ -70,7 +70,7 @@ export type ScheduleDayOnboardingReadinessWarning = {
 export const PREPARATION_ITEM_DESCRIPTIONS: Record<(typeof PREPARATION_ITEMS)[number][0], string> =
   {
     medication_changes_reviewed: '処方差分、薬歴、前回からの用法・薬剤変更を確認します。',
-    carry_items_confirmed: '持参薬、物品、未確定の持参物ブロッカーが残っていないか確認します。',
+    carry_items_confirmed: '持参薬、物品、未確定の持参物が残っていないか確認します。',
     previous_issues_reviewed: '前回訪問の課題、SOAP plan、未処理タスクを訪問前に確認します。',
     route_confirmed: '訪問先住所、施設集約、移動ルート、受入時間帯を確認します。',
     offline_synced: '訪問先で参照する記録が端末に同期済みか確認します。',

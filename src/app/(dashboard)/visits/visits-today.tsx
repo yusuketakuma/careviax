@@ -1,0 +1,393 @@
+'use client';
+
+import Link from 'next/link';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { AlertTriangle, Check } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
+import {
+  WorkspaceActionRail,
+  type BlockedReason,
+  type EvidenceItem,
+  type NextActionPanelProps,
+} from '@/components/features/workspace/action-rail';
+import {
+  getHandlingTagBadgeClass,
+  getHandlingTagLabel,
+} from '@/components/features/workspace/safety-board';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { cn } from '@/lib/utils';
+import type {
+  VisitPrepCheck,
+  VisitPreparationBoardResponse,
+  VisitPreparationCard,
+} from '@/types/visit-preparation-board';
+
+/**
+ * new_04_visit の「今日の訪問 — 出発前の準備チェック」(docs/design-gap-analysis-new.md)。
+ * ヘッダー(主操作: 訪問モードを開始)→ 準備チェックカード縦リスト + 右レール
+ * (次にやること / 止まっている理由 / 根拠・記録)→ オフライン注記の構成。
+ * 危険タグ(麻薬/冷所/アレルギー)は隠さない。
+ * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
+ */
+
+export async function fetchVisitPreparationBoard(
+  orgId: string,
+): Promise<VisitPreparationBoardResponse> {
+  const res = await fetch('/api/visits/today-preparation', {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) throw new Error('本日の訪問準備の取得に失敗しました');
+  const json = await res.json();
+  return json.data;
+}
+
+const ACCENT_CLASSES: Record<VisitPreparationCard['accent'], { bar: string; meter: string }> = {
+  ready: { bar: 'bg-emerald-500', meter: 'bg-emerald-500' },
+  caution: { bar: 'bg-amber-500', meter: 'bg-amber-500' },
+  progress: { bar: 'bg-blue-500', meter: 'bg-blue-500' },
+};
+
+const CHECK_STATE_CLASSES: Record<VisitPrepCheck['state'], string> = {
+  done: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+  alert: 'border-amber-400 bg-amber-50 font-semibold text-amber-800',
+  progress: 'border-blue-300 bg-blue-50 text-blue-700',
+  pending: 'border-border bg-background text-muted-foreground',
+};
+
+const NOTE_TONE_CLASSES = {
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  info: 'border-blue-200 bg-blue-50/70 text-blue-900',
+} as const;
+
+/** 患者属性タグ(アレルギー/嚥下)。取扱タグは SafetyBoard の配色を再利用。 */
+const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
+  allergy: { label: 'アレルギー', className: 'border-amber-400 bg-amber-50 text-amber-700' },
+  swallowing: { label: '嚥下', className: 'border-amber-400 bg-amber-50 text-amber-700' },
+};
+
+function formatTimeOfDay(iso: string): string {
+  const date = new Date(iso);
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
+function formatAgeLabel(minutes: number): string {
+  const safeMinutes = Math.max(minutes, 0);
+  if (safeMinutes < 60) return `${safeMinutes}分`;
+  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
+  return `${Math.floor(safeMinutes / (24 * 60))}日`;
+}
+
+function CheckChip({ check }: { check: VisitPrepCheck }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs',
+        CHECK_STATE_CLASSES[check.state],
+      )}
+      data-state={check.state}
+    >
+      {check.state === 'done' ? (
+        <Check className="size-3 shrink-0" aria-hidden="true" />
+      ) : check.state === 'alert' ? (
+        <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+      ) : null}
+      {check.label}
+      {check.state === 'alert' ? <span className="sr-only">(未完)</span> : null}
+    </span>
+  );
+}
+
+function PrepProgress({ card }: { card: VisitPreparationCard }) {
+  const ratio = card.prep_total > 0 ? card.prep_done / card.prep_total : 0;
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="text-sm font-semibold text-foreground">
+        準備 {card.prep_done}/{card.prep_total}
+      </span>
+      <span
+        role="img"
+        aria-label={`準備 ${card.prep_done}/${card.prep_total}`}
+        className="inline-flex h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+      >
+        <span
+          className={cn('h-full rounded-full', ACCENT_CLASSES[card.accent].meter)}
+          style={{ width: `${Math.round(ratio * 100)}%` }}
+        />
+      </span>
+    </div>
+  );
+}
+
+function VisitPrepCardItem({ card }: { card: VisitPreparationCard }) {
+  return (
+    <article
+      className="relative overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5"
+      data-testid="visit-prep-card"
+      data-accent={card.accent}
+    >
+      <span
+        aria-hidden="true"
+        className={cn('absolute inset-y-0 left-0 w-1', ACCENT_CLASSES[card.accent].bar)}
+      />
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="text-lg font-bold tabular-nums text-foreground">
+          {card.time_label ?? '--:--'}
+        </p>
+        <p className="text-base font-bold text-foreground">
+          {card.title}
+          {card.is_facility ? '' : ' 様'}
+        </p>
+        <p className="text-xs text-muted-foreground">{card.meta_label}</p>
+        <div className="ml-auto">
+          <PrepProgress card={card} />
+        </div>
+      </div>
+
+      {card.safety_tags.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {card.safety_tags.map((tag) => {
+            const patientTag = PATIENT_SAFETY_TAGS[tag];
+            return (
+              <span
+                key={tag}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
+                  patientTag?.className ?? getHandlingTagBadgeClass(tag),
+                )}
+              >
+                {patientTag?.label ?? getHandlingTagLabel(tag)}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {card.checks.map((check) => (
+          <CheckChip key={check.id} check={check} />
+        ))}
+      </div>
+
+      {card.note ? (
+        <p
+          className={cn(
+            'mt-2 rounded-md border px-3 py-2 text-sm leading-5',
+            NOTE_TONE_CLASSES[card.note_tone ?? 'info'],
+          )}
+        >
+          {card.note}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        {card.actions.map((action) => (
+          <Link
+            key={action.label}
+            href={action.href}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            → {action.label}
+          </Link>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function buildNextAction(data: VisitPreparationBoardResponse): NextActionPanelProps {
+  if (data.next_action) {
+    const auditLabel = data.next_action.has_narcotic ? '麻薬監査' : '監査';
+    return {
+      actionLabel: data.next_action.due_at
+        ? `${auditLabel}を開始 — ${formatTimeOfDay(data.next_action.due_at)}期限`
+        : `${auditLabel}を開始する`,
+      description: `${data.next_action.patient_name} 様の${
+        data.next_action.has_narcotic ? '持参薬の麻薬監査' : '調剤監査'
+      }が待ちです。完了で午後の予定がすべて確定します。`,
+      actionHref: '/auditing',
+    };
+  }
+  return {
+    actionLabel: '今日のルートを確認する',
+    description: 'いま期限で止まっている作業はありません。出発前確認に進めます。',
+    actionHref: '/schedules',
+  };
+}
+
+function BoardSkeleton() {
+  return (
+    <div
+      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
+      role="status"
+      aria-label="本日の訪問読み込み中"
+    >
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-36 w-full rounded-lg" />
+        ))}
+      </div>
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-32 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function VisitsToday() {
+  const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
+
+  const boardQuery = useRealtimeQuery({
+    queryKey: ['visits', 'today-preparation', orgId],
+    queryFn: () => fetchVisitPreparationBoard(orgId),
+    staleTime: 30_000,
+    enabled: !isBootstrappingOrg,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+
+  const now = new Date();
+  const data = boardQuery.data ?? null;
+  const dateLabel = `${format(now, 'M/d(EEE)', { locale: ja })} — 出発前の最終確認`;
+  const firstVisitHref = data?.cards[0]?.visit_mode_href ?? null;
+
+  const blockedReasons: BlockedReason[] = (data?.blocked_reasons ?? []).map((reason) => ({
+    id: reason.id,
+    label: reason.label,
+    severity: reason.severity,
+    categoryLabel: reason.category,
+    ageLabel: formatAgeLabel(reason.age_minutes),
+    actionLabel: reason.action_label,
+    actionHref: reason.action_href,
+  }));
+
+  const evidence: EvidenceItem[] = data
+    ? [
+        {
+          id: 'today-route',
+          label: '本日のルート',
+          meta: data.evidence.route_calculated_at
+            ? `計算 ${formatTimeOfDay(data.evidence.route_calculated_at)}`
+            : '未計算',
+          href: '/schedules',
+        },
+        {
+          id: 'cold-bag',
+          label: '保冷バッグ',
+          meta: data.evidence.vehicle_label ? `車両: ${data.evidence.vehicle_label}` : '車載',
+          href: '/schedules',
+        },
+        {
+          id: 'prior-records',
+          label: '前回訪問記録',
+          meta: `${data.evidence.prior_record_count}件`,
+          href: '#visits-classic',
+        },
+      ]
+    : [];
+
+  const countBadge = data
+    ? data.facility_patient_count > 0
+      ? `${data.visit_count}件＋施設${data.facility_patient_count}名`
+      : `${data.visit_count}件`
+    : null;
+
+  return (
+    <section aria-label="今日の訪問(出発前の準備チェック)" data-testid="visits-today">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-xl font-bold text-foreground">訪問</h2>
+          <p className="text-sm text-muted-foreground">{dateLabel}</p>
+        </div>
+        {/* 主操作(青)は 1 画面 1 つ: 訪問モードの開始 */}
+        {firstVisitHref ? (
+          <Button asChild className="min-h-[44px]">
+            <Link href={firstVisitHref}>訪問モードを開始</Link>
+          </Button>
+        ) : (
+          <Button type="button" className="min-h-[44px]" disabled>
+            訪問モードを開始
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-4">
+        {isBootstrappingOrg || boardQuery.isLoading ? (
+          <BoardSkeleton />
+        ) : boardQuery.isError || !data ? (
+          <div className="rounded-lg border border-border/70 bg-card p-4">
+            <ErrorState
+              variant="server"
+              title="本日の訪問を表示できません"
+              description="訪問準備の集計取得に失敗しました。再試行してください。"
+              detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
+              action={{ label: '再試行', onClick: () => void boardQuery.refetch() }}
+            />
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+            <div className="min-w-0 space-y-4">
+              <section
+                aria-labelledby="visits-today-list-heading"
+                className="rounded-lg border border-border/70 bg-card p-4"
+                data-testid="visits-today-list"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3
+                    id="visits-today-list-heading"
+                    className="text-base font-bold text-foreground"
+                  >
+                    今日の訪問 — 準備が9割
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    出発前に⚠がゼロになっていることだけ確認すればよい設計
+                  </p>
+                  {countBadge ? (
+                    <span className="ml-auto inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground">
+                      {countBadge}
+                    </span>
+                  ) : null}
+                </div>
+                {data.cards.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-border/70 bg-background px-4 py-6 text-sm text-muted-foreground">
+                    本日の訪問予定はありません。
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {data.cards.map((card) => (
+                      <VisitPrepCardItem key={card.schedule_id} card={card} />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <p
+                className="rounded-md border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm leading-5 text-emerald-900"
+                data-testid="visits-today-offline-note"
+              >
+                訪問モードはオフラインでも全機能が動きます。記録は端末に保存され、電波が戻ると自動同期されます。
+              </p>
+            </div>
+            <div className="space-y-4">
+              <WorkspaceActionRail
+                nextAction={buildNextAction(data)}
+                blockedReasons={blockedReasons}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={evidence}
+                evidenceOpenLabel="開く"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}

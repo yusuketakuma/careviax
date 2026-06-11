@@ -10,6 +10,7 @@ import {
   type VisitModeView,
 } from '@/phos/contracts/phos_contracts';
 import type { PhosApiClient } from './types';
+import { createPhosRequestAbort } from './request-timeout';
 
 const MAX_RETRIES = 3;
 const BASE64_CHUNK_SIZE = 0x8000;
@@ -177,46 +178,6 @@ function safeRetryError(error: unknown): string {
   return 'EVIDENCE_UPLOAD_RETRY_FAILED';
 }
 
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
-
-function createUploadAbort(
-  timeoutMs: number,
-  callerSignal?: AbortSignal,
-): {
-  signal: AbortSignal;
-  didTimeout: () => boolean;
-  clear: () => void;
-} {
-  const controller = new AbortController();
-  let timedOut = false;
-  const abortFromCaller = () => controller.abort(callerSignal?.reason);
-
-  if (callerSignal?.aborted) {
-    abortFromCaller();
-  } else {
-    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
-  }
-
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new Error('PHOS_EVIDENCE_UPLOAD_TIMEOUT'));
-  }, timeoutMs);
-  maybeUnrefTimeout(timeout);
-
-  return {
-    signal: controller.signal,
-    didTimeout: () => timedOut,
-    clear: () => {
-      clearTimeout(timeout);
-      callerSignal?.removeEventListener('abort', abortFromCaller);
-    },
-  };
-}
-
 function assertSafeEvidenceUploadUrl(uploadUrl: string): void {
   let parsed: URL;
   try {
@@ -253,7 +214,11 @@ async function putEvidenceUpload(input: {
     fallbackMs: DEFAULT_EVIDENCE_UPLOAD_TIMEOUT_MS,
     maxMs: MAX_EVIDENCE_UPLOAD_TIMEOUT_MS,
   });
-  const uploadAbort = createUploadAbort(effectiveTimeoutMs, input.signal);
+  const uploadAbort = createPhosRequestAbort({
+    timeoutMs: effectiveTimeoutMs,
+    timeoutReason: new Error('PHOS_EVIDENCE_UPLOAD_TIMEOUT'),
+    callerSignal: input.signal,
+  });
   try {
     return await input.fetchImpl(input.upload_url, {
       method: input.method,

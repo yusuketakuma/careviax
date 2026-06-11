@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addMonths,
@@ -103,7 +103,13 @@ export function ShiftsContent() {
     available_to: '18:00',
     note: '',
   });
-  const [templateApplyMonth, setTemplateApplyMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [templateApplyMonthState, setTemplateApplyMonthState] = useState(() => {
+    const now = new Date();
+    return {
+      sourceMonth: format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM'),
+      value: format(now, 'yyyy-MM'),
+    };
+  });
   const [templateApplyUserId, setTemplateApplyUserId] = useState('all');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [pharmacistActionTarget, setPharmacistActionTarget] = useState<{
@@ -247,20 +253,16 @@ export function ShiftsContent() {
     ? (draftShifts.find((shift) => shift.key === selectedShiftKey) ?? null)
     : null;
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-  useEffect(() => {
-    setTemplateApplyMonth(format(currentMonth, 'yyyy-MM'));
-  }, [currentMonth]);
-
-  useEffect(() => {
-    if (shiftPharmacists.length === 0 || sites.length === 0) return;
-
-    setTemplateForm((current) => ({
-      ...current,
-      user_id: current.user_id || shiftPharmacists[0]?.id || '',
-      site_id: current.site_id || sites[0]?.id || '',
-    }));
-  }, [shiftPharmacists, sites]);
+  const currentMonthKey = format(currentMonth, 'yyyy-MM');
+  const templateApplyMonth =
+    templateApplyMonthState.sourceMonth === currentMonthKey
+      ? templateApplyMonthState.value
+      : currentMonthKey;
+  const effectiveTemplateForm = {
+    ...templateForm,
+    user_id: templateForm.user_id || shiftPharmacists[0]?.id || '',
+    site_id: templateForm.site_id || sites[0]?.id || '',
+  };
 
   const selectedRoleIsOperational = isOperationalMemberRole(pharmacistForm.role);
   const selectedRoleRequiresSite = roleRequiresSite(pharmacistForm.role);
@@ -300,10 +302,7 @@ export function ShiftsContent() {
       email: pharmacist.email,
       phone: pharmacist.phone ?? '',
       site_id: pharmacist.site_id ?? sites[0]?.id ?? '',
-      role:
-        pharmacist.role === 'owner'
-          ? 'admin'
-          : pharmacist.role,
+      role: pharmacist.role === 'owner' ? 'admin' : pharmacist.role,
       max_daily_visits: pharmacist.max_daily_visits?.toString() ?? '',
       max_weekly_visits: pharmacist.max_weekly_visits?.toString() ?? '',
       max_travel_minutes: pharmacist.max_travel_minutes?.toString() ?? '',
@@ -708,13 +707,17 @@ export function ShiftsContent() {
           'x-org-id': orgId,
         },
         body: JSON.stringify({
-          user_id: templateForm.user_id,
-          site_id: templateForm.site_id,
-          weekday: Number(templateForm.weekday),
-          available: templateForm.available,
-          available_from: templateForm.available ? templateForm.available_from : undefined,
-          available_to: templateForm.available ? templateForm.available_to : undefined,
-          note: templateForm.note || undefined,
+          user_id: effectiveTemplateForm.user_id,
+          site_id: effectiveTemplateForm.site_id,
+          weekday: Number(effectiveTemplateForm.weekday),
+          available: effectiveTemplateForm.available,
+          available_from: effectiveTemplateForm.available
+            ? effectiveTemplateForm.available_from
+            : undefined,
+          available_to: effectiveTemplateForm.available
+            ? effectiveTemplateForm.available_to
+            : undefined,
+          note: effectiveTemplateForm.note || undefined,
         }),
       });
       if (!res.ok) {
@@ -1146,7 +1149,8 @@ export function ShiftsContent() {
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {pharmacist.site_name ?? '所属店舗未設定'} / {memberRoleLabel(pharmacist.role)}
+                        {pharmacist.site_name ?? '所属店舗未設定'} /{' '}
+                        {memberRoleLabel(pharmacist.role)}
                       </p>
                       {isOperationalMemberRole(pharmacist.role) ? (
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -1285,7 +1289,7 @@ export function ShiftsContent() {
                 <div className="space-y-1.5">
                   <Label htmlFor="template-user">担当者</Label>
                   <Select
-                    value={templateForm.user_id}
+                    value={effectiveTemplateForm.user_id}
                     onValueChange={(value) =>
                       value
                         ? setTemplateForm((current) => ({
@@ -1310,7 +1314,7 @@ export function ShiftsContent() {
                 <div className="space-y-1.5">
                   <Label htmlFor="template-site">店舗</Label>
                   <Select
-                    value={templateForm.site_id}
+                    value={effectiveTemplateForm.site_id}
                     onValueChange={(value) =>
                       value
                         ? setTemplateForm((current) => ({
@@ -1338,7 +1342,7 @@ export function ShiftsContent() {
                 <div className="space-y-1.5">
                   <Label htmlFor="template-weekday">曜日</Label>
                   <Select
-                    value={templateForm.weekday}
+                    value={effectiveTemplateForm.weekday}
                     onValueChange={(value) =>
                       value
                         ? setTemplateForm((current) => ({
@@ -1363,7 +1367,7 @@ export function ShiftsContent() {
                 <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
                   <Checkbox
                     id="template-available"
-                    checked={templateForm.available}
+                    checked={effectiveTemplateForm.available}
                     onCheckedChange={(checked) =>
                       setTemplateForm((current) => ({
                         ...current,
@@ -1383,14 +1387,14 @@ export function ShiftsContent() {
                   <Input
                     id="template-from"
                     type="time"
-                    value={templateForm.available_from}
+                    value={effectiveTemplateForm.available_from}
                     onChange={(event) =>
                       setTemplateForm((current) => ({
                         ...current,
                         available_from: event.target.value,
                       }))
                     }
-                    disabled={!templateForm.available}
+                    disabled={!effectiveTemplateForm.available}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1398,14 +1402,14 @@ export function ShiftsContent() {
                   <Input
                     id="template-to"
                     type="time"
-                    value={templateForm.available_to}
+                    value={effectiveTemplateForm.available_to}
                     onChange={(event) =>
                       setTemplateForm((current) => ({
                         ...current,
                         available_to: event.target.value,
                       }))
                     }
-                    disabled={!templateForm.available}
+                    disabled={!effectiveTemplateForm.available}
                   />
                 </div>
               </div>
@@ -1415,7 +1419,7 @@ export function ShiftsContent() {
                 <Textarea
                   id="template-note"
                   rows={2}
-                  value={templateForm.note}
+                  value={effectiveTemplateForm.note}
                   onChange={(event) =>
                     setTemplateForm((current) => ({
                       ...current,
@@ -1430,8 +1434,8 @@ export function ShiftsContent() {
                 <Button
                   onClick={() => upsertTemplateMutation.mutate()}
                   disabled={
-                    !templateForm.user_id ||
-                    !templateForm.site_id ||
+                    !effectiveTemplateForm.user_id ||
+                    !effectiveTemplateForm.site_id ||
                     upsertTemplateMutation.isPending
                   }
                 >
@@ -1456,7 +1460,12 @@ export function ShiftsContent() {
                       id="template-apply-month"
                       type="month"
                       value={templateApplyMonth}
-                      onChange={(event) => setTemplateApplyMonth(event.target.value)}
+                      onChange={(event) =>
+                        setTemplateApplyMonthState({
+                          sourceMonth: currentMonthKey,
+                          value: event.target.value,
+                        })
+                      }
                     />
                   </div>
                   <div className="space-y-1.5">

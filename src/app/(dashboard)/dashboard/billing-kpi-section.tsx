@@ -86,7 +86,7 @@ export function BillingKpiSection() {
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <XCircle className="size-3.5 text-red-500" aria-hidden="true" />
-              締めブロッカー
+              締めを止めている理由
             </CardTitle>
           </CardHeader>
           <CardContent>

@@ -11,10 +11,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  msUntilSessionWarning,
-  msUntilSessionExpiry,
-} from '@/lib/utils/session';
+import { msUntilSessionWarning, msUntilSessionExpiry } from '@/lib/utils/session';
 
 interface SessionTimeoutWarningProps {
   /** Called when the user requests a session refresh. */
@@ -31,7 +28,8 @@ export function SessionTimeoutWarning({ onRefresh }: SessionTimeoutWarningProps)
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const lastActivityRef = useRef<number>(Date.now());
+  const [initialActivityAt] = useState(() => Date.now());
+  const lastActivityRef = useRef<number>(initialActivityAt);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,9 +114,7 @@ export function SessionTimeoutWarning({ onRefresh }: SessionTimeoutWarningProps)
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
   const timeLabel =
-    minutes > 0
-      ? `${minutes}分${seconds.toString().padStart(2, '0')}秒`
-      : `${seconds}秒`;
+    minutes > 0 ? `${minutes}分${seconds.toString().padStart(2, '0')}秒` : `${seconds}秒`;
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
@@ -138,17 +134,10 @@ export function SessionTimeoutWarning({ onRefresh }: SessionTimeoutWarningProps)
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button
-            variant="outline"
-            onClick={handleExpiry}
-            disabled={isRefreshing}
-          >
+          <Button variant="outline" onClick={handleExpiry} disabled={isRefreshing}>
             ログアウト
           </Button>
-          <Button
-            onClick={handleExtend}
-            disabled={isRefreshing || secondsLeft === 0}
-          >
+          <Button onClick={handleExtend} disabled={isRefreshing || secondsLeft === 0}>
             {isRefreshing ? '延長中...' : 'セッションを延長'}
           </Button>
         </AlertDialogFooter>

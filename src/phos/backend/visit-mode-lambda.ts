@@ -1,11 +1,10 @@
 import {
-  DynamoDBClient,
   GetItemCommand,
   TransactWriteItemsCommand,
   UpdateItemCommand,
   type DynamoDBClient as AwsDynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
-import { S3Client } from '@aws-sdk/client-s3';
+import type { S3Client } from '@aws-sdk/client-s3';
 import { createDynamoVisitModeRepository } from './dynamo-visit-mode-repository';
 import type {
   DynamoVisitModeClient,
@@ -25,7 +24,7 @@ import {
   type EvidenceObjectVerifier,
 } from './evidence-upload-verification';
 import { rethrowDynamoTransactionConflict } from './dynamodb-transaction-errors';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient, getDefaultPhosS3Client } from './phos-aws-clients';
 
 type VisitModeLambdaDependencies = PhosLambdaRuntimeDependencies & {
   repository?: PhosVisitModeRepository;
@@ -191,7 +190,7 @@ function createEvidenceObjectVerifier(
   const bucket = evidenceBucketName(deps);
   if (!bucket) return undefined;
   return createS3EvidenceObjectVerifier({
-    client: deps.s3_client ?? withPhosAwsClientTimeout(new S3Client(phosAwsClientConfig())),
+    client: deps.s3_client ?? getDefaultPhosS3Client(),
     bucket,
   });
 }
@@ -200,8 +199,7 @@ export function createVisitModeRepository(
   deps: VisitModeLambdaDependencies = {},
 ): PhosVisitModeRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient =
-    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
+  const dynamoClient = deps.dynamo_client ?? getDefaultPhosDynamoClient();
   const storeClient = deps.store_client ?? createDynamoVisitModeClient({ client: dynamoClient });
   return createVisitModeLifecycleRepository(
     createDynamoVisitModeRepository(storeClient, {

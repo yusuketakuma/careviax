@@ -8,7 +8,7 @@ import type {
   VisitVehicleResourceSummary,
   VisitType,
 } from './day-view.shared';
-import { toDateKey } from './day-view.shared';
+import { normalizeVehicleResourceSelectValue, toDateKey } from './day-view.shared';
 
 export type ScheduleDayRouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
@@ -312,7 +312,7 @@ function resolveScheduleDayPlannerVehicleResourceId({
   selectedValue: string | null | undefined;
   autoValue: string;
 }): string {
-  return selectedValue && selectedValue !== autoValue ? selectedValue : '';
+  return normalizeVehicleResourceSelectValue(selectedValue, autoValue);
 }
 
 export function applyScheduleDayPlannerVehicleResourceSelection(

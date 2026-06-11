@@ -14,6 +14,7 @@ import {
   parseBoundedIntegerQuery,
   parseIdempotencyKey,
   parsePositiveVersion,
+  parseRequiredString,
   parseSourceRefs,
   readQueryParam,
   validationError,
@@ -87,15 +88,9 @@ function parseCreateRequest(body: unknown): CreateHandoffRequest {
     throw validationError({ field: 'body' });
   }
   const input = body as Partial<CreateHandoffRequest>;
-  if (typeof input.card_id !== 'string' || input.card_id.trim().length === 0) {
-    throw validationError({ field: 'card_id' });
-  }
-  if (typeof input.reason_code !== 'string' || input.reason_code.trim().length === 0) {
-    throw validationError({ field: 'reason_code' });
-  }
-  if (typeof input.summary !== 'string' || input.summary.trim().length === 0) {
-    throw validationError({ field: 'summary' });
-  }
+  const card_id = parseRequiredString(input.card_id, { field: 'card_id' });
+  const reason_code = parseRequiredString(input.reason_code, { field: 'reason_code' });
+  const summary = parseRequiredString(input.summary, { field: 'summary' });
   if (!Object.values(HandoffUrgency).includes(input.urgency as HandoffUrgency)) {
     throw validationError({ field: 'urgency' });
   }
@@ -112,9 +107,9 @@ function parseCreateRequest(body: unknown): CreateHandoffRequest {
   }
 
   return {
-    card_id: input.card_id.trim(),
-    reason_code: input.reason_code.trim(),
-    summary: input.summary.trim(),
+    card_id,
+    reason_code,
+    summary,
     source_refs: parseSourceRefs(input.source_refs, { requireNonEmpty: true }) ?? [],
     urgency: input.urgency as HandoffUrgency,
     ...(input.requested_action ? { requested_action: input.requested_action } : {}),
@@ -158,18 +153,11 @@ function parseReturnRequest(body: unknown): ReturnHandoffRequest {
     throw validationError({ field: 'body' });
   }
   const input = body as Partial<ReturnHandoffRequest>;
-  if (
-    typeof input.return_reason_code !== 'string' ||
-    input.return_reason_code.trim().length === 0
-  ) {
-    throw validationError({ field: 'return_reason_code' });
-  }
-  if (typeof input.return_note !== 'string' || input.return_note.trim().length === 0) {
-    throw validationError({ field: 'return_note' });
-  }
   return {
-    return_reason_code: input.return_reason_code.trim(),
-    return_note: input.return_note.trim(),
+    return_reason_code: parseRequiredString(input.return_reason_code, {
+      field: 'return_reason_code',
+    }),
+    return_note: parseRequiredString(input.return_note, { field: 'return_note' }),
     idempotency_key: parseIdempotencyKey(input.idempotency_key),
     client_version: parsePositiveVersion(input.client_version),
   };

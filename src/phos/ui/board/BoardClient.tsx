@@ -71,6 +71,11 @@ export type BoardClientProps = {
 
 type BoardPhase = 'LOADING' | 'READY' | 'ERROR';
 type CapacityPhase = 'IDLE' | 'LOADING' | 'ERROR';
+type BoardLoadState = {
+  key: string;
+  phase: Exclude<BoardPhase, 'LOADING'>;
+  errorMessage?: string;
+};
 
 function buildIdempotencyKey(cardId: string, action: ActionCode): string {
   const suffix =
@@ -292,8 +297,10 @@ export function BoardClient({
   );
   const [selectedDetail, setSelectedDetail] = useState<CardDetailResponse | null>(null);
   const [detailError, setDetailError] = useState<string | undefined>();
-  const [phase, setPhase] = useState<BoardPhase>(initialItems.length > 0 ? 'READY' : 'LOADING');
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [boardLoadState, setBoardLoadState] = useState<BoardLoadState>({
+    key: initialItems.length > 0 ? 'initial-items' : '',
+    phase: initialItems.length > 0 ? 'READY' : 'ERROR',
+  });
   const [actionError, setActionError] = useState<string | undefined>();
   const [pharmacistHandoffs, setPharmacistHandoffs] = useState<HandoffView[]>([]);
   const [returnedHandoffs, setReturnedHandoffs] = useState<HandoffView[]>([]);
@@ -323,8 +330,23 @@ export function BoardClient({
           !isSameOriginPhosProxyBaseUrl(apiBaseUrl.trim().replace(/\/+$/, ''))
         ? 'PH-OS access token provider is not configured.'
         : undefined;
-  const displayPhase: BoardPhase = configurationError ? 'ERROR' : phase;
-  const displayErrorMessage = configurationError ?? errorMessage;
+  const boardRequestKey = useMemo(
+    () =>
+      JSON.stringify({
+        searchQuery,
+        quickFilter,
+        sortKey,
+      }),
+    [quickFilter, searchQuery, sortKey],
+  );
+  const displayPhase: BoardPhase = configurationError
+    ? 'ERROR'
+    : initialItems.length > 0
+      ? 'READY'
+      : boardLoadState.key === boardRequestKey
+        ? boardLoadState.phase
+        : 'LOADING';
+  const displayErrorMessage = configurationError ?? boardLoadState.errorMessage;
 
   const apiClient = useMemo(() => {
     if (client) return client;
@@ -361,19 +383,25 @@ export function BoardClient({
   }, []);
 
   useEffect(() => {
+    let timer: number | undefined;
+
     if (initialSelectedCardId) {
       urlSyncReady.current = true;
       if (lastAppliedInitialSelectedCardId.current !== initialSelectedCardId) {
         lastAppliedInitialSelectedCardId.current = initialSelectedCardId;
-        setSelectedDetail(null);
-        setDetailError(undefined);
-        setSelectedCardId(initialSelectedCardId);
-        setOpenedCardIds((current) =>
-          current.includes(initialSelectedCardId) ? current : [...current, initialSelectedCardId],
-        );
+        timer = window.setTimeout(() => {
+          setSelectedDetail(null);
+          setDetailError(undefined);
+          setSelectedCardId(initialSelectedCardId);
+          setOpenedCardIds((current) =>
+            current.includes(initialSelectedCardId) ? current : [...current, initialSelectedCardId],
+          );
+        }, 0);
       }
       syncCardIdToUrl(initialSelectedCardId);
-      return;
+      return () => {
+        if (timer) window.clearTimeout(timer);
+      };
     }
     lastAppliedInitialSelectedCardId.current = undefined;
     const cardId = readCardIdFromUrl();
@@ -381,14 +409,17 @@ export function BoardClient({
       urlSyncReady.current = true;
       return;
     }
-    setSelectedDetail(null);
-    setDetailError(undefined);
-    setSelectedCardId(cardId);
-    setOpenedCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
-    window.setTimeout(() => {
+    timer = window.setTimeout(() => {
+      setSelectedDetail(null);
+      setDetailError(undefined);
+      setSelectedCardId(cardId);
+      setOpenedCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
       urlSyncReady.current = true;
       syncCardIdToUrl(cardId);
     }, 0);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
   }, [initialSelectedCardId]);
 
   useEffect(() => {
@@ -401,7 +432,6 @@ export function BoardClient({
     if (!apiClient) return;
 
     let active = true;
-    setPhase('LOADING');
 
     void apiClient
       .getCards({
@@ -412,18 +442,21 @@ export function BoardClient({
       .then((response) => {
         if (!active) return;
         setItems(response.items);
-        setPhase('READY');
+        setBoardLoadState({ key: boardRequestKey, phase: 'READY' });
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setPhase('ERROR');
-        setErrorMessage(error instanceof Error ? error.message : 'PH-OS board load failed.');
+        setBoardLoadState({
+          key: boardRequestKey,
+          phase: 'ERROR',
+          errorMessage: error instanceof Error ? error.message : 'PH-OS board load failed.',
+        });
       });
 
     return () => {
       active = false;
     };
-  }, [apiClient, initialItems.length, quickFilter, searchQuery, sortKey]);
+  }, [apiClient, boardRequestKey, initialItems.length, quickFilter, searchQuery, sortKey]);
 
   useEffect(() => {
     if (!apiClient) return;

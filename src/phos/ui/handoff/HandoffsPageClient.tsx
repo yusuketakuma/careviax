@@ -15,6 +15,11 @@ export type HandoffsPageClientProps = {
 };
 
 type HandoffsPhase = 'LOADING' | 'READY' | 'ERROR';
+type HandoffsLoadState = {
+  key: string;
+  phase: Exclude<HandoffsPhase, 'LOADING'>;
+  errorMessage?: string;
+};
 
 function buildHandoffIdempotencyKey(handoffId: string, operation: string): string {
   const suffix =
@@ -60,20 +65,24 @@ export function HandoffsPageClient({
     return createPhosApiClient({ baseUrl: apiBaseUrl, getAccessToken });
   }, [apiBaseUrl, client, configurationError, getAccessToken]);
   const [handoffs, setHandoffs] = useState<HandoffView[]>([]);
-  const [phase, setPhase] = useState<HandoffsPhase>(apiClient ? 'LOADING' : 'ERROR');
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(configurationError);
+  const requestKey = apiClient ? 'handoffs:me:open-in-review' : 'unconfigured';
+  const [loadState, setLoadState] = useState<HandoffsLoadState>({
+    key: 'unconfigured',
+    phase: 'ERROR',
+    errorMessage: configurationError,
+  });
+  const phase: HandoffsPhase = configurationError
+    ? 'ERROR'
+    : loadState.key === requestKey
+      ? loadState.phase
+      : 'LOADING';
+  const errorMessage = configurationError ?? loadState.errorMessage;
   const [submittingHandoffId, setSubmittingHandoffId] = useState<string | undefined>();
 
   useEffect(() => {
-    if (!apiClient) {
-      setPhase('ERROR');
-      setErrorMessage(configurationError);
-      return;
-    }
+    if (!apiClient) return;
 
     let active = true;
-    setPhase('LOADING');
-    setErrorMessage(undefined);
 
     void Promise.all([
       apiClient.getHandoffs({ status: HandoffStatus.OPEN, assignee: 'ME' }),
@@ -82,18 +91,21 @@ export function HandoffsPageClient({
       .then(([openResponse, inReviewResponse]) => {
         if (!active) return;
         setHandoffs([...openResponse.items, ...inReviewResponse.items]);
-        setPhase('READY');
+        setLoadState({ key: requestKey, phase: 'READY' });
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setPhase('ERROR');
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState({
+          key: requestKey,
+          phase: 'ERROR',
+          errorMessage: actionErrorMessage(error),
+        });
       });
 
     return () => {
       active = false;
     };
-  }, [apiClient, configurationError]);
+  }, [apiClient, requestKey]);
 
   const handleOpenCard = useCallback(
     (cardId: string) => {
@@ -109,7 +121,7 @@ export function HandoffsPageClient({
       if (!handoff) return;
 
       setSubmittingHandoffId(handoffId);
-      setErrorMessage(undefined);
+      setLoadState((current) => ({ ...current, errorMessage: undefined }));
       try {
         const response = await apiClient.openHandoff(handoffId, {
           idempotency_key: buildHandoffIdempotencyKey(handoffId, 'OPEN_HANDOFF'),
@@ -117,7 +129,7 @@ export function HandoffsPageClient({
         });
         setHandoffs((current) => upsertHandoff(current, response.handoff));
       } catch (error) {
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState((current) => ({ ...current, errorMessage: actionErrorMessage(error) }));
       } finally {
         setSubmittingHandoffId(undefined);
       }
@@ -132,7 +144,7 @@ export function HandoffsPageClient({
       if (!handoff) return;
 
       setSubmittingHandoffId(handoffId);
-      setErrorMessage(undefined);
+      setLoadState((current) => ({ ...current, errorMessage: undefined }));
       try {
         await apiClient.resolveHandoff(handoffId, {
           resolved_action_code: resolvedActionCode,
@@ -141,7 +153,7 @@ export function HandoffsPageClient({
         });
         setHandoffs((current) => removeHandoff(current, handoffId));
       } catch (error) {
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState((current) => ({ ...current, errorMessage: actionErrorMessage(error) }));
       } finally {
         setSubmittingHandoffId(undefined);
       }
@@ -156,7 +168,7 @@ export function HandoffsPageClient({
       if (!handoff) return;
 
       setSubmittingHandoffId(handoffId);
-      setErrorMessage(undefined);
+      setLoadState((current) => ({ ...current, errorMessage: undefined }));
       try {
         await apiClient.returnHandoff(handoffId, {
           return_reason_code: reasonCode,
@@ -166,7 +178,7 @@ export function HandoffsPageClient({
         });
         setHandoffs((current) => removeHandoff(current, handoffId));
       } catch (error) {
-        setErrorMessage(actionErrorMessage(error));
+        setLoadState((current) => ({ ...current, errorMessage: actionErrorMessage(error) }));
       } finally {
         setSubmittingHandoffId(undefined);
       }

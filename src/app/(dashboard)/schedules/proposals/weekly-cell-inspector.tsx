@@ -1,10 +1,11 @@
 'use client';
 
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { CalendarClock } from 'lucide-react';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
-import { VisitProposalDiagnosticsCard, type ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
+import {
+  VisitProposalDiagnosticsCard,
+  type ProposalGenerationDiagnosticsCardData,
+} from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +18,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/server/services/visit-route-engine';
-import { PROPOSAL_STATUS_LABELS, type Proposal, type VisitSchedule } from '../day-view.shared';
+import {
+  PROPOSAL_STATUS_LABELS,
+  timeLabel,
+  type Proposal,
+  type VisitSchedule,
+} from '../day-view.shared';
 import { buildOptimizerDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 
 type WeeklyCellInspectorProps = {
@@ -76,12 +82,6 @@ type WeeklyCellInspectorProps = {
   onSelectAlternatePharmacist: () => void;
 };
 
-function timeRangeLabel(start: string | null | undefined, end: string | null | undefined) {
-  if (!start && !end) return '時間未定';
-  if (start && end) return `${format(parseISO(start), 'HH:mm', { locale: ja })} - ${format(parseISO(end), 'HH:mm', { locale: ja })}`;
-  return start ? format(parseISO(start), 'HH:mm', { locale: ja }) : format(parseISO(end!), 'HH:mm', { locale: ja });
-}
-
 export function WeeklyCellInspector({
   title,
   description,
@@ -128,7 +128,10 @@ export function WeeklyCellInspector({
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="weekly-inspector-pharmacist">薬剤師</Label>
-            <Select value={selectedPharmacistId} onValueChange={(value) => onSelectPharmacist(value ?? '')}>
+            <Select
+              value={selectedPharmacistId}
+              onValueChange={(value) => onSelectPharmacist(value ?? '')}
+            >
               <SelectTrigger id="weekly-inspector-pharmacist" className="w-full">
                 <SelectValue placeholder="薬剤師を選択" />
               </SelectTrigger>
@@ -189,8 +192,12 @@ export function WeeklyCellInspector({
         onAction={onApplyRoute}
         extraSummary={
           <>
-            {schedules.length > 0 ? <Badge variant="outline">確定 {schedules.length} 件</Badge> : null}
-            {proposals.length > 0 ? <Badge variant="outline">候補 {proposals.length} 件</Badge> : null}
+            {schedules.length > 0 ? (
+              <Badge variant="outline">確定 {schedules.length} 件</Badge>
+            ) : null}
+            {proposals.length > 0 ? (
+              <Badge variant="outline">候補 {proposals.length} 件</Badge>
+            ) : null}
             {routeDiffCount > 0 ? <Badge variant="outline">差分 {routeDiffCount} 件</Badge> : null}
           </>
         }
@@ -217,7 +224,7 @@ export function WeeklyCellInspector({
                         {schedule.case_.patient.name}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {timeRangeLabel(schedule.time_window_start, schedule.time_window_end)}
+                        {timeLabel(schedule.time_window_start, schedule.time_window_end)}
                       </p>
                     </div>
                     <Badge variant="outline">#{schedule.route_order ?? '-'}</Badge>
@@ -262,7 +269,7 @@ export function WeeklyCellInspector({
                         {proposal.case_.patient.name}
                       </p>
                       <p className="mt-1 text-xs text-amber-900">
-                        {timeRangeLabel(proposal.time_window_start, proposal.time_window_end)}
+                        {timeLabel(proposal.time_window_start, proposal.time_window_end)}
                       </p>
                     </div>
                     <Badge variant="outline">

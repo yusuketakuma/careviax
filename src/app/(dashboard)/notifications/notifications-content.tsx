@@ -1,400 +1,238 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatDistanceToNow, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import { Bell, BellOff, CheckCheck, ExternalLink, AlertTriangle, Clock, Cpu } from 'lucide-react';
-import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { BellOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loading } from '@/components/ui/loading';
+import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
+import { ListOpenCard } from '@/components/features/workspace/list-open-card';
+import {
+  classifyNotification,
+  NOTIFICATION_CATEGORY_BADGE_CLASSES,
+  NOTIFICATION_CATEGORY_LABELS,
+  type NotificationCategory,
+} from '@/lib/notifications/notification-category';
+import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { badgeToneClass } from '@/lib/ui/badge-semantics';
-import { SectionIntro } from '@/components/ui/section-intro';
-import type {
-  HomeLinkContext,
-  NotificationTab,
-  NotificationTypeFilter,
-} from '@/lib/dashboard/home-link-builders';
-import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
-import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import type { NotificationCategoryFilter } from './notifications-query-state';
 
-// --- Types ---
+/**
+ * p0_04「お知らせ一覧」。
+ * 急ぎ / 薬剤師確認 / 事務で対応 / 返信待ち / 未同期 のフィルタチップと、
+ * バッジ+タイトル+「患者名様:補足」+「開く」のカードリスト。
+ * 「未同期」はサーバー通知ではなく offline-store からの合成行。
+ */
 
-type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
-
-type Notification = {
+type NotificationItem = {
   id: string;
-  type: NotificationType;
-  title: string;
+  type: string;
+  event_type?: string | null;
+  title?: string | null;
   message: string;
-  link: string | null;
-  is_read: boolean;
+  link?: string | null;
   created_at: string;
+  is_read: boolean;
 };
 
-const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
-
-// --- Constants ---
-
-const TYPE_CONFIG: Record<
-  NotificationType,
-  { label: string; icon: React.ElementType; badgeClass: string }
-> = {
-  urgent: {
-    label: '緊急',
-    icon: AlertTriangle,
-    badgeClass: badgeToneClass('urgent'),
-  },
-  business: { label: '業務', icon: Bell, badgeClass: badgeToneClass('info') },
-  reminder: {
-    label: 'リマインダー',
-    icon: Clock,
-    badgeClass: badgeToneClass('attention'),
-  },
-  system: { label: 'システム', icon: Cpu, badgeClass: badgeToneClass('neutral') },
-};
-
-function mergeNotifications(current: Notification[], incoming: Notification[]) {
-  const merged = [...incoming, ...current];
-  const unique = merged.filter(
-    (notification, index, all) =>
-      all.findIndex((candidate) => candidate.id === notification.id) === index,
-  );
-  unique.sort(
-    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
-  );
-  return unique.slice(0, 50);
-}
-
-// --- Helpers ---
-
-function NotificationCard({
-  notification,
-  onRead,
-}: {
-  notification: Notification;
-  onRead: (id: string) => void;
-}) {
-  const cfg = TYPE_CONFIG[notification.type] ?? TYPE_CONFIG.system;
-  const Icon = cfg.icon;
-
-  const timeAgo = formatDistanceToNow(parseISO(notification.created_at), {
-    addSuffix: true,
-    locale: ja,
-  });
-
-  return (
-    <Card className={notification.is_read ? 'opacity-70' : 'border-blue-200 bg-blue-50/30'}>
-      <CardContent className="flex items-start gap-3 p-4">
-        <div
-          className={`mt-0.5 rounded-full p-1.5 ${notification.is_read ? 'bg-muted' : 'bg-blue-100'}`}
-        >
-          <Icon
-            className={`size-4 ${notification.is_read ? 'text-muted-foreground' : 'text-blue-700'}`}
-            aria-hidden="true"
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className={`text-[10px] ${cfg.badgeClass}`}>
-              {cfg.label}
-            </Badge>
-            {!notification.is_read && (
-              <span className="inline-block size-2 rounded-full bg-blue-600" aria-label="未読" />
-            )}
-          </div>
-          <p className="mt-1 text-sm font-medium text-foreground">{notification.title}</p>
-          <p className="mt-0.5 text-sm text-muted-foreground">{notification.message}</p>
-          <div className="mt-2 flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">{timeAgo}</span>
-            {notification.link && (
-              <Link
-                href={notification.link}
-                className="flex min-h-11 min-w-11 items-center gap-1 text-xs text-blue-700 hover:underline sm:min-h-0 sm:min-w-0"
-              >
-                詳細を見る
-                <ExternalLink className="size-3" aria-hidden="true" />
-              </Link>
-            )}
-            {!notification.is_read && (
-              <button
-                onClick={() => onRead(notification.id)}
-                className="inline-flex min-h-11 min-w-11 items-center text-xs text-muted-foreground underline hover:text-foreground sm:min-h-0 sm:min-w-0"
-              >
-                既読にする
-              </button>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- Main ---
+const CATEGORY_FILTERS: NotificationCategoryFilter[] = [
+  'all',
+  'urgent',
+  'pharmacist',
+  'clerk',
+  'reply',
+  'unsynced',
+];
 
 type NotificationsContentProps = {
-  initialTab?: NotificationTab;
-  initialTypeFilter?: NotificationTypeFilter;
-  initialContext?: HomeLinkContext | null;
+  initialCategory?: NotificationCategoryFilter;
 };
 
-export function NotificationsContent({
-  initialTab = 'unread',
-  initialTypeFilter = 'all',
-  initialContext,
-}: NotificationsContentProps = {}) {
-  const replaceNotificationsUrl = useSyncedSearchParams();
+export function NotificationsContent({ initialCategory = 'all' }: NotificationsContentProps) {
   const orgId = useOrgId();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'unread' | 'all'>(initialTab);
-  const [typeFilter, setTypeFilter] = useState<'all' | NotificationType>(initialTypeFilter);
+  const [category, setCategory] = useState<NotificationCategoryFilter>(initialCategory);
+  const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
 
-  const { data: unreadData, isLoading: unreadLoading } = useQuery({
-    queryKey: ['notifications', orgId, 'unread'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications?is_read=false&limit=50', {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('通知の取得に失敗しました');
-      return res.json() as Promise<{ data: Notification[] }>;
-    },
-    enabled: !!orgId,
-  });
-
-  const { data: allData, isLoading: allLoading } = useQuery({
-    queryKey: ['notifications', orgId, 'all'],
+  const { data, isLoading } = useQuery<{ data: NotificationItem[] }>({
+    queryKey: ['notifications', 'inbox', orgId],
     queryFn: async () => {
       const res = await fetch('/api/notifications?limit=50', {
         headers: { 'x-org-id': orgId },
       });
-      if (!res.ok) throw new Error('通知の取得に失敗しました');
-      return res.json() as Promise<{ data: Notification[] }>;
+      if (!res.ok) throw new Error('お知らせの取得に失敗しました');
+      return res.json();
     },
-    enabled: !!orgId && tab === 'all',
+    enabled: Boolean(orgId),
+    refetchInterval: 30_000,
   });
 
-  useEffect(() => {
-    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
-    const controller = new AbortController();
-    let active = true;
-
-    (async () => {
-      try {
-        const response = await fetch('/api/notifications/stream', {
-          headers: { 'x-org-id': orgId },
-          signal: controller.signal,
-        });
-        if (!response.ok || !response.body) return;
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (active) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split('\n\n');
-          buffer = chunks.pop() ?? '';
-
-          for (const chunk of chunks) {
-            if (!chunk.startsWith('data: ')) continue;
-            const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
-            if (nextNotifications.length > 0) {
-              queryClient.setQueryData<{ data: Notification[] }>(
-                ['notifications', orgId, 'unread'],
-                (current) => ({
-                  data: mergeNotifications(current?.data ?? [], nextNotifications),
-                }),
-              );
-              queryClient.setQueryData<{ data: Notification[] }>(
-                ['notifications', orgId, 'all'],
-                (current) => ({
-                  data: mergeNotifications(current?.data ?? [], nextNotifications),
-                }),
-              );
-            }
-          }
-        }
-      } catch {
-        // Unmounts and transient reconnects are handled by the next page visit.
-      }
-    })();
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [orgId, queryClient]);
-
   const markReadMutation = useMutation({
-    mutationFn: async ({ ids, all }: { ids?: string[]; all?: boolean }) => {
+    mutationFn: async (ids: string[]) => {
       const res = await fetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ ids, all }),
+        body: JSON.stringify({ ids }),
       });
-      if (!res.ok) throw new Error('既読更新に失敗しました');
-      return res.json();
+      if (!res.ok) throw new Error('既読化に失敗しました');
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', orgId] });
-      if (variables.all) {
-        toast.success('全て既読にしました');
-      }
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications', 'inbox', orgId] });
     },
-    onError: () => toast.error('既読更新に失敗しました'),
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '既読化に失敗しました');
+    },
   });
 
-  const unreadNotifications = unreadData?.data ?? [];
-  const allNotifications = allData?.data ?? [];
+  const notifications = useMemo(() => data?.data ?? [], [data]);
 
-  function handleRead(id: string) {
-    markReadMutation.mutate({ ids: [id] });
-  }
+  const classified = useMemo(() => {
+    const categoryRank: Record<string, number> = {
+      urgent: 0,
+      clerk: 1,
+      pharmacist: 2,
+      reply: 3,
+    };
+    return notifications
+      .map((notification) => ({
+        notification,
+        category: classifyNotification(notification),
+      }))
+      .sort((a, b) => {
+        // 未読優先 → 急ぎ等の重要度 → 新しい順
+        if (a.notification.is_read !== b.notification.is_read) {
+          return a.notification.is_read ? 1 : -1;
+        }
+        const rankA = a.category ? (categoryRank[a.category] ?? 4) : 5;
+        const rankB = b.category ? (categoryRank[b.category] ?? 4) : 5;
+        if (rankA !== rankB) return rankA - rankB;
+        return +new Date(b.notification.created_at) - +new Date(a.notification.created_at);
+      });
+  }, [notifications]);
 
-  function handleReadAll() {
-    markReadMutation.mutate({ all: true });
-  }
+  const countByCategory = useMemo(() => {
+    const counts = new Map<NotificationCategory, number>();
+    for (const { notification, category: itemCategory } of classified) {
+      if (!itemCategory || notification.is_read) continue;
+      counts.set(itemCategory, (counts.get(itemCategory) ?? 0) + 1);
+    }
+    return counts;
+  }, [classified]);
 
-  const currentList = tab === 'unread' ? unreadNotifications : allNotifications;
-  const filteredList =
-    typeFilter === 'all'
-      ? currentList
-      : currentList.filter((notification) => notification.type === typeFilter);
-  const isLoading = tab === 'unread' ? unreadLoading : allLoading;
-  const contextSummary =
-    initialContext === 'dashboard_home'
-      ? tab === 'unread' && typeFilter === 'urgent'
-        ? 'ホームから未読の緊急通知にフォーカスして開いています。'
-        : tab === 'unread'
-          ? 'ホームから未読通知にフォーカスして開いています。'
-          : 'ホームから通知一覧にフォーカスして開いています。'
-      : null;
+  const handleCategoryChange = (next: NotificationCategoryFilter) => {
+    setCategory(next);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('type');
+    params.delete('tab');
+    if (next === 'all') {
+      params.delete('category');
+    } else {
+      params.set('category', next);
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  const visibleItems = classified.filter(({ category: itemCategory }) => {
+    if (category === 'all') return true;
+    if (category === 'unsynced') return false;
+    return itemCategory === category;
+  });
+
+  const showUnsyncedRow =
+    pendingSyncCount > 0 && (category === 'all' || category === 'unsynced');
+
+  const unreadIds = notifications
+    .filter((notification) => !notification.is_read)
+    .map((notification) => notification.id);
+
+  const openNotification = (notification: NotificationItem) => {
+    if (!notification.is_read) {
+      markReadMutation.mutate([notification.id]);
+    }
+    if (notification.link) {
+      router.push(notification.link);
+    }
+  };
+
+  if (!orgId || isLoading) return <Loading />;
 
   return (
-    <div className="space-y-6">
-      {contextSummary ? (
-        <Alert
-          className="border-sky-200 bg-sky-50 text-sky-900"
-          data-testid="notifications-context-banner"
-        >
-          <Bell className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
-        </Alert>
-      ) : null}
-      <SectionIntro
-        title="絞り込み"
-        description="未読・全件・通知種別で先に絞り込み、処理すべき通知だけを残します。"
-      />
-      <div className="flex items-center justify-between">
-        <Tabs
-          value={tab}
-          onValueChange={(v) => {
-            const nextTab = v as 'unread' | 'all';
-            setTab(nextTab);
-            replaceNotificationsUrl({ tab: nextTab === 'unread' ? null : nextTab });
-          }}
-        >
-          <TabsList>
-            <TabsTrigger value="unread" className="min-w-[44px]">
-              未読
-              {unreadNotifications.length > 0 && (
-                <Badge className="ml-1.5 h-4 min-w-[1rem] px-1 text-[10px] bg-blue-600">
-                  {unreadNotifications.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="all">すべて</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {unreadNotifications.length > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleReadAll}
-            disabled={markReadMutation.isPending}
-          >
-            <CheckCheck className="mr-1.5 size-3.5" aria-hidden="true" />
-            全て既読
-          </Button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={typeFilter === 'all' ? 'default' : 'outline'}
-          onClick={() => {
-            setTypeFilter('all');
-            replaceNotificationsUrl({ type: null });
-          }}
-        >
-          すべて
-          <Badge variant="secondary" className="ml-1.5">
-            {currentList.length}
-          </Badge>
-        </Button>
-        {(Object.keys(TYPE_CONFIG) as NotificationType[]).map((type) => {
-          const count = currentList.filter((notification) => notification.type === type).length;
-          return (
-            <Button
-              key={type}
-              type="button"
-              size="sm"
-              variant={typeFilter === type ? 'default' : 'outline'}
-              onClick={() => {
-                setTypeFilter(type);
-                replaceNotificationsUrl({ type });
-              }}
-            >
-              {TYPE_CONFIG[type].label}
-              <Badge variant="secondary" className="ml-1.5">
-                {count}
-              </Badge>
-            </Button>
-          );
-        })}
-      </div>
-
-      {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
-          ))}
-        </div>
-      )}
-
-      {!isLoading && filteredList.length === 0 && (
-        <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border text-center">
-          <BellOff className="size-8 text-muted-foreground" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">
-            {typeFilter === 'all'
-              ? tab === 'unread'
-                ? '未読の通知はありません'
-                : '通知はありません'
-              : `${TYPE_CONFIG[typeFilter].label}の通知はありません`}
+    <div className="mx-auto max-w-4xl space-y-5" data-testid="notifications-inbox">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            急ぎの確認、返信待ち、未同期をまとめて見ます。
           </p>
         </div>
-      )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => markReadMutation.mutate(unreadIds)}
+          disabled={unreadIds.length === 0 || markReadMutation.isPending}
+        >
+          全て既読にする
+        </Button>
+      </div>
 
-      <SectionIntro
-        title="通知一覧"
-        description="絞り込み後の通知を、未読と重要度を見ながら順に処理します。"
+      <FilterChipBar
+        ariaLabel="お知らせの絞り込み"
+        value={category}
+        onChange={handleCategoryChange}
+        options={CATEGORY_FILTERS.map((value) => ({
+          value,
+          label: value === 'all' ? 'すべて' : NOTIFICATION_CATEGORY_LABELS[value],
+          count:
+            value === 'all'
+              ? undefined
+              : value === 'unsynced'
+                ? pendingSyncCount || undefined
+                : countByCategory.get(value),
+        }))}
       />
-      <div className="space-y-2">
-        {filteredList.map((notification) => (
-          <NotificationCard key={notification.id} notification={notification} onRead={handleRead} />
-        ))}
+
+      <div className="space-y-3" role="list" aria-label="お知らせ一覧">
+        {showUnsyncedRow && (
+          <ListOpenCard
+            badgeLabel={NOTIFICATION_CATEGORY_LABELS.unsynced}
+            badgeClassName={NOTIFICATION_CATEGORY_BADGE_CLASSES.unsynced}
+            title="送信できていない記録があります"
+            subtitle={`未同期 ${pendingSyncCount} 件。通信が戻ったら自動で再送します。`}
+            onOpen={() => router.push('/schedules')}
+          />
+        )}
+
+        {visibleItems.length === 0 && !showUnsyncedRow ? (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 text-center text-sm text-muted-foreground">
+            <BellOff className="size-7" aria-hidden="true" />
+            <p>この分類のお知らせはありません</p>
+          </div>
+        ) : (
+          visibleItems.map(({ notification, category: itemCategory }) => {
+            return (
+              <ListOpenCard
+                key={notification.id}
+                badgeLabel={
+                  itemCategory ? NOTIFICATION_CATEGORY_LABELS[itemCategory] : 'お知らせ'
+                }
+                badgeClassName={
+                  itemCategory ? NOTIFICATION_CATEGORY_BADGE_CLASSES[itemCategory] : undefined
+                }
+                title={notification.title ?? notification.message}
+                subtitle={notification.title ? notification.message : null}
+                highlighted={!notification.is_read}
+                onOpen={() => openNotification(notification)}
+              />
+            );
+          })
+        )}
       </div>
     </div>
   );

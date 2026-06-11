@@ -47,6 +47,7 @@ import type {
 } from './types';
 import { PhosApiError } from './types';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createPhosRequestAbort } from './request-timeout';
 
 export type CreatePhosApiClientOptions = {
   baseUrl: string;
@@ -284,46 +285,6 @@ function requestTimeoutError(timeoutMs: number, responseContract: ResponseContra
     details: {
       timeout_ms: timeoutMs,
       response_contract: responseContract,
-    },
-  };
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
-
-function createRequestAbort(
-  timeoutMs: number,
-  callerSignal?: AbortSignal,
-): {
-  signal: AbortSignal;
-  didTimeout: () => boolean;
-  clear: () => void;
-} {
-  const controller = new AbortController();
-  let timedOut = false;
-  const abortFromCaller = () => controller.abort(callerSignal?.reason);
-
-  if (callerSignal?.aborted) {
-    abortFromCaller();
-  } else {
-    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
-  }
-
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new Error('PHOS_API_REQUEST_TIMEOUT'));
-  }, timeoutMs);
-  maybeUnrefTimeout(timeout);
-
-  return {
-    signal: controller.signal,
-    didTimeout: () => timedOut,
-    clear: () => {
-      clearTimeout(timeout);
-      callerSignal?.removeEventListener('abort', abortFromCaller);
     },
   };
 }
@@ -823,7 +784,11 @@ export function createPhosApiClient(options: CreatePhosApiClientOptions): PhosAp
       fallbackMs: requestTimeoutMs,
       maxMs: MAX_PHOS_API_REQUEST_TIMEOUT_MS,
     });
-    const requestAbort = createRequestAbort(effectiveTimeoutMs, input.signal);
+    const requestAbort = createPhosRequestAbort({
+      timeoutMs: effectiveTimeoutMs,
+      timeoutReason: new Error('PHOS_API_REQUEST_TIMEOUT'),
+      callerSignal: input.signal,
+    });
     try {
       const response = await fetchImpl(buildUrl(baseUrl, input.path, input.query), {
         method: input.method,

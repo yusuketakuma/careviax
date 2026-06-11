@@ -56,21 +56,21 @@ describe('MobileNav', () => {
     mockPathname = '/visits/handoffs/visit-record-1';
     render(<MobileNav />);
 
-    expect(screen.getByRole('link', { name: '訪問時' }).getAttribute('aria-current')).toBeNull();
+    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBeNull();
   });
 
   it('keeps schedule before visit for mobile field work', () => {
     render(<MobileNav />);
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(links).toEqual(['ホーム', 'スケジュール', '訪問時', '患者']);
+    expect(links).toEqual(['ホーム', 'スケジュール', '訪問', '患者']);
   });
 
   it('treats My Day as part of the mobile visit workflow', () => {
     mockPathname = '/my-day';
     render(<MobileNav />);
 
-    expect(screen.getByRole('link', { name: '訪問時' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBe(
       'page',
     );
   });

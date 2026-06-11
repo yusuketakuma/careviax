@@ -4,13 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -23,13 +17,14 @@ import {
   ShieldCheck,
   LoaderCircle,
 } from 'lucide-react';
+import { useSafeCallbackUrl } from '@/lib/auth/browser-auth-state';
 
 type Step = 1 | 2 | 3;
 
 export default function MfaSetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
-  const [callbackUrl, setCallbackUrl] = useState('/dashboard');
+  const callbackUrl = useSafeCallbackUrl();
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,17 +36,14 @@ export default function MfaSetupPage() {
   const [setupLoading, setSetupLoading] = useState(true);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const setRef = useCallback((index: number) => (el: HTMLInputElement | null) => {
-    inputRefs.current[index] = el;
-  }, []);
+  const setRef = useCallback(
+    (index: number) => (el: HTMLInputElement | null) => {
+      inputRefs.current[index] = el;
+    },
+    [],
+  );
 
   const stepLabels = ['シークレット取得', '確認コード入力', '設定完了'];
-
-  useEffect(() => {
-    const rawCallbackUrl =
-      new URLSearchParams(window.location.search).get('callbackUrl') ?? '/dashboard';
-    setCallbackUrl(rawCallbackUrl.startsWith('/') ? rawCallbackUrl : '/dashboard');
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,9 +68,7 @@ export default function MfaSetupPage() {
         setOtpauthUri(payload.otpauthUri);
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : 'MFA設定情報の取得に失敗しました'
-          );
+          setError(err instanceof Error ? err.message : 'MFA設定情報の取得に失敗しました');
         }
       } finally {
         if (!cancelled) {
@@ -184,7 +174,9 @@ export default function MfaSetupPage() {
       setStep(3);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : '確認コードが正しくありません。もう一度お試しください。'
+        err instanceof Error
+          ? err.message
+          : '確認コードが正しくありません。もう一度お試しください。',
       );
       setDigits(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
@@ -196,7 +188,7 @@ export default function MfaSetupPage() {
   async function handleCopySecret() {
     try {
       await navigator.clipboard.writeText(
-        recoveryCodes.length > 0 ? recoveryCodes.join('\n') : secretCode || otpauthUri
+        recoveryCodes.length > 0 ? recoveryCodes.join('\n') : secretCode || otpauthUri,
       );
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -244,21 +236,13 @@ export default function MfaSetupPage() {
                   }`}
                   aria-current={s === step ? 'step' : undefined}
                 >
-                  {s < step ? (
-                    <Check className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    s
-                  )}
+                  {s < step ? <Check className="h-4 w-4" aria-hidden="true" /> : s}
                 </div>
-                <span className="text-xs text-slate-500 text-center">
-                  {stepLabels[s - 1]}
-                </span>
+                <span className="text-xs text-slate-500 text-center">{stepLabels[s - 1]}</span>
               </div>
               {s < 3 && (
                 <div
-                  className={`h-0.5 w-full mx-2 mb-5 ${
-                    s < step ? 'bg-blue-600' : 'bg-slate-200'
-                  }`}
+                  className={`h-0.5 w-full mx-2 mb-5 ${s < step ? 'bg-blue-600' : 'bg-slate-200'}`}
                 />
               )}
             </div>
@@ -344,11 +328,7 @@ export default function MfaSetupPage() {
           {/* Step 2: Verification */}
           {step === 2 && (
             <form onSubmit={handleVerify} className="flex flex-col gap-6">
-              <div
-                className="flex justify-center gap-2"
-                role="group"
-                aria-label="確認コード入力"
-              >
+              <div className="flex justify-center gap-2" role="group" aria-label="確認コード入力">
                 {digits.map((digit, index) => (
                   <Input
                     key={index}
@@ -413,9 +393,7 @@ export default function MfaSetupPage() {
               </Alert>
 
               <div className="rounded-lg border bg-slate-50 p-4">
-                <p className="mb-3 text-sm font-medium text-slate-700">
-                  リカバリーコード
-                </p>
+                <p className="mb-3 text-sm font-medium text-slate-700">リカバリーコード</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {recoveryCodes.map((code) => (
                     <code
@@ -429,12 +407,7 @@ export default function MfaSetupPage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleCopySecret}
-                >
+                <Button variant="outline" size="lg" className="w-full" onClick={handleCopySecret}>
                   {copied ? (
                     <>
                       <Check className="mr-2 h-4 w-4 text-green-600" />

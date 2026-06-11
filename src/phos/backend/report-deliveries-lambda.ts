@@ -1,5 +1,4 @@
 import {
-  DynamoDBClient,
   GetItemCommand,
   QueryCommand,
   type AttributeValue,
@@ -36,7 +35,7 @@ import {
   type PhosLambdaRuntimeDependencies,
 } from './lambda-observability';
 import { withTenantContext } from './lambda-handler';
-import { phosAwsClientConfig, withPhosAwsClientTimeout } from './aws-client-timeout';
+import { getDefaultPhosDynamoClient } from './phos-aws-clients';
 
 type DynamoItem = Record<string, AttributeValue>;
 
@@ -168,8 +167,7 @@ export function createReportDeliveriesRepository(
   deps: ReportDeliveriesLambdaDependencies = {},
 ): PhosReportDeliveriesRepository {
   if (deps.repository) return deps.repository;
-  const dynamoClient =
-    deps.dynamo_client ?? withPhosAwsClientTimeout(new DynamoDBClient(phosAwsClientConfig()));
+  const dynamoClient = deps.dynamo_client ?? getDefaultPhosDynamoClient();
   const storeClient =
     deps.store_client ?? createDynamoReportDeliveriesClient({ client: dynamoClient });
   const searchRepository = createDynamoReportDeliveriesRepository(storeClient, { now: deps.now });

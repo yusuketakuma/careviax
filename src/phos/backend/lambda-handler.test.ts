@@ -376,6 +376,22 @@ describe('withTenantContext', () => {
     expect(observability.flush).toHaveBeenCalledOnce();
   });
 
+  it('unrefs and clears the soft-deadline timer after successful handler completion', async () => {
+    const timeoutHandle = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation(() => undefined);
+    const handler = withTenantContext(async () => ({ ok: true }), { deadlineBufferMs: 100 });
+
+    const response = await handler(validEvent, { getRemainingTimeInMillis: () => 1000 });
+
+    expect(response.statusCode).toBe(200);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 900);
+    expect(timeoutHandle.unref).toHaveBeenCalled();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
   it('logs handler-produced error responses with result and status metadata', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

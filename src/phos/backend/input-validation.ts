@@ -33,6 +33,20 @@ export function parseIdempotencyKey(value: unknown): string {
   return trimmed;
 }
 
+export function parseRequiredString(
+  value: unknown,
+  options: {
+    field: string;
+    errorFactory?: (message: string) => Error;
+  },
+): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    const message = `${options.field} is required`;
+    throw options.errorFactory?.(message) ?? validationError({ field: options.field });
+  }
+  return value.trim();
+}
+
 export function readQueryParam(event: PhosHttpEvent, key: string): string | undefined {
   const value = event.queryStringParameters?.[key];
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;

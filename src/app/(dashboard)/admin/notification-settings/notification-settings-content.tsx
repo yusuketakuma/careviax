@@ -197,7 +197,7 @@ const ESCALATION_TRIGGER_OPTIONS: Array<{
   {
     value: 'workflow_exception_unresolved',
     label: 'WorkflowException 未解消',
-    description: '差戻しや業務ブロッカーが残り続けた場合に反応します。',
+    description: '差戻しや止まっている業務が残り続けた場合に反応します。',
   },
   {
     value: 'report_delivery_failed',
@@ -240,16 +240,28 @@ function isPermissionSupported() {
   return isBrowserNotificationSupported();
 }
 
+function readBrowserNotificationState(): {
+  permission: NotificationPermission | 'unsupported';
+  enabled: boolean;
+} {
+  if (!isPermissionSupported()) {
+    return { permission: 'unsupported', enabled: false };
+  }
+  return {
+    permission: Notification.permission,
+    enabled: getBrowserNotificationPreference(),
+  };
+}
+
 export function NotificationSettingsContent() {
   const orgId = useOrgId();
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rulesLoadedOrgId, setRulesLoadedOrgId] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-    'unsupported',
+  const [browserNotificationState, setBrowserNotificationState] = useState(
+    readBrowserNotificationState,
   );
-  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [newEscalationOpen, setNewEscalationOpen] = useState(false);
   const [newEscalationTrigger, setNewEscalationTrigger] = useState<EscalationRule['trigger_type']>(
     'communication_response_overdue',
@@ -260,63 +272,67 @@ export function NotificationSettingsContent() {
     useState<NonNullable<EscalationRule['notify_role']>>('admin');
   const [newEscalationThresholdHours, setNewEscalationThresholdHours] = useState('24');
 
-  const loadRules = useCallback(async () => {
-    if (!orgId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch('/api/notification-rules', {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!response.ok) {
-        throw new Error('通知設定の取得に失敗しました');
-      }
-      const payload = (await response.json()) as { data?: NotificationRule[] };
-      setRules(payload.data ?? []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '通知設定の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [orgId]);
-
-  const loadEscalationRules = useCallback(async () => {
+  useEffect(() => {
     if (!orgId) return;
-    try {
-      const response = await fetch('/api/admin/escalation-rules', {
-        headers: { 'x-org-id': orgId },
+
+    let active = true;
+    void fetch('/api/notification-rules', {
+      headers: { 'x-org-id': orgId },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('通知設定の取得に失敗しました');
+        }
+        return (await response.json()) as { data?: NotificationRule[] };
+      })
+      .then((payload) => {
+        if (!active) return;
+        setRules(payload.data ?? []);
+        setRulesLoadedOrgId(orgId);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setRulesLoadedOrgId(orgId);
+        toast.error(error instanceof Error ? error.message : '通知設定の取得に失敗しました');
       });
-      if (!response.ok) {
-        throw new Error('エスカレーションルールの取得に失敗しました');
-      }
-      const payload = (await response.json()) as { data?: EscalationRule[] };
-      setEscalationRules(payload.data ?? []);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
-      );
-    }
+
+    return () => {
+      active = false;
+    };
   }, [orgId]);
 
   useEffect(() => {
-    void loadRules();
-  }, [loadRules]);
+    if (!orgId) return;
 
-  useEffect(() => {
-    void loadEscalationRules();
-  }, [loadEscalationRules]);
+    let active = true;
+    void fetch('/api/admin/escalation-rules', {
+      headers: { 'x-org-id': orgId },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('エスカレーションルールの取得に失敗しました');
+        }
+        return (await response.json()) as { data?: EscalationRule[] };
+      })
+      .then((payload) => {
+        if (!active) return;
+        setEscalationRules(payload.data ?? []);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        toast.error(
+          error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
+        );
+      });
 
-  useEffect(() => {
-    if (!isPermissionSupported()) {
-      setPermission('unsupported');
-      setBrowserNotificationsEnabled(false);
-      return;
-    }
-    setPermission(Notification.permission);
-    setBrowserNotificationsEnabled(getBrowserNotificationPreference());
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [orgId]);
+
+  const loading = Boolean(orgId) && rulesLoadedOrgId !== orgId;
+  const permission = browserNotificationState.permission;
+  const browserNotificationsEnabled = browserNotificationState.enabled;
 
   const rulesByEvent = useMemo(() => {
     return EVENT_CONFIGS.reduce<
@@ -398,29 +414,28 @@ export function NotificationSettingsContent() {
     }
     if (Notification.permission === 'denied') {
       toast.error('ブラウザ設定で通知を許可してください');
-      setPermission('denied');
+      setBrowserNotificationState({ permission: 'denied', enabled: false });
       return;
     }
 
     const nextPermission =
       Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-    setPermission(nextPermission);
 
     if (nextPermission !== 'granted') {
       setBrowserNotificationPreference(false);
-      setBrowserNotificationsEnabled(false);
+      setBrowserNotificationState({ permission: nextPermission, enabled: false });
       toast.error('通知権限が許可されませんでした');
       return;
     }
 
     setBrowserNotificationPreference(true);
-    setBrowserNotificationsEnabled(true);
+    setBrowserNotificationState({ permission: nextPermission, enabled: true });
     toast.success('ブラウザ通知を有効にしました');
   }, []);
 
   const disableBrowserNotifications = useCallback(() => {
     setBrowserNotificationPreference(false);
-    setBrowserNotificationsEnabled(false);
+    setBrowserNotificationState((current) => ({ ...current, enabled: false }));
     toast.success('ブラウザ通知を停止しました');
   }, []);
 

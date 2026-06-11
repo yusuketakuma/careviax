@@ -212,6 +212,14 @@ async function renderScheduleDayView(ui: ReactElement) {
   return result;
 }
 
+async function clickAndFlush(element: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(element);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 function expectStatusAnnouncement(text: string) {
   expect(screen.getAllByRole('status').some((element) => element.textContent?.includes(text))).toBe(
     true,
@@ -1014,7 +1022,7 @@ describe('ScheduleDayView', () => {
     });
     expect(within(dialog).getByText('患者連絡待ち')).toBeTruthy();
     expect(within(dialog).getByText('社用車A')).toBeTruthy();
-    expect(within(dialog).getByText('ケース case_1 / 候補 _approve')).toBeTruthy();
+    expect(within(dialog).getByText('ケース 1 / 候補 approve')).toBeTruthy();
     expect(dialog.textContent ?? '').not.toContain('東京都港区2-2-2');
     expect(dialog.textContent ?? '').not.toContain('090-1234-5678');
     expect(dialog.textContent ?? '').not.toContain('アムロジピン');
@@ -1052,7 +1060,7 @@ describe('ScheduleDayView', () => {
     expect(within(dialog).getByText('訪問予定確定')).toBeTruthy();
     expect(within(dialog).getByText('患者確認済み')).toBeTruthy();
     expect(within(dialog).getByText('社用車B')).toBeTruthy();
-    expect(within(dialog).getByText('ケース case_1 / 候補 _confirm')).toBeTruthy();
+    expect(within(dialog).getByText('ケース 1 / 候補 confirm')).toBeTruthy();
     expect(dialog.textContent ?? '').not.toContain('東京都渋谷区3-3-3');
     expect(dialog.textContent ?? '').not.toContain('080-1111-2222');
     expect(dialog.textContent ?? '').not.toContain('カンデサルタン');
@@ -1651,7 +1659,7 @@ describe('ScheduleDayView', () => {
       <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
     );
 
-    fireEvent.click(
+    await clickAndFlush(
       screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
     );
 
@@ -1662,7 +1670,7 @@ describe('ScheduleDayView', () => {
     });
     const dialog = within(dialogElement);
     expect(dialog.getByRole('heading', { name: '山田花子の訪問準備チェック' })).toBeTruthy();
-    fireEvent.click(dialog.getByRole('button', { name: '説明を表示' }));
+    await clickAndFlush(dialog.getByRole('button', { name: '説明を表示' }));
     expect(dialog.getByRole('tooltip').textContent).toMatch(
       /2026\/04\/09 18:00 - 19:00 の訪問です。ready に進む前に、処方差分、持参物、前回課題、ルート、オフライン同期を確認します。/,
     );
@@ -1750,7 +1758,7 @@ describe('ScheduleDayView', () => {
       expect(checklist.getByRole('checkbox', { name: label })).toBeTruthy();
     }
     for (const checkbox of checklist.getAllByRole('checkbox')) {
-      fireEvent.click(checkbox);
+      await clickAndFlush(checkbox);
     }
 
     expect(dialog.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
@@ -1806,7 +1814,7 @@ describe('ScheduleDayView', () => {
       <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
     );
 
-    fireEvent.click(
+    await clickAndFlush(
       screen.getByRole('button', { name: /山田花子.*4\/9.*18:00 - 19:00.*訪問準備を開く/ }),
     );
 
@@ -1826,7 +1834,7 @@ describe('ScheduleDayView', () => {
     expect(readyButton.disabled).toBe(true);
 
     for (const checkbox of checklist.getAllByRole('checkbox')) {
-      fireEvent.click(checkbox);
+      await clickAndFlush(checkbox);
     }
 
     expect(checklist.getByText('チェックリストはすべて完了しています。')).toBeTruthy();
@@ -2406,7 +2414,7 @@ describe('ScheduleDayView', () => {
       ).disabled,
     ).toBe(true);
 
-    fireEvent.click(
+    await clickAndFlush(
       within(facilityOrderList).getByRole('button', {
         name: '青空ホーム 青空一郎を1つ下へ移動',
       }),
@@ -2429,7 +2437,7 @@ describe('ScheduleDayView', () => {
       ).value,
     ).toBe('1');
 
-    fireEvent.click(
+    await clickAndFlush(
       within(facilityOrderList).getByRole('button', {
         name: '青空ホーム 青空一郎を1つ上へ移動',
       }),
@@ -2438,7 +2446,7 @@ describe('ScheduleDayView', () => {
     expect(getFacilityPatientOrder()).toEqual(['青空一郎', '青空二郎']);
     expectStatusAnnouncement('青空ホーム 青空一郎を1 / 2番目に移動しました');
 
-    fireEvent.click(screen.getByRole('button', { name: '青空ホーム' }));
+    await clickAndFlush(screen.getByRole('button', { name: '青空ホーム' }));
 
     expect(screen.getAllByText('青空一郎').length).toBeGreaterThan(0);
     expect(screen.getAllByText('青空二郎').length).toBeGreaterThan(0);

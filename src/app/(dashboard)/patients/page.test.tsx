@@ -13,6 +13,10 @@ vi.mock('./patients-table', () => ({
   PatientsTable: patientsTableMock,
 }));
 
+vi.mock('./patients-board', () => ({
+  PatientsBoard: () => <div data-testid="patients-board">patients-board</div>,
+}));
+
 vi.mock('@/components/ui/loading', () => ({
   Loading: () => <div>loading</div>,
 }));
@@ -41,6 +45,13 @@ describe('PatientsPage', () => {
         }),
       })
     );
+
+    // new_02_patient_list: カード一覧が先頭、旧テーブル一覧は下部に温存
+    const board = screen.getByTestId('patients-board');
+    const legacyTable = screen.getByText('patients-table');
+    expect(
+      board.compareDocumentPosition(legacyTable) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     expect(screen.getByText('patients-table')).toBeTruthy();
     expect(patientsTableMock).toHaveBeenCalledWith(

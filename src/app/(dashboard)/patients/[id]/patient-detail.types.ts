@@ -94,6 +94,8 @@ export type PatientOverview = {
     id: string;
     scheduled_date: string;
     schedule_status: string;
+    time_window_start: string | null;
+    confirmed_at: string | null;
     visit_record: {
       id: string;
       outcome_status: string;
@@ -125,11 +127,106 @@ export type PatientOverview = {
     abnormal_flag: string | null;
   }>;
   jahis_supplemental_records: JahisSupplementalRecordDbView[];
+  workspace: PatientWorkspace | null;
   privacy: {
     sensitive_fields_masked: boolean;
     address_fields_masked: boolean;
     can_view_detail: boolean;
   };
+};
+
+/** p0_08 カード詳細ワークスペース: 進行中サイクルの工程集約 */
+export type PatientWorkspaceMedicationChange = {
+  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed';
+  drug_name: string;
+  frequency: string | null;
+  days: number | null;
+};
+
+/** 06_card セーフティボード(どの工程でも常時表示)用の安全情報集約 */
+export type PatientWorkspaceSafety = {
+  /** 例: セフェム系(2019) */
+  allergy: string | null;
+  /** 例: eGFR 38(6/1) */
+  renal: string | null;
+  /** 現行処方行の packaging_instruction_tags 集約(narcotic / cold_storage / unit_dose 等) */
+  handling_tags: string[];
+  /** 嚥下・投与経路(scheduling_preference.swallowing_route) */
+  swallowing: string | null;
+  /** PatientCondition(problem)由来の注意。例: ふらつき(6/5〜経過観察) */
+  cautions: string[];
+};
+
+/** 06_card「今回の処方」テーブルの 1 行(現行 intake の処方明細) */
+export type PatientWorkspacePrescriptionLine = {
+  id: string;
+  drug_name: string;
+  dose: string;
+  frequency: string;
+  days: number;
+  quantity: number | null;
+  unit: string | null;
+  packaging_instruction_tags: string[];
+};
+
+/** 06_card「直近の動き」の 1 行(工程遷移 / 疑義照会 / 処方取込の時系列) */
+export type PatientWorkspaceActivity = {
+  id: string;
+  type: 'transition' | 'inquiry' | 'intake';
+  label: string;
+  actor: string | null;
+  at: string;
+  href: string;
+};
+
+/** 06_card「このカードに紐づく今日」の 1 行(期限・順序つきタスク) */
+export type PatientWorkspaceTodayTask = {
+  id: string;
+  /** deadline=赤(期限つき) / waiting=灰(順序待ち) / scheduled=緑(時刻確定) */
+  tone: 'deadline' | 'waiting' | 'scheduled';
+  /** 例: 期限 12:00 / 監査後 / 14:00 */
+  time_label: string;
+  label: string;
+  href: string;
+  /** 例: 監査へ / セットへ / 訪問へ */
+  action_label: string;
+  /** 次にやることボタンの期限内包表示用(HH:mm) */
+  due_time: string | null;
+};
+
+export type PatientWorkspace = {
+  cycle_id: string;
+  overall_status: string;
+  exception_status: string | null;
+  /** 現行 intake(RX 番号の生成元)。formatPrescriptionCardNumber(id, prescribed_date, 'rx_year') */
+  current_intake: { id: string; prescribed_date: string } | null;
+  safety: PatientWorkspaceSafety;
+  prescription_lines: PatientWorkspacePrescriptionLine[];
+  recent_activities: PatientWorkspaceActivity[];
+  today_tasks: PatientWorkspaceTodayTask[];
+  open_exceptions: Array<{
+    id: string;
+    exception_type: string;
+    description: string;
+    severity: 'critical' | 'warning';
+    created_at: string | null;
+  }>;
+  medication_changes: PatientWorkspaceMedicationChange[];
+  previous_medication: { start: string | null; end: string | null } | null;
+  current_medication: { start: string | null; end: string | null } | null;
+  set_plan: {
+    id: string;
+    set_method: string;
+    notes: string | null;
+    target_period_start: string;
+    target_period_end: string;
+    processing: {
+      unit_dose: boolean;
+      separate_pack: boolean;
+      crushed: boolean;
+    };
+  } | null;
+  prescription_document_url: string | null;
 };
 
 export type PatientVisitsSnapshot = {

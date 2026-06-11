@@ -17,7 +17,7 @@ import { PhosDomainError } from './cards-repository';
 import { evidenceObjectTaggingHeader } from './evidence-object-tags';
 import { toErrorLambdaResponse } from './error-response';
 import type { EvidenceUploadIntentStore } from './evidence-upload-intent-store';
-import { parseIdempotencyKey } from './input-validation';
+import { parseIdempotencyKey, parseRequiredString } from './input-validation';
 import type { PhosHandler } from './lambda-handler';
 import { buildLogEntry, logPhosEvent } from './structured-logger';
 import type { TenantContext } from './tenant-context';
@@ -89,11 +89,11 @@ function parseEvidenceUploadRequest(body: unknown): EvidenceUploadRequest {
   }
   return {
     idempotency_key: parseIdempotencyKey(input.idempotency_key),
-    card_id: parseRequiredString(input.card_id, 'card_id'),
-    evidence_type: parseRequiredString(input.evidence_type, 'evidence_type'),
-    file_name: parseRequiredString(input.file_name, 'file_name'),
-    mime_type: parseRequiredString(input.mime_type, 'mime_type'),
-    sha256: parseRequiredString(input.sha256, 'sha256').toLowerCase(),
+    card_id: parseEvidenceRequiredString(input.card_id, 'card_id'),
+    evidence_type: parseEvidenceRequiredString(input.evidence_type, 'evidence_type'),
+    file_name: parseEvidenceRequiredString(input.file_name, 'file_name'),
+    mime_type: parseEvidenceRequiredString(input.mime_type, 'mime_type'),
+    sha256: parseEvidenceRequiredString(input.sha256, 'sha256').toLowerCase(),
     size_bytes: parseUploadSize(input.size_bytes),
   };
 }
@@ -106,11 +106,11 @@ function evidenceIdFromIdempotencyKey(ctx: TenantContext, request: EvidenceUploa
   return `evidence_${digest}`;
 }
 
-function parseRequiredString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new TenantStorageKeyError(`${field} is required`);
-  }
-  return value.trim();
+function parseEvidenceRequiredString(value: unknown, field: string): string {
+  return parseRequiredString(value, {
+    field,
+    errorFactory: (message) => new TenantStorageKeyError(message),
+  });
 }
 
 function parseUploadSize(value: unknown): number {

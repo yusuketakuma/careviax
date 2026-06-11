@@ -1,4 +1,4 @@
-import type { LayoutNavItem, TopWorkflowLink } from './navigation-config';
+import type { LayoutNavItem } from './navigation-config';
 
 export function matchesPathPrefix(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -7,19 +7,14 @@ export function matchesPathPrefix(pathname: string, prefix: string) {
 export function isLayoutNavItemActive(pathname: string, item: LayoutNavItem) {
   const activePrefixes = item.activePrefixes ?? [item.href];
   const isExcluded =
-    item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
+    (item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false) ||
+    (item.excludeExact?.some((path) => pathname === path) ?? false);
 
   if (isExcluded) return false;
 
-  return item.href === '/dashboard'
-    ? pathname === '/dashboard'
-    : activePrefixes.some((prefix) => matchesPathPrefix(pathname, prefix));
-}
+  if (item.exact) {
+    return activePrefixes.some((path) => pathname === path);
+  }
 
-export function isTopWorkflowLinkActive(pathname: string, item: TopWorkflowLink) {
-  const isExcluded =
-    item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
-  if (isExcluded) return false;
-
-  return item.activePrefixes.some((prefix) => matchesPathPrefix(pathname, prefix));
+  return activePrefixes.some((prefix) => matchesPathPrefix(pathname, prefix));
 }

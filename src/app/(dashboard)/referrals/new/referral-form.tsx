@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -43,6 +43,11 @@ const referralFormSchema = z
 
 type ReferralFormValues = z.input<typeof referralFormSchema>;
 type ReferralFormSubmit = z.output<typeof referralFormSchema>;
+type DocumentChecklistField =
+  | 'doc_physician_order'
+  | 'doc_consent'
+  | 'doc_health_insurance'
+  | 'doc_care_insurance';
 
 const referralTypeLabel: Record<string, string> = {
   physician: '医師指示書',
@@ -50,6 +55,13 @@ const referralTypeLabel: Record<string, string> = {
   facility: '施設依頼',
   family: '家族相談',
 };
+
+const documentChecklistItems = [
+  { field: 'doc_physician_order', label: '指示書' },
+  { field: 'doc_consent', label: '同意書' },
+  { field: 'doc_health_insurance', label: '保険証（医療）' },
+  { field: 'doc_care_insurance', label: '介護保険証' },
+] as const satisfies ReadonlyArray<{ field: DocumentChecklistField; label: string }>;
 
 export function ReferralForm() {
   const router = useRouter();
@@ -69,10 +81,13 @@ export function ReferralForm() {
   const {
     register,
     handleSubmit,
-    watch,
     setValue,
     formState: { errors },
   } = form;
+  const documentChecklistValues = useWatch({
+    control: form.control,
+    name: documentChecklistItems.map((item) => item.field),
+  });
   const errorSummaryItems = collectFormErrorSummaryItems(errors, {
     referral_type: '依頼種別',
     referral_date: '紹介日',
@@ -211,18 +226,11 @@ export function ReferralForm() {
         description="受付時点で受領済みの書類を確認します。"
       >
         <div className="space-y-3">
-          {(
-            [
-              { field: 'doc_physician_order' as const, label: '指示書' },
-              { field: 'doc_consent' as const, label: '同意書' },
-              { field: 'doc_health_insurance' as const, label: '保険証（医療）' },
-              { field: 'doc_care_insurance' as const, label: '介護保険証' },
-            ] as const
-          ).map(({ field, label }) => (
+          {documentChecklistItems.map(({ field, label }, index) => (
             <div key={field} className="flex items-center gap-3">
               <Checkbox
                 id={field}
-                checked={watch(field)}
+                checked={documentChecklistValues[index] === true}
                 onCheckedChange={(checked) => setValue(field, checked === true)}
                 aria-label={`${label}を受領済み`}
               />

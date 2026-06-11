@@ -11,6 +11,7 @@ import {
   parseBoundedIntegerQuery,
   parseIdempotencyKey,
   parsePositiveVersion,
+  parseRequiredString,
   readQueryParam,
   validationError,
 } from './input-validation';
@@ -53,11 +54,8 @@ function parseExcludeRequest(body: unknown): ExcludeClaimCandidateRequest {
     throw validationError({ field: 'body' });
   }
   const input = body as Partial<ExcludeClaimCandidateRequest>;
-  if (typeof input.reason_code !== 'string' || input.reason_code.trim().length === 0) {
-    throw validationError({ field: 'reason_code' });
-  }
   return {
-    reason_code: input.reason_code.trim(),
+    reason_code: parseRequiredString(input.reason_code, { field: 'reason_code' }),
     ...(typeof input.reason_note === 'string' && input.reason_note.trim().length > 0
       ? { reason_note: input.reason_note.trim() }
       : {}),

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -11,6 +11,7 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const useOfflineStoreMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -28,75 +29,112 @@ vi.mock('next/navigation', () => ({
   useSearchParams: useSearchParamsMock,
 }));
 
-vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+vi.mock('@/lib/stores/offline-store', () => ({
+  useOfflineStore: useOfflineStoreMock,
 }));
 
 import { NotificationsContent } from './notifications-content';
 
 setupDomTestEnv();
 
+const NOTIFICATIONS = [
+  {
+    id: 'notification_1',
+    type: 'urgent',
+    event_type: 'medication_run_out',
+    title: '薬が切れそうです',
+    message: '田中 一郎様:前回薬は本日まで。訪問予定を確認してください。',
+    link: '/patients/patient_1',
+    is_read: false,
+    created_at: '2026-06-10T08:00:00.000Z',
+  },
+  {
+    id: 'notification_2',
+    type: 'business',
+    event_type: 'schedule_patient_confirmation',
+    title: '患者さんへ日程確認が必要です',
+    message: '佐藤 花子様:候補日時を確認してください。',
+    link: '/schedules/proposals',
+    is_read: false,
+    created_at: '2026-06-10T07:00:00.000Z',
+  },
+  {
+    id: 'notification_3',
+    type: 'business',
+    event_type: 'prescription_diff_review',
+    title: '処方変更があります',
+    message: '鈴木 一郎様:追加2件・中止1件。差分確認をお願いします。',
+    link: '/patients/patient_2/prescriptions',
+    is_read: true,
+    created_at: '2026-06-10T06:00:00.000Z',
+  },
+];
+
 describe('NotificationsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
-    useRouterMock.mockReturnValue({ replace: vi.fn() });
+    useRouterMock.mockReturnValue({ replace: vi.fn(), push: vi.fn() });
     usePathnameMock.mockReturnValue('/notifications');
-    useSearchParamsMock.mockReturnValue(new URLSearchParams('context=dashboard_home'));
-    useQueryClientMock.mockReturnValue({
-      invalidateQueries: vi.fn(),
-      setQueryData: vi.fn(),
-    });
-    useMutationMock.mockReturnValue({
-      mutate: vi.fn(),
-      isPending: false,
-    });
-    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
-      if (queryKey[2] === 'unread') {
-        return {
-          data: {
-            data: [
-              {
-                id: 'notification_1',
-                type: 'urgent',
-                title: '緊急通知',
-                message: '至急対応が必要です',
-                link: '/workflow',
-                is_read: false,
-                created_at: '2026-04-10T08:00:00.000Z',
-              },
-            ],
-          },
-          isLoading: false,
-        };
-      }
-
-      return {
-        data: { data: [] },
-        isLoading: false,
-      };
+    useSearchParamsMock.mockReturnValue(new URLSearchParams());
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useOfflineStoreMock.mockImplementation(
+      (selector: (state: { pendingSyncCount: number }) => unknown) =>
+        selector({ pendingSyncCount: 2 }),
+    );
+    useQueryMock.mockReturnValue({
+      data: { data: NOTIFICATIONS },
+      isLoading: false,
     });
   });
 
-  it('shows the home context banner and seeds initial unread urgent filters', () => {
-    render(
-      <NotificationsContent
-        initialTab="unread"
-        initialTypeFilter="urgent"
-        initialContext="dashboard_home"
-      />,
+  it('renders the p0_04 inbox: heading, filter chips, badge cards, and open buttons', () => {
+    render(<NotificationsContent />);
+
+    expect(screen.getByRole('heading', { name: 'お知らせ' })).toBeTruthy();
+    expect(screen.getByText('急ぎの確認、返信待ち、未同期をまとめて見ます。')).toBeTruthy();
+
+    for (const chip of ['すべて', '急ぎ', '薬剤師確認', '事務で対応', '返信待ち', '未同期']) {
+      expect(screen.getByRole('button', { name: new RegExp(chip) })).toBeTruthy();
+    }
+
+    expect(screen.getByText('薬が切れそうです')).toBeTruthy();
+    expect(
+      screen.getByText('田中 一郎様:前回薬は本日まで。訪問予定を確認してください。'),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '開く' }).length).toBeGreaterThanOrEqual(3);
+
+    // 未同期の合成行(offline-store 由来)
+    expect(screen.getByText('送信できていない記録があります')).toBeTruthy();
+  });
+
+  it('filters cards by the selected category chip', () => {
+    render(<NotificationsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: /薬剤師確認/ }));
+
+    expect(screen.getByText('処方変更があります')).toBeTruthy();
+    expect(screen.queryByText('薬が切れそうです')).toBeNull();
+    expect(screen.queryByText('患者さんへ日程確認が必要です')).toBeNull();
+  });
+
+  it('marks a notification read and navigates when opened', () => {
+    const push = vi.fn();
+    const mutate = vi.fn();
+    useRouterMock.mockReturnValue({ replace: vi.fn(), push });
+    useMutationMock.mockReturnValue({ mutate, isPending: false });
+    useOfflineStoreMock.mockImplementation(
+      (selector: (state: { pendingSyncCount: number }) => unknown) =>
+        selector({ pendingSyncCount: 0 }),
     );
 
-    expect(screen.getByTestId('notifications-context-banner')).toBeTruthy();
-    expect(screen.getByText('ホームから未読の緊急通知にフォーカスして開いています。')).toBeTruthy();
-    expect(screen.getByText('緊急通知')).toBeTruthy();
+    render(<NotificationsContent />);
+
+    const [firstOpen] = screen.getAllByRole('button', { name: '開く' });
+    fireEvent.click(firstOpen);
+
+    expect(push).toHaveBeenCalled();
+    expect(mutate).toHaveBeenCalledWith(['notification_1']);
   });
 });

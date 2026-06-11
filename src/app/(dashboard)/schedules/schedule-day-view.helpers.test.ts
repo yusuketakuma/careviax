@@ -24,7 +24,34 @@ import {
   type FacilityTrackerSchedule,
   type ScheduleLockState,
 } from './schedule-day-view.helpers';
-import type { Proposal, VisitSchedule } from './day-view.shared';
+import {
+  AUTO_VEHICLE_RESOURCE_VALUE,
+  caseOptionPrimaryPharmacistLabel,
+  caseOptionTargetLabel,
+  formatDistanceScoreLabel,
+  formatNullableDateLabel,
+  formatNullableDateTimeLabel,
+  formatNullableTimeOfDay,
+  formatNullableTimeRange,
+  formatShortEntityIdentifier,
+  formatVehicleResourceLabel,
+  isPatientPreferenceAlignedProposal,
+  isPriorityRouteProposal,
+  normalizeVehicleResourceSelectValue,
+  proposalActionFailureDisplayMessage,
+  proposalActionTargetLabel,
+  proposalListVisitPlaceLabel,
+  proposalRouteDecisionLabel,
+  proposalSafeIdentifierLabel,
+  proposalShortEntityIdentifier,
+  singleProposalActionLabel,
+  singleProposalActionQuestion,
+  singleProposalActionResultLabel,
+  toDateKey,
+  type CaseOption,
+  type Proposal,
+  type VisitSchedule,
+} from './day-view.shared';
 
 function buildViewModelSchedule(overrides: Partial<VisitSchedule> = {}): VisitSchedule {
   return {
@@ -79,6 +106,239 @@ function buildViewModelSchedule(overrides: Partial<VisitSchedule> = {}): VisitSc
 }
 
 describe('schedule-day-view.helpers', () => {
+  it('keeps the shared auto vehicle sentinel stable', () => {
+    expect(AUTO_VEHICLE_RESOURCE_VALUE).toBe('__auto_vehicle_resource__');
+  });
+
+  it('normalizes vehicle resource select values before they reach request payloads', () => {
+    expect(normalizeVehicleResourceSelectValue('vehicle_1')).toBe('vehicle_1');
+    expect(normalizeVehicleResourceSelectValue(AUTO_VEHICLE_RESOURCE_VALUE)).toBe('');
+    expect(normalizeVehicleResourceSelectValue('')).toBe('');
+    expect(normalizeVehicleResourceSelectValue(null)).toBe('');
+    expect(normalizeVehicleResourceSelectValue(undefined)).toBe('');
+    expect(normalizeVehicleResourceSelectValue('__auto__', '__auto__')).toBe('');
+  });
+
+  it('formats short entity identifiers with optional known-prefix stripping', () => {
+    expect(formatShortEntityIdentifier('  ')).toBe('未設定');
+    expect(formatShortEntityIdentifier('case_1234567890')).toBe('34567890');
+    expect(formatShortEntityIdentifier('case_1234567890', { stripKnownPrefixes: true })).toBe(
+      '34567890',
+    );
+    expect(formatShortEntityIdentifier('case_1', { stripKnownPrefixes: true })).toBe('1');
+    expect(formatShortEntityIdentifier('patient_same_2', { stripKnownPrefixes: true })).toBe(
+      'same_2',
+    );
+    expect(formatShortEntityIdentifier('external-id-abcdef')).toBe('d-abcdef');
+  });
+
+  it('formats nullable time values and ranges without forcing a missing-time label', () => {
+    expect(formatNullableTimeOfDay(null)).toBeNull();
+    expect(formatNullableTimeOfDay(undefined)).toBeNull();
+    expect(formatNullableTimeOfDay('2026-04-09T18:00:00')).toBe('18:00');
+    expect(formatNullableTimeRange(null, undefined)).toBeNull();
+    expect(formatNullableTimeRange('2026-04-09T18:00:00', null)).toBe('18:00');
+    expect(formatNullableTimeRange(null, '2026-04-09T19:00:00')).toBe('19:00');
+    expect(formatNullableTimeRange('2026-04-09T18:00:00', '2026-04-09T19:00:00')).toBe(
+      '18:00 - 19:00',
+    );
+  });
+
+  it('extracts stable date keys from date and datetime values', () => {
+    expect(toDateKey('2026-04-09')).toBe('2026-04-09');
+    expect(toDateKey('2026-04-09T18:00:00.000Z')).toBe('2026-04-09');
+  });
+
+  it('formats nullable date labels and distance scores for proposal displays', () => {
+    expect(formatNullableDateLabel(null)).toBe('未設定');
+    expect(formatNullableDateLabel(undefined, '開始日未指定')).toBe('開始日未指定');
+    expect(formatNullableDateLabel('2026-04-09')).toBe('2026/04/09');
+    expect(formatNullableDateTimeLabel(null)).toBe('未設定');
+    expect(formatNullableDateTimeLabel('2026-04-09T18:30:00')).toBe('2026/04/09 18:30');
+    expect(formatDistanceScoreLabel(null)).toBe('0.0');
+    expect(formatDistanceScoreLabel(undefined)).toBe('0.0');
+    expect(formatDistanceScoreLabel(1.234)).toBe('1.2');
+  });
+
+  it('formats proposal and case target labels without leaking visit addresses in list labels', () => {
+    const careCase = {
+      id: 'case_same_2',
+      status: 'active',
+      primary_pharmacist_id: 'pharmacist_1',
+      primary_pharmacist_name: '薬剤師A',
+      patient: {
+        id: 'patient_same_2',
+        name: '佐藤太郎',
+        residences: [{ address: '東京都千代田区1-1', lat: null, lng: null }],
+      },
+    } satisfies CaseOption;
+    const proposal = {
+      id: 'proposal_1',
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposal_status: 'proposed',
+      patient_contact_status: 'pending',
+      proposed_date: '2026-04-09',
+      time_window_start: '2026-04-09T18:00:00',
+      time_window_end: '2026-04-09T19:00:00',
+      proposed_pharmacist_id: 'pharmacist_1',
+      proposed_pharmacist: {
+        id: 'pharmacist_1',
+        name: '薬剤師A',
+        name_kana: null,
+      },
+      assignment_mode: 'primary',
+      route_order: null,
+      route_distance_score: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      proposal_reason: '移動良好',
+      escalation_reason: null,
+      finalized_schedule_id: null,
+      reschedule_source_schedule_id: null,
+      case_: {
+        patient: {
+          id: 'patient_1',
+          name: '山田花子',
+          residences: [
+            {
+              address: '東京都中央区2-2',
+              building_id: null,
+              unit_name: null,
+              lat: null,
+              lng: null,
+            },
+          ],
+        },
+      },
+      site: {
+        id: 'site_1',
+        name: ' 本店 ',
+        address: '東京都港区3-3',
+        lat: null,
+        lng: null,
+      },
+      vehicle_resource: {
+        id: 'vehicle_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 6,
+        max_route_duration_minutes: 180,
+      },
+      finalized_schedule: null,
+      reschedule_source_schedule: null,
+      contact_logs: [],
+    } satisfies Proposal;
+
+    expect(proposalShortEntityIdentifier('case_same_2')).toBe('same_2');
+    expect(proposalSafeIdentifierLabel(proposal)).toBe('ケース 1 / 候補 1');
+    expect(caseOptionPrimaryPharmacistLabel({ ...careCase, primary_pharmacist_name: null })).toBe(
+      '主担当未設定',
+    );
+    expect(caseOptionTargetLabel(careCase)).toBe(
+      '佐藤太郎 / ケース same_2 / 患者識別 same_2 / 主担当 薬剤師A',
+    );
+    expect(proposalListVisitPlaceLabel(proposal)).toBe(
+      '訪問先住所は詳細・ルート確認で表示 / 担当拠点 本店',
+    );
+    expect(proposalListVisitPlaceLabel({ site: null })).toBe('訪問先住所は詳細・ルート確認で表示');
+    expect(proposalActionTargetLabel(proposal)).toBe(
+      '山田花子 2026/04/09 18:00 - 19:00 / 薬剤師A / 社用車A / ケース 1 / 候補 1',
+    );
+  });
+
+  it('derives proposal route decision labels from reason and priority', () => {
+    expect(
+      isPriorityRouteProposal({
+        priority: 'urgent',
+        proposal_reason: '緊急訪問のため即応枠を優先',
+      }),
+    ).toBe(true);
+    expect(
+      isPriorityRouteProposal({
+        priority: 'normal',
+        proposal_reason: '即応枠を優先',
+      }),
+    ).toBe(false);
+    expect(isPatientPreferenceAlignedProposal({ proposal_reason: '患者条件 09:00-12:00 内' })).toBe(
+      true,
+    );
+    expect(
+      proposalRouteDecisionLabel({
+        priority: 'emergency',
+        proposal_reason: '緊急訪問のため即応枠を優先',
+        route_order: 2,
+      }),
+    ).toBe('緊急度優先で順路 2');
+    expect(
+      proposalRouteDecisionLabel({
+        priority: 'normal',
+        proposal_reason: '患者条件 09:00-12:00 内で配置',
+        route_order: null,
+      }),
+    ).toBe('患者希望枠で順路 未設定');
+    expect(
+      proposalRouteDecisionLabel({
+        priority: 'normal',
+        proposal_reason: '移動良好',
+        route_order: 3,
+      }),
+    ).toBe('順路 3');
+  });
+
+  it('formats single proposal confirmation action copy consistently', () => {
+    expect(singleProposalActionLabel('approve')).toBe('承認して患者連絡へ進める');
+    expect(singleProposalActionQuestion('approve')).toBe('承認して患者連絡へ進めますか');
+    expect(singleProposalActionResultLabel('approve')).toBe('患者連絡待ち');
+    expect(singleProposalActionLabel('confirm')).toBe('日時確定する');
+    expect(singleProposalActionQuestion('confirm')).toBe('日時確定しますか');
+    expect(singleProposalActionResultLabel('confirm')).toBe('訪問予定確定');
+  });
+
+  it('sanitizes proposal action failure messages before display', () => {
+    expect(proposalActionFailureDisplayMessage('候補はすでに更新済みです', true)).toBe(
+      '候補はすでに更新済みです',
+    );
+    expect(proposalActionFailureDisplayMessage(' 候補はすでに更新済みです ', true)).toBe(
+      '候補はすでに更新済みです',
+    );
+    expect(proposalActionFailureDisplayMessage('勤務枠が埋まりました', true)).toBe(
+      '勤務枠が埋まりました',
+    );
+    expect(
+      proposalActionFailureDisplayMessage('raw stack trace proposal_1 patient address', true),
+    ).toBe(
+      'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。',
+    );
+    expect(proposalActionFailureDisplayMessage('network failed', false)).toBe(
+      '通信が完了しませんでした。接続を確認して再試行してください。',
+    );
+  });
+
+  it('formats vehicle resource labels with route constraints and contextual empty labels', () => {
+    expect(formatVehicleResourceLabel(null)).toBe('自動割当');
+    expect(formatVehicleResourceLabel(undefined, '未割当')).toBe('未割当');
+    expect(
+      formatVehicleResourceLabel({
+        id: 'vehicle_1',
+        label: '社用車A',
+        travel_mode: 'DRIVE',
+        max_stops: 6,
+        max_route_duration_minutes: 180,
+      }),
+    ).toBe('社用車A (最大6件 / 180分以内)');
+    expect(
+      formatVehicleResourceLabel({
+        id: 'vehicle_2',
+        label: '自転車便',
+        travel_mode: 'BICYCLE',
+        max_stops: null,
+        max_route_duration_minutes: null,
+      }),
+    ).toBe('自転車便');
+  });
+
   it('returns carry warnings only for blocked or partial schedules', () => {
     expect(
       getDepartureCarryWarning({ carry_items_status: 'blocked' } as Pick<

@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { AppHeader } from '@/components/layout/app-header';
-import { GlobalSearchModal } from '@/components/layout/global-search-modal';
 import { NetworkStatusBanner } from '@/components/layout/network-status-banner';
 import { RouteProgress } from '@/components/layout/route-progress';
 import { InstallPrompt } from '@/components/features/pwa/install-prompt';
@@ -98,8 +97,6 @@ export function AppShell({ children }: AppShellProps) {
     sidebarOpen,
     sidebarPinned,
     setSidebarOpen,
-    globalSearchOpen,
-    setGlobalSearchOpen,
     shortcutHelpOpen,
     setShortcutHelpOpen,
     toggleShortcutHelp,
@@ -180,8 +177,8 @@ export function AppShell({ children }: AppShellProps) {
   }, [sidebarOpen, setSidebarOpen, viewport.isTabletLayout]);
 
   const handleCommandK = useCallback(() => {
-    setGlobalSearchOpen(true);
-  }, [setGlobalSearchOpen]);
+    router.push('/search');
+  }, [router]);
 
   const handleCommandN = useCallback(() => {
     const target = resolveQuickCreateTarget(pathname);
@@ -190,26 +187,23 @@ export function AppShell({ children }: AppShellProps) {
       toast.info(target.notice);
     }
 
-    setGlobalSearchOpen(false);
     setShortcutHelpOpen(false);
     if (target.href !== pathname) {
       router.push(target.href);
     }
-  }, [pathname, router, setGlobalSearchOpen, setShortcutHelpOpen]);
+  }, [pathname, router, setShortcutHelpOpen]);
 
   const handleEscape = useCallback(() => {
-    if (globalSearchOpen) {
-      setGlobalSearchOpen(false);
-    } else if (shortcutHelpOpen) {
+    if (shortcutHelpOpen) {
       setShortcutHelpOpen(false);
     } else {
       (document.activeElement as HTMLElement)?.blur?.();
     }
-  }, [globalSearchOpen, setGlobalSearchOpen, shortcutHelpOpen, setShortcutHelpOpen]);
+  }, [shortcutHelpOpen, setShortcutHelpOpen]);
 
   const globalShortcuts: ShortcutDefinition[] = useMemo(
     () => [
-      { key: 'k', metaKey: true, handler: handleCommandK, description: 'グローバル検索', scope: 'global' as const },
+      { key: 'k', metaKey: true, handler: handleCommandK, description: '全体検索', scope: 'global' as const },
       { key: 'n', metaKey: true, handler: handleCommandN, description: '新規作成', scope: 'global' as const },
       { key: '?', handler: toggleShortcutHelp, description: 'ショートカット一覧', scope: 'global' as const },
       { key: 'Escape', handler: handleEscape, description: 'モーダルを閉じる', scope: 'global' as const },
@@ -325,15 +319,8 @@ export function AppShell({ children }: AppShellProps) {
           />
         </div>
       )}
-      {chromeHidden ? null : (
-        <div data-print-skip="true">
-          <GlobalSearchModal
-            open={globalSearchOpen}
-            onOpenChange={setGlobalSearchOpen}
-            pathname={pathname}
-          />
-        </div>
-      )}
+      {/* GlobalSearchModal は /search ページへ移行(p0_05)。Cmd+K → router.push('/search')。
+          ファイル削除は後続の掃除タスクで実施。 */}
     </div>
   );
 }

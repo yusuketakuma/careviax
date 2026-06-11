@@ -148,6 +148,47 @@ describe('createLambdaObservabilitySink', () => {
     });
   });
 
+  it('unrefs and clears the security event flush timeout after persistence completes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const timeoutHandle = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation(() => undefined);
+    let resolveSend: (() => void) | undefined;
+    const send = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = () => resolve({});
+        }),
+    );
+    const sink = createLambdaObservabilitySink({
+      security_event_client: { send },
+      security_event_table_name: 'phos_security_events',
+      security_event_flush_timeout_ms: 25,
+    });
+
+    sink.recordSecurityEvent({
+      event_type: 'AUTHORIZATION_DENIED',
+      severity: 'WARNING',
+      tenant_id: 'tenant_abc123',
+      user_id: 'user_1',
+      request_id: 'req_1',
+      correlation_id: 'corr_1',
+      route_key: 'GET /cards',
+      error_code: 'FORBIDDEN',
+    });
+    const flush = sink.flush?.();
+    await Promise.resolve();
+    resolveSend?.();
+    await flush;
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 25);
+    expect(timeoutHandle.unref).toHaveBeenCalled();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
   it('writes trace annotations through the injected Lambda trace sink', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const traceSink = { annotateTrace: vi.fn() };
