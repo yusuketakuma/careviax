@@ -44,6 +44,10 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
+import {
+  buildFormularyOperationsViewModel,
+  type ImpactQueueKey,
+} from './drug-master-formulary-view-model';
 
 type DrugMasterRow = {
   id: string;
@@ -491,17 +495,6 @@ type FormularyChangeRequestListResponse = {
     notification_level: 'clear' | 'pending' | 'overdue';
   };
 };
-
-type ImpactQueueKey =
-  | 'action_required'
-  | 'recently_changed'
-  | 'transitional_expiry'
-  | 'missing_reorder_point'
-  | 'safety_flagged'
-  | 'high_risk'
-  | 'lasa_risk'
-  | 'controlled'
-  | 'review_due';
 
 const baseColumns: ColumnDef<DrugMasterRow>[] = [
   {
@@ -1754,51 +1747,34 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const formularyUsageMismatch = formularyUsageMismatchQuery.data;
   const pendingFormularyRequests = formularyRequestsQuery.data?.data ?? [];
   const formularyRequestSummary = formularyRequestsQuery.data?.summary;
-  const safetyReviewCount = reviewDueStocks.filter(
-    (stock) =>
-      stock.drug_master.is_high_risk ||
-      stock.drug_master.is_lasa_risk ||
-      stock.drug_master.is_narcotic ||
-      stock.drug_master.is_psychotropic,
-  ).length;
-  const expiryWatchCount = reviewDueStocks.filter((stock) => {
-    if (!stock.drug_master.transitional_expiry_date) return false;
-    const expiry = new Date(stock.drug_master.transitional_expiry_date).getTime();
-    return expiry - expiryReferenceTime <= 1000 * 60 * 60 * 24 * 90;
-  }).length;
-  const reviewDueCount = formularyImpact?.totals.review_due_count ?? reviewDueStocks.length;
-  const missingReorderCount =
-    formularyImpact?.totals.missing_reorder_point_count ?? missingReorderStocks.length;
-  const safetyFlaggedCount = formularyImpact?.totals.safety_flagged_count ?? safetyReviewCount;
-  const highRiskAdoptedCount = formularyImpact?.totals.high_risk_count ?? 0;
-  const lasaRiskAdoptedCount = formularyImpact?.totals.lasa_risk_count ?? 0;
-  const controlledAdoptedCount = formularyImpact?.totals.controlled_count ?? 0;
-  const transitionalExpiryCount =
-    formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
-  const transitionalExpiryWithin30Count =
-    formularyImpact?.totals.transitional_expiry_within_30_count ?? 0;
-  const transitionalExpiryWithin60Count =
-    formularyImpact?.totals.transitional_expiry_within_60_count ?? 0;
-  const transitionalExpiryWithin90Count =
-    formularyImpact?.totals.transitional_expiry_within_90_count ?? transitionalExpiryCount;
-  const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
-  const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
-  const followUpSummary = formularyImpact?.follow_up_summary;
-  const frequentUnstockedMismatchCount =
-    formularyUsageMismatch?.totals.frequent_unstocked_count ?? 0;
-  const unusedStockedMismatchCount = formularyUsageMismatch?.totals.unused_stocked_count ?? 0;
-  const recentChangesByYjCode = new Map(
-    (formularyImpact?.recent_changes ?? []).map((change) => [change.yj_code, change]),
-  );
-  const impactQueueRows =
-    formularyImpact?.selected_queue.key === impactQueue
-      ? formularyImpact.selected_queue.rows
-      : (formularyImpact?.samples[impactQueue] ?? []);
-  const masterChangeReport = formularyImpact?.master_change_report ?? null;
-  const impactQueueTotalCount =
-    formularyImpact?.selected_queue.key === impactQueue
-      ? formularyImpact.selected_queue.total_count
-      : impactQueueRows.length;
+  const {
+    reviewDueCount,
+    missingReorderCount,
+    safetyFlaggedCount,
+    highRiskAdoptedCount,
+    lasaRiskAdoptedCount,
+    controlledAdoptedCount,
+    transitionalExpiryCount,
+    transitionalExpiryWithin30Count,
+    transitionalExpiryWithin60Count,
+    transitionalExpiryWithin90Count,
+    actionRequiredCount,
+    recentMasterChangeCount,
+    followUpSummary,
+    frequentUnstockedMismatchCount,
+    unusedStockedMismatchCount,
+    recentChangesByYjCode,
+    impactQueueRows,
+    masterChangeReport,
+    impactQueueTotalCount,
+  } = buildFormularyOperationsViewModel({
+    reviewDueStocks,
+    missingReorderStocks,
+    formularyImpact,
+    formularyUsageMismatch,
+    impactQueue,
+    expiryReferenceTime,
+  });
   const bulkPreviewSummary = bulkPreview?.preview.summary ?? null;
   const bulkPreviewBlockingCount = bulkPreviewSummary
     ? bulkPreviewSummary.unmatchedCount + bulkPreviewSummary.invalidCount

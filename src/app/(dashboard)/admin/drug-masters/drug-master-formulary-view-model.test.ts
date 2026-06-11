@@ -1,0 +1,198 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildFormularyOperationsViewModel,
+  type ImpactQueueKey,
+} from './drug-master-formulary-view-model';
+
+type TestStock = {
+  id: string;
+  drug_master: {
+    yj_code: string;
+    is_high_risk: boolean;
+    is_lasa_risk: boolean;
+    is_narcotic: boolean;
+    is_psychotropic: boolean;
+    transitional_expiry_date: string | null;
+  };
+};
+
+type TestRecentChange = {
+  id: string;
+  yj_code: string;
+  change_type: string;
+};
+
+const emptySamples: Record<ImpactQueueKey, TestStock[]> = {
+  action_required: [],
+  recently_changed: [],
+  transitional_expiry: [],
+  missing_reorder_point: [],
+  safety_flagged: [],
+  high_risk: [],
+  lasa_risk: [],
+  controlled: [],
+  review_due: [],
+};
+
+function stock(id: string, overrides: Partial<TestStock['drug_master']> = {}): TestStock {
+  return {
+    id,
+    drug_master: {
+      yj_code: `${id}-yj`,
+      is_high_risk: false,
+      is_lasa_risk: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      transitional_expiry_date: null,
+      ...overrides,
+    },
+  };
+}
+
+function impact(
+  overrides: Partial<
+    Parameters<typeof buildFormularyOperationsViewModel>[0]['formularyImpact']
+  > = {},
+) {
+  const base = {
+    recent_changes: [] as TestRecentChange[],
+    totals: {
+      review_due_count: 11,
+      missing_reorder_point_count: 12,
+      safety_flagged_count: 13,
+      high_risk_count: 14,
+      lasa_risk_count: 15,
+      controlled_count: 16,
+      transitional_expiry_count: 17,
+      transitional_expiry_within_30_count: 18,
+      transitional_expiry_within_60_count: 19,
+      transitional_expiry_within_90_count: 20,
+      action_required_count: 21,
+      recent_master_change_count: 22,
+    },
+    selected_queue: {
+      key: 'action_required' as const,
+      rows: [] as TestStock[],
+      total_count: 0,
+    },
+    samples: emptySamples,
+  };
+  return { ...base, ...overrides };
+}
+
+describe('buildFormularyOperationsViewModel', () => {
+  it('prefers impact totals over fallback review and reorder counts', () => {
+    const model = buildFormularyOperationsViewModel({
+      reviewDueStocks: [stock('review_1')],
+      missingReorderStocks: [stock('missing_1'), stock('missing_2')],
+      formularyImpact: impact(),
+      formularyUsageMismatch: {
+        totals: {
+          frequent_unstocked_count: 31,
+          unused_stocked_count: 32,
+        },
+      },
+      impactQueue: 'action_required',
+      expiryReferenceTime: new Date('2026-04-01T00:00:00.000Z').getTime(),
+    });
+
+    expect(model).toMatchObject({
+      reviewDueCount: 11,
+      missingReorderCount: 12,
+      safetyFlaggedCount: 13,
+      highRiskAdoptedCount: 14,
+      lasaRiskAdoptedCount: 15,
+      controlledAdoptedCount: 16,
+      transitionalExpiryCount: 17,
+      transitionalExpiryWithin30Count: 18,
+      transitionalExpiryWithin60Count: 19,
+      transitionalExpiryWithin90Count: 20,
+      actionRequiredCount: 21,
+      recentMasterChangeCount: 22,
+      frequentUnstockedMismatchCount: 31,
+      unusedStockedMismatchCount: 32,
+    });
+  });
+
+  it('uses selected queue rows and total count when the active queue matches', () => {
+    const selectedRow = stock('selected');
+    const sampledRow = stock('sampled');
+
+    const model = buildFormularyOperationsViewModel({
+      reviewDueStocks: [],
+      missingReorderStocks: [],
+      formularyImpact: impact({
+        selected_queue: {
+          key: 'high_risk',
+          rows: [selectedRow],
+          total_count: 9,
+        },
+        samples: {
+          ...emptySamples,
+          high_risk: [sampledRow],
+        },
+      }),
+      formularyUsageMismatch: null,
+      impactQueue: 'high_risk',
+      expiryReferenceTime: new Date('2026-04-01T00:00:00.000Z').getTime(),
+    });
+
+    expect(model.impactQueueRows).toEqual([selectedRow]);
+    expect(model.impactQueueTotalCount).toBe(9);
+  });
+
+  it('falls back to sampled queue rows when the selected queue is stale', () => {
+    const sampledRow = stock('sampled');
+    const change = {
+      id: 'change_1',
+      yj_code: sampledRow.drug_master.yj_code,
+      change_type: 'price',
+    };
+
+    const model = buildFormularyOperationsViewModel({
+      reviewDueStocks: [],
+      missingReorderStocks: [],
+      formularyImpact: impact({
+        recent_changes: [change],
+        selected_queue: {
+          key: 'action_required',
+          rows: [stock('selected')],
+          total_count: 5,
+        },
+        samples: {
+          ...emptySamples,
+          high_risk: [sampledRow],
+        },
+      }),
+      formularyUsageMismatch: null,
+      impactQueue: 'high_risk',
+      expiryReferenceTime: new Date('2026-04-01T00:00:00.000Z').getTime(),
+    });
+
+    expect(model.impactQueueRows).toEqual([sampledRow]);
+    expect(model.impactQueueTotalCount).toBe(1);
+    expect(model.recentChangesByYjCode.get(sampledRow.drug_master.yj_code)).toEqual(change);
+  });
+
+  it('keeps local fallbacks when impact data is unavailable', () => {
+    const model = buildFormularyOperationsViewModel({
+      reviewDueStocks: [
+        stock('high', { is_high_risk: true }),
+        stock('expiry', { transitional_expiry_date: '2026-05-01T00:00:00.000Z' }),
+        stock('late_expiry', { transitional_expiry_date: '2026-12-01T00:00:00.000Z' }),
+      ],
+      missingReorderStocks: [stock('missing')],
+      formularyImpact: null,
+      formularyUsageMismatch: null,
+      impactQueue: 'transitional_expiry',
+      expiryReferenceTime: new Date('2026-04-01T00:00:00.000Z').getTime(),
+    });
+
+    expect(model.reviewDueCount).toBe(3);
+    expect(model.missingReorderCount).toBe(1);
+    expect(model.safetyFlaggedCount).toBe(1);
+    expect(model.transitionalExpiryCount).toBe(1);
+    expect(model.transitionalExpiryWithin90Count).toBe(1);
+    expect(model.impactQueueRows).toEqual([]);
+  });
+});
