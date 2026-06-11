@@ -25,6 +25,7 @@ const EXCLUDED_PREFIXES = [
   'reports/',
   'tmp/',
 ];
+const EXCLUDED_FILES = new Set(['pnpm-lock.yaml']);
 
 function run(command, args) {
   return spawnSync(command, args, {
@@ -52,6 +53,7 @@ function extensionOf(path) {
 }
 
 function isPrettierTarget(path) {
+  if (EXCLUDED_FILES.has(path)) return false;
   if (!PRETTIER_EXTENSIONS.has(extensionOf(path))) return false;
   return !EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
