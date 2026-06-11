@@ -184,7 +184,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     proposalFindFirstMock.mockResolvedValue(buildProposal());
     proposalFindManyMock.mockResolvedValue([]);
     proposalUpdateMock.mockResolvedValue({ id: 'proposal_1' });
-    proposalUpdateManyMock.mockResolvedValue({ count: 2 });
+    proposalUpdateManyMock.mockResolvedValue({ count: 1 });
     scheduleFindFirstMock.mockResolvedValue(null);
     scheduleFindManyMock.mockResolvedValue([]);
     scheduleCountMock.mockResolvedValue(0);
@@ -275,6 +275,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           findFirst: vehicleResourceFindFirstMock,
         },
         visitScheduleProposal: {
+          findFirst: proposalFindFirstMock,
           update: proposalUpdateMock,
           updateMany: proposalUpdateManyMock,
         },
@@ -627,6 +628,80 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       message: 'この候補は承認後の電話確認を経てから確定してください',
     });
     expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the finalized schedule when a confirmed proposal is retried', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+        reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        alreadyFinalized: true,
+        proposal: {
+          proposal_status: 'confirmed',
+          finalized_schedule_id: 'schedule_1',
+        },
+        schedule: {
+          id: 'schedule_1',
+        },
+      },
+    });
+    expect(body.data.proposal.reject_reason).toBeUndefined();
+    expect(scheduleFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'schedule_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+      }),
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when a finalized proposal points to an unavailable schedule', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_missing',
+      }),
+    );
+    scheduleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '確定済み訪問を取得できません。再読み込みしてください',
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before loading the proposal', async () => {
@@ -1084,6 +1159,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         vehicle_resource_id: 'vehicle_1',
       }),
     );
+    proposalUpdateMock.mockResolvedValueOnce(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    );
 
     const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'proposal_1' }),
@@ -1091,6 +1174,18 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        alreadyFinalized: false,
+        proposal: {
+          proposal_status: 'confirmed',
+          finalized_schedule_id: 'schedule_1',
+        },
+        schedule: {
+          id: 'schedule_1',
+        },
+      },
+    });
     expect(scheduleUpdateManyMock).toHaveBeenCalledOnce();
     expect(scheduleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -1133,6 +1228,100 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         schedule_id: 'schedule_1',
       },
     });
+  });
+
+  it('returns a conflict when the proposal state changes before the confirmation claim', async () => {
+    proposalFindFirstMock
+      .mockResolvedValueOnce(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+          finalized_schedule_id: null,
+        }),
+      )
+      .mockResolvedValueOnce({
+        proposal_status: 'superseded',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: null,
+      });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create a duplicate visit when another confirmation wins the claim race', async () => {
+    proposalFindFirstMock
+      .mockResolvedValueOnce(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+          finalized_schedule_id: null,
+        }),
+      )
+      .mockResolvedValueOnce({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: null,
+      })
+      .mockResolvedValueOnce({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_existing',
+      });
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    scheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_existing',
+      org_id: 'org_1',
+      case_id: 'case_1',
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        schedule: {
+          id: 'schedule_existing',
+        },
+        alreadyFinalized: true,
+      },
+    });
+    expect(proposalUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: null,
+      },
+      data: {
+        confirmed_at: expect.any(Date),
+        confirmed_by: 'user_1',
+      },
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('does not shift locked route orders when confirming a stale early proposal order', async () => {

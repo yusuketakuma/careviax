@@ -3,7 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-schedule-proposal';
 import {
@@ -677,6 +677,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!existing) return notFound('訪問候補が見つかりません');
 
+  const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
+  const buildFinalizedScheduleWhere = (scheduleId: string) => ({
+    id: scheduleId,
+    org_id: ctx.orgId,
+    case_id: existing.case_id,
+    ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
+  });
+
   if (parsed.data.action === 'approve') {
     if (!['proposed', 'reschedule_pending'].includes(existing.proposal_status)) {
       return validationError('この候補は承認できません');
@@ -876,6 +884,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return success({ data: omitProposalRejectReason(proposal) });
   }
 
+  const finalizedScheduleId = existing.finalized_schedule_id;
+  if (finalizedScheduleId) {
+    const schedule = await withOrgContext(ctx.orgId, async (tx) =>
+      tx.visitSchedule.findFirst({
+        where: buildFinalizedScheduleWhere(finalizedScheduleId),
+      }),
+    );
+    if (!schedule) {
+      return conflict('確定済み訪問を取得できません。再読み込みしてください');
+    }
+    return success({
+      data: {
+        proposal: omitProposalRejectReason(existing),
+        schedule,
+        alreadyFinalized: true,
+      },
+    });
+  }
+
   if (existing.proposal_status !== 'patient_contact_pending') {
     return validationError('この候補は承認後の電話確認を経てから確定してください');
   }
@@ -885,6 +912,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     const finalizedAt = new Date();
+
+    const currentProposal = await tx.visitScheduleProposal.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+      },
+      select: {
+        proposal_status: true,
+        patient_contact_status: true,
+        finalized_schedule_id: true,
+      },
+    });
+    if (!currentProposal) {
+      return {
+        error: 'state_changed' as const,
+      };
+    }
+    if (currentProposal.finalized_schedule_id) {
+      const schedule = await tx.visitSchedule.findFirst({
+        where: buildFinalizedScheduleWhere(currentProposal.finalized_schedule_id),
+      });
+      if (!schedule) {
+        return {
+          error: 'finalized_schedule_unavailable' as const,
+        };
+      }
+      return {
+        proposal: {
+          ...existing,
+          ...currentProposal,
+        },
+        schedule,
+        alreadyFinalized: true,
+      };
+    }
+    if (
+      currentProposal.proposal_status !== 'patient_contact_pending' ||
+      currentProposal.patient_contact_status !== 'confirmed'
+    ) {
+      return {
+        error: 'state_changed' as const,
+      };
+    }
 
     const gate = await evaluateVisitWorkflowGate(tx, {
       orgId: ctx.orgId,
@@ -896,19 +966,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return {
         error: 'workflow_gate' as const,
         issues: gate.issues,
-      };
-    }
-
-    if (existing.finalized_schedule_id) {
-      const schedule = await tx.visitSchedule.findFirst({
-        where: {
-          id: existing.finalized_schedule_id,
-          org_id: ctx.orgId,
-        },
-      });
-      return {
-        proposal: existing,
-        schedule,
       };
     }
 
@@ -1004,6 +1061,54 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           };
         }
       }
+    }
+
+    const claim = await tx.visitScheduleProposal.updateMany({
+      where: {
+        id,
+        org_id: ctx.orgId,
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: null,
+      },
+      data: {
+        confirmed_at: finalizedAt,
+        confirmed_by: ctx.userId,
+      },
+    });
+    if (claim.count !== 1) {
+      const finalizedProposal = await tx.visitScheduleProposal.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+        },
+        select: {
+          proposal_status: true,
+          patient_contact_status: true,
+          finalized_schedule_id: true,
+        },
+      });
+      if (finalizedProposal?.finalized_schedule_id) {
+        const schedule = await tx.visitSchedule.findFirst({
+          where: buildFinalizedScheduleWhere(finalizedProposal.finalized_schedule_id),
+        });
+        if (!schedule) {
+          return {
+            error: 'finalized_schedule_unavailable' as const,
+          };
+        }
+        return {
+          proposal: {
+            ...existing,
+            ...finalizedProposal,
+          },
+          schedule,
+          alreadyFinalized: true,
+        };
+      }
+      return {
+        error: 'state_changed' as const,
+      };
     }
 
     const lockedRouteSchedules = await tx.visitSchedule.findMany({
@@ -1154,7 +1259,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       status: 'completed',
     });
 
-    return { proposal, schedule };
+    return { proposal, schedule, alreadyFinalized: false };
   });
 
   if ('error' in result) {
@@ -1164,6 +1269,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (result.error === 'override_not_approved') {
       return validationError('確定済み訪問の変更は承認後に新候補を確定してください');
     }
+    if (result.error === 'state_changed') {
+      return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
+    if (result.error === 'finalized_schedule_unavailable') {
+      return conflict('確定済み訪問を取得できません。再読み込みしてください');
+    }
     if (result.error === 'shift_unavailable') {
       return validationError(result.message);
     }
@@ -1172,10 +1283,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  await notifyWorkflowMutation({
-    orgId: ctx.orgId,
-    payload: { source: 'visit_schedule_proposals_confirm', proposal_id: id },
-  });
+  if (!result.alreadyFinalized) {
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedule_proposals_confirm', proposal_id: id },
+    });
+  }
 
   return success({
     data: {
