@@ -20,11 +20,16 @@ The gate must prove:
 - `DATABASE_URL` and `DIRECT_URL` point to local `ph_os_e2e`.
 - Required package scripts and Playwright specs exist.
 - The local E2E CareReport duplicate precheck returns `duplicate_groups:0`.
+- The local E2E visit route_order conflict precheck returns `conflict_groups:0`.
 - Targeted Playwright/axe medical UI tests pass.
 
 Use `db:e2e:check-care-report-duplicates` only for local E2E release
 evidence. Use the generic `db:check-care-report-duplicates` command in the
 target database migration precheck below.
+
+Use `db:e2e:check-visit-route-order-conflicts` only for local E2E route-order
+release evidence. Use the generic `db:check-visit-route-order-conflicts`
+command in the target database route-order precheck below.
 
 ## Target Database Migration Precheck
 
@@ -44,6 +49,22 @@ the duplicate CareReport rows first, then rerun the precheck.
 The precheck intentionally prints only organization IDs, visit record IDs,
 report type, counts, and report IDs. It must not be changed to print patient
 names or report content.
+
+## Target Database Route-Order Precheck
+
+Before enforcing route-order invariants in any non-local environment, audit
+active visit schedules and open visit schedule proposals for route-cell
+conflicts:
+
+```bash
+DATABASE_URL='<target database url>' \
+DIRECT_URL='<target direct database url>' \
+pnpm --config.verify-deps-before-run=false db:check-visit-route-order-conflicts
+```
+
+Stop the rollout if the command exits non-zero for conflict groups. Resolve the
+conflicting visit schedule/proposal route_order rows first, then rerun the
+precheck.
 
 ## External Access Case-Boundary Precheck
 

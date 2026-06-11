@@ -120,6 +120,7 @@ pnpm test:e2e:audit    # Run the audit-focused Playwright config
 pnpm test:e2e:audit:list
 pnpm db:e2e:prepare    # Sync and seed the dedicated local ph_os_e2e database
 pnpm db:e2e:check-care-report-duplicates
+pnpm db:e2e:check-visit-route-order-conflicts
 pnpm medical-ui:e2e:preflight
 pnpm medical-ui:e2e:targeted
 pnpm medical-ui:e2e:gate
@@ -131,14 +132,16 @@ on `localhost:5433` with `pnpm --config.verify-deps-before-run=false
 db:e2e:prepare`, then prefer `pnpm --config.verify-deps-before-run=false
 medical-ui:e2e:gate:prod`. The production gate builds the E2E bundle, starts
 `next start` on `localhost:3012`, runs preflight, runs the local E2E CareReport
-duplicate precheck, executes the targeted Playwright/axe specs, and shuts the
-server down.
+duplicate precheck, runs the local E2E visit route_order conflict precheck,
+executes the targeted Playwright/axe specs, and shuts the server down.
 
 Use `pnpm --config.verify-deps-before-run=false
-db:e2e:check-care-report-duplicates` for local E2E evidence. Use the generic
+db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false
+db:e2e:check-visit-route-order-conflicts` for local E2E evidence. Use the generic
 `pnpm --config.verify-deps-before-run=false db:check-care-report-duplicates`
+or `pnpm --config.verify-deps-before-run=false db:check-visit-route-order-conflicts`
 only when intentionally following the active target database before applying
-the CareReport unique-index migration.
+the related database invariants.
 
 ## Coverage
 

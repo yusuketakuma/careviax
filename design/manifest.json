@@ -1,0 +1,436 @@
+[
+  {
+    "priority": "P0",
+    "screen_no": 1,
+    "file": "images/P0/p0_01_login_mfa.png",
+    "screen_id": "p0_01_login_mfa",
+    "friendly_title": "p0 01 login mfa"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 2,
+    "file": "images/P0/p0_02_tenant_pharmacy_select.png",
+    "screen_id": "p0_02_tenant_pharmacy_select",
+    "friendly_title": "p0 02 tenant pharmacy select"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 3,
+    "file": "images/P0/p0_03_mode_role_select.png",
+    "screen_id": "p0_03_mode_role_select",
+    "friendly_title": "p0 03 mode role select"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 4,
+    "file": "images/P0/p0_04_notification_center.png",
+    "screen_id": "p0_04_notification_center",
+    "friendly_title": "p0 04 notification center"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 5,
+    "file": "images/P0/p0_05_global_search.png",
+    "screen_id": "p0_05_global_search",
+    "friendly_title": "p0 05 global search"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 6,
+    "file": "images/P0/p0_06_advanced_search_modal.png",
+    "screen_id": "p0_06_advanced_search_modal",
+    "friendly_title": "p0 06 advanced search modal"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 7,
+    "file": "images/P0/p0_07_dashboard_cardgrid.png",
+    "screen_id": "p0_07_dashboard_cardgrid",
+    "friendly_title": "p0 07 dashboard cardgrid"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 8,
+    "file": "images/P0/p0_08_card_detail_workspace.png",
+    "screen_id": "p0_08_card_detail_workspace",
+    "friendly_title": "p0 08 card detail workspace"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 9,
+    "file": "images/P0/p0_09_prescription_import.png",
+    "screen_id": "p0_09_prescription_import",
+    "friendly_title": "p0 09 prescription import"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 10,
+    "file": "images/P0/p0_10_prescription_entry_period.png",
+    "screen_id": "p0_10_prescription_entry_period",
+    "friendly_title": "p0 10 prescription entry period"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 11,
+    "file": "images/P0/p0_11_prescription_diff_review.png",
+    "screen_id": "p0_11_prescription_diff_review",
+    "friendly_title": "p0 11 prescription diff review"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 12,
+    "file": "images/P0/p0_12_dispensing_workbench.png",
+    "screen_id": "p0_12_dispensing_workbench",
+    "friendly_title": "p0 12 dispensing workbench"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 13,
+    "file": "images/P0/p0_13_dispensing_audit.png",
+    "screen_id": "p0_13_dispensing_audit",
+    "friendly_title": "p0 13 dispensing audit"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 14,
+    "file": "images/P0/p0_14_set_preparation.png",
+    "screen_id": "p0_14_set_preparation",
+    "friendly_title": "p0 14 set preparation"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 15,
+    "file": "images/P0/p0_15_set_audit.png",
+    "screen_id": "p0_15_set_audit",
+    "friendly_title": "p0 15 set audit"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 16,
+    "file": "images/P0/p0_16_schedule_gantt_all_staff.png",
+    "screen_id": "p0_16_schedule_gantt_all_staff",
+    "friendly_title": "p0 16 schedule gantt all staff"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 17,
+    "file": "images/P0/p0_17_schedule_confirmation_flow.png",
+    "screen_id": "p0_17_schedule_confirmation_flow",
+    "friendly_title": "p0 17 schedule confirmation flow"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 18,
+    "file": "images/P0/p0_18_schedule_create_edit_drawer.png",
+    "screen_id": "p0_18_schedule_create_edit_drawer",
+    "friendly_title": "p0 18 schedule create edit drawer"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 19,
+    "file": "images/P0/p0_19_schedule_conflict_resolution.png",
+    "screen_id": "p0_19_schedule_conflict_resolution",
+    "friendly_title": "p0 19 schedule conflict resolution"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 20,
+    "file": "images/P0/p0_20_emergency_route_recalculation.png",
+    "screen_id": "p0_20_emergency_route_recalculation",
+    "friendly_title": "p0 20 emergency route recalculation"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 21,
+    "file": "images/P0/p0_21_route_optimization_detail.png",
+    "screen_id": "p0_21_route_optimization_detail",
+    "friendly_title": "p0 21 route optimization detail"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 22,
+    "file": "images/P0/p0_22_visit_mode_tablet.png",
+    "screen_id": "p0_22_visit_mode_tablet",
+    "friendly_title": "p0 22 visit mode tablet"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 23,
+    "file": "images/P0/p0_23_visit_mode_smartphone.png",
+    "screen_id": "p0_23_visit_mode_smartphone",
+    "friendly_title": "p0 23 visit mode smartphone"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 24,
+    "file": "images/P0/p0_24_facility_visit_packet.png",
+    "screen_id": "p0_24_facility_visit_packet",
+    "friendly_title": "p0 24 facility visit packet"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 25,
+    "file": "images/P0/p0_25_clerk_support_dashboard.png",
+    "screen_id": "p0_25_clerk_support_dashboard",
+    "friendly_title": "p0 25 clerk support dashboard"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 26,
+    "file": "images/P0/p0_26_contact_delivery_target_edit.png",
+    "screen_id": "p0_26_contact_delivery_target_edit",
+    "friendly_title": "p0 26 contact delivery target edit"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 27,
+    "file": "images/P0/p0_27_handoff_bidirectional.png",
+    "screen_id": "p0_27_handoff_bidirectional",
+    "friendly_title": "p0 27 handoff bidirectional"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 28,
+    "file": "images/P0/p0_28_report_composer_share.png",
+    "screen_id": "p0_28_report_composer_share",
+    "friendly_title": "p0 28 report composer share"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 29,
+    "file": "images/P0/p0_29_reply_followup_management.png",
+    "screen_id": "p0_29_reply_followup_management",
+    "friendly_title": "p0 29 reply followup management"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 30,
+    "file": "images/P0/p0_30_claim_billing_review.png",
+    "screen_id": "p0_30_claim_billing_review",
+    "friendly_title": "p0 30 claim billing review"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 31,
+    "file": "images/P0/p0_31_residual_adjustment_flow.png",
+    "screen_id": "p0_31_residual_adjustment_flow",
+    "friendly_title": "p0 31 residual adjustment flow"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 32,
+    "file": "images/P0/p0_32_adverse_event_prevention_flow.png",
+    "screen_id": "p0_32_adverse_event_prevention_flow",
+    "friendly_title": "p0 32 adverse event prevention flow"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 33,
+    "file": "images/P0/p0_33_evidence_photo_management.png",
+    "screen_id": "p0_33_evidence_photo_management",
+    "friendly_title": "p0 33 evidence photo management"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 34,
+    "file": "images/P0/p0_34_offline_sync_center.png",
+    "screen_id": "p0_34_offline_sync_center",
+    "friendly_title": "p0 34 offline sync center"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 35,
+    "file": "images/P0/p0_35_data_conflict_resolution.png",
+    "screen_id": "p0_35_data_conflict_resolution",
+    "friendly_title": "p0 35 data conflict resolution"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 36,
+    "file": "images/P0/p0_36_reject_reason_modal.png",
+    "screen_id": "p0_36_reject_reason_modal",
+    "friendly_title": "p0 36 reject reason modal"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 37,
+    "file": "images/P0/p0_37_cancel_reopen_reason_modal.png",
+    "screen_id": "p0_37_cancel_reopen_reason_modal",
+    "friendly_title": "p0 37 cancel reopen reason modal"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 38,
+    "file": "images/P0/p0_38_patient_profile.png",
+    "screen_id": "p0_38_patient_profile",
+    "friendly_title": "p0 38 patient profile"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 39,
+    "file": "images/P0/p0_39_medication_master.png",
+    "screen_id": "p0_39_medication_master",
+    "friendly_title": "p0 39 medication master"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 40,
+    "file": "images/P0/p0_40_medical_professional_master.png",
+    "screen_id": "p0_40_medical_professional_master",
+    "friendly_title": "p0 40 medical professional master"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 41,
+    "file": "images/P0/p0_41_facility_master.png",
+    "screen_id": "p0_41_facility_master",
+    "friendly_title": "p0 41 facility master"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 42,
+    "file": "images/P0/p0_42_staff_role_management.png",
+    "screen_id": "p0_42_staff_role_management",
+    "friendly_title": "p0 42 staff role management"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 43,
+    "file": "images/P0/p0_43_vehicle_master.png",
+    "screen_id": "p0_43_vehicle_master",
+    "friendly_title": "p0 43 vehicle master"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 44,
+    "file": "images/P0/p0_44_settings.png",
+    "screen_id": "p0_44_settings",
+    "friendly_title": "p0 44 settings"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 45,
+    "file": "images/P0/p0_45_capacity_bottleneck_dashboard.png",
+    "screen_id": "p0_45_capacity_bottleneck_dashboard",
+    "friendly_title": "p0 45 capacity bottleneck dashboard"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 46,
+    "file": "images/P0/p0_46_ui_state_reference.png",
+    "screen_id": "p0_46_ui_state_reference",
+    "friendly_title": "p0 46 ui state reference"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 47,
+    "file": "images/P0/p0_47_print_preview.png",
+    "screen_id": "p0_47_print_preview",
+    "friendly_title": "p0 47 print preview"
+  },
+  {
+    "priority": "P0",
+    "screen_no": 48,
+    "file": "images/P0/p0_48_mobile_evidence_capture.png",
+    "screen_id": "p0_48_mobile_evidence_capture",
+    "friendly_title": "p0 48 mobile evidence capture"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 1,
+    "file": "images/P1/p1_01_saved_views_advanced_filter.png",
+    "screen_id": "p1_01_saved_views_advanced_filter",
+    "friendly_title": "P1-01 よく使う絞り込み"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 2,
+    "file": "images/P1/p1_02_multi_card_split_workspace.png",
+    "screen_id": "p1_02_multi_card_split_workspace",
+    "friendly_title": "P1-02 複数カードを並べて見る"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 3,
+    "file": "images/P1/p1_03_ai_visit_summary_review.png",
+    "screen_id": "p1_03_ai_visit_summary_review",
+    "friendly_title": "P1-03 訪問前まとめを確認"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 4,
+    "file": "images/P1/p1_04_ai_report_draft.png",
+    "screen_id": "p1_04_ai_report_draft",
+    "friendly_title": "P1-04 報告書の下書き"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 5,
+    "file": "images/P1/p1_05_interprofessional_portal.png",
+    "screen_id": "p1_05_interprofessional_portal",
+    "friendly_title": "P1-05 他職種向け共有ページ"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 6,
+    "file": "images/P1/p1_06_management_analytics_detail.png",
+    "screen_id": "p1_06_management_analytics_detail",
+    "friendly_title": "P1-06 経営・運用分析"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 7,
+    "file": "images/P1/p1_07_inventory_linkage_prediction.png",
+    "screen_id": "p1_07_inventory_linkage_prediction",
+    "friendly_title": "P1-07 在庫と定期処方の予測"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 8,
+    "file": "images/P1/p1_08_facility_criteria_dashboard.png",
+    "screen_id": "p1_08_facility_criteria_dashboard",
+    "friendly_title": "P1-08 施設基準の確認"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 9,
+    "file": "images/P1/p1_09_incident_hiyarihatto.png",
+    "screen_id": "p1_09_incident_hiyarihatto",
+    "friendly_title": "P1-09 ヒヤリハット管理"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 10,
+    "file": "images/P1/p1_10_report_template_editor.png",
+    "screen_id": "p1_10_report_template_editor",
+    "friendly_title": "P1-10 報告テンプレート編集"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 11,
+    "file": "images/P1/p1_11_voice_memo_transcription.png",
+    "screen_id": "p1_11_voice_memo_transcription",
+    "friendly_title": "P1-11 音声メモ・文字起こし"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 12,
+    "file": "images/P1/p1_12_advanced_route_scenario_compare.png",
+    "screen_id": "p1_12_advanced_route_scenario_compare",
+    "friendly_title": "P1-12 ルート案を比べる"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 13,
+    "file": "images/P1/p1_13_realtime_collaboration_presence.png",
+    "screen_id": "p1_13_realtime_collaboration_presence",
+    "friendly_title": "P1-13 共同編集・今だれが見ているか"
+  },
+  {
+    "priority": "P1",
+    "screen_no": 14,
+    "file": "images/P1/p1_14_ai_signal_tuning.png",
+    "screen_id": "p1_14_ai_signal_tuning",
+    "friendly_title": "P1-14 気になる処方の表示設定"
+  }
+]
