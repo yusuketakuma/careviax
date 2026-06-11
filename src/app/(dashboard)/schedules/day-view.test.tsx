@@ -143,6 +143,11 @@ vi.mock('./schedule-day-route-preview', () => ({
     controlId: string;
     routeTravelMode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
     onRouteTravelModeChange: (value: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER') => void;
+    routePlanLoading: boolean;
+    routeOptimizationDirty: boolean;
+    applyPending: boolean;
+    onApplyOptimizedRoute: () => void;
+    actionLabel: string;
   }) => {
     scheduleDayRoutePreviewPropsMock(props);
     return (
@@ -150,6 +155,13 @@ vi.mock('./schedule-day-route-preview', () => ({
         <span>{props.routeTravelMode}</span>
         <button type="button" onClick={() => props.onRouteTravelModeChange('WALK')}>
           {props.controlId} 徒歩に変更
+        </button>
+        <button
+          type="button"
+          disabled={props.routePlanLoading || props.applyPending || !props.routeOptimizationDirty}
+          onClick={props.onApplyOptimizedRoute}
+        >
+          {props.applyPending ? '反映中...' : props.actionLabel}
         </button>
       </div>
     );
@@ -471,8 +483,15 @@ function buildPreparationPack(overrides?: Partial<VisitPreparationPack>): VisitP
   };
 }
 
-function setupPlannerDataQueries() {
+function setupPlannerDataQueries(routePlan?: unknown) {
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === 'visit-route-plan') {
+      return {
+        data: routePlan,
+        isLoading: false,
+        isFetching: false,
+      };
+    }
     if (queryKey[0] === 'cases') {
       return {
         data: {
@@ -759,6 +778,127 @@ describe('ScheduleDayView', () => {
     expect(JSON.parse(proposalRequest?.[1]?.body as string)).toMatchObject({
       case_id: 'case_1',
       travel_mode: 'DRIVE',
+    });
+  });
+
+  it('requires confirmation before applying optimized day route order', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    setupPlannerDataQueries({
+      status: 'ok',
+      note: null,
+      travelMode: 'DRIVE',
+      origin: null,
+      encodedPath: null,
+      orderedScheduleIds: ['schedule_2', 'schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+      stopSummaries: [],
+    });
+    executeMutations();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: {
+            data: [
+              buildSchedule({
+                id: 'schedule_1',
+                route_order: 1,
+                time_window_start: '2026-04-09T09:00:00.000Z',
+                time_window_end: '2026-04-09T10:00:00.000Z',
+              }),
+              buildSchedule({
+                id: 'schedule_2',
+                route_order: 2,
+                time_window_start: '2026-04-09T10:30:00.000Z',
+                time_window_end: '2026-04-09T11:30:00.000Z',
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '佐藤太郎',
+                    residences: [
+                      {
+                        address: '東京都港区2-2-2',
+                        building_id: null,
+                        unit_name: null,
+                        lat: 35.2,
+                        lng: 139.2,
+                      },
+                    ],
+                  },
+                },
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="confirmed" />,
+    );
+    const reorderCalls = () =>
+      fetchMock.mock.calls.filter(([url]) => url === '/api/visit-schedules/reorder');
+
+    fireEvent.click(screen.getByRole('button', { name: '最適順を反映' }));
+    expect(reorderCalls()).toHaveLength(0);
+
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: '日次ルートの route_order を反映しますか',
+    });
+    expect(within(confirmDialog).getByText('2026/04/09(木)')).toBeTruthy();
+    expect(within(confirmDialog).getByText('薬剤師A / 2026-04-09')).toBeTruthy();
+    expect(within(confirmDialog).getByText('車')).toBeTruthy();
+    expect(confirmDialog.textContent).toContain('佐藤太郎');
+    expect(confirmDialog.textContent).toContain('山田花子');
+    expect(confirmDialog.textContent).toContain('現在 2 → 1');
+    expect(confirmDialog.textContent).toContain('現在 1 → 2');
+    expect(confirmDialog.textContent ?? '').not.toContain('東京都港区2-2-2');
+
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'キャンセル' }));
+    expect(reorderCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '最適順を反映' }));
+    const reopenedDialog = screen.getByRole('alertdialog', {
+      name: '日次ルートの route_order を反映しますか',
+    });
+    fireEvent.click(
+      within(reopenedDialog).getByRole('button', { name: '2件の route_order を反映' }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedules/reorder',
+        expect.objectContaining({
+          method: 'PATCH',
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    });
+    const reorderRequest = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/visit-schedules/reorder',
+    );
+    expect(JSON.parse(reorderRequest?.[1]?.body as string)).toEqual({
+      updates: [
+        { schedule_id: 'schedule_2', route_order: 1 },
+        { schedule_id: 'schedule_1', route_order: 2 },
+      ],
+      confirmation_context: {
+        source: 'schedule_day_route_preview',
+        date: '2026-04-09',
+        pharmacist_id: 'pharmacist_1',
+        travel_mode: 'DRIVE',
+        target_count: 2,
+        route_order_diff_count: 2,
+      },
     });
   });
 

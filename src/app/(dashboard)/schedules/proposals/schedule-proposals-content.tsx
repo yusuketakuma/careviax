@@ -23,6 +23,7 @@ import {
   type ProposalGenerationDiagnosticsCardData,
 } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
+import { VISIT_ROUTE_TRAVEL_MODE_LABELS } from '@/components/features/visits/visit-route-shared';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -63,7 +64,11 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
-import { applyVisitScheduleProposalRouteUpdates } from '@/app/(dashboard)/schedules/visit-route-client';
+import {
+  applyVisitScheduleProposalRouteUpdates,
+  type VisitRouteConfirmationContext,
+  type VisitScheduleProposalRouteUpdate,
+} from '@/app/(dashboard)/schedules/visit-route-client';
 import { useRouteOrderDraft } from '@/app/(dashboard)/schedules/route-order-draft';
 import { ProposalHumanDecisionFlow } from '../proposal-human-decision-flow';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
@@ -252,6 +257,11 @@ type ProposalActionPayload =
 type SingleProposalConfirmState = {
   action: SingleProposalConfirmAction;
   proposal: Proposal;
+};
+
+type ProposalRouteOrderMutationInput = {
+  routeOrderUpdates: VisitScheduleProposalRouteUpdate[];
+  confirmationContext: VisitRouteConfirmationContext;
 };
 
 type ContentProps = {
@@ -639,6 +649,7 @@ export function ScheduleProposalsContent({
     null,
   );
   const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
+  const [proposalRouteConfirmOpen, setProposalRouteConfirmOpen] = useState(false);
   const [bulkRejectReason, setBulkRejectReason] = useState('');
   const [bulkActionFailureSummary, setBulkActionFailureSummary] =
     useState<BulkActionFailureSummary | null>(null);
@@ -1244,17 +1255,17 @@ export function ScheduleProposalsContent({
   });
 
   const reorderProposalMutation = useMutation({
-    mutationFn: async (
-      routeOrderUpdates: Array<{
-        proposal_id: string;
-        route_order: number;
-      }>,
-    ) =>
+    mutationFn: async ({
+      routeOrderUpdates,
+      confirmationContext,
+    }: ProposalRouteOrderMutationInput) =>
       applyVisitScheduleProposalRouteUpdates({
         orgId,
         routeOrderUpdates,
+        confirmationContext,
       }),
     onSuccess: async () => {
+      setProposalRouteConfirmOpen(false);
       toast.success('候補群の route_order を最適順に更新しました');
       await invalidateProposalQueries();
     },
@@ -1374,6 +1385,52 @@ export function ScheduleProposalsContent({
     optimizedIds: detail?.route_preview.plan.orderedScheduleIds ?? currentDetailRouteIds,
     currentIds: currentDetailRouteIds,
   });
+  const detailProposalRouteUpdates = useMemo<VisitScheduleProposalRouteUpdate[]>(() => {
+    return detailRouteDraft.draftIds
+      .map((item, index) =>
+        item.startsWith('proposal:')
+          ? {
+              proposal_id: item.replace('proposal:', ''),
+              route_order: index + 1,
+            }
+          : null,
+      )
+      .filter((item): item is VisitScheduleProposalRouteUpdate => item != null);
+  }, [detailRouteDraft.draftIds]);
+  const proposalRouteConfirmItems = useMemo(() => {
+    if (!detail) return [];
+    const proposalById = new Map(
+      [detail, ...detail.related_proposals].map((proposal) => [proposal.id, proposal]),
+    );
+    return detailProposalRouteUpdates
+      .map((update) => {
+        const proposal = proposalById.get(update.proposal_id);
+        if (!proposal) return null;
+        return {
+          id: proposal.id,
+          patientName: proposal.case_.patient.name,
+          safeIdentifier: proposalSafeIdentifierLabel(proposal),
+          time: `${formatDateLabel(proposal.proposed_date)} ${timeLabel(
+            proposal.time_window_start,
+            proposal.time_window_end,
+          )}`,
+          currentOrder: proposal.route_order,
+          nextOrder: update.route_order,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [detail, detailProposalRouteUpdates]);
+  const proposalRouteConfirmationContext = useMemo<VisitRouteConfirmationContext | null>(() => {
+    if (!detail) return null;
+    return {
+      source: 'proposal_detail_route_preview',
+      date: detail.proposed_date.slice(0, 10),
+      pharmacist_id: detail.proposed_pharmacist_id,
+      travel_mode: routeTravelMode,
+      target_count: detailProposalRouteUpdates.length,
+      route_order_diff_count: detailRouteDraft.diffCount,
+    };
+  }, [detail, detailProposalRouteUpdates.length, detailRouteDraft.diffCount, routeTravelMode]);
 
   const routeMapPoints = useMemo(() => {
     if (!detail) return [];
@@ -2329,6 +2386,95 @@ export function ScheduleProposalsContent({
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={proposalRouteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !reorderProposalMutation.isPending) {
+            setProposalRouteConfirmOpen(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>候補群の route_order を反映しますか</AlertDialogTitle>
+            <AlertDialogDescription>
+              候補詳細で確認した対象日、薬剤師、移動手段、候補順序を反映します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">対象候補</dt>
+                <dd className="font-medium">{detailTargetLabel ?? '候補未選択'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">対象日 / 薬剤師</dt>
+                <dd className="font-medium">{detailRouteSelectionLabel ?? '未設定'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">移動手段</dt>
+                <dd className="font-medium">{VISIT_ROUTE_TRAVEL_MODE_LABELS[routeTravelMode]}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">候補 / 差分</dt>
+                <dd className="font-medium">
+                  {proposalRouteConfirmItems.length}件 / {detailRouteDraft.diffCount}件
+                </dd>
+              </div>
+            </dl>
+
+            <ul
+              aria-label="候補ルート順反映の対象候補"
+              className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
+            >
+              {proposalRouteConfirmItems.map((proposal) => (
+                <li key={proposal.id} className="rounded-md bg-muted/30 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      {proposal.nextOrder}. {proposal.patientName}
+                    </span>
+                    <Badge variant="outline">{proposal.safeIdentifier}</Badge>
+                    <Badge variant="outline">
+                      現在 {proposal.currentOrder ?? '未設定'} → {proposal.nextOrder}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{proposal.time}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-5 text-muted-foreground">
+              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。候補日・担当・患者順序が一致している場合のみ反映してください。
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reorderProposalMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!proposalRouteConfirmationContext) return;
+                reorderProposalMutation.mutate({
+                  routeOrderUpdates: detailProposalRouteUpdates,
+                  confirmationContext: proposalRouteConfirmationContext,
+                });
+              }}
+              disabled={
+                reorderProposalMutation.isPending ||
+                detailProposalRouteUpdates.length === 0 ||
+                !detailRouteDraft.differsFromCurrent ||
+                !proposalRouteConfirmationContext
+              }
+            >
+              {reorderProposalMutation.isPending
+                ? '候補順を反映中...'
+                : `${detailProposalRouteUpdates.length}件の候補順を反映`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Sheet
         open={activeDetailId !== null}
         onOpenChange={(open) => {
@@ -2530,32 +2676,11 @@ export function ScheduleProposalsContent({
                 actionLabel="候補群へ最適順を反映"
                 actionDisabled={
                   reorderProposalMutation.isPending ||
-                  detailRouteDraft.draftIds.filter((item) => item.startsWith('proposal:'))
-                    .length === 0 ||
+                  detailProposalRouteUpdates.length === 0 ||
                   !detailRouteDraft.differsFromCurrent
                 }
                 actionPending={reorderProposalMutation.isPending}
-                onAction={() =>
-                  reorderProposalMutation.mutate(
-                    detailRouteDraft.draftIds
-                      .map((item, index) =>
-                        item.startsWith('proposal:')
-                          ? {
-                              proposal_id: item.replace('proposal:', ''),
-                              route_order: index + 1,
-                            }
-                          : null,
-                      )
-                      .filter(
-                        (
-                          item,
-                        ): item is {
-                          proposal_id: string;
-                          route_order: number;
-                        } => item != null,
-                      ),
-                  )
-                }
+                onAction={() => setProposalRouteConfirmOpen(true)}
                 extraSummary={
                   detailRouteDraft.diffCount > 0 ? (
                     <Badge variant="outline">差分 {detailRouteDraft.diffCount} 件</Badge>

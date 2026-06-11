@@ -10,9 +10,19 @@ export type VisitScheduleProposalRouteUpdate = {
   route_order: number;
 };
 
+export type VisitRouteConfirmationContext = {
+  source: string;
+  date?: string;
+  pharmacist_id?: string;
+  travel_mode?: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+  target_count?: number;
+  route_order_diff_count?: number;
+};
+
 export async function applyVisitScheduleRouteUpdates(args: {
   orgId: string;
   updates: VisitScheduleRouteUpdate[];
+  confirmationContext?: VisitRouteConfirmationContext;
 }) {
   const response = await fetch('/api/visit-schedules/reorder', {
     method: 'PATCH',
@@ -27,6 +37,7 @@ export async function applyVisitScheduleRouteUpdates(args: {
         ...(update.scheduled_date ? { scheduled_date: update.scheduled_date } : {}),
         ...(update.pharmacist_id ? { pharmacist_id: update.pharmacist_id } : {}),
       })),
+      ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
     }),
   });
   if (!response.ok) {
@@ -40,11 +51,16 @@ export async function applyVisitScheduleProposalRouteUpdates(args: {
   orgId: string;
   orderedProposalIds?: string[];
   routeOrderUpdates?: VisitScheduleProposalRouteUpdate[];
+  confirmationContext?: VisitRouteConfirmationContext;
 }) {
-  const body =
+  const routeOrderBody =
     args.routeOrderUpdates && args.routeOrderUpdates.length > 0
       ? { route_order_updates: args.routeOrderUpdates }
       : { ordered_proposal_ids: args.orderedProposalIds ?? [] };
+  const body = {
+    ...routeOrderBody,
+    ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
+  };
 
   const response = await fetch('/api/visit-schedule-proposals/reorder', {
     method: 'PATCH',

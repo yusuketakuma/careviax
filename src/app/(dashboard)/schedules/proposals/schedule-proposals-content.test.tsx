@@ -135,6 +135,7 @@ function buildProposalDetail(overrides?: Record<string, unknown>) {
       points: [],
       site: null,
     },
+    ...overrides,
   };
 }
 
@@ -868,6 +869,145 @@ describe('ScheduleProposalsContent', () => {
         body: JSON.stringify({ action: 'confirm' }),
       }),
     );
+  });
+
+  it('requires confirmation before applying proposal detail route order', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    const relatedProposal = buildProposal({
+      id: 'proposal_2',
+      case_id: 'case_2',
+      route_order: 2,
+      time_window_start: '2026-04-09T10:30:00.000Z',
+      time_window_end: '2026-04-09T11:30:00.000Z',
+      case_: {
+        patient: {
+          id: 'patient_2',
+          name: '佐藤太郎',
+          residences: [{ address: '東京都港区2-2-2', lat: 35.2, lng: 139.2 }],
+        },
+      },
+    });
+    const detail = buildProposalDetail({
+      id: 'proposal_1',
+      route_order: 1,
+      related_proposals: [relatedProposal],
+      route_preview: {
+        plan: {
+          status: 'ok',
+          note: null,
+          travelMode: 'DRIVE',
+          origin: null,
+          encodedPath: null,
+          orderedScheduleIds: ['proposal:proposal_2', 'proposal:proposal_1'],
+          totalDistanceMeters: null,
+          totalDurationSeconds: null,
+          stopSummaries: [],
+        },
+        points: [
+          {
+            schedule_id: 'proposal:proposal_1',
+            point_kind: 'proposal',
+            patient_name: '山田花子',
+            address: '東京都千代田区1-1-1',
+            lat: 35.1,
+            lng: 139.1,
+            priority: 'normal',
+            schedule_status: 'planned',
+            time_window_start: '2026-04-09T09:00:00.000Z',
+            time_window_end: '2026-04-09T10:00:00.000Z',
+          },
+          {
+            schedule_id: 'proposal:proposal_2',
+            point_kind: 'proposal',
+            patient_name: '佐藤太郎',
+            address: '東京都港区2-2-2',
+            lat: 35.2,
+            lng: 139.2,
+            priority: 'normal',
+            schedule_status: 'planned',
+            time_window_start: '2026-04-09T10:30:00.000Z',
+            time_window_end: '2026-04-09T11:30:00.000Z',
+          },
+        ],
+        site: null,
+      },
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail, relatedProposal] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '候補群へ最適順を反映' }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: '候補群の route_order を反映しますか',
+    });
+    expect(confirmDialog.textContent).toContain('山田花子');
+    expect(confirmDialog.textContent).toContain('佐藤太郎');
+    expect(confirmDialog.textContent).toContain('現在 2 → 1');
+    expect(confirmDialog.textContent).toContain('現在 1 → 2');
+    expect(within(confirmDialog).getByText('車')).toBeTruthy();
+    expect(confirmDialog.textContent ?? '').not.toContain('東京都港区2-2-2');
+    expect(confirmDialog.textContent ?? '').not.toContain('090-1234-5678');
+    expect(confirmDialog.textContent ?? '').not.toContain('アムロジピン');
+
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'キャンセル' }));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '候補群へ最適順を反映' }));
+    const reopenedDialog = screen.getByRole('alertdialog', {
+      name: '候補群の route_order を反映しますか',
+    });
+    fireEvent.click(within(reopenedDialog).getByRole('button', { name: '2件の候補順を反映' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals/reorder',
+        expect.objectContaining({
+          method: 'PATCH',
+          headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
+        }),
+      );
+    });
+    const reorderRequest = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/visit-schedule-proposals/reorder',
+    );
+    expect(JSON.parse(reorderRequest?.[1]?.body as string)).toEqual({
+      route_order_updates: [
+        { proposal_id: 'proposal_2', route_order: 1 },
+        { proposal_id: 'proposal_1', route_order: 2 },
+      ],
+      confirmation_context: {
+        source: 'proposal_detail_route_preview',
+        date: '2026-04-09',
+        pharmacist_id: 'pharmacist_1',
+        travel_mode: 'DRIVE',
+        target_count: 2,
+        route_order_diff_count: 2,
+      },
+    });
   });
 
   it.each([

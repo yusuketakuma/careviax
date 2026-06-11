@@ -1,5 +1,6 @@
 import {
   applyVisitScheduleRouteUpdates,
+  type VisitRouteConfirmationContext,
   type VisitScheduleRouteUpdate,
 } from './visit-route-client';
 
@@ -20,11 +21,13 @@ export async function applyScheduleDayRouteOrderDraft({
   orgId,
   hasRoutePlan,
   draftScheduleIds,
+  confirmationContext,
   applyRouteUpdates = applyVisitScheduleRouteUpdates,
 }: {
   orgId: string;
   hasRoutePlan: boolean;
   draftScheduleIds: string[];
+  confirmationContext?: VisitRouteConfirmationContext;
   applyRouteUpdates?: ApplyRouteUpdates;
 }) {
   if (!hasRoutePlan || draftScheduleIds.length === 0) {
@@ -34,6 +37,7 @@ export async function applyScheduleDayRouteOrderDraft({
   return applyRouteUpdates({
     orgId,
     updates: buildScheduleDayRouteOrderUpdates(draftScheduleIds),
+    ...(confirmationContext ? { confirmationContext } : {}),
   });
 }
 

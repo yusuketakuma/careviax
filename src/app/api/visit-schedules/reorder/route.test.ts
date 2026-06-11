@@ -474,6 +474,14 @@ describe('/api/visit-schedules/reorder PATCH', () => {
             pharmacist_id: 'pharmacist_2',
           },
         ],
+        confirmation_context: {
+          source: 'schedule_day_route_preview',
+          date: '2026-04-09',
+          pharmacist_id: 'pharmacist_1',
+          travel_mode: 'DRIVE',
+          target_count: 2,
+          route_order_diff_count: 2,
+        },
       }),
     ))!;
 
@@ -485,6 +493,23 @@ describe('/api/visit-schedules/reorder PATCH', () => {
           route_order: 1,
           pharmacist_id: 'pharmacist_2',
           site_id: 'site_2',
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedules_reordered',
+          changes: expect.objectContaining({
+            confirmation_context: {
+              source: 'schedule_day_route_preview',
+              date: '2026-04-09',
+              pharmacist_id: 'pharmacist_1',
+              travel_mode: 'DRIVE',
+              target_count: 2,
+              route_order_diff_count: 2,
+            },
+          }),
         }),
       }),
     );

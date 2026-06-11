@@ -4,7 +4,17 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+
+const routeOrderConfirmationContextSchema = z.object({
+  source: z.string().trim().min(1).max(80),
+  date: dateKeySchema('確認日付の形式が不正です（YYYY-MM-DD）').optional(),
+  pharmacist_id: z.string().trim().min(1).max(100).optional(),
+  travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).optional(),
+  target_count: z.number().int().min(1).max(100).optional(),
+  route_order_diff_count: z.number().int().min(0).max(100).optional(),
+});
 
 const proposalRouteOrderUpdateSchema = z.object({
   proposal_id: z.string().trim().min(1),
@@ -14,9 +24,11 @@ const proposalRouteOrderUpdateSchema = z.object({
 const reorderVisitScheduleProposalSchema = z.union([
   z.object({
     ordered_proposal_ids: z.array(z.string().trim().min(1)).min(1),
+    confirmation_context: routeOrderConfirmationContextSchema.optional(),
   }),
   z.object({
     route_order_updates: z.array(proposalRouteOrderUpdateSchema).min(1),
+    confirmation_context: routeOrderConfirmationContextSchema.optional(),
   }),
 ]);
 
@@ -140,6 +152,7 @@ export const PATCH = withAuth(
                 : undefined,
             proposed_date: first.proposed_date.toISOString(),
             pharmacist_id: first.proposed_pharmacist_id,
+            confirmation_context: parsed.data.confirmation_context ?? null,
           },
         },
       });

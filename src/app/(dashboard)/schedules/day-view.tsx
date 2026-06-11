@@ -61,6 +61,7 @@ import {
 import { cn } from '@/lib/utils';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
+import { VISIT_ROUTE_TRAVEL_MODE_LABELS } from '@/components/features/visits/visit-route-shared';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import {
@@ -362,6 +363,7 @@ export function ScheduleDayView({
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
   const [routePreviewTravelMode, setRoutePreviewTravelMode] = useState<RouteTravelMode>('DRIVE');
   const [plannerRouteTravelMode, setPlannerRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
+  const [routeOrderConfirmOpen, setRouteOrderConfirmOpen] = useState(false);
   const preparationRequestSeqRef = useRef(0);
   const preparationFormDirtyRef = useRef(false);
   const isOffline = useOfflineStore((state) => state.isOffline);
@@ -918,6 +920,22 @@ export function ScheduleDayView({
     [routeMapSchedules],
   );
   const routeOptimizationDirty = routeOrderDraft.differsFromCurrent;
+  const routeOrderConfirmSchedules = useMemo(() => {
+    const scheduleById = new Map(routeMapSchedules.map((schedule) => [schedule.id, schedule]));
+    return routeOrderDraft.draftIds
+      .map((scheduleId, index) => {
+        const schedule = scheduleById.get(scheduleId);
+        if (!schedule) return null;
+        return {
+          scheduleId,
+          patientName: schedule.case_.patient.name,
+          time: timeLabel(schedule.time_window_start, schedule.time_window_end),
+          currentOrder: schedule.route_order,
+          nextOrder: index + 1,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [routeMapSchedules, routeOrderDraft.draftIds]);
   const {
     window: ganttWindow,
     slots: ganttSlots,
@@ -1430,9 +1448,18 @@ export function ScheduleDayView({
         orgId,
         hasRoutePlan: Boolean(routePlanData),
         draftScheduleIds: routeOrderDraft.draftIds,
+        confirmationContext: {
+          source: 'schedule_day_route_preview',
+          date: selectedDate,
+          pharmacist_id: resolvedRoutePharmacistId,
+          travel_mode: routePreviewTravelMode,
+          target_count: routeOrderConfirmSchedules.length,
+          route_order_diff_count: routeOrderDraft.diffCount,
+        },
       });
     },
     onSuccess: async () => {
+      setRouteOrderConfirmOpen(false);
       await handleScheduleDayRouteOrderApplySuccess({
         orgId,
         notifySuccess: toast.success,
@@ -1600,7 +1627,7 @@ export function ScheduleDayView({
             routePlanLoading={routePlanLoading}
             routeOptimizationDirty={routeOptimizationDirty}
             applyPending={applyOptimizedRouteMutation.isPending}
-            onApplyOptimizedRoute={() => applyOptimizedRouteMutation.mutate()}
+            onApplyOptimizedRoute={() => setRouteOrderConfirmOpen(true)}
             actionLabel="最適順を route_order に反映"
           />
         ) : (
@@ -2666,7 +2693,7 @@ export function ScheduleDayView({
                   routePlanLoading={routePlanLoading}
                   routeOptimizationDirty={routeOptimizationDirty}
                   applyPending={applyOptimizedRouteMutation.isPending}
-                  onApplyOptimizedRoute={() => applyOptimizedRouteMutation.mutate()}
+                  onApplyOptimizedRoute={() => setRouteOrderConfirmOpen(true)}
                   actionLabel="最適順を反映"
                   showRouteMapScheduleCount
                   routeMapScheduleCount={routeMapSchedules.length}
@@ -3193,6 +3220,91 @@ export function ScheduleDayView({
         onCancel={() => setRescheduleApprovalTarget(null)}
         onConfirm={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
       />
+
+      <AlertDialog
+        open={routeOrderConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !applyOptimizedRouteMutation.isPending) {
+            setRouteOrderConfirmOpen(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>日次ルートの route_order を反映しますか</AlertDialogTitle>
+            <AlertDialogDescription>
+              対象日、薬剤師、移動手段、患者順序を確認してから反映してください。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">対象日</dt>
+                <dd className="font-medium">
+                  {format(selectedDay, 'yyyy/MM/dd(E)', { locale: ja })}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">対象薬剤師</dt>
+                <dd className="font-medium">{routeSelectionLabel ?? '薬剤師未選択'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">移動手段</dt>
+                <dd className="font-medium">
+                  {VISIT_ROUTE_TRAVEL_MODE_LABELS[routePreviewTravelMode]}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">対象 / 差分</dt>
+                <dd className="font-medium">
+                  {routeOrderConfirmSchedules.length}件 / {routeOrderDraft.diffCount}件
+                </dd>
+              </div>
+            </dl>
+
+            <ul
+              aria-label="日次ルート順反映の対象患者"
+              className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/70 p-2"
+            >
+              {routeOrderConfirmSchedules.map((schedule) => (
+                <li key={schedule.scheduleId} className="rounded-md bg-muted/30 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      {schedule.nextOrder}. {schedule.patientName}
+                    </span>
+                    <Badge variant="outline">{schedule.time}</Badge>
+                    <Badge variant="outline">
+                      現在 {schedule.currentOrder ?? '未設定'} → {schedule.nextOrder}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-5 text-muted-foreground">
+              住所、電話番号、薬剤名、処方詳細はこの確認画面には表示しません。対象日・薬剤師・患者順序が一致している場合のみ反映してください。
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applyOptimizedRouteMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => applyOptimizedRouteMutation.mutate()}
+              disabled={
+                applyOptimizedRouteMutation.isPending ||
+                routeOrderConfirmSchedules.length === 0 ||
+                !routeOptimizationDirty
+              }
+            >
+              {applyOptimizedRouteMutation.isPending
+                ? 'route_order 反映中...'
+                : `${routeOrderConfirmSchedules.length}件の route_order を反映`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={facilityCarryConfirmTarget !== null}

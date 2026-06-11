@@ -12,6 +12,15 @@ import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
+const routeOrderConfirmationContextSchema = z.object({
+  source: z.string().trim().min(1).max(80),
+  date: visitScheduleDateKeySchema('確認日付の形式が不正です（YYYY-MM-DD）').optional(),
+  pharmacist_id: z.string().trim().min(1).max(100).optional(),
+  travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).optional(),
+  target_count: z.number().int().min(1).max(100).optional(),
+  route_order_diff_count: z.number().int().min(0).max(100).optional(),
+});
+
 const visitScheduleReorderSchema = z.object({
   updates: z
     .array(
@@ -23,6 +32,7 @@ const visitScheduleReorderSchema = z.object({
       }),
     )
     .min(1),
+  confirmation_context: routeOrderConfirmationContextSchema.optional(),
 });
 
 export const PATCH = withAuth(
@@ -256,6 +266,7 @@ export const PATCH = withAuth(
               scheduled_date: item.scheduled_date ?? null,
               pharmacist_id: item.pharmacist_id ?? null,
             })),
+            confirmation_context: parsed.data.confirmation_context ?? null,
           },
         },
       });

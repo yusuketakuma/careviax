@@ -234,6 +234,14 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
           { proposal_id: 'proposal_1', route_order: 2 },
           { proposal_id: 'proposal_2', route_order: 4 },
         ],
+        confirmation_context: {
+          source: 'proposal_detail_route_preview',
+          date: '2026-04-03',
+          pharmacist_id: 'pharmacist_1',
+          travel_mode: 'DRIVE',
+          target_count: 2,
+          route_order_diff_count: 2,
+        },
       }),
     ))!;
 
@@ -246,5 +254,22 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
       where: { id: 'proposal_2' },
       data: { route_order: 4 },
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedule_proposals_reordered',
+          changes: expect.objectContaining({
+            confirmation_context: {
+              source: 'proposal_detail_route_preview',
+              date: '2026-04-03',
+              pharmacist_id: 'pharmacist_1',
+              travel_mode: 'DRIVE',
+              target_count: 2,
+              route_order_diff_count: 2,
+            },
+          }),
+        }),
+      }),
+    );
   });
 });
