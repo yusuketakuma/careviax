@@ -56,6 +56,14 @@ AWS(Cognito / RDS PostgreSQL / S3 / SES / KMS / Secrets Manager / CloudWatch / E
 - ジョブの重複実行ガードあり: `src/server/jobs/runner.ts` が `status='running'` + `locked_at`(stale lock 解決付き)でスキップ判定。
 - マルチテナント・監査・rate-limit(fail-closed)・監査ログ redaction(`src/lib/audit-logs/redaction.ts`)は既に具体的な統制がある(`docs/repository-audit-2026-06-10.md` の Strengths と一致)。
 - E2E/撮影基盤: `ui-design-fidelity` 撮影ループ + ローカル E2E 一式が整備済み。
+- セキュリティ(2026-06-12 追加実測): `dangerouslySetInnerHTML` **0 件**・`eval`/`new Function` **0 件**・ハードコード secret **検出なし**・`.env` は example のみ git 管理。CSP(per-request nonce)+セキュリティヘッダーは `src/proxy.ts` に一元実装。外部共有トークンは JWT + `expires_at` + `revoked_at`(DB 失効)の三重。`callbackUrl` は `useSafeCallbackUrl`(`src/lib/auth/browser-auth-state.ts`)で検証済み。唯一の `$queryRawUnsafe`(`src/server/services/data-explorer.ts` 4 箇所)も Prisma モデル allowlist 検証+`sanitizeRow`+`redactRowForResponse` で統制済み。
+- 命名: 本体(src/phos 以外)のファイル名は kebab-case で**完全統一**(PascalCase 29 件はすべて隔離領域 `src/phos/` 内)。
+
+### セキュリティ上、変更時に特に慎重を要する境界(壊すと影響が全域に及ぶ)
+- `src/proxy.ts`: CSP nonce 生成・セキュリティヘッダー・API/非 API の振り分けが**ここ一箇所**。リファクタで関数を動かす場合もレスポンスヘッダーの内容を変えない(変更時は E2E でコンソールの CSP violation ゼロを確認)。
+- `src/server/services/data-explorer.ts`: 動的 SQL の identifier は allowlist 由来のみ。文字列組み立てに新たな入力経路を足さない。
+- `src/server/services/external-access.ts`: トークン検証 3 条件(署名・期限・失効)のいずれも省略不可。
+- `src/lib/auth/context.ts` の `requireAuthContext`: org 切替(x-org-id)の Membership 検証と AuditLog 記録。
 
 ### 検証コマンド(CI と同一系列)
 `.github/workflows/ci.yml` 準拠:
@@ -256,6 +264,22 @@ pnpm test 2>&1 | tail -5             # 結果を記録
 - 【検証】レビュー結果の記録。修正した場合は該当テスト green。
 - 【実装可否】規約文書化+違反箇所の点検・最小修正は今実装してよい。
 
+### D16. ドメイン文字列リテラルの型なし散在(severity / status)
+- 【根拠】Prisma 上 String のドメイン値がリテラルで散在: `'critical'` 62 箇所、`status: 'open'` 系 34 箇所(実測、非テスト)。`WorkflowException.severity`(critical/warning/info)、`status`(open/resolved/dismissed)等に共有 union 型・定数が無く、タイポが型で捕まらない。
+- 【負債である理由】医療安全に関わる severity の綴り間違いが実行時まで発見されない。enum 追加時に grep 漏れが起きる。
+- 【影響】workflow-exceptions / 右レール / ジョブ等。 【リスク】低(型の追加は挙動不変)。ただし **Prisma schema の enum 化は migration を伴うため対象外**(型レイヤのみ)。
+- 【改善案】`src/types/domain-literals.ts`(または既存の近接ファイル)に `ExceptionSeverity` / `ExceptionStatus` 等の union 型と `as const` 定数を定義し、**型注釈の追加だけ**を散在箇所へ適用(値の変更ゼロ)。全 96 箇所を一括せず、WorkflowException 関連(severity/status)に限定して 1 コミット。
+- 【検証】tsc(タイポがあればここで発覚する=即価値)+ 既存テスト green。
+- 【実装可否】WorkflowException 関連に限定して今実装してよい。他ドメイン値への展開は提案。
+
+### D17. コーディング規約と実態の乖離(コメント言語・配置規則の暗黙化)
+- 【根拠】`CLAUDE.md` は「Code / comments / variables: English」と規定するが、実測で **73/1,337 ファイル(非テスト)に日本語コメント**が存在(直近のデザイン忠実トラックで日本語ドメイン用語のコメントが定着)。また、コンポーネント配置は `src/components/features/`(73 ファイル)と各ページ配下(`*-content/-board/-workbench.tsx` 60 ファイル)に分かれるが、どちらに置くかの規則が文書化されていない。
+- 【負債である理由】規約文書が現実と乖離していると、新規参加者・実装エージェントがどちらに従うべきか判断できず、レビュー基準もぶれる。
+- 【影響】開発プロセス全体。 【リスク】コード変更ゼロ(文書と規約の問題)。ただし**コメント言語の方針自体はチーム判断**(Q7)。
+- 【改善案】(a) Q7 の回答確定後、`CLAUDE.md` の言語規約を実態に合わせて改訂(推奨は「コメントは日本語可(ドメイン用語の正確性優先)、識別子は英語」)。(b) `docs/api-conventions.md`(Phase 3)に配置規則を明文化: 「単一画面専用 = ページ配下に colocate / 2 画面以上で再利用 = `src/components/features/<domain>/` / 純関数は `*.shared.ts`・`src/lib/`」+「ファイル名は kebab-case(`src/phos/` のみ歴史的例外)」。
+- 【検証】文書のみ。
+- 【実装可否】(b) は今実装してよい。(a) は Q7 承認後。
+
 ## 8. Implementation Phases(この順で。各フェーズ = 1〜数コミット)
 
 ### Phase 0: 現状確認
@@ -274,7 +298,7 @@ pnpm test 2>&1 | tail -5             # 結果を記録
 ### Phase 3: 横断ヘルパーの新設と標準の明文化 — D1(a) / D2
 1. `src/lib/audit/audit-entry.ts` 新設 + 単体テスト。
 2. withAuthContext ルートから代表 10 ファイル以内で置換(1 コミット 3〜4 ファイル)。
-3. `docs/api-conventions.md` 新設。内容: withAuthContext 標準・監査ヘルパー・rate-limit 登録・zod 検証・withOrgContext の標準形(`docs/design-gap-analysis.md` 5 章から要約)+ **レスポンス封筒の二形式仕様(D11)** + **ログ規約: console に PHI を渡さない(D15)** + **意図的 fire-and-forget の `// intentional:` コメント規約(D13)** + **client が参照してよい型は src/types のみ(D14)**。
+3. `docs/api-conventions.md` 新設。内容: withAuthContext 標準・監査ヘルパー・rate-limit 登録・zod 検証・withOrgContext の標準形(`docs/design-gap-analysis.md` 5 章から要約)+ **レスポンス封筒の二形式仕様(D11)** + **ログ規約: console に PHI を渡さない(D15)** + **意図的 fire-and-forget の `// intentional:` コメント規約(D13)** + **client が参照してよい型は src/types のみ(D14)** + **コンポーネント配置規則と kebab-case 命名(D17b: 単一画面=ページ配下 colocate / 再利用=components/features / 純関数=shared・lib)**。
 4. `middleware.ts` に `@deprecated`(削除しない)、`context.ts` に推奨 JSDoc。
 5. D15 の点検: console.error/warn の 16 ファイルを目視レビューし、PHI 混入があればその箇所だけ修正(無ければ「違反なし」を記録)。
 
@@ -283,11 +307,12 @@ pnpm test 2>&1 | tail -5             # 結果を記録
 2. env: `src/lib/env/assert-env.ts` + 単体テストを新設(D12a。**起動パスへの組み込みはしない**)。118 キーの分類表を `docs/env-catalog.md` に作成(D12c)。
 3. 非同期: `docs/async-fire-and-forget-audit.md` に 77 箇所の監査表を作成(D13。コード変更なし。「要修正」判定は表に残し Phase 7 の提案へ)。
 
-### Phase 5: 表示ラベルの統一と工程タブの 9 工程化 — D6 / D4-5(Appendix Q2・Q3 の承認が前提)
+### Phase 5: 表示ラベル・ドメイン型の整備と工程タブの 9 工程化 — D6 / D4-5 / D16(2〜3 は Appendix Q2・Q3 の承認が前提)
 1. `cycle-workspace.ts` に `CYCLE_STATUS_LABELS` / `CYCLE_STATUS_SHORT_LABELS` を追加(既存 `CYCLE_WORKSPACE_ACTIONS` は変更しない)。
 2. 現役 3 箇所(patients API / prescription-history / prescriptions-workspace)を共通定数参照へ(実文言は不変)。旧 `workflow-dashboard-view` は触らない。
 3. `process-tab.tsx` をローカル 8 工程配列から `ProcessChips` + `PROCESS_STEPS_9` 再利用へ置換し、タブ説明文を 9 工程へ更新(unit テスト追随)。
-4. Q2/Q3 が未承認の場合はこのフェーズをスキップし、Stop-and-ask として報告する。
+4. D16: `ExceptionSeverity` / `ExceptionStatus` の union 型 + `as const` 定数を新設し、WorkflowException 関連の散在リテラルへ**型注釈のみ**追加(値の変更ゼロ。tsc がタイポ検出器になる)。
+5. Q2/Q3 が未承認の場合は 2〜3 をスキップし、Stop-and-ask として報告する(1・4 は承認不要で実施可)。
 
 ### Phase 6: 限定的な抽出と型境界 — D7 / D14
 1. 対象関数に characterization テストを先に追加。
@@ -343,6 +368,8 @@ pnpm test 2>&1 | tail -5             # 結果を記録
 - 依存パッケージの追加・更新(CLAUDE.md のバージョン固定方針)
 - Plans.md の整理(別運用タスク)
 - 既存 API のレスポンス封筒({data} ↔ 素 JSON)の統一移行(D11 — 文書化のみ行う)
+- Prisma schema の String → enum 化(D16 は TypeScript 型レイヤのみ。schema enum 化は migration を伴うため対象外)
+- 日本語コメントの英訳・一括書き換え(D17 — 規約改訂は Q7 の判断。コメントの言語変換作業は行わない)
 - env 検証の本番起動パスへの組み込み(D12b — 関数新設まで)
 - logger 基盤の新設(D15 — 規約文書化と点検まで)
 - fire-and-forget 77 箇所の一括 await 化(D13 — 監査表まで)
@@ -401,3 +428,9 @@ pnpm test 2>&1 | tail -5             # 結果を記録
   - `workflowException.create` は **7 ファイルのみ**(dispense-tasks workbench / consent-records revoke / visit-records / dispense-results / dispense-audits / set-audits / prescription-intake-service)。全箇所で patient_id が文脈から即時取得可能 → nullable 列追加+7 箇所修正+backfill(cycle→case→patient)で完結する低リスク変更。患者別「止まっている理由」projection の JOIN 3 段を解消できる。
   - `DrugAlertRule` は CDS 本体(`src/server/cds/checker.ts`)と admin API・master-readiness が参照。org_id 追加は「グローバルルールと org ルールの優先関係」「誰が編集できるか」という**仕様設計を伴う**ため、要件が確定する p1_14 と同時に設計するのが手戻りがない。
 - 承認時の扱い: いずれも本指示書では実装しない(Out-of-scope の schema 変更)。Phase 7 提案書に、patient_id 追加の具体手順(列追加 → 7 箇所修正 → backfill → projection 簡素化)を「次サイクル最初の migration 候補」として記載。
+
+### Q7(D17): コメント言語規約(CLAUDE.md「comments: English」)と実態の乖離
+- **推奨回答: CLAUDE.md を実態に合わせて改訂する —「コメント・ドキュメントは日本語可(医療ドメイン用語の正確性を優先)。識別子(変数・関数・型)は英語(camelCase)を維持」。既存コメントの言語変換作業は行わない。**
+- 根拠(実測): 非テスト 1,337 ファイル中 73 ファイルに日本語コメントが定着(直近のデザイン忠実トラックの中核ファイル群: card-workspace / cycle-workspace / seed-design-demo / design-screen-map 等)。文言ルール(「止まっている理由」等)やデザイン仕様が日本語で定義されており、英訳コメントはかえって仕様との対応を曖昧にする。識別子の英語規約は実態も遵守されている(`: any` 1 件と同様に規律は高い)。
+- 代替案(非推奨): 英語規約を維持し 73 ファイルを英訳 — 工数大・仕様トレーサビリティ低下・継続的に違反が再発する見込み。
+- 承認時の扱い: CLAUDE.md の Language 節 1 行改訂のみ(Phase 3 に追加)。**本指示書ではコメントの書き換えは行わない**。
