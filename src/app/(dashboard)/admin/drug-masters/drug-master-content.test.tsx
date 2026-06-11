@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { DrugMasterContent } from './drug-master-content';
 
 setupDomTestEnv();
 
-const { useOrgIdMock, pendingRequestsMock } = vi.hoisted(() => ({
+const { useOrgIdMock, pendingRequestsMock, mutationMutateMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
+  mutationMutateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -18,7 +19,7 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: () => ({
-    mutate: vi.fn(),
+    mutate: mutationMutateMock,
     isPending: false,
     variables: null,
   }),
@@ -53,8 +54,7 @@ vi.mock('@tanstack/react-query', () => ({
             total_count: requests.length,
             overdue_count: requests.length > 0 ? 1 : 0,
             overdue_days: 7,
-            oldest_pending_created_at:
-              requests.length > 0 ? '2026-05-20T00:00:00.000Z' : null,
+            oldest_pending_created_at: requests.length > 0 ? '2026-05-20T00:00:00.000Z' : null,
             notification_level: requests.length > 0 ? 'overdue' : 'clear',
           },
         },
@@ -287,6 +287,7 @@ describe('DrugMasterContent', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -376,5 +377,70 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('採用追加')).toBeTruthy();
     expect(screen.getByRole('button', { name: '承認' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '却下' })).toBeTruthy();
+  });
+
+  it('requires confirmation before deciding pending formulary requests', () => {
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+    expect(screen.getByText('採用品変更申請を承認します')).toBeTruthy();
+    expect(screen.getByText(/薬剤ID: drug_1/)).toBeTruthy();
+    expect(screen.getByText(/拠点ID: site_1/)).toBeTruthy();
+    expect(screen.getByText(/申請内容:/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(mutationMutateMock).toHaveBeenCalledWith({
+      request_id: 'request_1',
+      decision: 'approve',
+      decision_note: null,
+    });
+  });
+
+  it('requires explicit reject text before rejecting a pending formulary request', () => {
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        status: 'pending',
+        action_type: 'deactivate',
+        requested_payload: { is_stocked: false },
+        reason: '採用解除候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '却下' }));
+
+    expect(screen.getByText('採用品変更申請を却下します')).toBeTruthy();
+    expect(screen.getByPlaceholderText('却下')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '却下' }).at(-1)).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByPlaceholderText('却下'), { target: { value: '却下' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '却下' }).at(-1)!);
+
+    expect(mutationMutateMock).toHaveBeenCalledWith({
+      request_id: 'request_1',
+      decision: 'reject',
+      decision_note: '申請内容を確認して却下',
+    });
   });
 });

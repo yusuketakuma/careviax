@@ -34,6 +34,7 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Sheet,
   SheetContent,
@@ -483,6 +484,22 @@ function readAuditObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function formatFormularyRequestDecisionDescription(target: FormularyRequestDecisionTarget): string {
+  const request = target.request;
+  const actionLabel = formatFormularyRequestActionLabel(request.action_type);
+  const payloadText = JSON.stringify(request.requested_payload, null, 2) ?? 'null';
+  const decisionLabel = target.decision === 'approve' ? '承認' : '却下';
+
+  return [
+    `${actionLabel}申請を${decisionLabel}します。`,
+    `薬剤ID: ${request.drug_master_id}`,
+    `拠点ID: ${request.site_id}`,
+    `申請日: ${new Date(request.created_at).toLocaleDateString('ja-JP')}`,
+    `理由: ${request.reason ?? '未入力'}`,
+    `申請内容: ${payloadText}`,
+  ].join('\n');
+}
+
 type FormularyChangeRequestItem = {
   id: string;
   site_id: string;
@@ -504,6 +521,11 @@ type FormularyChangeRequestListResponse = {
     oldest_pending_created_at: string | null;
     notification_level: 'clear' | 'pending' | 'overdue';
   };
+};
+
+type FormularyRequestDecisionTarget = {
+  request: FormularyChangeRequestItem;
+  decision: 'approve' | 'reject';
 };
 
 const baseColumns: ColumnDef<DrugMasterRow>[] = [
@@ -798,6 +820,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
   const [bulkPreviewExpanded, setBulkPreviewExpanded] = useState(false);
   const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
+  const [formularyRequestDecisionTarget, setFormularyRequestDecisionTarget] =
+    useState<FormularyRequestDecisionTarget | null>(null);
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -2104,8 +2128,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             }
                             loadingLabel="承認中"
                             onClick={() =>
-                              stockRequestDecisionMutation.mutate({
-                                request_id: request.id,
+                              setFormularyRequestDecisionTarget({
+                                request,
                                 decision: 'approve',
                               })
                             }
@@ -2123,10 +2147,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             }
                             loadingLabel="却下中"
                             onClick={() =>
-                              stockRequestDecisionMutation.mutate({
-                                request_id: request.id,
+                              setFormularyRequestDecisionTarget({
+                                request,
                                 decision: 'reject',
-                                decision_note: '画面から却下',
                               })
                             }
                           >
@@ -3364,6 +3387,40 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           setPreferredGenericId(null);
         }}
         selectedRowIndex={selectedRowIndex}
+      />
+
+      <ConfirmDialog
+        open={formularyRequestDecisionTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setFormularyRequestDecisionTarget(null);
+        }}
+        title={
+          formularyRequestDecisionTarget?.decision === 'reject'
+            ? '採用品変更申請を却下します'
+            : '採用品変更申請を承認します'
+        }
+        description={
+          formularyRequestDecisionTarget
+            ? formatFormularyRequestDecisionDescription(formularyRequestDecisionTarget)
+            : ''
+        }
+        confirmLabel={formularyRequestDecisionTarget?.decision === 'reject' ? '却下' : '承認'}
+        cancelLabel="戻る"
+        variant={formularyRequestDecisionTarget?.decision === 'reject' ? 'destructive' : 'default'}
+        requiredConfirmText={
+          formularyRequestDecisionTarget?.decision === 'reject' ? '却下' : undefined
+        }
+        onConfirm={() => {
+          if (!formularyRequestDecisionTarget) return;
+          stockRequestDecisionMutation.mutate({
+            request_id: formularyRequestDecisionTarget.request.id,
+            decision: formularyRequestDecisionTarget.decision,
+            decision_note:
+              formularyRequestDecisionTarget.decision === 'reject'
+                ? '申請内容を確認して却下'
+                : null,
+          });
+        }}
       />
 
       <Sheet
