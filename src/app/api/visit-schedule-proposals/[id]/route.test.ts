@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   requireAuthContextMock,
@@ -170,6 +171,46 @@ function buildProposal(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildTxMock() {
+  return {
+    visitSchedule: {
+      findFirst: scheduleFindFirstMock,
+      findMany: scheduleFindManyMock,
+      count: scheduleCountMock,
+      updateMany: scheduleUpdateManyMock,
+      create: scheduleCreateMock,
+    },
+    pharmacistShift: {
+      findFirst: pharmacistShiftFindFirstMock,
+    },
+    visitVehicleResource: {
+      findFirst: vehicleResourceFindFirstMock,
+    },
+    visitScheduleProposal: {
+      findFirst: proposalFindFirstMock,
+      update: proposalUpdateMock,
+      updateMany: proposalUpdateManyMock,
+    },
+    visitScheduleContactLog: {
+      create: contactLogCreateMock,
+      updateMany: contactLogUpdateManyMock,
+    },
+    visitScheduleOverride: {
+      update: overrideUpdateMock,
+    },
+    auditLog: {
+      create: auditLogCreateMock,
+    },
+  };
+}
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
 describe('/api/visit-schedule-proposals/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,38 +300,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       ],
     });
 
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        visitSchedule: {
-          findFirst: scheduleFindFirstMock,
-          findMany: scheduleFindManyMock,
-          count: scheduleCountMock,
-          updateMany: scheduleUpdateManyMock,
-          create: scheduleCreateMock,
-        },
-        pharmacistShift: {
-          findFirst: pharmacistShiftFindFirstMock,
-        },
-        visitVehicleResource: {
-          findFirst: vehicleResourceFindFirstMock,
-        },
-        visitScheduleProposal: {
-          findFirst: proposalFindFirstMock,
-          update: proposalUpdateMock,
-          updateMany: proposalUpdateManyMock,
-        },
-        visitScheduleContactLog: {
-          create: contactLogCreateMock,
-          updateMany: contactLogUpdateManyMock,
-        },
-        visitScheduleOverride: {
-          update: overrideUpdateMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(buildTxMock()));
   });
 
   it('returns proposal detail with related candidates and route preview', async () => {
@@ -1228,6 +1238,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         schedule_id: 'schedule_1',
       },
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
   });
 
   it('returns a conflict when the proposal state changes before the confirmation claim', async () => {
@@ -1257,6 +1270,151 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
     expect(scheduleCreateMock).not.toHaveBeenCalled();
     expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries serializable confirm conflicts and rejects when vehicle capacity is full on retry', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    );
+    vehicleResourceFindFirstMock.mockResolvedValue({
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    scheduleCountMock.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    proposalUpdateManyMock.mockRejectedValueOnce(buildSerializableConflictError());
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(scheduleCountMock).toHaveBeenCalledTimes(2);
+    expect(proposalUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries serializable confirm conflicts and recalculates route order from retry-time schedules', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        route_order: 1,
+      }),
+    );
+    scheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          route_order: 1,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          route_order: 3,
+        },
+      ]);
+    scheduleUpdateManyMock
+      .mockRejectedValueOnce(buildSerializableConflictError())
+      .mockResolvedValueOnce({ count: 1 });
+    scheduleCreateMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      route_order: 4,
+    });
+    proposalUpdateMock.mockResolvedValueOnce(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+        route_order: 4,
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(scheduleFindManyMock).toHaveBeenCalledTimes(2);
+    expect(scheduleUpdateManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          route_order: {
+            gte: 2,
+          },
+        }),
+      }),
+    );
+    expect(scheduleUpdateManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          route_order: {
+            gte: 4,
+          },
+        }),
+      }),
+    );
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 4,
+      }),
+    });
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: expect.objectContaining({
+        route_order: 4,
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a conflict when serializable confirm conflicts exceed the retry limit', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    proposalUpdateManyMock.mockRejectedValue(buildSerializableConflictError());
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問候補の確定が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -1322,6 +1480,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not shift locked route orders when confirming a stale early proposal order', async () => {

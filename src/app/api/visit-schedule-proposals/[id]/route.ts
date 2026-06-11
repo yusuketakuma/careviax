@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -115,6 +116,40 @@ type CreationDiagnostics = {
 };
 
 const ROUTE_ORDER_LOCKED_STATUSES = ['ready', 'departed', 'in_progress', 'completed'] as const;
+const CONFIRM_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitProposalConfirmRetryLimitError extends Error {
+  constructor() {
+    super('visit proposal confirmation transaction retry limit exceeded');
+    this.name = 'VisitProposalConfirmRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableConfirmTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < CONFIRM_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === CONFIRM_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitProposalConfirmRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitProposalConfirmRetryLimitError();
+}
 
 async function buildRoutePreview(args: {
   proposal: ProposalRoutePreviewRecord | null;
@@ -910,7 +945,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('患者への電話確認結果を「確認済み」にしてから日時確定してください');
   }
 
-  const result = await withOrgContext(ctx.orgId, async (tx) => {
+  const result = await withSerializableConfirmTransaction(ctx.orgId, async (tx) => {
     const finalizedAt = new Date();
 
     const currentProposal = await tx.visitScheduleProposal.findFirst({
@@ -1260,6 +1295,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     return { proposal, schedule, alreadyFinalized: false };
+  }).catch((cause: unknown) => {
+    if (cause instanceof VisitProposalConfirmRetryLimitError) {
+      return {
+        error: 'serialization_conflict' as const,
+      };
+    }
+    throw cause;
   });
 
   if ('error' in result) {
@@ -1274,6 +1316,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (result.error === 'finalized_schedule_unavailable') {
       return conflict('確定済み訪問を取得できません。再読み込みしてください');
+    }
+    if (result.error === 'serialization_conflict') {
+      return conflict('訪問候補の確定が同時に更新されました。再読み込みしてください');
     }
     if (result.error === 'shift_unavailable') {
       return validationError(result.message);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 const { getRequestAuthContextMock } = vi.hoisted(() => ({
   getRequestAuthContextMock: vi.fn(),
@@ -49,57 +50,53 @@ describe('withOrgContext', () => {
 
   describe('orgId validation', () => {
     it('throws for empty string', async () => {
-      await expect(withOrgContext('', async () => null)).rejects.toThrow(
-        'Invalid orgId format'
-      );
+      await expect(withOrgContext('', async () => null)).rejects.toThrow('Invalid orgId format');
     });
 
     it('throws for SQL injection attempt', async () => {
-      await expect(
-        withOrgContext("' OR '1'='1", async () => null)
-      ).rejects.toThrow('Invalid orgId format');
+      await expect(withOrgContext("' OR '1'='1", async () => null)).rejects.toThrow(
+        'Invalid orgId format',
+      );
     });
 
     it('throws for uuid-style id that starts with a digit', async () => {
       await expect(
-        withOrgContext('550e8400-e29b-41d4-a716-446655440000', async () => null)
+        withOrgContext('550e8400-e29b-41d4-a716-446655440000', async () => null),
       ).rejects.toThrow('Invalid orgId format');
     });
 
     it('throws for id with uppercase letters', async () => {
       await expect(
-        withOrgContext('CUID_UPPERCASE_NOT_VALID_1234', async () => null)
+        withOrgContext('CUID_UPPERCASE_NOT_VALID_1234', async () => null),
       ).rejects.toThrow('Invalid orgId format');
     });
 
     it('throws for id with unsupported punctuation', async () => {
-      await expect(
-        withOrgContext('org.example', async () => null)
-      ).rejects.toThrow('Invalid orgId format');
+      await expect(withOrgContext('org.example', async () => null)).rejects.toThrow(
+        'Invalid orgId format',
+      );
     });
 
     it('throws for id that exceeds the safe app id length', async () => {
-      await expect(
-        withOrgContext(`org_${'a'.repeat(70)}`, async () => null)
-      ).rejects.toThrow('Invalid orgId format');
+      await expect(withOrgContext(`org_${'a'.repeat(70)}`, async () => null)).rejects.toThrow(
+        'Invalid orgId format',
+      );
     });
 
     it('accepts a valid cuid v1 style id', async () => {
       const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
-      await expect(
-        withOrgContext(validCuid, async () => 'ok')
-      ).resolves.toBe('ok');
+      await expect(withOrgContext(validCuid, async () => 'ok')).resolves.toBe('ok');
     });
 
     it('accepts the local seed org id format', async () => {
-      await expect(
-        withOrgContext('cmnhseedorg0000amq9ph-os', async () => 'ok')
-      ).resolves.toBe('ok');
+      await expect(withOrgContext('cmnhseedorg0000amq9ph-os', async () => 'ok')).resolves.toBe(
+        'ok',
+      );
     });
 
     it('accepts audit verifier ids with underscores', async () => {
       await expect(
-        withOrgContext('audit_verify_org_1780141107010', async () => 'ok')
+        withOrgContext('audit_verify_org_1780141107010', async () => 'ok'),
       ).resolves.toBe('ok');
     });
   });
@@ -111,6 +108,17 @@ describe('withOrgContext', () => {
       expect(mockClient.prisma.$transaction).toHaveBeenCalledOnce();
     });
 
+    it('passes an explicit transaction isolation level when provided', async () => {
+      const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
+      await withOrgContext(validCuid, async () => null, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+
+      expect(mockClient.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    });
+
     it('sets org and request metadata via set_config', async () => {
       const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
       await withOrgContext(validCuid, async () => null);
@@ -118,12 +126,10 @@ describe('withOrgContext', () => {
         expect.objectContaining({
           event_type: 'rls_context_missing',
           org_id: validCuid,
-        })
+        }),
       );
       expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(6);
-      expect(
-        mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
-      ).toEqual([
+      expect(mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)).toEqual([
         ['app.current_org_id', validCuid],
         ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', ''],
@@ -145,9 +151,7 @@ describe('withOrgContext', () => {
 
       await withOrgContext(validCuid, async () => null);
 
-      expect(
-        mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
-      ).toEqual([
+      expect(mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)).toEqual([
         ['app.current_org_id', validCuid],
         ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', 'user_1'],
@@ -164,9 +168,9 @@ describe('withOrgContext', () => {
         role: 'admin',
       });
 
-      await expect(
-        withOrgContext('clh4dz2xq0000qzrm8n9j3k1p', async () => null)
-      ).rejects.toThrow('Request orgId mismatch');
+      await expect(withOrgContext('clh4dz2xq0000qzrm8n9j3k1p', async () => null)).rejects.toThrow(
+        'Request orgId mismatch',
+      );
       expect(mockClient.prisma.$transaction).not.toHaveBeenCalled();
     });
 

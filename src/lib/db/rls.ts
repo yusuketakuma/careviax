@@ -1,8 +1,5 @@
 import { Prisma } from '@prisma/client';
-import {
-  getRequestAuthContext,
-  type RequestAuthContext,
-} from '@/lib/auth/request-context';
+import { getRequestAuthContext, type RequestAuthContext } from '@/lib/auth/request-context';
 import { prisma } from './client';
 import { logSecurityEvent } from '@/lib/auth/security-events';
 
@@ -32,11 +29,7 @@ function validateOrgId(orgId: string): void {
   }
 }
 
-async function setLocalConfig(
-  tx: Prisma.TransactionClient,
-  key: string,
-  value?: string
-) {
+async function setLocalConfig(tx: Prisma.TransactionClient, key: string, value?: string) {
   await tx.$executeRaw(Prisma.sql`SELECT set_config(${key}, ${value ?? ''}, true)`);
 }
 
@@ -55,7 +48,8 @@ export async function withOrgContext<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   options?: {
     requestContext?: RequestAuthContext;
-  }
+    isolationLevel?: Prisma.TransactionIsolationLevel;
+  },
 ): Promise<T> {
   validateOrgId(orgId);
   const requestContext = options?.requestContext ?? getRequestAuthContext();
@@ -73,8 +67,16 @@ export async function withOrgContext<T>(
     });
   }
 
-  return prisma.$transaction(async (tx) => {
+  const work = async (tx: Prisma.TransactionClient) => {
     await applyRlsContext(tx, { orgId, requestContext });
     return fn(tx);
-  });
+  };
+
+  if (options?.isolationLevel) {
+    return prisma.$transaction(work, {
+      isolationLevel: options.isolationLevel,
+    });
+  }
+
+  return prisma.$transaction(work);
 }
