@@ -981,4 +981,60 @@ describe('getPatientDocumentsData', () => {
       },
     ]);
   });
+
+  it('masks first-visit emergency contact channels for external viewers', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'doc_1',
+            case_id: 'case_1',
+            document_url: null,
+            delivered_at: null,
+            delivered_to: null,
+            created_at: new Date('2026-04-01T00:00:00.000Z'),
+            updated_at: new Date('2026-04-01T00:00:00.000Z'),
+            emergency_contacts: [
+              {
+                name: '山田 花子',
+                relation: '長女',
+                phone: '03-1234-5678',
+                email: 'hanako@example.test',
+                fax: '03-8765-4321',
+                organization_name: '山田家',
+                department: '家族',
+                is_primary: true,
+                is_emergency_contact: true,
+              },
+            ],
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientDocumentsData(
+      db as unknown as Parameters<typeof getPatientDocumentsData>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'external_viewer',
+        userId: 'user_1',
+      },
+    );
+
+    expect(result?.first_visit_documents[0]?.emergency_contacts).toEqual([
+      expect.objectContaining({
+        name: '山田 花子',
+        phone: '***-****-5678',
+        email: 'h***@example.test',
+        fax: '***-****-4321',
+      }),
+    ]);
+  });
 });

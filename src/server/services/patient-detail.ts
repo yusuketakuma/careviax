@@ -1,13 +1,12 @@
 import { format } from 'date-fns';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
-import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
+import { readJsonObjectString } from '@/lib/db/json';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
-  maskContactValue,
   maskInsuranceNumber,
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
@@ -35,6 +34,7 @@ import {
 import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/external-access';
 
 export { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
+export { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 type PatientReadinessDb = {
@@ -72,19 +72,6 @@ type DetailArgs = {
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
 
-type FirstVisitDocumentContact = {
-  id?: string;
-  name: string;
-  relation: string | null;
-  phone: string | null;
-  email: string | null;
-  fax: string | null;
-  organization_name: string | null;
-  department: string | null;
-  is_primary: boolean;
-  is_emergency_contact: boolean;
-};
-
 function normalizeCareTeamRole(role: string) {
   if (['physician', 'doctor', 'clinic', 'prescriber'].includes(role)) return 'physician';
   if (['nurse', 'visiting_nurse', 'home_nurse'].includes(role)) return 'nurse';
@@ -94,35 +81,6 @@ function normalizeCareTeamRole(role: string) {
 
 function hasJsonArrayItems(value: Prisma.JsonValue | null | undefined) {
   return Array.isArray(value) && value.length > 0;
-}
-
-function normalizeFirstVisitDocumentContacts(
-  value: Prisma.JsonValue | null | undefined,
-): FirstVisitDocumentContact[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((item) => {
-    const record = readJsonObject(item);
-    if (!record) return [];
-    const name = typeof record.name === 'string' ? record.name : null;
-    if (!name) return [];
-
-    return [
-      {
-        id: typeof record.id === 'string' ? record.id : undefined,
-        name,
-        relation: typeof record.relation === 'string' ? record.relation : null,
-        phone: typeof record.phone === 'string' ? record.phone : null,
-        email: typeof record.email === 'string' ? record.email : null,
-        fax: typeof record.fax === 'string' ? record.fax : null,
-        organization_name:
-          typeof record.organization_name === 'string' ? record.organization_name : null,
-        department: typeof record.department === 'string' ? record.department : null,
-        is_primary: record.is_primary === true,
-        is_emergency_contact: record.is_emergency_contact === true,
-      },
-    ];
-  });
 }
 
 function buildPatientDetailWhere(args: DetailArgs): Prisma.PatientWhereInput {
@@ -736,50 +694,6 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
     },
-  };
-}
-
-export async function getPatientDocumentsData(db: DbClient, args: DetailArgs) {
-  const patient = await findPatientOverviewBase(db, args);
-  if (!patient) return null;
-
-  const caseIds = patient.cases.map((item) => item.id);
-  const firstVisitDocuments =
-    caseIds.length === 0
-      ? []
-      : await db.firstVisitDocument.findMany({
-          where: {
-            org_id: args.orgId,
-            patient_id: args.patientId,
-            case_id: { in: caseIds },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          select: {
-            id: true,
-            case_id: true,
-            emergency_contacts: true,
-            document_url: true,
-            delivered_at: true,
-            delivered_to: true,
-            created_at: true,
-            updated_at: true,
-          },
-        });
-
-  const privacy = getPatientPrivacyFlags(args.role);
-
-  return {
-    first_visit_documents: firstVisitDocuments.map((item) => ({
-      ...item,
-      emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
-        (contact) => ({
-          ...contact,
-          phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
-          fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-          email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
-        }),
-      ),
-    })),
   };
 }
 
