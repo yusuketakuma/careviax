@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
@@ -93,6 +94,13 @@ const EXPECTED_PATCH_GUARD = {
   scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
   schedule_status: 'planned',
 };
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
 
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-schedules/schedule_1', { headers });
@@ -1080,6 +1088,113 @@ describe('/api/visit-schedules/[id] GET', () => {
         where: EXPECTED_PATCH_GUARD,
       }),
     );
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries serializable route_order PATCH conflicts and succeeds', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      })
+      .mockResolvedValueOnce(null);
+    withOrgContextMock.mockImplementationOnce(async () => {
+      throw buildSerializableConflictError();
+    });
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(
+      1,
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(
+      2,
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: EXPECTED_PATCH_GUARD,
+        data: expect.objectContaining({
+          route_order: 2,
+          version: { increment: 1 },
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_update', schedule_id: 'schedule_1' },
+    });
+  });
+
+  it('returns conflict when serializable route_order PATCH conflicts exceed retry limit', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      })
+      .mockResolvedValueOnce(null);
+    withOrgContextMock.mockRejectedValue(buildSerializableConflictError());
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 

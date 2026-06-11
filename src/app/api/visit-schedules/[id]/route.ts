@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { Prisma } from '@prisma/client';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
@@ -30,6 +31,43 @@ import {
   getVisitReadyTransitionErrorMessage,
   type VisitReadyTransitionBlockers,
 } from '@/server/services/visit-preparation-readiness';
+
+const VISIT_SCHEDULE_PATCH_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitSchedulePatchRetryLimitError extends Error {
+  constructor() {
+    super('visit schedule patch transaction retry limit exceeded');
+    this.name = 'VisitSchedulePatchRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableVisitSchedulePatchTransaction<T>(
+  orgId: string,
+  requestContext: AuthContext,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < VISIT_SCHEDULE_PATCH_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        requestContext,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === VISIT_SCHEDULE_PATCH_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitSchedulePatchRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitSchedulePatchRetryLimitError();
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -318,101 +356,113 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const schedule = await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      if (requiresReadyTransitionGate) {
-        const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
-          orgId: ctx.orgId,
-          scheduleId: id,
-        });
+  const runPatchTransaction = routeOrderTarget
+    ? <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+        withSerializableVisitSchedulePatchTransaction(ctx.orgId, ctx, work)
+    : <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+        withOrgContext(ctx.orgId, work, { requestContext: ctx });
 
-        if (!readyTransition.ok) {
-          return {
-            ok: false as const,
-            response: validationError(
-              getVisitReadyTransitionErrorMessage(readyTransition.details),
-              sanitizeVisitReadyTransitionDetails(readyTransition.details),
-            ),
-          };
-        }
+  const patchScheduleResult = async (tx: Prisma.TransactionClient) => {
+    if (requiresReadyTransitionGate) {
+      const readyTransition = await evaluateVisitScheduleReadyTransition(tx, {
+        orgId: ctx.orgId,
+        scheduleId: id,
+      });
+
+      if (!readyTransition.ok) {
+        return {
+          ok: false as const,
+          response: validationError(
+            getVisitReadyTransitionErrorMessage(readyTransition.details),
+            sanitizeVisitReadyTransitionDetails(readyTransition.details),
+          ),
+        };
       }
+    }
 
-      if (routeOrderTarget) {
-        const routeOrderConflict = await tx.visitSchedule.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            id: { not: id },
-            pharmacist_id: routeOrderTarget.pharmacistId,
-            scheduled_date: routeOrderTarget.date,
-            route_order: rest.route_order,
-          },
-          select: { id: true },
-        });
-        if (routeOrderConflict) {
-          return {
-            ok: false as const,
-            response: validationError('同一薬剤師・同一日付で route_order は重複できません'),
-          };
-        }
-      }
-
-      const updated = await tx.visitSchedule.updateMany({
+    if (routeOrderTarget) {
+      const routeOrderConflict = await tx.visitSchedule.findFirst({
         where: {
-          id,
           org_id: ctx.orgId,
-          version: existing.version,
-          confirmed_at: existing.confirmed_at,
-          pharmacist_id: existing.pharmacist_id,
-          scheduled_date: existing.scheduled_date,
-          schedule_status: existingScheduleStatus,
+          id: { not: id },
+          pharmacist_id: routeOrderTarget.pharmacistId,
+          scheduled_date: routeOrderTarget.date,
+          route_order: rest.route_order,
         },
-        data: {
-          ...(site_id !== undefined ? { site_id: site_id || null } : {}),
-          ...(scheduled_date ? { scheduled_date: new Date(scheduled_date) } : {}),
-          ...(time_window_start !== undefined
-            ? {
-                time_window_start: time_window_start
-                  ? new Date(`1970-01-01T${time_window_start}`)
-                  : null,
-              }
-            : {}),
-          ...(time_window_end !== undefined
-            ? {
-                time_window_end: time_window_end ? new Date(`1970-01-01T${time_window_end}`) : null,
-              }
-            : {}),
-          ...(targetScheduleStatus && isReadyGatedScheduleStatus(targetScheduleStatus)
-            ? { pre_visit_checklist_completed: true }
-            : {}),
-          ...(case_id !== undefined ? { case_id } : {}),
-          ...(vehicle_resource_id !== undefined
-            ? { vehicle_resource_id: vehicle_resource_id || null }
-            : {}),
-          ...rest,
-          version: { increment: 1 },
-        },
+        select: { id: true },
       });
-      if (updated.count !== 1) {
+      if (routeOrderConflict) {
         return {
           ok: false as const,
-          response: conflict('訪問予定が同時に更新されました。再読み込みしてください'),
+          response: validationError('同一薬剤師・同一日付で route_order は重複できません'),
         };
       }
+    }
 
-      const updatedSchedule = await tx.visitSchedule.findFirst({
-        where: { id, org_id: ctx.orgId },
-      });
-      if (!updatedSchedule) {
-        return {
-          ok: false as const,
-          response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
-        };
-      }
-      return { ok: true as const, schedule: updatedSchedule };
-    },
-    { requestContext: ctx },
-  );
+    const updated = await tx.visitSchedule.updateMany({
+      where: {
+        id,
+        org_id: ctx.orgId,
+        version: existing.version,
+        confirmed_at: existing.confirmed_at,
+        pharmacist_id: existing.pharmacist_id,
+        scheduled_date: existing.scheduled_date,
+        schedule_status: existingScheduleStatus,
+      },
+      data: {
+        ...(site_id !== undefined ? { site_id: site_id || null } : {}),
+        ...(scheduled_date ? { scheduled_date: new Date(scheduled_date) } : {}),
+        ...(time_window_start !== undefined
+          ? {
+              time_window_start: time_window_start
+                ? new Date(`1970-01-01T${time_window_start}`)
+                : null,
+            }
+          : {}),
+        ...(time_window_end !== undefined
+          ? {
+              time_window_end: time_window_end ? new Date(`1970-01-01T${time_window_end}`) : null,
+            }
+          : {}),
+        ...(targetScheduleStatus && isReadyGatedScheduleStatus(targetScheduleStatus)
+          ? { pre_visit_checklist_completed: true }
+          : {}),
+        ...(case_id !== undefined ? { case_id } : {}),
+        ...(vehicle_resource_id !== undefined
+          ? { vehicle_resource_id: vehicle_resource_id || null }
+          : {}),
+        ...rest,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) {
+      return {
+        ok: false as const,
+        response: conflict('訪問予定が同時に更新されました。再読み込みしてください'),
+      };
+    }
+
+    const updatedSchedule = await tx.visitSchedule.findFirst({
+      where: { id, org_id: ctx.orgId },
+    });
+    if (!updatedSchedule) {
+      return {
+        ok: false as const,
+        response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
+      };
+    }
+    return { ok: true as const, schedule: updatedSchedule };
+  };
+
+  let schedule: Awaited<ReturnType<typeof patchScheduleResult>>;
+  try {
+    schedule = await runPatchTransaction(patchScheduleResult);
+  } catch (cause) {
+    if (cause instanceof VisitSchedulePatchRetryLimitError) {
+      return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
+    }
+    throw cause;
+  }
 
   if (!schedule.ok) return schedule.response;
 
