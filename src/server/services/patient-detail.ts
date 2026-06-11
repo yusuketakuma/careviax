@@ -12,14 +12,6 @@ import {
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
-import {
-  CHANNEL_LABELS,
-  PRIORITY_LABELS,
-  REPORT_STATUS_CONFIG,
-  REPORT_TYPE_LABELS,
-  SCHEDULE_STATUS_LABELS,
-  VISIT_OUTCOME_LABELS,
-} from '@/lib/constants/status-labels';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
@@ -35,11 +27,7 @@ import {
   type VisitScheduleSchedulingPreferenceContext,
 } from '@/server/services/visit-schedule-communication';
 import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
-import {
-  getInquiryPresentationBadges,
-  getInquiryPrimaryDetail,
-} from '@/lib/inquiries/presentation';
-import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
+import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
@@ -96,83 +84,6 @@ type FirstVisitDocumentContact = {
   is_primary: boolean;
   is_emergency_contact: boolean;
 };
-
-const PRESCRIPTION_SOURCE_LABELS: Record<string, string> = {
-  paper: '紙処方箋',
-  fax: 'FAX',
-  e_prescription: '電子処方箋',
-  facility_batch: '施設一括',
-  refill: 'リフィル',
-  qr_scan: 'QR取込',
-};
-
-const CYCLE_STATUS_LABELS: Record<string, string> = {
-  intake_received: '受付済',
-  structuring: '構造化中',
-  inquiry_pending: '疑義照会中',
-  inquiry_resolved: '照会解決',
-  ready_to_dispense: '調剤待ち',
-  dispensing: '調剤中',
-  dispensed: '調剤済',
-  audit_pending: '鑑査待ち',
-  audited: '鑑査済',
-  setting: 'セット中',
-  set_audited: 'セット済',
-  visit_ready: '訪問準備完了',
-  visit_completed: '訪問完了',
-  reported: '報告済',
-  on_hold: '保留',
-  cancelled: '取消',
-};
-
-const MANAGEMENT_PLAN_STATUS_LABELS: Record<string, string> = {
-  draft: '下書き',
-  approved: '承認済み',
-};
-
-const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
-  submitted: '未対応',
-  triaged: 'トリアージ済み',
-  converted_to_task: 'タスク化済み',
-  resolved: '解決済み',
-  dismissed: '対応不要',
-};
-
-const CARRY_TYPE_LABELS: Record<string, string> = {
-  carry: '持参',
-  facility_deposit: '施設預け',
-  deferred: '後送',
-};
-
-const VISIT_TYPE_LABELS: Record<string, string> = {
-  initial: '初回訪問',
-  regular: '定期訪問',
-  temporary: '臨時訪問',
-  revisit: '再訪問',
-  delivery_only: '配薬のみ',
-  emergency: '緊急訪問',
-  physician_co_visit: '同行訪問',
-};
-
-function formatTimelineDate(value: Date | null | undefined) {
-  return value ? format(value, 'yyyy/MM/dd') : null;
-}
-
-function compactTimelineValues(values: Array<string | null | undefined | false>) {
-  return values.filter((value): value is string => Boolean(value && value.trim()));
-}
-
-function previewTimelineText(value: string | null | undefined, maxLength = 96) {
-  const normalized = value?.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
-}
-
-function getCommunicationDirectionLabel(direction: string) {
-  if (direction === 'inbound' || direction === 'incoming') return '受信';
-  if (direction === 'outbound' || direction === 'outgoing') return '発信';
-  return direction;
-}
 
 function normalizeCareTeamRole(role: string) {
   if (['physician', 'doctor', 'clinic', 'prescriber'].includes(role)) return 'physician';
@@ -1240,7 +1151,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     args.orgId,
     Array.from(
       new Set(
-        compactTimelineValues([
+        compactPreviewValues([
           ...visitSchedules.map((item) => item.pharmacist_id),
           ...visitRecords.map((item) => item.pharmacist_id),
           ...careReports.map((item) => item.created_by),
@@ -1255,347 +1166,23 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     ),
   );
 
-  const timelineEvents = [
-    ...visitSchedules.map((item) => ({
-      id: `visit_schedule:${item.id}`,
-      event_type: 'visit_schedule' as const,
-      category: 'visit' as const,
-      occurred_at: item.confirmed_at ?? item.updated_at ?? item.created_at,
-      title: item.confirmed_at ? '訪問予定を確定' : '訪問予定を登録',
-      summary:
-        compactTimelineValues([
-          VISIT_TYPE_LABELS[item.visit_type] ?? item.visit_type,
-          formatTimelineDate(item.scheduled_date)
-            ? `訪問日 ${formatTimelineDate(item.scheduled_date)}`
-            : null,
-          item.visit_record ? '訪問記録あり' : null,
-        ]).join(' / ') || null,
-      href: item.visit_record ? `/visits/${item.visit_record.id}` : `/visits/${item.id}/record`,
-      action_label: item.visit_record ? '訪問記録を開く' : '訪問記録を入力',
-      status: item.schedule_status,
-      status_label: SCHEDULE_STATUS_LABELS[item.schedule_status] ?? item.schedule_status,
-      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
-      metadata: compactTimelineValues([
-        item.priority ? `優先度 ${PRIORITY_LABELS[item.priority] ?? item.priority}` : null,
-        item.route_order ? `ルート順 ${item.route_order}` : null,
-      ]),
-    })),
-    ...visitRecords.map((item) => ({
-      id: `visit_record:${item.id}`,
-      event_type: 'visit_record' as const,
-      category: 'visit' as const,
-      occurred_at: item.visit_date ?? item.created_at,
-      title: '訪問記録を登録',
-      summary:
-        compactTimelineValues([
-          item.revisit_reason,
-          item.postpone_reason,
-          item.cancellation_reason,
-        ]).join(' / ') || null,
-      href: `/visits/${item.id}`,
-      action_label: '訪問記録を開く',
-      status: item.outcome_status,
-      status_label: VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
-      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
-      metadata: compactTimelineValues([
-        item.next_visit_suggestion_date
-          ? `次回提案 ${formatTimelineDate(item.next_visit_suggestion_date)}`
-          : null,
-      ]),
-    })),
-    ...prescriptionIntakes.map((item) => ({
-      id: `prescription_intake:${item.id}`,
-      event_type: 'prescription_intake' as const,
-      category: 'prescription' as const,
-      occurred_at: item.created_at,
-      title: '処方受付を登録',
-      summary:
-        compactTimelineValues([
-          PRESCRIPTION_SOURCE_LABELS[item.source_type] ?? item.source_type,
-          item.prescriber_name ?? item.prescriber_institution,
-          formatTimelineDate(item.prescribed_date)
-            ? `処方日 ${formatTimelineDate(item.prescribed_date)}`
-            : null,
-        ]).join(' / ') || null,
-      href: `/prescriptions/${item.id}`,
-      action_label: '処方受付を開く',
-      status: item.cycle.overall_status,
-      status_label: CYCLE_STATUS_LABELS[item.cycle.overall_status] ?? item.cycle.overall_status,
-      actor_name: item.original_collected_by ?? null,
-      metadata: compactTimelineValues([
-        item.lines.length > 0 ? `${item.lines.length}剤まで表示` : null,
-      ]),
-    })),
-    ...dispenseResults.map((item) => ({
-      id: `dispense_result:${item.id}`,
-      event_type: 'dispense_result' as const,
-      category: 'prescription' as const,
-      occurred_at: item.dispensed_at,
-      title: '調剤を記録',
-      summary:
-        compactTimelineValues([
-          item.actual_drug_name,
-          `${item.actual_quantity}${item.actual_unit ?? ''}`,
-          CARRY_TYPE_LABELS[item.carry_type] ?? item.carry_type,
-        ]).join(' / ') || null,
-      href: `/prescriptions/${item.line.intake.id}`,
-      action_label: '調剤詳細を開く',
-      status: item.task.cycle?.overall_status ?? 'dispensed',
-      status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
-      actor_name: actorNameMap.get(item.dispensed_by) ?? null,
-      metadata: [],
-    })),
-    ...inquiryRecords.map((item) => {
-      const inquiryStatus =
-        item.result === 'changed'
-          ? '変更あり'
-          : item.result === 'unchanged'
-            ? '変更なし'
-            : '回答待ち';
-
-      return {
-        id: `inquiry:${item.id}`,
-        event_type: 'inquiry' as const,
-        category: 'prescription' as const,
-        occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
-        title: `疑義照会 ${inquiryStatus}`,
-        summary:
-          compactTimelineValues([
-            item.reason,
-            item.inquiry_to_physician,
-            getInquiryPrimaryDetail({
-              inquiryContent: item.inquiry_content,
-              changeDetail: item.change_detail,
-            }),
-          ]).join(' / ') || null,
-        href: item.line?.intake?.id ? `/prescriptions/${item.line.intake.id}` : '/workflow',
-        action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
-        status: item.result ?? 'pending',
-        status_label: inquiryStatus,
-        actor_name: null,
-        metadata: compactTimelineValues([
-          item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
-          ...getInquiryPresentationBadges({
-            proposalOrigin:
-              item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry',
-            residualAdjustment: item.residual_adjustment,
-          }),
-        ]),
-      };
-    }),
-    ...careReports.flatMap((item) => [
-      {
-        id: `care_report:${item.id}`,
-        event_type: 'care_report' as const,
-        category: 'document' as const,
-        occurred_at: item.created_at,
-        title: '報告書を作成',
-        summary:
-          compactTimelineValues([
-            REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
-            REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
-          ]).join(' / ') || null,
-        href: `/reports/${item.id}`,
-        action_label: '報告書を開く',
-        status: item.status,
-        status_label: REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
-        actor_name: actorNameMap.get(item.created_by) ?? null,
-        metadata: [],
-      },
-      ...item.delivery_records.map((delivery) => ({
-        id: `delivery_record:${delivery.id}`,
-        event_type: 'delivery_record' as const,
-        category: 'document' as const,
-        occurred_at: delivery.confirmed_at ?? delivery.sent_at ?? delivery.created_at,
-        title: delivery.status === 'confirmed' ? '報告書の受領を確認' : '報告書を送付',
-        summary:
-          compactTimelineValues([
-            delivery.recipient_name,
-            CHANNEL_LABELS[delivery.channel] ?? delivery.channel,
-            REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
-          ]).join(' / ') || null,
-        href: `/reports/${item.id}`,
-        action_label: '送付元報告書を開く',
-        status: delivery.status,
-        status_label: REPORT_STATUS_CONFIG[delivery.status]?.label ?? delivery.status,
-        actor_name: actorNameMap.get(item.created_by) ?? null,
-        metadata: [],
-      })),
-    ]),
-    ...managementPlans.map((item) => {
-      const actorId = item.approved_by ?? item.reviewed_by ?? item.created_by;
-      const occurredAt = item.approved_at ?? item.reviewed_at ?? item.created_at;
-
-      return {
-        id: `management_plan:${item.id}`,
-        event_type: 'management_plan' as const,
-        category: 'document' as const,
-        occurred_at: occurredAt,
-        title: item.approved_at ? '管理計画書を承認' : '管理計画書を作成',
-        summary:
-          compactTimelineValues([
-            item.title,
-            item.effective_from ? `適用開始 ${formatTimelineDate(item.effective_from)}` : null,
-            item.next_review_date
-              ? `次回見直し ${formatTimelineDate(item.next_review_date)}`
-              : null,
-          ]).join(' / ') || null,
-        href: `/patients/${args.patientId}/management-plan`,
-        action_label: '計画書を開く',
-        status: item.status,
-        status_label: MANAGEMENT_PLAN_STATUS_LABELS[item.status] ?? item.status,
-        actor_name: actorNameMap.get(actorId) ?? null,
-        metadata: [],
-      };
-    }),
-    ...firstVisitDocuments.map((item) => {
-      const isDelivered = Boolean(item.delivered_at);
-      return {
-        id: `first_visit_document:${item.id}`,
-        event_type: 'first_visit_document' as const,
-        category: 'document' as const,
-        occurred_at: item.delivered_at ?? item.created_at,
-        title: isDelivered ? '初回訪問文書を交付' : '初回訪問文書を作成',
-        summary:
-          compactTimelineValues([
-            item.delivered_to,
-            isDelivered ? '交付記録あり' : '交付未記録',
-          ]).join(' / ') || null,
-        href: item.document_url ?? `/patients/${args.patientId}`,
-        action_label: item.document_url ? 'PDFを見る' : '患者詳細を開く',
-        status: isDelivered ? 'delivered' : 'created',
-        status_label: isDelivered ? '交付済み' : '作成済み',
-        actor_name: null,
-        metadata: [],
-      };
-    }),
-    ...conferenceNotes.map((item) => {
-      const actionItemCount = Array.isArray(item.action_items) ? item.action_items.length : 0;
-      return {
-        id: `conference_note:${item.id}`,
-        event_type: 'conference_note' as const,
-        category: 'communication' as const,
-        occurred_at: item.conference_date,
-        title: `${getConferenceTypeLabel(item.note_type)}を記録`,
-        summary:
-          compactTimelineValues([
-            item.title,
-            actionItemCount > 0 ? `合意事項 ${actionItemCount}件` : null,
-            item.generated_report_id ? '報告ドラフトあり' : null,
-          ]).join(' / ') || null,
-        href: `/conferences?patient_id=${args.patientId}`,
-        action_label: '会議を開く',
-        status: item.follow_up_completed ? 'completed' : 'open',
-        status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
-        actor_name: null,
-        metadata: compactTimelineValues([
-          item.follow_up_date ? `フォロー期限 ${formatTimelineDate(item.follow_up_date)}` : null,
-        ]),
-      };
-    }),
-    ...billingCandidates.map((item) => ({
-      id: `billing_candidate:${item.id}`,
-      event_type: 'billing_candidate' as const,
-      category: 'document' as const,
-      occurred_at: item.updated_at,
-      title: '算定候補を更新',
-      summary:
-        compactTimelineValues([
-          item.billing_name,
-          item.points != null ? `${item.points}点` : null,
-          item.exclusion_reason,
-        ]).join(' / ') || null,
-      href: `/billing/candidates?${new URLSearchParams({
-        billing_month: format(item.billing_month, 'yyyy-MM-01'),
-        patient_id: args.patientId,
-      }).toString()}`,
-      action_label: '算定候補を開く',
-      status: item.status,
-      status_label:
-        item.status === 'candidate'
-          ? '候補'
-          : item.status === 'confirmed'
-            ? '確定'
-            : item.status === 'excluded'
-              ? '除外'
-              : item.status === 'exported'
-                ? '締め済み'
-                : item.status,
-      actor_name: null,
-      metadata: compactTimelineValues([
-        item.billing_code,
-        `算定月 ${formatTimelineDate(item.billing_month)}`,
-      ]),
-    })),
-    ...selfReports.map((item) => ({
-      id: `self_report:${item.id}`,
-      event_type: 'self_report' as const,
-      category: 'communication' as const,
-      occurred_at: item.created_at,
-      title: '患者から自己申告を受信',
-      summary:
-        compactTimelineValues([
-          item.subject,
-          item.category,
-          previewTimelineText(item.content),
-        ]).join(' / ') || null,
-      href: `/patients/${args.patientId}?tab=communications`,
-      action_label: '連携を確認',
-      status: item.status,
-      status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,
-      actor_name: item.reported_by_name,
-      metadata: compactTimelineValues([
-        item.relation ? `関係 ${item.relation}` : null,
-        item.requested_callback ? '折返し希望' : null,
-        item.preferred_contact_time ? `希望時間 ${item.preferred_contact_time}` : null,
-      ]),
-    })),
-    ...communicationEvents
-      .filter((item) => item.event_type !== 'patient_self_report')
-      .map((item) => {
-        const directionLabel = getCommunicationDirectionLabel(item.direction);
-
-        return {
-          id: `communication:${item.id}`,
-          event_type: 'communication' as const,
-          category: 'communication' as const,
-          occurred_at: item.occurred_at,
-          title: directionLabel === '受信' ? '連絡を受信' : '連絡を発信',
-          summary:
-            compactTimelineValues([
-              CHANNEL_LABELS[item.channel] ?? item.channel,
-              item.counterpart_name,
-              item.subject ?? item.event_type,
-            ]).join(' / ') || null,
-          href: `/conferences?patient_id=${args.patientId}`,
-          action_label: '連絡履歴を開く',
-          status: item.direction,
-          status_label: directionLabel,
-          actor_name: null,
-          metadata: [],
-        };
-      }),
-    ...externalShares.map((item) => ({
-      id: `external_share:${item.id}`,
-      event_type: 'external_share' as const,
-      category: 'communication' as const,
-      occurred_at: item.created_at,
-      title: '外部共有リンクを発行',
-      summary:
-        compactTimelineValues([
-          item.granted_to_name,
-          item.accessed_at ? '閲覧済み' : '未閲覧',
-        ]).join(' / ') || null,
-      href: `/patients/${args.patientId}/share`,
-      action_label: '共有設定を開く',
-      status: item.accessed_at ? 'accessed' : 'issued',
-      status_label: item.accessed_at ? '閲覧済み' : '共有中',
-      actor_name: null,
-      metadata: compactTimelineValues([`期限 ${formatTimelineDate(item.expires_at)}`]),
-    })),
-  ]
-    .sort((left, right) => right.occurred_at.getTime() - left.occurred_at.getTime())
-    .slice(0, 40);
+  const timelineEvents = buildPatientTimelineEvents({
+    patientId: args.patientId,
+    actorNameMap,
+    visitSchedules,
+    visitRecords,
+    careReports,
+    communicationEvents,
+    selfReports,
+    externalShares,
+    inquiryRecords,
+    prescriptionIntakes,
+    dispenseResults,
+    managementPlans,
+    firstVisitDocuments,
+    conferenceNotes,
+    billingCandidates,
+  });
 
   return {
     timeline_events: timelineEvents,
