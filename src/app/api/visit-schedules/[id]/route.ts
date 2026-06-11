@@ -549,6 +549,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     select: {
       id: true,
       pharmacist_id: true,
+      version: true,
       case_: {
         select: {
           primary_pharmacist_id: true,
@@ -565,18 +566,36 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const schedule = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      return tx.visitSchedule.update({
-        where: { id },
-        data: { schedule_status: 'cancelled' },
+      const updated = await tx.visitSchedule.updateMany({
+        where: { id, org_id: ctx.orgId, version: existing.version },
+        data: { schedule_status: 'cancelled', version: { increment: 1 } },
       });
+      if (updated.count !== 1) {
+        return {
+          ok: false as const,
+          response: conflict('訪問予定が同時に更新されました。再読み込みしてください'),
+        };
+      }
+      const updatedSchedule = await tx.visitSchedule.findFirst({
+        where: { id, org_id: ctx.orgId },
+      });
+      if (!updatedSchedule) {
+        return {
+          ok: false as const,
+          response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
+        };
+      }
+      return { ok: true as const, schedule: updatedSchedule };
     },
     { requestContext: ctx },
   );
+
+  if (!schedule.ok) return schedule.response;
 
   await notifyWorkflowMutation({
     orgId: ctx.orgId,
     payload: { source: 'visit_schedules_delete', schedule_id: id },
   });
 
-  return success(schedule);
+  return success(schedule.schedule);
 }

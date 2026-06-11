@@ -1239,6 +1239,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       pharmacist_id: 'user_other',
+      version: 1,
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -1276,6 +1277,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       pharmacist_id: 'user_other',
+      version: 1,
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -1288,9 +1290,29 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'schedule_1' },
-      data: { schedule_status: 'cancelled' },
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
+  });
+
+  it('returns conflict when delete loses a version race', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      data: { schedule_status: 'cancelled', version: { increment: 1 } },
+    });
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
