@@ -50,6 +50,18 @@ describe('/api/meta/route-catalog GET', () => {
         expect.objectContaining({
           path: '/api/files/presigned-upload',
         }),
+        expect.objectContaining({
+          path: '/api/drug-master-imports/status',
+          methods: ['GET'],
+          permission: 'canAdmin',
+          area: 'masters',
+        }),
+        expect.objectContaining({
+          path: '/api/drug-master-import-logs',
+          methods: ['GET'],
+          permission: 'canAdmin',
+          area: 'masters',
+        }),
       ]),
     });
   });

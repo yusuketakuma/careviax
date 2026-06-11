@@ -89,7 +89,10 @@ function countFailureStreak(statuses: ImportStatus[]) {
 }
 
 export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req);
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '医薬品マスター取込状態の閲覧権限がありません',
+  });
   if ('response' in authResult) return authResult.response as NextResponse;
 
   const sources: ImportSource[] = [

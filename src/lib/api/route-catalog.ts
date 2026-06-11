@@ -253,6 +253,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'masters',
   },
   {
+    path: '/api/drug-master-imports/status',
+    methods: ['GET'],
+    permission: 'canAdmin',
+    description: '医薬品マスタ取込ソース別の鮮度・失敗状態',
+    area: 'masters',
+  },
+  {
+    path: '/api/drug-master-import-logs',
+    methods: ['GET'],
+    permission: 'canAdmin',
+    description: '医薬品マスタ取込履歴と失敗ログ',
+    area: 'masters',
+  },
+  {
     path: '/api/files/presigned-upload',
     methods: ['POST'],
     permission: 'authenticated',

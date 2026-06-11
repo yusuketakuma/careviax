@@ -115,6 +115,24 @@ describe('GET /api/drug-master-imports/status', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(401);
+    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+    expect(drugMasterCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 before querying import status when admin permission is denied', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(403);
+    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+    expect(drugMasterCountMock).not.toHaveBeenCalled();
+    expect(drugPackageInsertCountMock).not.toHaveBeenCalled();
+    expect(drugInteractionCountMock).not.toHaveBeenCalled();
+    expect(drugAlertRuleCountMock).not.toHaveBeenCalled();
+    expect(genericDrugMappingCountMock).not.toHaveBeenCalled();
   });
 
   it('returns freshness data for all import sources', async () => {
@@ -134,6 +152,10 @@ describe('GET /api/drug-master-imports/status', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+      message: '医薬品マスター取込状態の閲覧権限がありません',
+    });
     const body = await readStatusPayload(response);
 
     expect(body.sources).toHaveLength(6);
