@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFormularyOperationsViewModel,
+  formatBulkPreviewStatusLabel,
+  formatFormularyRequestActionLabel,
+  formatImportStatusLabel,
+  formatMasterChangeTypeLabel,
+  formatStockHistoryActionLabel,
   type ImpactQueueKey,
 } from './drug-master-formulary-view-model';
 
@@ -194,5 +199,20 @@ describe('buildFormularyOperationsViewModel', () => {
     expect(model.transitionalExpiryCount).toBe(1);
     expect(model.transitionalExpiryWithin90Count).toBe(1);
     expect(model.impactQueueRows).toEqual([]);
+  });
+});
+
+describe('formulary label formatters', () => {
+  it('formats known and fallback operational labels', () => {
+    expect(formatImportStatusLabel('completed')).toBe('完了');
+    expect(formatImportStatusLabel('queued')).toBe('待機');
+    expect(formatBulkPreviewStatusLabel('deactivate')).toBe('採用解除');
+    expect(formatBulkPreviewStatusLabel('no_change')).toBe('変更なし');
+    expect(formatMasterChangeTypeLabel('price_changed')).toBe('薬価変更');
+    expect(formatMasterChangeTypeLabel('custom_change')).toBe('custom_change');
+    expect(formatStockHistoryActionLabel('pharmacy_drug_stock_bulk_imported')).toBe('CSV一括反映');
+    expect(formatStockHistoryActionLabel('custom_action')).toBe('custom_action');
+    expect(formatFormularyRequestActionLabel('update_settings')).toBe('設定変更');
+    expect(formatFormularyRequestActionLabel('custom_request')).toBe('custom_request');
   });
 });

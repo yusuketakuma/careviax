@@ -46,6 +46,11 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
 import {
   buildFormularyOperationsViewModel,
+  formatBulkPreviewStatusLabel,
+  formatFormularyRequestActionLabel,
+  formatImportStatusLabel,
+  formatMasterChangeTypeLabel,
+  formatStockHistoryActionLabel,
   type ImpactQueueKey,
 } from './drug-master-formulary-view-model';
 
@@ -1834,18 +1839,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const headerShortcuts =
     variant === 'formulary' ? getAdminFormularyShortcutLinks() : getAdminDrugMasterShortcutLinks();
 
-  const statusLabel = (status: DrugMasterImportLog['status']) => {
-    switch (status) {
-      case 'completed':
-        return '完了';
-      case 'failed':
-        return '失敗';
-      case 'running':
-        return '実行中';
-      default:
-        return '待機';
-    }
-  };
   const staleSourceCount =
     masterStatusData?.sources.filter((source) => ['stale', 'never'].includes(source.freshness))
       .length ?? 0;
@@ -1866,63 +1859,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     lasaOnly,
     stockedOnly,
   ].filter(Boolean).length;
-  const bulkPreviewStatusLabel = (
-    status: BulkPreviewResponse['preview']['rows'][number]['status'],
-  ) => {
-    switch (status) {
-      case 'create':
-        return '新規採用';
-      case 'update':
-        return '更新';
-      case 'deactivate':
-        return '採用解除';
-      case 'unmatched':
-        return '未照合';
-      case 'invalid':
-        return '無効';
-      default:
-        return '変更なし';
-    }
-  };
-  const masterChangeTypeLabel = (changeType: string) => {
-    switch (changeType) {
-      case 'price_changed':
-        return '薬価変更';
-      case 'transitional_expiry_changed':
-        return '経過措置変更';
-      default:
-        return changeType;
-    }
-  };
-  const stockHistoryActionLabel = (action: string) => {
-    switch (action) {
-      case 'pharmacy_drug_stock_created':
-        return '採用登録';
-      case 'pharmacy_drug_stock_updated':
-        return '採用品設定更新';
-      case 'pharmacy_drug_stock_bulk_imported':
-        return 'CSV一括反映';
-      case 'pharmacy_drug_stock_bulk_import_summary':
-        return 'CSV一括登録サマリー';
-      case 'pharmacy_drug_stock_reviewed':
-        return 'レビュー記録';
-      default:
-        return action;
-    }
-  };
-  const formularyRequestActionLabel = (actionType: string) => {
-    switch (actionType) {
-      case 'adopt':
-        return '採用追加';
-      case 'deactivate':
-        return '採用解除';
-      case 'update_settings':
-        return '設定変更';
-      default:
-        return actionType;
-    }
-  };
-
   return (
     <PageScaffold>
       <div className="space-y-4">
@@ -2171,7 +2107,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           }}
                         >
                           <span className="block text-sm font-medium text-foreground">
-                            {formularyRequestActionLabel(request.action_type)}
+                            {formatFormularyRequestActionLabel(request.action_type)}
                           </span>
                           <span className="mt-1 block text-xs text-muted-foreground">
                             {new Date(request.created_at).toLocaleDateString('ja-JP')}
@@ -2531,7 +2467,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         className="rounded-md border border-border/60 bg-background px-3 py-2"
                       >
                         <p className="text-xs text-muted-foreground">
-                          {masterChangeTypeLabel(item.change_type)}
+                          {formatMasterChangeTypeLabel(item.change_type)}
                         </p>
                         <p className="text-lg font-semibold tabular-nums">
                           {item.count.toLocaleString()}
@@ -2626,7 +2562,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             </span>
                           )}
                           {row.changes.slice(0, 2).map((change) => (
-                            <span key={change.id}>{masterChangeTypeLabel(change.change_type)}</span>
+                            <span key={change.id}>
+                              {formatMasterChangeTypeLabel(change.change_type)}
+                            </span>
                           ))}
                         </span>
                       </button>
@@ -3078,7 +3016,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                               : 'outline'
                           }
                         >
-                          {bulkPreviewStatusLabel(row.status)}
+                          {formatBulkPreviewStatusLabel(row.status)}
                         </Badge>
                       </div>
                       {row.candidates && row.candidates.length > 0 && (
@@ -3212,7 +3150,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     </span>
                     {source.recent_runs_30d.latest_status && (
                       <Badge variant="outline" className="text-[10px]">
-                        最新実行 {statusLabel(source.recent_runs_30d.latest_status)}
+                        最新実行 {formatImportStatusLabel(source.recent_runs_30d.latest_status)}
                       </Badge>
                     )}
                     {source.recent_runs_30d.failure_streak > 0 && (
@@ -3330,7 +3268,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       variant={log.status === 'failed' ? 'destructive' : 'outline'}
                       className="text-[10px]"
                     >
-                      {statusLabel(log.status)}
+                      {formatImportStatusLabel(log.status)}
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -3907,7 +3845,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-sm font-medium text-foreground">
-                                {stockHistoryActionLabel(item.action)}
+                                {formatStockHistoryActionLabel(item.action)}
                               </p>
                               <Badge variant="outline" className="text-[10px]">
                                 {new Date(item.created_at).toLocaleDateString('ja-JP')}
@@ -3919,7 +3857,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             {Boolean(changes.row_number || changes.status) && (
                               <p className="mt-1 text-xs text-muted-foreground">
                                 行 {String(changes.row_number ?? '—')} / 状態{' '}
-                                {bulkPreviewStatusLabel(
+                                {formatBulkPreviewStatusLabel(
                                   String(
                                     changes.status ?? '',
                                   ) as BulkPreviewResponse['preview']['rows'][number]['status'],

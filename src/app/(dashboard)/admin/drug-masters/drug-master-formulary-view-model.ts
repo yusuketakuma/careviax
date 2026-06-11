@@ -9,6 +9,77 @@ export type ImpactQueueKey =
   | 'controlled'
   | 'review_due';
 
+export function formatImportStatusLabel(status: string) {
+  switch (status) {
+    case 'completed':
+      return '完了';
+    case 'failed':
+      return '失敗';
+    case 'running':
+      return '実行中';
+    default:
+      return '待機';
+  }
+}
+
+export function formatBulkPreviewStatusLabel(status: string) {
+  switch (status) {
+    case 'create':
+      return '新規採用';
+    case 'update':
+      return '更新';
+    case 'deactivate':
+      return '採用解除';
+    case 'unmatched':
+      return '未照合';
+    case 'invalid':
+      return '無効';
+    default:
+      return '変更なし';
+  }
+}
+
+export function formatMasterChangeTypeLabel(changeType: string) {
+  switch (changeType) {
+    case 'price_changed':
+      return '薬価変更';
+    case 'transitional_expiry_changed':
+      return '経過措置変更';
+    default:
+      return changeType;
+  }
+}
+
+export function formatStockHistoryActionLabel(action: string) {
+  switch (action) {
+    case 'pharmacy_drug_stock_created':
+      return '採用登録';
+    case 'pharmacy_drug_stock_updated':
+      return '採用品設定更新';
+    case 'pharmacy_drug_stock_bulk_imported':
+      return 'CSV一括反映';
+    case 'pharmacy_drug_stock_bulk_import_summary':
+      return 'CSV一括登録サマリー';
+    case 'pharmacy_drug_stock_reviewed':
+      return 'レビュー記録';
+    default:
+      return action;
+  }
+}
+
+export function formatFormularyRequestActionLabel(actionType: string) {
+  switch (actionType) {
+    case 'adopt':
+      return '採用追加';
+    case 'deactivate':
+      return '採用解除';
+    case 'update_settings':
+      return '設定変更';
+    default:
+      return actionType;
+  }
+}
+
 type FormularyOperationsStock = {
   drug_master: {
     yj_code: string;
