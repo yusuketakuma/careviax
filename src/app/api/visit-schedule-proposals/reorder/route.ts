@@ -1,14 +1,23 @@
 import { z } from 'zod';
+import { Prisma, type VisitProposalStatus } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
+const OPEN_PROPOSAL_STATUSES: VisitProposalStatus[] = [
+  'proposed',
+  'patient_contact_pending',
+  'reschedule_pending',
+];
+const PROPOSAL_ROUTE_REORDER_SERIALIZABLE_RETRY_LIMIT = 3;
+
 const routeOrderConfirmationContextSchema = z.object({
-  source: z.string().trim().min(1).max(80),
+  source: z.enum(['proposal_detail_route_preview']),
   date: dateKeySchema('確認日付の形式が不正です（YYYY-MM-DD）').optional(),
   pharmacist_id: z.string().trim().min(1).max(100).optional(),
   travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).optional(),
@@ -32,6 +41,60 @@ const reorderVisitScheduleProposalSchema = z.union([
   }),
 ]);
 
+type ProposalRouteReorderError =
+  | 'not_found'
+  | 'locked'
+  | 'mismatch'
+  | 'confirmation_context_mismatch'
+  | 'duplicate_route_order';
+type ProposalRouteReorderResult =
+  | { error: ProposalRouteReorderError }
+  | { case_ids: string[]; ordered_proposal_ids: string[] };
+
+class ProposalRouteReorderConflictError extends Error {
+  constructor() {
+    super('proposal route reorder target changed before guarded write');
+    this.name = 'ProposalRouteReorderConflictError';
+  }
+}
+
+class ProposalRouteReorderRetryLimitError extends Error {
+  constructor() {
+    super('proposal route reorder transaction retry limit exceeded');
+    this.name = 'ProposalRouteReorderRetryLimitError';
+  }
+}
+
+function hasDuplicateValue(values: string[]) {
+  return new Set(values).size !== values.length;
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableProposalRouteReorderTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < PROPOSAL_ROUTE_REORDER_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === PROPOSAL_ROUTE_REORDER_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new ProposalRouteReorderRetryLimitError();
+      }
+    }
+  }
+
+  throw new ProposalRouteReorderRetryLimitError();
+}
+
 export const PATCH = withAuth(
   async (req: AuthenticatedRequest) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -47,121 +110,189 @@ export const PATCH = withAuth(
     const explicitInput =
       'route_order_updates' in parsed.data ? parsed.data.route_order_updates : null;
     const mode = orderedInput ? 'ordered' : 'explicit';
+    const inputIds = orderedInput
+      ? orderedInput
+      : (explicitInput ?? []).map((item) => item.proposal_id);
+    if (hasDuplicateValue(inputIds)) {
+      return validationError('同じ訪問候補を複数回指定できません');
+    }
     const orderedIds = orderedInput
-      ? Array.from(new Set(orderedInput))
-      : Array.from(new Set((explicitInput ?? []).map((item) => item.proposal_id)));
+      ? orderedInput
+      : (explicitInput ?? []).map((item) => item.proposal_id);
     const explicitUpdates = explicitInput
-      ? Array.from(
-          new Map(
-            explicitInput.map((item) => [item.proposal_id, item.route_order] as const),
-          ).entries(),
-        ).map(([proposalId, routeOrder]) => ({
-          proposal_id: proposalId,
-          route_order: routeOrder,
+      ? explicitInput.map((item) => ({
+          proposal_id: item.proposal_id,
+          route_order: item.route_order,
         }))
       : null;
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
-      const proposals = await tx.visitScheduleProposal.findMany({
-        where: {
-          org_id: req.orgId,
-          id: { in: orderedIds },
-          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-        },
-        select: {
-          id: true,
-          case_id: true,
-          proposed_date: true,
-          proposed_pharmacist_id: true,
-          finalized_schedule_id: true,
-          proposal_status: true,
-        },
-      });
+    let result: ProposalRouteReorderResult;
+    try {
+      result = await withSerializableProposalRouteReorderTransaction<ProposalRouteReorderResult>(
+        req.orgId,
+        async (tx) => {
+          const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+          const proposals = await tx.visitScheduleProposal.findMany({
+            where: {
+              org_id: req.orgId,
+              id: { in: orderedIds },
+              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+            },
+            select: {
+              id: true,
+              case_id: true,
+              proposed_date: true,
+              proposed_pharmacist_id: true,
+              finalized_schedule_id: true,
+              proposal_status: true,
+            },
+          });
 
-      if (proposals.length !== orderedIds.length) {
-        return { error: 'not_found' as const };
-      }
+          if (proposals.length !== orderedIds.length) {
+            return { error: 'not_found' as const };
+          }
 
-      const [first] = proposals;
-      const mismatch = proposals.find((proposal) => {
-        if (proposal.proposed_pharmacist_id !== first.proposed_pharmacist_id) return true;
-        if (proposal.proposed_date.getTime() !== first.proposed_date.getTime()) return true;
-        if (mode === 'ordered' && proposal.case_id !== first.case_id) return true;
-        return false;
-      });
-      if (mismatch) {
-        return { error: 'mismatch' as const };
-      }
+          const [first] = proposals;
+          const firstDateKey = formatDateKey(first.proposed_date);
+          const mismatch = proposals.find((proposal) => {
+            if (proposal.proposed_pharmacist_id !== first.proposed_pharmacist_id) return true;
+            if (proposal.proposed_date.getTime() !== first.proposed_date.getTime()) return true;
+            if (mode === 'ordered' && proposal.case_id !== first.case_id) return true;
+            return false;
+          });
+          if (mismatch) {
+            return { error: 'mismatch' as const };
+          }
 
-      const locked = proposals.find(
-        (proposal) =>
-          proposal.finalized_schedule_id != null ||
-          ['confirmed', 'rejected', 'superseded', 'expired'].includes(proposal.proposal_status),
-      );
-      if (locked) {
-        return { error: 'locked' as const };
-      }
+          const confirmationContext = parsed.data.confirmation_context;
+          if (
+            confirmationContext &&
+            ((confirmationContext.date && confirmationContext.date !== firstDateKey) ||
+              (confirmationContext.pharmacist_id &&
+                confirmationContext.pharmacist_id !== first.proposed_pharmacist_id) ||
+              (confirmationContext.target_count &&
+                confirmationContext.target_count !== orderedIds.length))
+          ) {
+            return { error: 'confirmation_context_mismatch' as const };
+          }
 
-      const updates =
-        mode === 'ordered'
-          ? orderedIds.map((proposalId, index) => ({
-              proposal_id: proposalId,
-              route_order: index + 1,
-            }))
-          : (explicitUpdates ?? []);
+          const locked = proposals.find(
+            (proposal) =>
+              proposal.finalized_schedule_id != null ||
+              !OPEN_PROPOSAL_STATUSES.includes(proposal.proposal_status),
+          );
+          if (locked) {
+            return { error: 'locked' as const };
+          }
 
-      const duplicateRouteOrder = new Set<number>();
-      const hasDuplicateRouteOrder = updates.some((item) => {
-        if (duplicateRouteOrder.has(item.route_order)) return true;
-        duplicateRouteOrder.add(item.route_order);
-        return false;
-      });
-      if (hasDuplicateRouteOrder) {
-        return { error: 'duplicate_route_order' as const };
-      }
-
-      await Promise.all(
-        updates.map((item) =>
-          tx.visitScheduleProposal.update({
-            where: { id: item.proposal_id },
-            data: { route_order: item.route_order },
-          }),
-        ),
-      );
-
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'visit_schedule_proposals_reordered',
-          target_type:
-            mode === 'ordered' ? 'VisitScheduleProposalBatch' : 'VisitScheduleProposalRouteBatch',
-          target_id:
+          const updates =
             mode === 'ordered'
-              ? first.case_id
-              : `${first.proposed_pharmacist_id}:${first.proposed_date.toISOString()}`,
-          changes: {
-            ordered_proposal_ids: orderedIds,
-            route_order_updates:
-              mode === 'explicit'
-                ? updates.map((item) => ({
-                    proposal_id: item.proposal_id,
-                    route_order: item.route_order,
-                  }))
-                : undefined,
-            proposed_date: first.proposed_date.toISOString(),
-            pharmacist_id: first.proposed_pharmacist_id,
-            confirmation_context: parsed.data.confirmation_context ?? null,
-          },
-        },
-      });
+              ? orderedIds.map((proposalId, index) => ({
+                  proposal_id: proposalId,
+                  route_order: index + 1,
+                }))
+              : (explicitUpdates ?? []);
 
-      return {
-        case_ids: Array.from(new Set(proposals.map((proposal) => proposal.case_id))),
-        ordered_proposal_ids: orderedIds,
-      };
-    });
+          const duplicateRouteOrder = new Set<number>();
+          const hasDuplicateRouteOrder = updates.some((item) => {
+            if (duplicateRouteOrder.has(item.route_order)) return true;
+            duplicateRouteOrder.add(item.route_order);
+            return false;
+          });
+          if (hasDuplicateRouteOrder) {
+            return { error: 'duplicate_route_order' as const };
+          }
+
+          const routeOrders = updates.map((item) => item.route_order);
+          const [scheduleConflict, proposalConflict] = await Promise.all([
+            tx.visitSchedule.findFirst({
+              where: {
+                org_id: req.orgId,
+                pharmacist_id: first.proposed_pharmacist_id,
+                scheduled_date: new Date(firstDateKey),
+                route_order: { in: routeOrders },
+              },
+              select: { id: true },
+            }),
+            tx.visitScheduleProposal.findFirst({
+              where: {
+                org_id: req.orgId,
+                proposed_pharmacist_id: first.proposed_pharmacist_id,
+                proposed_date: new Date(firstDateKey),
+                route_order: { in: routeOrders },
+                finalized_schedule_id: null,
+                proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+                id: { notIn: orderedIds },
+              },
+              select: { id: true },
+            }),
+          ]);
+          if (scheduleConflict || proposalConflict) {
+            return { error: 'duplicate_route_order' as const };
+          }
+
+          await Promise.all(
+            updates.map(async (item) => {
+              const updateResult = await tx.visitScheduleProposal.updateMany({
+                where: {
+                  org_id: req.orgId,
+                  id: item.proposal_id,
+                  proposed_pharmacist_id: first.proposed_pharmacist_id,
+                  proposed_date: new Date(firstDateKey),
+                  finalized_schedule_id: null,
+                  proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+                  ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+                },
+                data: { route_order: item.route_order },
+              });
+              if (updateResult.count !== 1) throw new ProposalRouteReorderConflictError();
+            }),
+          );
+
+          await tx.auditLog.create({
+            data: {
+              org_id: req.orgId,
+              actor_id: req.userId,
+              action: 'visit_schedule_proposals_reordered',
+              target_type:
+                mode === 'ordered'
+                  ? 'VisitScheduleProposalBatch'
+                  : 'VisitScheduleProposalRouteBatch',
+              target_id:
+                mode === 'ordered'
+                  ? first.case_id
+                  : `${first.proposed_pharmacist_id}:${first.proposed_date.toISOString()}`,
+              changes: {
+                ordered_proposal_ids: orderedIds,
+                route_order_updates:
+                  mode === 'explicit'
+                    ? updates.map((item) => ({
+                        proposal_id: item.proposal_id,
+                        route_order: item.route_order,
+                      }))
+                    : undefined,
+                proposed_date: first.proposed_date.toISOString(),
+                pharmacist_id: first.proposed_pharmacist_id,
+                confirmation_context: parsed.data.confirmation_context ?? null,
+              },
+            },
+          });
+
+          return {
+            case_ids: Array.from(new Set(proposals.map((proposal) => proposal.case_id))),
+            ordered_proposal_ids: orderedIds,
+          };
+        },
+      );
+    } catch (cause) {
+      if (
+        cause instanceof ProposalRouteReorderConflictError ||
+        cause instanceof ProposalRouteReorderRetryLimitError
+      ) {
+        return conflict('route_order の反映対象が同時に更新されました。再読み込みしてください');
+      }
+      throw cause;
+    }
 
     if ('error' in result) {
       if (result.error === 'not_found') {
@@ -177,13 +308,18 @@ export const PATCH = withAuth(
       if (result.error === 'locked') {
         return validationError('確定済みまたは却下済みの候補は並べ替えできません');
       }
+      if (result.error === 'confirmation_context_mismatch') {
+        return validationError('確認コンテキストが訪問候補の対象セルと一致しません');
+      }
       if (result.error === 'duplicate_route_order') {
         return validationError('route_order は重複できません');
       }
+      return validationError('訪問候補の並べ替えに失敗しました');
     }
 
+    const successfulResult = result;
     await Promise.all(
-      result.case_ids.map((caseId) =>
+      successfulResult.case_ids.map((caseId) =>
         notifyWorkflowMutation({
           orgId: req.orgId,
           payload: { source: 'visit_schedule_proposals_reorder', case_id: caseId },
@@ -191,7 +327,7 @@ export const PATCH = withAuth(
       ),
     );
 
-    return success(result);
+    return success(successfulResult);
   },
   {
     permission: 'canVisit',

@@ -1,19 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
   membershipFindFirstMock,
+  scheduleFindFirstMock,
   proposalFindManyMock,
-  proposalUpdateMock,
+  proposalFindFirstMock,
+  proposalUpdateManyMock,
   auditLogCreateMock,
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  scheduleFindFirstMock: vi.fn(),
   proposalFindManyMock: vi.fn(),
-  proposalUpdateMock: vi.fn(),
+  proposalFindFirstMock: vi.fn(),
+  proposalUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
@@ -41,6 +46,13 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { PATCH } from './route';
 
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedule-proposals/reorder', {
     method: 'PATCH',
@@ -63,36 +75,43 @@ function createMalformedJsonRequest() {
   });
 }
 
+function buildProposalFixture(overrides?: Record<string, unknown>) {
+  return {
+    id: 'proposal_1',
+    case_id: 'case_1',
+    proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+    proposed_pharmacist_id: 'pharmacist_1',
+    finalized_schedule_id: null,
+    proposal_status: 'proposed',
+    ...overrides,
+  };
+}
+
 describe('/api/visit-schedule-proposals/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     proposalFindManyMock.mockResolvedValue([
-      {
-        id: 'proposal_1',
-        case_id: 'case_1',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
-        proposal_status: 'proposed',
-      },
-      {
+      buildProposalFixture(),
+      buildProposalFixture({
         id: 'proposal_2',
-        case_id: 'case_1',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
         proposal_status: 'patient_contact_pending',
-      },
+      }),
     ]);
-    proposalUpdateMock.mockResolvedValue({});
+    scheduleFindFirstMock.mockResolvedValue(null);
+    proposalFindFirstMock.mockResolvedValue(null);
+    proposalUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        visitSchedule: {
+          findFirst: scheduleFindFirstMock,
+        },
         visitScheduleProposal: {
           findMany: proposalFindManyMock,
-          update: proposalUpdateMock,
+          findFirst: proposalFindFirstMock,
+          updateMany: proposalUpdateManyMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -109,12 +128,29 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(proposalUpdateMock).toHaveBeenNthCalledWith(1, {
-      where: { id: 'proposal_2' },
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(proposalUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        id: 'proposal_2',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+      }),
       data: { route_order: 1 },
     });
-    expect(proposalUpdateMock).toHaveBeenNthCalledWith(2, {
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        id: 'proposal_1',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+      }),
       data: { route_order: 2 },
     });
     expect(proposalFindManyMock).toHaveBeenCalledWith(
@@ -141,7 +177,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
-    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -156,7 +192,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
-    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -171,29 +207,18 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(404);
-    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects proposals from different batches', async () => {
     proposalFindManyMock.mockResolvedValueOnce([
-      {
-        id: 'proposal_1',
-        case_id: 'case_1',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
-        proposal_status: 'proposed',
-      },
-      {
+      buildProposalFixture(),
+      buildProposalFixture({
         id: 'proposal_2',
         case_id: 'case_2',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
-        proposal_status: 'proposed',
-      },
+      }),
     ]);
 
     const response = (await PATCH(
@@ -210,22 +235,12 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
 
   it('accepts explicit route_order updates across different cases on the same pharmacist/day', async () => {
     proposalFindManyMock.mockResolvedValueOnce([
-      {
-        id: 'proposal_1',
-        case_id: 'case_1',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
-        proposal_status: 'proposed',
-      },
-      {
+      buildProposalFixture(),
+      buildProposalFixture({
         id: 'proposal_2',
         case_id: 'case_2',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'pharmacist_1',
-        finalized_schedule_id: null,
         proposal_status: 'patient_contact_pending',
-      },
+      }),
     ]);
 
     const response = (await PATCH(
@@ -246,12 +261,20 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(proposalUpdateMock).toHaveBeenNthCalledWith(1, {
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: expect.objectContaining({
+        id: 'proposal_1',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      }),
       data: { route_order: 2 },
     });
-    expect(proposalUpdateMock).toHaveBeenNthCalledWith(2, {
-      where: { id: 'proposal_2' },
+    expect(proposalUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        id: 'proposal_2',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      }),
       data: { route_order: 4 },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
@@ -271,5 +294,166 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
         }),
       }),
     );
+  });
+
+  it('rejects arbitrary audit source text before transaction side effects', async () => {
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'patient-name-or-free-text',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmation context that does not match the target route cell', async () => {
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture()]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'proposal_detail_route_preview',
+          date: '2026-04-04',
+          pharmacist_id: 'pharmacist_1',
+          target_count: 1,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '確認コンテキストが訪問候補の対象セルと一致しません',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate proposal targets before transaction side effects', async () => {
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [
+          { proposal_id: 'proposal_1', route_order: 1 },
+          { proposal_id: 'proposal_1', route_order: 2 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ訪問候補を複数回指定できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('retries serializable proposal route conflicts and succeeds on retry', async () => {
+    withOrgContextMock.mockImplementationOnce(async () => {
+      throw buildSerializableConflictError();
+    });
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture()]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(proposalUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict when serializable proposal route conflicts exceed retry limit', async () => {
+    withOrgContextMock.mockImplementation(async () => {
+      throw buildSerializableConflictError();
+    });
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when a guarded proposal write loses the race', async () => {
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture()]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects existing open proposal route_order conflicts before writes', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce({ id: 'proposal_existing' });
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture()]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'route_order は重複できません',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects existing confirmed schedule route_order conflicts before writes', async () => {
+    scheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
+    proposalFindManyMock.mockResolvedValueOnce([buildProposalFixture()]);
+
+    const response = (await PATCH(
+      createRequest({
+        route_order_updates: [{ proposal_id: 'proposal_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'route_order は重複できません',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });
