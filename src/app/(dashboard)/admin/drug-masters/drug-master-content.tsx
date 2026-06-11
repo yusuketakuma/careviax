@@ -46,6 +46,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
 import {
   buildDrugMasterFilterViewModel,
+  buildDrugMasterSelectionViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -1799,36 +1800,17 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     !!bulkPreviewSummary &&
     bulkPreviewBlockingCount === 0 &&
     bulkPreviewSummary.processableRows > 0;
-  const selectedRowIndex = selectedDrugId
-    ? drugs.findIndex((drug) => drug.id === selectedDrugId)
-    : undefined;
   const latestPackageInsert = detailQuery.data?.package_inserts[0] ?? null;
   const stockConfig = stockConfigQuery.data?.data ?? null;
   const stockHistory = stockHistoryQuery.data?.data ?? [];
-  const selectedPendingRequest = selectedDrugId
-    ? pendingFormularyRequests.find((request) => request.drug_master_id === selectedDrugId)
-    : null;
   const effectivePreferredGenericId = preferredGenericId ?? stockConfig?.preferred_generic_id ?? '';
-  const relatedInteractions = detailQuery.data
-    ? [
-        ...detailQuery.data.interactions_as_a.map((interaction) => ({
-          id: interaction.id,
-          severity: interaction.severity,
-          mechanism: interaction.mechanism,
-          clinical_effect: interaction.clinical_effect,
-          source: interaction.source,
-          counterpart: interaction.drug_b,
-        })),
-        ...detailQuery.data.interactions_as_b.map((interaction) => ({
-          id: interaction.id,
-          severity: interaction.severity,
-          mechanism: interaction.mechanism,
-          clinical_effect: interaction.clinical_effect,
-          source: interaction.source,
-          counterpart: interaction.drug_a,
-        })),
-      ]
-    : [];
+  const { selectedRowIndex, selectedPendingRequest, relatedInteractions } =
+    buildDrugMasterSelectionViewModel({
+      drugs,
+      selectedDrugId,
+      pendingFormularyRequests,
+      detail: detailQuery.data,
+    });
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
   const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
   const ingredientGroup = ingredientGroupQuery.data ?? null;
@@ -3382,7 +3364,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           setSelectedDrugId(drugs[index]?.id ?? null);
           setPreferredGenericId(null);
         }}
-        selectedRowIndex={selectedRowIndex !== -1 ? selectedRowIndex : undefined}
+        selectedRowIndex={selectedRowIndex}
       />
 
       <Sheet

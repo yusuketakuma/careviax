@@ -134,6 +134,109 @@ export function buildDrugMasterFilterViewModel<
   };
 }
 
+type SelectionDrug = {
+  id: string;
+};
+
+type SelectionPendingRequest = {
+  drug_master_id: string;
+};
+
+type SelectionInteractionBase<TSeverity extends string, TSource extends string> = {
+  id: string;
+  severity: TSeverity;
+  mechanism: string | null;
+  clinical_effect: string | null;
+  source: TSource | null;
+};
+
+type SelectionInteractionAsA<
+  TCounterpart,
+  TSeverity extends string,
+  TSource extends string,
+> = SelectionInteractionBase<TSeverity, TSource> & {
+  drug_b: TCounterpart;
+};
+
+type SelectionInteractionAsB<
+  TCounterpart,
+  TSeverity extends string,
+  TSource extends string,
+> = SelectionInteractionBase<TSeverity, TSource> & {
+  drug_a: TCounterpart;
+};
+
+type SelectionRelatedInteraction<
+  TInteractionA extends SelectionInteractionAsA<unknown, string, string>,
+  TInteractionB extends SelectionInteractionAsB<unknown, string, string>,
+> = {
+  id: string;
+  severity: TInteractionA['severity'] | TInteractionB['severity'];
+  mechanism: string | null;
+  clinical_effect: string | null;
+  source: TInteractionA['source'] | TInteractionB['source'];
+  counterpart: TInteractionA['drug_b'] | TInteractionB['drug_a'];
+};
+
+export function buildDrugMasterSelectionViewModel<
+  TDrug extends SelectionDrug,
+  TPendingRequest extends SelectionPendingRequest,
+  TInteractionA extends SelectionInteractionAsA<unknown, string, string>,
+  TInteractionB extends SelectionInteractionAsB<unknown, string, string>,
+>({
+  drugs,
+  selectedDrugId,
+  pendingFormularyRequests,
+  detail,
+}: {
+  drugs: TDrug[];
+  selectedDrugId: string | null;
+  pendingFormularyRequests: TPendingRequest[];
+  detail:
+    | {
+        interactions_as_a: TInteractionA[];
+        interactions_as_b: TInteractionB[];
+      }
+    | null
+    | undefined;
+}) {
+  const selectedRowIndex =
+    selectedDrugId === null ? undefined : drugs.findIndex((drug) => drug.id === selectedDrugId);
+  const selectedPendingRequest =
+    selectedDrugId === null
+      ? null
+      : (pendingFormularyRequests.find((request) => request.drug_master_id === selectedDrugId) ??
+        null);
+  const relatedInteractions: Array<SelectionRelatedInteraction<TInteractionA, TInteractionB>> =
+    detail
+      ? [
+          ...detail.interactions_as_a.map((interaction) => ({
+            id: interaction.id,
+            severity: interaction.severity,
+            mechanism: interaction.mechanism,
+            clinical_effect: interaction.clinical_effect,
+            source: interaction.source,
+            counterpart: interaction.drug_b,
+          })),
+          ...detail.interactions_as_b.map((interaction) => ({
+            id: interaction.id,
+            severity: interaction.severity,
+            mechanism: interaction.mechanism,
+            clinical_effect: interaction.clinical_effect,
+            source: interaction.source,
+            counterpart: interaction.drug_a,
+          })),
+        ]
+      : [];
+
+  return {
+    selectedRowIndex:
+      selectedRowIndex === undefined || selectedRowIndex === -1 ? undefined : selectedRowIndex,
+    selectedPendingRequest,
+    relatedInteractions,
+  };
+}
+
 type FormularyOperationsStock = {
   drug_master: {
     yj_code: string;

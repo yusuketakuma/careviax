@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDrugMasterFilterViewModel,
+  buildDrugMasterSelectionViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -273,5 +274,93 @@ describe('buildDrugMasterFilterViewModel', () => {
       selectedCategoryLabel: '全薬効分類',
       activeSafetyFilterCount: 0,
     });
+  });
+});
+
+describe('buildDrugMasterSelectionViewModel', () => {
+  it('derives the selected table row, pending request, and bidirectional interactions', () => {
+    const model = buildDrugMasterSelectionViewModel({
+      drugs: [{ id: 'drug_a' }, { id: 'drug_b' }, { id: 'drug_c' }],
+      selectedDrugId: 'drug_b',
+      pendingFormularyRequests: [
+        { id: 'request_a', drug_master_id: 'drug_a' },
+        { id: 'request_b', drug_master_id: 'drug_b' },
+      ],
+      detail: {
+        interactions_as_a: [
+          {
+            id: 'interaction_a',
+            severity: 'critical',
+            mechanism: 'CYP',
+            clinical_effect: '血中濃度上昇',
+            source: 'pmda',
+            drug_a: { id: 'drug_b', name: '対象薬' },
+            drug_b: { id: 'counterpart_b', name: '相手薬B' },
+          },
+        ],
+        interactions_as_b: [
+          {
+            id: 'interaction_b',
+            severity: 'warning',
+            mechanism: null,
+            clinical_effect: null,
+            source: null,
+            drug_a: { id: 'counterpart_a', name: '相手薬A' },
+            drug_b: { id: 'drug_b', name: '対象薬' },
+          },
+        ],
+      },
+    });
+
+    expect(model.selectedRowIndex).toBe(1);
+    expect(model.selectedPendingRequest).toEqual({
+      id: 'request_b',
+      drug_master_id: 'drug_b',
+    });
+    expect(model.relatedInteractions).toEqual([
+      {
+        id: 'interaction_a',
+        severity: 'critical',
+        mechanism: 'CYP',
+        clinical_effect: '血中濃度上昇',
+        source: 'pmda',
+        counterpart: { id: 'counterpart_b', name: '相手薬B' },
+      },
+      {
+        id: 'interaction_b',
+        severity: 'warning',
+        mechanism: null,
+        clinical_effect: null,
+        source: null,
+        counterpart: { id: 'counterpart_a', name: '相手薬A' },
+      },
+    ]);
+  });
+
+  it('falls back cleanly when no selected drug or detail is available', () => {
+    const model = buildDrugMasterSelectionViewModel({
+      drugs: [{ id: 'drug_a' }],
+      selectedDrugId: null,
+      pendingFormularyRequests: [{ id: 'request_a', drug_master_id: 'drug_a' }],
+      detail: null,
+    });
+
+    expect(model).toEqual({
+      selectedRowIndex: undefined,
+      selectedPendingRequest: null,
+      relatedInteractions: [],
+    });
+  });
+
+  it('does not expose a stale table index when the selected drug is absent from the current page', () => {
+    const model = buildDrugMasterSelectionViewModel({
+      drugs: [{ id: 'drug_a' }],
+      selectedDrugId: 'drug_b',
+      pendingFormularyRequests: [],
+      detail: undefined,
+    });
+
+    expect(model.selectedRowIndex).toBeUndefined();
+    expect(model.selectedPendingRequest).toBeNull();
   });
 });
