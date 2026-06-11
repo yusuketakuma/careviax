@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDrugMasterFilterViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -214,5 +215,63 @@ describe('formulary label formatters', () => {
     expect(formatStockHistoryActionLabel('custom_action')).toBe('custom_action');
     expect(formatFormularyRequestActionLabel('update_settings')).toBe('設定変更');
     expect(formatFormularyRequestActionLabel('custom_request')).toBe('custom_request');
+  });
+});
+
+describe('buildDrugMasterFilterViewModel', () => {
+  it('derives source freshness counts, selected labels, and active safety filter count', () => {
+    const model = buildDrugMasterFilterViewModel({
+      masterStatusSources: [
+        { freshness: 'fresh' },
+        { freshness: 'aging' },
+        { freshness: 'stale' },
+        { freshness: 'never' },
+      ],
+      importLogSourceOptions: [
+        { value: 'all', label: 'すべてのソース' },
+        { value: 'ssk', label: 'SSK' },
+      ],
+      importLogStatusOptions: [
+        { value: 'all', label: 'すべての状態' },
+        { value: 'failed', label: '失敗のみ' },
+      ],
+      categoryOptions: [
+        { value: '', label: '全薬効分類' },
+        { value: '1', label: '1: 神経系及び感覚器官用医薬品' },
+      ],
+      importLogSourceFilter: 'ssk',
+      importLogStatusFilter: 'failed',
+      category: '1',
+      safetyFilters: [true, false, true, false, true],
+    });
+
+    expect(model).toEqual({
+      staleSourceCount: 2,
+      agingSourceCount: 1,
+      selectedImportLogSourceLabel: 'SSK',
+      selectedImportLogStatusLabel: '失敗のみ',
+      selectedCategoryLabel: '1: 神経系及び感覚器官用医薬品',
+      activeSafetyFilterCount: 3,
+    });
+  });
+
+  it('falls back to default labels when selected values are unknown', () => {
+    const model = buildDrugMasterFilterViewModel({
+      masterStatusSources: [],
+      importLogSourceOptions: [],
+      importLogStatusOptions: [],
+      categoryOptions: [],
+      importLogSourceFilter: 'unknown',
+      importLogStatusFilter: 'unknown',
+      category: '9',
+      safetyFilters: [],
+    });
+
+    expect(model).toMatchObject({
+      selectedImportLogSourceLabel: 'すべてのソース',
+      selectedImportLogStatusLabel: 'すべての状態',
+      selectedCategoryLabel: '全薬効分類',
+      activeSafetyFilterCount: 0,
+    });
   });
 });

@@ -45,6 +45,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
 import {
+  buildDrugMasterFilterViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -1839,26 +1840,23 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const headerShortcuts =
     variant === 'formulary' ? getAdminFormularyShortcutLinks() : getAdminDrugMasterShortcutLinks();
 
-  const staleSourceCount =
-    masterStatusData?.sources.filter((source) => ['stale', 'never'].includes(source.freshness))
-      .length ?? 0;
-  const agingSourceCount =
-    masterStatusData?.sources.filter((source) => source.freshness === 'aging').length ?? 0;
-  const selectedImportLogSourceLabel =
-    IMPORT_LOG_SOURCE_OPTIONS.find((option) => option.value === importLogSourceFilter)?.label ??
-    'すべてのソース';
-  const selectedImportLogStatusLabel =
-    IMPORT_LOG_STATUS_OPTIONS.find((option) => option.value === importLogStatusFilter)?.label ??
-    'すべての状態';
-  const selectedCategoryLabel =
-    CATEGORY_OPTIONS.find((option) => option.value === category)?.label ?? '全薬効分類';
-  const activeSafetyFilterCount = [
-    genericOnly,
-    narcoticOnly,
-    highRiskOnly,
-    lasaOnly,
-    stockedOnly,
-  ].filter(Boolean).length;
+  const {
+    staleSourceCount,
+    agingSourceCount,
+    selectedImportLogSourceLabel,
+    selectedImportLogStatusLabel,
+    selectedCategoryLabel,
+    activeSafetyFilterCount,
+  } = buildDrugMasterFilterViewModel({
+    masterStatusSources: masterStatusData?.sources ?? [],
+    importLogSourceOptions: IMPORT_LOG_SOURCE_OPTIONS,
+    importLogStatusOptions: IMPORT_LOG_STATUS_OPTIONS,
+    categoryOptions: CATEGORY_OPTIONS,
+    importLogSourceFilter,
+    importLogStatusFilter,
+    category,
+    safetyFilters: [genericOnly, narcoticOnly, highRiskOnly, lasaOnly, stockedOnly],
+  });
   return (
     <PageScaffold>
       <div className="space-y-4">

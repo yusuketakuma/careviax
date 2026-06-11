@@ -80,6 +80,60 @@ export function formatFormularyRequestActionLabel(actionType: string) {
   }
 }
 
+type LabelOption<TValue extends string> = {
+  value: TValue;
+  label: string;
+};
+
+type MasterStatusSource = {
+  freshness: string;
+};
+
+export function buildDrugMasterFilterViewModel<
+  TImportSource extends string,
+  TImportStatus extends string,
+  TCategory extends string,
+>({
+  masterStatusSources,
+  importLogSourceOptions,
+  importLogStatusOptions,
+  categoryOptions,
+  importLogSourceFilter,
+  importLogStatusFilter,
+  category,
+  safetyFilters,
+}: {
+  masterStatusSources: MasterStatusSource[];
+  importLogSourceOptions: ReadonlyArray<LabelOption<TImportSource>>;
+  importLogStatusOptions: ReadonlyArray<LabelOption<TImportStatus>>;
+  categoryOptions: ReadonlyArray<LabelOption<TCategory>>;
+  importLogSourceFilter: TImportSource;
+  importLogStatusFilter: TImportStatus;
+  category: TCategory;
+  safetyFilters: boolean[];
+}) {
+  const staleSourceCount = masterStatusSources.filter((source) =>
+    ['stale', 'never'].includes(source.freshness),
+  ).length;
+  const agingSourceCount = masterStatusSources.filter(
+    (source) => source.freshness === 'aging',
+  ).length;
+
+  return {
+    staleSourceCount,
+    agingSourceCount,
+    selectedImportLogSourceLabel:
+      importLogSourceOptions.find((option) => option.value === importLogSourceFilter)?.label ??
+      'すべてのソース',
+    selectedImportLogStatusLabel:
+      importLogStatusOptions.find((option) => option.value === importLogStatusFilter)?.label ??
+      'すべての状態',
+    selectedCategoryLabel:
+      categoryOptions.find((option) => option.value === category)?.label ?? '全薬効分類',
+    activeSafetyFilterCount: safetyFilters.filter(Boolean).length,
+  };
+}
+
 type FormularyOperationsStock = {
   drug_master: {
     yj_code: string;
