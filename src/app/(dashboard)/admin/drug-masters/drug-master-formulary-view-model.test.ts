@@ -3,6 +3,7 @@ import {
   buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
+  buildDrugMasterSiteHeaderViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -261,6 +262,41 @@ describe('buildBulkPreviewViewModel', () => {
     expect(model.canApplyBulkPreview).toBe(false);
   });
 
+  it('keeps expanded preview rows complete, stable by row number, and does not mutate source rows', () => {
+    const rows = [
+      { rowNumber: 10, status: 'invalid' },
+      { rowNumber: 2, status: 'invalid' },
+      { rowNumber: 1, status: 'unmatched' },
+      { rowNumber: 3, status: 'create' },
+      { rowNumber: 4, status: 'update' },
+      { rowNumber: 5, status: 'deactivate' },
+      { rowNumber: 6, status: 'no_change' },
+    ];
+
+    const model = buildBulkPreviewViewModel({
+      bulkPreview: {
+        preview: {
+          summary: {
+            ...summary,
+            unmatchedCount: 1,
+            invalidCount: 2,
+          },
+          rows,
+        },
+      },
+      bulkPreviewExpanded: true,
+      effectiveSelectedSiteId: 'site_1',
+      bulkCsv: '   \n\t',
+    });
+
+    expect(model.bulkPreviewRowsForDisplay.map((row) => row.rowNumber)).toEqual([
+      1, 2, 10, 3, 4, 5, 6,
+    ]);
+    expect(model.visibleBulkPreviewRows).toHaveLength(7);
+    expect(model.canApplyBulkPreview).toBe(false);
+    expect(rows.map((row) => row.rowNumber)).toEqual([10, 2, 1, 3, 4, 5, 6]);
+  });
+
   it('allows apply only with a selected site, non-empty csv, no blocking rows, and processable rows', () => {
     const basePreview = {
       preview: {
@@ -320,6 +356,53 @@ describe('buildBulkPreviewViewModel', () => {
       visibleBulkPreviewRows: [],
       canApplyBulkPreview: false,
     });
+  });
+});
+
+describe('buildDrugMasterSiteHeaderViewModel', () => {
+  it('derives the effective site, copy sources, and formulary header copy', () => {
+    const model = buildDrugMasterSiteHeaderViewModel({
+      variant: 'formulary',
+      selectedSiteId: '',
+      sites: [
+        { id: 'site_1', name: '本店' },
+        { id: 'site_2', name: '分店' },
+      ],
+    });
+
+    expect(model).toEqual({
+      effectiveSelectedSiteId: 'site_1',
+      copySourceSites: [{ id: 'site_2', name: '分店' }],
+      headerTitle: '採用薬マスター',
+      headerDescription:
+        '拠点ごとの採用品設定と優先後発品を確認し、処方受付で使う採用薬候補を整備します。',
+    });
+  });
+
+  it('preserves an explicit selected site and falls back cleanly with no sites', () => {
+    expect(
+      buildDrugMasterSiteHeaderViewModel({
+        variant: 'master',
+        selectedSiteId: 'site_2',
+        sites: [
+          { id: 'site_1', name: '本店' },
+          { id: 'site_2', name: '分店' },
+        ],
+      }),
+    ).toEqual({
+      effectiveSelectedSiteId: 'site_2',
+      copySourceSites: [{ id: 'site_1', name: '本店' }],
+      headerTitle: '医薬品マスター',
+      headerDescription: 'SSK基本マスター・PMDA添付文書データベースの管理',
+    });
+
+    expect(
+      buildDrugMasterSiteHeaderViewModel({
+        variant: 'formulary',
+        selectedSiteId: '',
+        sites: [],
+      }).copySourceSites,
+    ).toEqual([]);
   });
 });
 

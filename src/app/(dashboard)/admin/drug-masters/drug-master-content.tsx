@@ -48,6 +48,7 @@ import {
   buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
+  buildDrugMasterSiteHeaderViewModel,
   buildFormularyOperationsViewModel,
   formatBulkPreviewStatusLabel,
   formatFormularyRequestActionLabel,
@@ -812,7 +813,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
-  const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
+  const sites = sitesData?.data ?? [];
+  const { effectiveSelectedSiteId, copySourceSites, headerTitle, headerDescription } =
+    buildDrugMasterSiteHeaderViewModel({
+      variant,
+      selectedSiteId,
+      sites,
+    });
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
@@ -1745,9 +1752,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const activeImport = IMPORT_ACTIONS.find((item) => item.key === importMutation.variables);
 
   const drugs = data?.data ?? [];
-  const sites = sitesData?.data ?? [];
   const formularyTemplates = formularyTemplatesQuery.data?.data ?? [];
-  const copySourceSites = sites.filter((site) => site.id !== effectiveSelectedSiteId);
   const importLogs = importLogsData?.data ?? [];
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
@@ -1809,11 +1814,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
   const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
   const ingredientGroup = ingredientGroupQuery.data ?? null;
-  const headerTitle = variant === 'formulary' ? '採用薬マスター' : '医薬品マスター';
-  const headerDescription =
-    variant === 'formulary'
-      ? '拠点ごとの採用品設定と優先後発品を確認し、処方受付で使う採用薬候補を整備します。'
-      : 'SSK基本マスター・PMDA添付文書データベースの管理';
   const headerShortcuts =
     variant === 'formulary' ? getAdminFormularyShortcutLinks() : getAdminDrugMasterShortcutLinks();
 

@@ -138,6 +138,32 @@ type SelectionDrug = {
   id: string;
 };
 
+type SiteHeaderSite = {
+  id: string;
+};
+
+export function buildDrugMasterSiteHeaderViewModel<TSite extends SiteHeaderSite>({
+  variant,
+  selectedSiteId,
+  sites,
+}: {
+  variant: 'master' | 'formulary';
+  selectedSiteId: string;
+  sites: TSite[];
+}) {
+  const effectiveSelectedSiteId = selectedSiteId || sites[0]?.id || '';
+
+  return {
+    effectiveSelectedSiteId,
+    copySourceSites: sites.filter((site) => site.id !== effectiveSelectedSiteId),
+    headerTitle: variant === 'formulary' ? '採用薬マスター' : '医薬品マスター',
+    headerDescription:
+      variant === 'formulary'
+        ? '拠点ごとの採用品設定と優先後発品を確認し、処方受付で使う採用薬候補を整備します。'
+        : 'SSK基本マスター・PMDA添付文書データベースの管理',
+  };
+}
+
 type SelectionPendingRequest = {
   drug_master_id: string;
 };
