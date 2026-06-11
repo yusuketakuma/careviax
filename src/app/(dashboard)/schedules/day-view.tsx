@@ -275,6 +275,40 @@ type ScheduleDayViewProps = {
   highlightedScheduleId?: string;
 };
 
+type ProposalConfirmAction = {
+  proposal: Proposal;
+  action: 'approve' | 'confirm';
+};
+
+function proposalConfirmActionLabel(action: ProposalConfirmAction['action']) {
+  return action === 'approve' ? '承認して架電へ進める' : '日時確定する';
+}
+
+function proposalConfirmResultLabel(action: ProposalConfirmAction['action']) {
+  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
+}
+
+function canExecuteProposalConfirmAction(action: ProposalConfirmAction) {
+  if (action.action === 'approve') {
+    return ['proposed', 'reschedule_pending'].includes(action.proposal.proposal_status);
+  }
+
+  return (
+    action.proposal.proposal_status === 'patient_contact_pending' &&
+    action.proposal.patient_contact_status === 'confirmed'
+  );
+}
+
+function shortEntityIdentifier(value: string | null | undefined) {
+  const candidate = value?.trim();
+  if (!candidate) return '未設定';
+  return candidate.length <= 8 ? candidate : candidate.slice(-8);
+}
+
+function proposalSafeIdentifierLabel(proposal: Pick<Proposal, 'case_id' | 'id'>) {
+  return `ケース ${shortEntityIdentifier(proposal.case_id)} / 候補 ${shortEntityIdentifier(proposal.id)}`;
+}
+
 export function ScheduleDayView({
   initialSelectedDate,
   initialTab = 'confirmed',
@@ -316,6 +350,9 @@ export function ScheduleDayView({
     priority: 'normal' as VisitPriority,
   });
   const [contactLogTarget, setContactLogTarget] = useState<Proposal | null>(null);
+  const [proposalConfirmAction, setProposalConfirmAction] = useState<ProposalConfirmAction | null>(
+    null,
+  );
   const [contactLogForm, setContactLogForm] = useState<ScheduleDayContactLogForm>(() =>
     getDefaultScheduleDayContactLogForm(),
   );
@@ -535,6 +572,23 @@ export function ScheduleDayView({
     () => buildScheduleDaySelectedDateProposals(proposals, selectedDate),
     [proposals, selectedDate],
   );
+  const currentProposalConfirmAction = useMemo(() => {
+    if (!proposalConfirmAction) return null;
+
+    const currentProposal =
+      selectedDateProposals.find((proposal) => proposal.id === proposalConfirmAction.proposal.id) ??
+      proposalConfirmAction.proposal;
+
+    return currentProposal === proposalConfirmAction.proposal
+      ? proposalConfirmAction
+      : { ...proposalConfirmAction, proposal: currentProposal };
+  }, [proposalConfirmAction, selectedDateProposals]);
+  const proposalConfirmTargetCurrent = proposalConfirmAction
+    ? selectedDateProposals.some((proposal) => proposal.id === proposalConfirmAction.proposal.id)
+    : false;
+  const proposalConfirmActionExecutable = currentProposalConfirmAction
+    ? proposalConfirmTargetCurrent && canExecuteProposalConfirmAction(currentProposalConfirmAction)
+    : false;
   const proposalPreviewRequests = useMemo(
     () => buildProposalBillingPreviewRequests(selectedDateProposals),
     [selectedDateProposals],
@@ -1007,6 +1061,25 @@ export function ScheduleDayView({
     })} ${timeLabel(proposal.time_window_start, proposal.time_window_end)} の${actionLabel}`;
   }
 
+  function proposalActionContextLabel(proposal: Proposal) {
+    return `${proposal.case_.patient.name} ${format(parseISO(proposal.proposed_date), 'M/d', {
+      locale: ja,
+    })} ${timeLabel(proposal.time_window_start, proposal.time_window_end)}`;
+  }
+
+  function proposalConfirmTitle(action: ProposalConfirmAction) {
+    const contextLabel = proposalActionContextLabel(action.proposal);
+    return action.action === 'approve'
+      ? `${contextLabel} の候補を承認して架電へ進めますか`
+      : `${contextLabel} の日時を確定しますか`;
+  }
+
+  function proposalConfirmDescription(action: ProposalConfirmAction) {
+    return action.action === 'approve'
+      ? '承認後は患者連絡待ちへ進みます。患者確認はまだ完了しません。'
+      : '患者確認済みの候補から訪問予定を作成します。担当・日時・社用車を確認してから確定してください。';
+  }
+
   function scheduleActionContextLabel(schedule: VisitSchedule) {
     return `${schedule.case_.patient.name} ${format(parseISO(schedule.scheduled_date), 'M/d', {
       locale: ja,
@@ -1240,6 +1313,7 @@ export function ScheduleDayView({
       });
     },
     onSuccess: async (_data, variables) => {
+      setProposalConfirmAction(null);
       await handleScheduleDayProposalActionSuccess({
         orgId,
         payload: variables.payload,
@@ -2360,10 +2434,7 @@ export function ScheduleDayView({
                               size="sm"
                               aria-label={proposalActionLabel(proposal, '承認して架電へ進める')}
                               onClick={() =>
-                                proposalActionMutation.mutate({
-                                  id: proposal.id,
-                                  payload: { action: 'approve' },
-                                })
+                                setProposalConfirmAction({ proposal, action: 'approve' })
                               }
                               disabled={
                                 proposalActionMutation.isPending ||
@@ -2406,10 +2477,7 @@ export function ScheduleDayView({
                                 size="sm"
                                 aria-label={proposalActionLabel(proposal, '日時を確定')}
                                 onClick={() =>
-                                  proposalActionMutation.mutate({
-                                    id: proposal.id,
-                                    payload: { action: 'confirm' },
-                                  })
+                                  setProposalConfirmAction({ proposal, action: 'confirm' })
                                 }
                                 disabled={!canConfirm || proposalActionMutation.isPending}
                               >
@@ -3220,6 +3288,145 @@ export function ScheduleDayView({
         onCancel={() => setRescheduleApprovalTarget(null)}
         onConfirm={(scheduleId) => rescheduleApprovalMutation.mutate(scheduleId)}
       />
+
+      <AlertDialog
+        open={proposalConfirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !proposalActionMutation.isPending) {
+            setProposalConfirmAction(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {currentProposalConfirmAction
+                ? proposalConfirmTitle(currentProposalConfirmAction)
+                : '訪問候補の操作を確認します'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {currentProposalConfirmAction
+                ? proposalConfirmDescription(currentProposalConfirmAction)
+                : '対象候補を確認してから実行してください。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {currentProposalConfirmAction ? (
+            <div className="space-y-3 text-sm">
+              <dl className="grid gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">操作</dt>
+                  <dd className="font-medium">
+                    {proposalConfirmActionLabel(currentProposalConfirmAction.action)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">実行後</dt>
+                  <dd className="font-medium">
+                    {proposalConfirmResultLabel(currentProposalConfirmAction.action)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">患者</dt>
+                  <dd className="font-medium">
+                    {currentProposalConfirmAction.proposal.case_.patient.name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">候補日時</dt>
+                  <dd className="font-medium">
+                    {format(
+                      parseISO(currentProposalConfirmAction.proposal.proposed_date),
+                      'yyyy/MM/dd(E)',
+                      {
+                        locale: ja,
+                      },
+                    )}{' '}
+                    {timeLabel(
+                      currentProposalConfirmAction.proposal.time_window_start,
+                      currentProposalConfirmAction.proposal.time_window_end,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">担当</dt>
+                  <dd className="font-medium">
+                    {currentProposalConfirmAction.proposal.proposed_pharmacist?.name ??
+                      pharmacistNameById.get(
+                        currentProposalConfirmAction.proposal.proposed_pharmacist_id,
+                      ) ??
+                      '薬剤師未登録'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">社用車</dt>
+                  <dd className="font-medium">
+                    {formatVehicleResourceLabel(
+                      currentProposalConfirmAction.proposal.vehicle_resource,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">候補状態</dt>
+                  <dd className="font-medium">
+                    {PROPOSAL_STATUS_LABELS[currentProposalConfirmAction.proposal.proposal_status]}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">患者連絡</dt>
+                  <dd className="font-medium">
+                    {
+                      CONTACT_STATUS_LABELS[
+                        currentProposalConfirmAction.proposal.patient_contact_status
+                      ]
+                    }
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-xs text-muted-foreground">識別子</dt>
+                  <dd className="font-medium">
+                    {proposalSafeIdentifierLabel(currentProposalConfirmAction.proposal)}
+                  </dd>
+                </div>
+              </dl>
+              {!proposalConfirmActionExecutable && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  候補状態が変わりました。最新の候補状態を確認してから操作してください。
+                </p>
+              )}
+              <p className="text-xs leading-5 text-muted-foreground">
+                住所、電話番号、薬剤名、処方の細部はこの確認画面には表示しません。対象患者、候補日時、担当、社用車、識別子が一致している場合のみ実行してください。
+              </p>
+            </div>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={proposalActionMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!currentProposalConfirmAction || !proposalConfirmActionExecutable) return;
+                proposalActionMutation.mutate({
+                  id: currentProposalConfirmAction.proposal.id,
+                  payload: { action: currentProposalConfirmAction.action },
+                });
+              }}
+              disabled={
+                !currentProposalConfirmAction ||
+                !proposalConfirmActionExecutable ||
+                proposalActionMutation.isPending
+              }
+            >
+              {proposalActionMutation.isPending
+                ? '処理中...'
+                : currentProposalConfirmAction
+                  ? proposalConfirmActionLabel(currentProposalConfirmAction.action)
+                  : '実行'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={routeOrderConfirmOpen}

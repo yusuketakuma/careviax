@@ -939,6 +939,269 @@ describe('ScheduleDayView', () => {
     ).toBeTruthy();
   });
 
+  it('requires confirmation before approving or confirming daily proposal cards', async () => {
+    const mutationCalls: unknown[] = [];
+    useMutationMock.mockImplementation(
+      (options: { onSuccess?: (data: unknown, variables: unknown) => unknown }) => ({
+        mutate: vi.fn((variables: unknown) => {
+          mutationCalls.push(variables);
+          void options.onSuccess?.({}, variables);
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: {
+            data: [
+              buildProposal({
+                id: 'proposal_approve',
+                proposal_status: 'proposed',
+                patient_contact_status: 'pending',
+                vehicle_resource: { id: 'vehicle_1', label: '社用車A' },
+                proposal_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+              }),
+              buildProposal({
+                id: 'proposal_confirm',
+                proposal_status: 'patient_contact_pending',
+                patient_contact_status: 'confirmed',
+                time_window_start: '2026-04-09T10:00:00.000Z',
+                time_window_end: '2026-04-09T11:00:00.000Z',
+                case_: {
+                  patient: {
+                    id: 'patient_2',
+                    name: '佐藤太郎',
+                    residences: [
+                      {
+                        address: '東京都渋谷区3-3-3',
+                        lat: 35.3,
+                        lng: 139.3,
+                      },
+                    ],
+                  },
+                },
+                vehicle_resource: { id: 'vehicle_2', label: '社用車B' },
+                proposal_reason: '東京都渋谷区3-3-3 080-1111-2222 カンデサルタン 処方詳細',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*承認して架電へ進める/,
+      }),
+    );
+    expect(mutationCalls).toHaveLength(0);
+    let dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*候補を承認して架電へ進めますか/,
+    });
+    expect(within(dialog).getByText('患者連絡待ち')).toBeTruthy();
+    expect(within(dialog).getByText('社用車A')).toBeTruthy();
+    expect(within(dialog).getByText('ケース case_1 / 候補 _approve')).toBeTruthy();
+    expect(dialog.textContent ?? '').not.toContain('東京都港区2-2-2');
+    expect(dialog.textContent ?? '').not.toContain('090-1234-5678');
+    expect(dialog.textContent ?? '').not.toContain('アムロジピン');
+    expect(dialog.textContent ?? '').not.toContain('処方詳細');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+    expect(mutationCalls).toHaveLength(0);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*承認して架電へ進める/,
+      }),
+    );
+    dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*候補を承認して架電へ進めますか/,
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '承認して架電へ進める' }));
+    expect(mutationCalls).toContainEqual({
+      id: 'proposal_approve',
+      payload: { action: 'approve' },
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /佐藤太郎.*4\/9.*19:00 - 20:00.*日時を確定/,
+      }),
+    );
+    expect(mutationCalls).toHaveLength(1);
+    dialog = screen.getByRole('alertdialog', {
+      name: /佐藤太郎.*日時を確定しますか/,
+    });
+    expect(within(dialog).getByText('訪問予定確定')).toBeTruthy();
+    expect(within(dialog).getByText('患者確認済み')).toBeTruthy();
+    expect(within(dialog).getByText('社用車B')).toBeTruthy();
+    expect(within(dialog).getByText('ケース case_1 / 候補 _confirm')).toBeTruthy();
+    expect(dialog.textContent ?? '').not.toContain('東京都渋谷区3-3-3');
+    expect(dialog.textContent ?? '').not.toContain('080-1111-2222');
+    expect(dialog.textContent ?? '').not.toContain('カンデサルタン');
+    expect(dialog.textContent ?? '').not.toContain('処方詳細');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '日時確定する' }));
+    expect(mutationCalls).toContainEqual({
+      id: 'proposal_confirm',
+      payload: { action: 'confirm' },
+    });
+  });
+
+  it('disables a daily proposal confirmation when realtime status becomes stale', async () => {
+    const mutationCalls: unknown[] = [];
+    let contactStatus = 'confirmed';
+    useMutationMock.mockImplementation(() => ({
+      mutate: vi.fn((variables: unknown) => {
+        mutationCalls.push(variables);
+      }),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }));
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: {
+            data: [
+              buildProposal({
+                id: 'proposal_stale',
+                proposal_status: 'patient_contact_pending',
+                patient_contact_status: contactStatus,
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    const { rerender } = await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*日時を確定/,
+      }),
+    );
+    let dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*日時を確定しますか/,
+    });
+    expect(within(dialog).getByText('患者確認済み')).toBeTruthy();
+
+    contactStatus = 'attempted';
+    await act(async () => {
+      rerender(<ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />);
+      await Promise.resolve();
+    });
+
+    dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*日時を確定しますか/,
+    });
+    expect(within(dialog).getByText('架電済み')).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        '候補状態が変わりました。最新の候補状態を確認してから操作してください。',
+      ),
+    ).toBeTruthy();
+    const actionButton = within(dialog).getByRole('button', { name: '日時確定する' });
+    expect((actionButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(actionButton);
+    expect(mutationCalls).toHaveLength(0);
+  });
+
+  it('disables a daily proposal confirmation when the realtime target disappears', async () => {
+    const mutationCalls: unknown[] = [];
+    let proposals = [
+      buildProposal({
+        id: 'proposal_removed',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+      }),
+    ];
+    useMutationMock.mockImplementation(() => ({
+      mutate: vi.fn((variables: unknown) => {
+        mutationCalls.push(variables);
+      }),
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }));
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: { data: proposals },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    const { rerender } = await renderScheduleDayView(
+      <ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /山田花子.*4\/9.*18:00 - 19:00.*承認して架電へ進める/,
+      }),
+    );
+    let dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*候補を承認して架電へ進めますか/,
+    });
+    expect(within(dialog).getByText('提案中')).toBeTruthy();
+
+    proposals = [];
+    await act(async () => {
+      rerender(<ScheduleDayView initialSelectedDate="2026-04-09" initialTab="proposals" />);
+      await Promise.resolve();
+    });
+
+    dialog = screen.getByRole('alertdialog', {
+      name: /山田花子.*候補を承認して架電へ進めますか/,
+    });
+    expect(
+      within(dialog).getByText(
+        '候補状態が変わりました。最新の候補状態を確認してから操作してください。',
+      ),
+    ).toBeTruthy();
+    const actionButton = within(dialog).getByRole('button', { name: '承認して架電へ進める' });
+    expect((actionButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(actionButton);
+    expect(mutationCalls).toHaveLength(0);
+  });
+
   it('opens, resets, and closes the contact log dialog from proposal cards', async () => {
     const mutationCalls: unknown[] = [];
     useMutationMock.mockImplementation(
