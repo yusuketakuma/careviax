@@ -1,16 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import {
-  Document,
-  Font,
-  Page,
-  StyleSheet,
-  Text,
-  View,
-  type DocumentProps,
-  renderToBuffer,
-} from '@react-pdf/renderer';
-import { prisma } from '@/lib/db/client';
+import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type {
   BaselineContext,
   CareManagerReportContent,
@@ -60,11 +48,13 @@ import {
   getConferenceNoteRecord,
   type ConferenceNotePdfRecord,
 } from '@/server/services/pdf-conference-note-record';
-
-type PdfRenderResult = {
-  buffer: Buffer;
-  fileName: string;
-};
+import {
+  formatPdfDate,
+  getPdfBranding,
+  renderPdf,
+  sanitizePdfFileName,
+  type PdfRenderResult,
+} from '@/server/services/pdf-rendering';
 
 type PdfShellProps = {
   title: string;
@@ -83,8 +73,6 @@ type KeyValueRow = {
 type MedicationCalendarRecord = MedicationHistoryRecord & {
   month: Date;
 };
-
-let fontRegistered = false;
 
 const CONFERENCE_NOTE_TYPE_LABELS: Record<string, string> = {
   regular: '定例会議',
@@ -309,50 +297,6 @@ const styles = StyleSheet.create({
   },
 });
 
-function ensurePdfFontRegistered() {
-  if (fontRegistered) return;
-
-  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.otf');
-  if (!fs.existsSync(fontPath)) {
-    throw new Error('PDF 用フォントを初期化できませんでした');
-  }
-
-  Font.register({
-    family: 'NotoSansJP',
-    src: fontPath,
-  });
-  fontRegistered = true;
-}
-
-function formatDate(value?: Date | string | null, includeTime = false) {
-  if (!value) return '—';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-
-  const datePart = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(
-    date.getDate(),
-  ).padStart(2, '0')}`;
-  if (!includeTime) return datePart;
-
-  return `${datePart} ${String(date.getHours()).padStart(2, '0')}:${String(
-    date.getMinutes(),
-  ).padStart(2, '0')}`;
-}
-
-function sanitizeFileName(value: string) {
-  return (
-    value
-      .trim()
-      .replaceAll(/[^A-Za-z0-9._-]/g, '_')
-      .replaceAll(/_+/g, '_')
-      .replaceAll(/^_+|_+$/g, '') || 'document'
-  );
-}
-
-function inferPharmacyName(orgName?: string | null, siteName?: string | null) {
-  return siteName?.trim() || orgName?.trim() || 'PH-OS薬局';
-}
-
 function PdfShell({
   title,
   subtitle,
@@ -372,7 +316,7 @@ function PdfShell({
           <Text style={styles.headerMeta}>
             {pharmacyName}
             {'\n'}
-            出力日時: {formatDate(generatedAt, true)}
+            出力日時: {formatPdfDate(generatedAt, true)}
           </Text>
         </View>
 
@@ -886,13 +830,13 @@ function renderManagementPlanContent(plan: ManagementPlanRecord) {
         <KeyValueCards
           rows={[
             { label: '患者名', value: plan.patient.name },
-            { label: '生年月日', value: formatDate(plan.patient.birth_date) },
+            { label: '生年月日', value: formatPdfDate(plan.patient.birth_date) },
             { label: '性別', value: plan.patient.gender },
             { label: '版数', value: `v${plan.version}` },
             { label: '状態', value: plan.status },
-            { label: '適用開始日', value: formatDate(plan.effective_from) },
-            { label: '次回見直し日', value: formatDate(plan.next_review_date) },
-            { label: '承認日', value: formatDate(plan.approved_at) },
+            { label: '適用開始日', value: formatPdfDate(plan.effective_from) },
+            { label: '次回見直し日', value: formatPdfDate(plan.next_review_date) },
+            { label: '承認日', value: formatPdfDate(plan.approved_at) },
           ]}
         />
       </Section>
@@ -917,7 +861,7 @@ function renderMedicationHistoryContent(record: MedicationHistoryRecord) {
         <KeyValueCards
           rows={[
             { label: '患者名', value: record.patient.name },
-            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
             { label: '患者ID', value: record.patient.id },
           ]}
@@ -932,8 +876,8 @@ function renderMedicationHistoryContent(record: MedicationHistoryRecord) {
             item.drug_name,
             item.dose ?? '',
             item.frequency ?? '',
-            formatDate(item.start_date),
-            formatDate(item.end_date),
+            formatPdfDate(item.start_date),
+            formatPdfDate(item.end_date),
             item.prescriber ?? '',
           ])}
         />
@@ -1031,7 +975,7 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
           rows={[
             { label: '患者名', value: record.patient.name },
             { label: '患者ID', value: record.patient.id },
-            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
           ]}
         />
@@ -1040,7 +984,7 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
       <Section title="訪問情報">
         <KeyValueCards
           rows={[
-            { label: '訪問日', value: formatDate(record.visit_date) },
+            { label: '訪問日', value: formatPdfDate(record.visit_date) },
             {
               label: '訪問タイプ',
               value: record.schedule
@@ -1058,9 +1002,9 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
             },
             {
               label: '最終更新日時',
-              value: formatDate(record.updated_at, true),
+              value: formatPdfDate(record.updated_at, true),
             },
-            { label: '作成日時', value: formatDate(record.created_at, true) },
+            { label: '作成日時', value: formatPdfDate(record.created_at, true) },
             { label: '版数', value: `v${record.version}` },
           ]}
         />
@@ -1087,8 +1031,8 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
                   record.receipt_person_relation)
                 : '—'
             }`,
-            `受領日時: ${formatDate(record.receipt_at, true)}`,
-            `次回訪問提案日: ${formatDate(record.next_visit_suggestion_date)}`,
+            `受領日時: ${formatPdfDate(record.receipt_at, true)}`,
+            `次回訪問提案日: ${formatPdfDate(record.next_visit_suggestion_date)}`,
             ...issueNotes,
           ]}
         />
@@ -1127,13 +1071,13 @@ function renderPatientVisitRecordsContent(record: PatientVisitRecordPdfRecord) {
           rows={[
             { label: '患者名', value: record.patient.name },
             { label: '患者ID', value: record.patient.id },
-            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '生年月日', value: formatPdfDate(record.patient.birth_date) },
             { label: '性別', value: record.patient.gender },
             {
               label: '期間',
               value:
                 record.dateFrom || record.dateTo
-                  ? `${formatDate(record.dateFrom)} - ${formatDate(record.dateTo)}`
+                  ? `${formatPdfDate(record.dateFrom)} - ${formatPdfDate(record.dateTo)}`
                   : '全期間',
             },
             { label: '記録件数', value: `${record.records.length}件` },
@@ -1147,13 +1091,13 @@ function renderPatientVisitRecordsContent(record: PatientVisitRecordPdfRecord) {
           widths={[16, 17, 16, 16, 18, 17]}
           compact
           rows={record.records.map((item) => [
-            formatDate(item.visit_date),
+            formatPdfDate(item.visit_date),
             item.schedule
               ? (VISIT_TYPE_LABELS[item.schedule.visit_type] ?? item.schedule.visit_type)
               : '—',
             VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
-            formatDate(item.next_visit_suggestion_date),
-            formatDate(item.updated_at, true),
+            formatPdfDate(item.next_visit_suggestion_date),
+            formatPdfDate(item.updated_at, true),
             item.last_modified_by_name ?? item.pharmacist_name ?? item.pharmacist_id,
           ])}
         />
@@ -1162,7 +1106,7 @@ function renderPatientVisitRecordsContent(record: PatientVisitRecordPdfRecord) {
       {record.records.map((item, index) => (
         <Section
           key={item.id}
-          title={`${index + 1}. ${formatDate(item.visit_date)} / ${
+          title={`${index + 1}. ${formatPdfDate(item.visit_date)} / ${
             VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status
           }`}
         >
@@ -1197,12 +1141,12 @@ function renderTracingReportContent(report: TracingReportRecord) {
         <KeyValueCards
           rows={[
             { label: '患者名', value: report.patient.name },
-            { label: '生年月日', value: formatDate(report.patient.birth_date) },
+            { label: '生年月日', value: formatPdfDate(report.patient.birth_date) },
             { label: '性別', value: report.patient.gender },
             { label: '送付先医師', value: report.sent_to_physician ?? '—' },
             { label: '状態', value: report.status },
-            { label: '送付日時', value: formatDate(report.sent_at, true) },
-            { label: '受領確認', value: formatDate(report.acknowledged_at, true) },
+            { label: '送付日時', value: formatPdfDate(report.sent_at, true) },
+            { label: '受領確認', value: formatPdfDate(report.acknowledged_at, true) },
           ]}
         />
       </Section>
@@ -1266,7 +1210,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
               label: '会議種別',
               value: CONFERENCE_NOTE_TYPE_LABELS[record.note_type] ?? record.note_type,
             },
-            { label: '開催日時', value: formatDate(record.conference_date, true) },
+            { label: '開催日時', value: formatPdfDate(record.conference_date, true) },
             { label: 'タイトル', value: record.title },
             { label: '患者名', value: record.patient?.name ?? '未紐付け' },
             { label: '施設', value: record.facility_name ?? '—' },
@@ -1311,30 +1255,6 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
   );
 }
 
-async function renderPdf(document: React.ReactElement, fileName: string) {
-  ensurePdfFontRegistered();
-  const buffer = await renderToBuffer(document as React.ReactElement<DocumentProps>);
-  return { buffer, fileName };
-}
-
-async function getPdfBranding(orgId: string) {
-  const [org, site] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { name: true },
-    }),
-    prisma.pharmacySite.findFirst({
-      where: { org_id: orgId },
-      orderBy: { created_at: 'asc' },
-      select: { name: true },
-    }),
-  ]);
-
-  return {
-    pharmacyName: inferPharmacyName(org?.name, site?.name),
-  };
-}
-
 export async function buildCareReportPdf(
   orgId: string,
   reportId: string,
@@ -1344,7 +1264,7 @@ export async function buildCareReportPdf(
     getPdfBranding(orgId),
     getCareReportRecord(orgId, reportId, accessContext),
   ]);
-  const fileName = sanitizeFileName(`care-report-${report.patient.name}-${report.id}.pdf`);
+  const fileName = sanitizePdfFileName(`care-report-${report.patient.name}-${report.id}.pdf`);
 
   return renderPdf(
     <PdfShell
@@ -1369,7 +1289,7 @@ export async function buildConferenceNotePdf(
     getConferenceNoteRecord(orgId, noteId, accessContext),
   ]);
   const subject = note.patient?.name ?? note.title;
-  const fileName = sanitizeFileName(`conference-note-${subject}-${note.id}.pdf`);
+  const fileName = sanitizePdfFileName(`conference-note-${subject}-${note.id}.pdf`);
 
   return renderPdf(
     <PdfShell
@@ -1393,7 +1313,7 @@ export async function buildManagementPlanPdf(
     getPdfBranding(orgId),
     getManagementPlanRecord(orgId, planId, accessContext),
   ]);
-  const fileName = sanitizeFileName(`management-plan-${plan.patient.name}-${plan.id}.pdf`);
+  const fileName = sanitizePdfFileName(`management-plan-${plan.patient.name}-${plan.id}.pdf`);
 
   return renderPdf(
     <PdfShell
@@ -1417,7 +1337,9 @@ export async function buildMedicationHistoryPdf(
     getPdfBranding(orgId),
     getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
-  const fileName = sanitizeFileName(`medications-${record.patient.name}-${record.patient.id}.pdf`);
+  const fileName = sanitizePdfFileName(
+    `medications-${record.patient.name}-${record.patient.id}.pdf`,
+  );
 
   return renderPdf(
     <PdfShell
@@ -1441,14 +1363,14 @@ export async function buildVisitRecordPdf(
     getPdfBranding(orgId),
     getVisitRecordEntry(orgId, recordId, accessContext),
   ]);
-  const fileName = sanitizeFileName(
-    `visit-record-${record.patient.name}-${formatDate(record.visit_date).replaceAll('/', '')}-${record.id}.pdf`,
+  const fileName = sanitizePdfFileName(
+    `visit-record-${record.patient.name}-${formatPdfDate(record.visit_date).replaceAll('/', '')}-${record.id}.pdf`,
   );
 
   return renderPdf(
     <PdfShell
       title="訪問記録（薬歴）"
-      subtitle={`${record.patient.name} / ${formatDate(record.visit_date)}`}
+      subtitle={`${record.patient.name} / ${formatPdfDate(record.visit_date)}`}
       pharmacyName={branding.pharmacyName}
       generatedAt={new Date()}
     >
@@ -1480,7 +1402,7 @@ export async function buildPatientVisitRecordsPdf(
       accessContext,
     ),
   ]);
-  const fileName = sanitizeFileName(
+  const fileName = sanitizePdfFileName(
     `visit-records-${record.patient.name}-${record.patient.id}${
       dateFrom || dateTo ? `-${dateFrom ?? 'start'}-${dateTo ?? 'end'}` : ''
     }.pdf`,
@@ -1513,7 +1435,7 @@ export async function buildMedicationCalendarPdf(
     getPdfBranding(orgId),
     getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
-  const fileName = sanitizeFileName(
+  const fileName = sanitizePdfFileName(
     `medication-calendar-${record.patient.name}-${currentMonth.getFullYear()}-${String(
       currentMonth.getMonth() + 1,
     ).padStart(2, '0')}.pdf`,
@@ -1545,7 +1467,7 @@ export async function buildTracingReportPdf(
     getPdfBranding(orgId),
     getTracingReportRecord(orgId, reportId, accessContext),
   ]);
-  const fileName = sanitizeFileName(`tracing-report-${report.patient.name}-${report.id}.pdf`);
+  const fileName = sanitizePdfFileName(`tracing-report-${report.patient.name}-${report.id}.pdf`);
 
   return renderPdf(
     <PdfShell
