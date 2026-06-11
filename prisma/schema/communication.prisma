@@ -336,8 +336,20 @@ model HandoffItem {
   entity_type String? // optional link to workflow entity
   entity_id   String?
   read_by     String[] // user IDs who confirmed reading
+  // --- responsibility transfer model (new design 12_handoff) ---
+  // All nullable for backward compatibility: legacy rows (= plain shift notes)
+  // keep every new column NULL and continue to work with the read_by flow.
+  recipient_user_id String? // who the work is handed to (User ID)
+  recipient_label   String? // display label e.g. 「佐藤さん」「鈴木さん(事務)」「事務」
+  lifecycle_status  String? // proposed / in_progress / confirming / completed
+  scope             String? // ①何を(作業の範囲)
+  rationale         String? // ②なぜ(根拠)
+  deadline          DateTime? // ③いつまで(期限)
+  progress_done     Int? // 作業中 9/12 の 9
+  progress_total    Int? // 作業中 9/12 の 12
   created_by  String
   created_at  DateTime     @default(now())
 
   @@index([board_id])
+  @@index([recipient_user_id])
 }

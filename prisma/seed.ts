@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { seedDesignFidelityDemo } from './seed-design-demo';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -65,6 +66,8 @@ const SEED_IDS = {
   org: 'cmnhseedorg0000amq9ph-os',
   site: 'cmnhseedsite000amq9ph-os',
   user: 'cmnb3swgz0008wgq9gfpgjq6r',
+  /** 第2薬剤師「佐藤」: 二人制監査の調剤者表示・施設セット担当(design demo) */
+  userSato: 'cmnhseedusr002amq9ph-os',
   prescriberInstitution: 'cmnhseedinst001amq9ph-os',
   pcaPumpAvailable: 'cmnhseedpca001amq9ph-os',
   pcaPumpRented: 'cmnhseedpca002amq9ph-os',
@@ -274,6 +277,51 @@ async function main() {
       user_id: user.id,
       site_id: site.id,
       role: 'owner',
+      can_dispense: true,
+      can_audit_dispense: true,
+      can_set: true,
+      can_audit_set: true,
+    },
+  });
+
+  // 第2ユーザー（薬剤師・佐藤）: 二人制監査(調剤: 佐藤 → 監査: 山田)の調剤者、
+  // 施設セットの先行準備担当、スケジュール画面の2人目レーンに使用する。
+  const userSato = await prisma.user.upsert({
+    where: { id: SEED_IDS.userSato },
+    create: {
+      id: SEED_IDS.userSato,
+      org_id: org.id,
+      cognito_sub: 'demo-cognito-sub-002',
+      cognito_username: 'sato@ph-os.example.com',
+      email: 'sato@ph-os.example.com',
+      name: '佐藤 恵',
+      name_kana: 'サトウ メグミ',
+      account_status: 'active',
+      activated_at: new Date(),
+    },
+    update: {
+      org_id: org.id,
+      cognito_sub: 'demo-cognito-sub-002',
+      cognito_username: 'sato@ph-os.example.com',
+      email: 'sato@ph-os.example.com',
+      name: '佐藤 恵',
+      name_kana: 'サトウ メグミ',
+      account_status: 'active',
+      activated_at: new Date(),
+    },
+  });
+
+  await prisma.membership.deleteMany({
+    where: {
+      user_id: userSato.id,
+    },
+  });
+  await prisma.membership.create({
+    data: {
+      org_id: org.id,
+      user_id: userSato.id,
+      site_id: site.id,
+      role: 'pharmacist',
       can_dispense: true,
       can_audit_dispense: true,
       can_set: true,
@@ -766,12 +814,20 @@ async function main() {
     org: org.id,
     site: site.id,
     user: user.id,
+    userSato: userSato.id,
     patients: patients.length,
     careCases: careCases.length,
     prescriberInstitution: institution.id,
     vehicleResource: vehicleResource.id,
     pcaPumps: [availablePump.id, rentedPump.id],
     sourceOfTruthEntries: DEFAULT_SOURCE_OF_TRUTH_MATRIX.length,
+  });
+
+  await seedDesignFidelityDemo(prisma, {
+    orgId: org.id,
+    siteId: site.id,
+    userId: user.id,
+    dispenserUserId: userSato.id,
   });
 }
 

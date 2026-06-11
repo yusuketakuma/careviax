@@ -157,6 +157,7 @@ model VisitSchedule {
   @@index([facility_unit_id])
   @@index([org_id, scheduled_date, schedule_status])
   @@index([org_id, pharmacist_id, scheduled_date])
+  @@index([org_id, pharmacist_id, scheduled_date, route_order], map: "VisitSchedule_route_cell_order_idx")
   @@index([org_id, vehicle_resource_id])
 }
 
@@ -281,6 +282,7 @@ model VisitScheduleProposal {
   @@index([case_id, proposed_date])
   @@index([site_id, proposed_date])
   @@index([org_id, vehicle_resource_id])
+  @@index([org_id, proposed_pharmacist_id, proposed_date, route_order], map: "VisitScheduleProposal_route_cell_order_idx")
 }
 
 model VisitScheduleContactLog {
