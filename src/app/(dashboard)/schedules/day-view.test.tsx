@@ -1314,6 +1314,15 @@ describe('ScheduleDayView', () => {
 
     await renderScheduleDayView(<ScheduleDayView initialSelectedDate="2026-04-09" />);
 
+    const operationsSummary = screen.getByRole('region', { name: '今日の運用サマリー' });
+    expect(
+      within(operationsSummary).getByRole('heading', { name: '今日の運用サマリー' }),
+    ).toBeTruthy();
+    expect(
+      within(operationsSummary).getByText(
+        '週次進捗、選択日の状態、日付切替を先に確認してから候補生成と日次ボードへ進みます',
+      ),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週次訪問の進捗' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間ルート運用' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '週間スケジュール' })).toBeTruthy();

@@ -1613,26 +1613,33 @@ export function ScheduleDayView({
 
   return (
     <div className="space-y-6">
-      <ScheduleBoardMetrics stats={weekProposalStats} />
+      <PageSection
+        headingId="schedule-day-operations-heading"
+        title="今日の運用サマリー"
+        description="週次進捗、選択日の状態、日付切替を先に確認してから候補生成と日次ボードへ進みます"
+        contentClassName="space-y-4"
+      >
+        <ScheduleBoardMetrics stats={weekProposalStats} />
 
-      <RouteBoardSummary
-        weekStart={weekStart}
-        weekEnd={weekEnd}
-        selectedDay={selectedDay}
-        pharmacistName={selectedCase?.primary_pharmacist_name ?? null}
-      />
+        <RouteBoardSummary
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+          selectedDay={selectedDay}
+          pharmacistName={selectedCase?.primary_pharmacist_name ?? null}
+        />
 
-      <WeeklyScheduleControls
-        visibleDays={visibleDays}
-        selectedDate={selectedDate}
-        selectedDay={selectedDay}
-        proposals={proposals}
-        schedules={schedules}
-        billedDateSet={billedDateSet}
-        nextBillableDate={billingCadence?.next_billable_date ?? null}
-        suggestedDateSet={suggestedDateSet}
-        onSelectDate={selectScheduleDate}
-      />
+        <WeeklyScheduleControls
+          visibleDays={visibleDays}
+          selectedDate={selectedDate}
+          selectedDay={selectedDay}
+          proposals={proposals}
+          schedules={schedules}
+          billedDateSet={billedDateSet}
+          nextBillableDate={billingCadence?.next_billable_date ?? null}
+          suggestedDateSet={suggestedDateSet}
+          onSelectDate={selectScheduleDate}
+        />
+      </PageSection>
 
       <PageSection
         className="md:hidden"
