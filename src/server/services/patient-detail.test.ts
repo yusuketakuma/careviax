@@ -62,7 +62,11 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
     conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
     billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
-    medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationCycle: {
+      findMany: vi.fn().mockResolvedValue([]),
+      // buildPatientWorkspace(06_card 集約): 進行中サイクルなし → workspace は null
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     patientLabObservation: { findMany: vi.fn().mockResolvedValue([]) },
     jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn().mockResolvedValue([]) },

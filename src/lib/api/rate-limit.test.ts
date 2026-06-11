@@ -382,6 +382,53 @@ describe('rate-limit', () => {
     });
   });
 
+  it('unrefs container credential and DynamoDB request timeout timers', async () => {
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/rate-limit-role';
+    resetRateLimitStoreForTests();
+    const unrefMock = vi.fn();
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        void handler;
+        void timeout;
+        void args;
+        return { unref: unrefMock } as unknown as ReturnType<typeof setTimeout>;
+      });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            AccessKeyId: 'ASIAROLE',
+            SecretAccessKey: 'role-secret-key',
+            Token: 'role-session-token',
+            Expiration: '2026-03-28T00:10:00.000Z',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Attributes: {
+              hit_count: { N: '1' },
+              reset_at: { N: '1710000000000' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: true,
+    });
+
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+    expect(unrefMock).toHaveBeenCalledTimes(2);
+  });
+
   it('prefers container role credentials over static AWS keys for rate limiting', async () => {
     process.env.RATE_LIMIT_STORE = 'dynamodb';
     process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';

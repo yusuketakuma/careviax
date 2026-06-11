@@ -219,7 +219,7 @@ export const HOME_CARE_FEATURE_DEFINITIONS: HomeCareFeatureDefinition[] = [
   },
   {
     key: 'billing_blocker_alert',
-    title: '算定ブロッカー警告',
+    title: '算定を止めている理由警告',
     description: '訪問前に請求不可の要因を拾います。',
     group: 'preparation',
     action_href: '/billing',
@@ -952,8 +952,8 @@ export async function getHomeCareFeatureSummary(
           countTask(taskCounts, 'initial_home_visit_assessment') +
           consentHuddleCount >
         0
-          ? '算定前に確認すべきブロッカーがあります。'
-          : '算定前ブロッカーは目立っていません。',
+          ? '算定前に確認すべき止まっている理由があります。'
+          : '算定前に止まっている理由は目立っていません。',
       evidence: [
         `算定レビュー ${countTask(taskCounts, 'billing_evidence_review')}件`,
         `初回算定前確認 ${countTask(taskCounts, 'initial_home_visit_assessment')}件`,

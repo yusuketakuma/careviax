@@ -29,6 +29,7 @@ import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-op
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
   CHANNEL_LABELS,
   PRIORITY_LABELS,
@@ -712,11 +713,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     billingRefs.cycleIds.length === 0
       ? { id: { in: [] } }
       : { cycle_id: { in: billingRefs.cycleIds } };
-  const currentMonthStart = new Date();
-  currentMonthStart.setHours(0, 0, 0, 0);
-  currentMonthStart.setDate(1);
-  const nextMonthStart = new Date(currentMonthStart);
-  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
+  // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
+  const todayKey = localDateKey();
+  const [currentYear, currentMonth] = todayKey.split('-').map(Number);
+  const currentMonthStart = utcDateFromLocalKey(
+    `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
+  );
+  const nextMonthStart = new Date(
+    Date.UTC(currentYear, currentMonth, 1), // monthIndex = currentMonth で翌月 1 日
+  );
 
   const [
     currentMedications,
@@ -1978,8 +1983,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             const numberChanged = currentInsurance ? currentInsurance.number !== nextNumber : true;
 
             if (numberChanged) {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
+              // valid_from / valid_until(@db.Date)へはローカル日付の UTC 深夜で書き込む
+              // (ローカル深夜だと JST では前日の日付として保存される)
+              const today = utcDateFromLocalKey(localDateKey());
 
               // Close ALL active rows for this insurance type (Fix #3: multi-active guard)
               await tx.patientInsurance.updateMany({

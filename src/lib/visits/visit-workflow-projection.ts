@@ -268,12 +268,12 @@ export function buildPostVisitWorkflowActions(args: {
       title: '算定レビュー',
       description:
         args.billingBlockerCount > 0
-          ? '算定ブロッカーを先に閉じると候補レビューの差戻しを減らせます。'
+          ? '算定を止めている理由を先に閉じると候補レビューの差戻しを減らせます。'
           : billingCandidatesLoading
             ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
             : billingCandidateCount > 0
               ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
-              : '算定ブロッカーは目立っていません。候補生成後に月次締めへ進めます。',
+              : '算定を止めている理由は目立っていません。候補生成後に月次締めへ進めます。',
       priority: args.billingBlockerCount > 0 ? 'high' : 'normal',
       status:
         args.billingBlockerCount > 0 ? 'blocked' : billingCandidatesLoading ? 'waiting' : 'ready',
@@ -282,7 +282,7 @@ export function buildPostVisitWorkflowActions(args: {
         args.billingBlockerCount > 0
           ? {
               operation: 'review_billing_blockers',
-              label: firstBillingBlocker?.action_label ?? 'ブロッカーを確認',
+              label: firstBillingBlocker?.action_label ?? '止まっている理由を確認',
               href:
                 firstBillingBlocker?.action_href ??
                 (args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined),
@@ -327,7 +327,7 @@ export function buildPostVisitWorkflowActions(args: {
           : visitBillingCandidatesHref,
       action_label:
         args.billingBlockerCount > 0
-          ? (firstBillingBlocker?.action_label ?? 'ブロッカーを確認')
+          ? (firstBillingBlocker?.action_label ?? '止まっている理由を確認')
           : billingCandidatesLoading
             ? '請求候補を確認中'
             : billingCandidateCount > 0
@@ -335,7 +335,7 @@ export function buildPostVisitWorkflowActions(args: {
               : '請求候補を生成',
       evidence:
         args.billingBlockerCount > 0
-          ? [`ブロッカー ${args.billingBlockerCount}件`]
+          ? [`止まっている理由 ${args.billingBlockerCount}件`]
           : billingCandidatesLoading
             ? ['請求候補を読み込み中']
             : ['2026要件を候補生成へ連携'],

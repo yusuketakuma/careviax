@@ -58,6 +58,7 @@ describe('outbound-webhook', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     if (originalEncryptionKey === undefined) {
       delete process.env.ENCRYPTION_KEY;
     } else {
@@ -194,6 +195,46 @@ describe('outbound-webhook', () => {
         success: true,
       },
     ]);
+  });
+
+  it('uses an unrefed cleanup timer for outbound webhook delivery requests', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'webhook_timer',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/patient',
+        secret: 'secret_1',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+    ]);
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    fetchMock.mockResolvedValue({ status: 202, ok: true });
+
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+    const abortSignalTimeoutSpy =
+      typeof AbortSignal.timeout === 'function' ? vi.spyOn(AbortSignal, 'timeout') : null;
+
+    await dispatchWebhookEventForOrg('org_1', 'patient.created', { patientId: 'patient_1' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://hooks.example.com/patient',
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+    expect(abortSignalTimeoutSpy).not.toHaveBeenCalled();
   });
 
   it('decrypts encrypted webhook secrets before signing deliveries', async () => {

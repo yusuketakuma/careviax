@@ -9,6 +9,7 @@ import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { readJsonObject } from '@/lib/db/json';
+import { createFetchTimeout } from './fetch-timeout';
 import { readWebhookSigningSecret } from './webhook-secret-encryption';
 
 export const WEBHOOK_EVENT_TYPES = [
@@ -113,6 +114,7 @@ const MAX_WEBHOOK_RETRY_LIMIT = 100;
 const DEFAULT_WEBHOOK_RETRY_CONCURRENCY = 4;
 const MAX_WEBHOOK_RETRY_CONCURRENCY = 8;
 const WEBHOOK_MAX_DELIVERY_ATTEMPTS = 8;
+const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
 
 function normalizeHostname(hostname: string) {
   return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
@@ -645,17 +647,23 @@ async function dispatchToEndpoint(
       secret_algorithm: registration.secretAlgorithm,
     });
 
-    const response = await fetch(registration.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-PH-OS-Event': payload.event,
-        'X-PH-OS-Delivery': payload.id,
-        'X-PH-OS-Signature': buildSignatureHeader(signingSecret, body),
-      },
-      body,
-      signal: AbortSignal.timeout(10_000),
-    });
+    const abort = createFetchTimeout(WEBHOOK_DELIVERY_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(registration.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-PH-OS-Event': payload.event,
+          'X-PH-OS-Delivery': payload.id,
+          'X-PH-OS-Signature': buildSignatureHeader(signingSecret, body),
+        },
+        body,
+        signal: abort.signal,
+      });
+    } finally {
+      abort.clear();
+    }
 
     const result = { ...base, statusCode: response.status, success: response.ok };
     await recordWebhookDeliveryResult(

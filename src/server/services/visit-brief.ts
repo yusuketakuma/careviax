@@ -808,7 +808,7 @@ function buildUnresolvedItems(args: {
     })),
     ...args.blockedBillingEvidence.map((item) => ({
       source_type: 'billing' as const,
-      title: '算定ブロッカー',
+      title: '算定を止めている理由',
       summary: item.blockers[0]?.reason ?? item.validation_notes ?? '算定条件の再確認が必要です。',
       severity: 'normal' as const,
       href: '/billing',

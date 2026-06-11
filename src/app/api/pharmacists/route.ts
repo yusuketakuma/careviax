@@ -11,6 +11,7 @@ import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
 
@@ -32,11 +33,12 @@ export const GET = withAuth(
     if (includeCollaborators && req.role !== 'owner' && req.role !== 'admin') {
       return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
     }
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const nextMonthStart = new Date(monthStart);
-    nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
+    // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
+    const [currentYear, currentMonth] = localDateKey().split('-').map(Number);
+    const monthStart = utcDateFromLocalKey(
+      `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
+    );
+    const nextMonthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
 
     const pharmacists = await prisma.membership.findMany({
       where: {

@@ -1,4 +1,6 @@
 import { readJsonObject } from '@/lib/db/json';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from '@/server/services/fetch-timeout';
 
 export class HttpAdapterError extends Error {
   constructor(
@@ -15,21 +17,37 @@ type FetchJsonOptions = {
   method?: string;
   headers?: Record<string, string>;
   body?: unknown;
+  timeoutMs?: number;
 };
+
+const DEFAULT_HTTP_ADAPTER_TIMEOUT_MS = 10_000;
+
+function resolveHttpAdapterTimeoutMs(timeoutMs?: number): number {
+  return normalizePositiveTimeoutMs(timeoutMs ?? process.env.HTTP_ADAPTER_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_HTTP_ADAPTER_TIMEOUT_MS,
+  });
+}
 
 export async function fetchJson(
   url: string,
   options: FetchJsonOptions = {},
 ): Promise<{ status: number; data: unknown | null }> {
-  const response = await fetch(url, {
-    method: options.method ?? 'GET',
-    headers: {
-      Accept: 'application/json',
-      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  const abort = createFetchTimeout(resolveHttpAdapterTimeoutMs(options.timeoutMs));
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: options.method ?? 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...options.headers,
+      },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: abort.signal,
+    });
+  } finally {
+    abort.clear();
+  }
 
   if (response.status === 204) {
     return { status: response.status, data: null };

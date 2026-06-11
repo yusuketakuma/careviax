@@ -3,7 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -94,7 +94,10 @@ export const PATCH = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const orderedIds = Array.from(new Set(parsed.data.ordered_schedule_ids));
+    const orderedIds = parsed.data.ordered_schedule_ids;
+    if (new Set(orderedIds).size !== orderedIds.length) {
+      return validationError('同じ訪問予定IDを複数回指定できません');
+    }
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
@@ -125,14 +128,24 @@ export const PATCH = withAuth(
         return { error: 'incomplete_schedule_order' as const };
       }
 
-      await Promise.all(
+      const updateResults = await Promise.all(
         orderedIds.map((scheduleId, index) =>
-          tx.visitSchedule.update({
-            where: { id: scheduleId },
-            data: { route_order: index + 1 },
+          tx.visitSchedule.updateMany({
+            where: {
+              org_id: req.orgId,
+              id: scheduleId,
+              facility_batch_id: id,
+            },
+            data: {
+              route_order: index + 1,
+              version: { increment: 1 },
+            },
           }),
         ),
       );
+      if (updateResults.some((updateResult) => updateResult.count !== 1)) {
+        return { error: 'stale_schedule' as const };
+      }
 
       return { updated: true, order: orderedIds };
     });
@@ -149,6 +162,9 @@ export const PATCH = withAuth(
       }
       if (result.error === 'incomplete_schedule_order') {
         return validationError('バッチ内のすべての訪問予定IDを指定してください');
+      }
+      if (result.error === 'stale_schedule') {
+        return conflict('施設一括訪問の順序が同時に更新されました。再読み込みしてください');
       }
     }
 

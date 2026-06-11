@@ -15,6 +15,7 @@ import type {
 } from './billing-runtime-context';
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
@@ -52,8 +53,8 @@ async function findPendingPublicSubsidyInsurance(args: {
   patientId: string;
   asOf: Date;
 }): Promise<PublicSubsidyApplicationPreview> {
-  const asOf = new Date(args.asOf);
-  asOf.setHours(0, 0, 0, 0);
+  // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜で比較する
+  const asOf = utcDateFromLocalKey(localDateKey(args.asOf));
 
   const [record] = await prisma.patientInsurance.findMany({
     where: {

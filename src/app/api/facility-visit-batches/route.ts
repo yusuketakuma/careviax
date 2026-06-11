@@ -3,9 +3,10 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { forbidden, success, validationError } from '@/lib/api/response';
+import { conflict, forbidden, success, validationError } from '@/lib/api/response';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const upsertFacilityVisitBatchSchema = z
@@ -76,6 +77,10 @@ function formatCarryItemsStatusForError(status: string | null) {
   return '持参物ステータス未判定';
 }
 
+function hasDuplicateValue(values: string[]) {
+  return new Set(values).size !== values.length;
+}
+
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -86,11 +91,14 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const requestedIds = Array.from(new Set(parsed.data.schedule_ids ?? []));
-    const orderedIds =
-      parsed.data.ordered_schedule_ids != null
-        ? Array.from(new Set(parsed.data.ordered_schedule_ids))
-        : null;
+    const requestedIds = parsed.data.schedule_ids ?? [];
+    const orderedIds = parsed.data.ordered_schedule_ids ?? null;
+    if (hasDuplicateValue(requestedIds)) {
+      return validationError('同じ訪問予定IDを複数回指定できません');
+    }
+    if (orderedIds && hasDuplicateValue(orderedIds)) {
+      return validationError('同じ順序指定IDを複数回指定できません');
+    }
     if (orderedIds && requestedIds.length > 0 && orderedIds.length !== requestedIds.length) {
       return validationError('順序指定と対象予定数が一致しません');
     }
@@ -137,6 +145,7 @@ export const POST = withAuth(
             pharmacist_id: true,
             scheduled_date: true,
             facility_batch_id: true,
+            version: true,
             case_id: true,
             carry_items_status: true,
             preparation: {
@@ -288,6 +297,38 @@ export const POST = withAuth(
         }
       }
 
+      const routeOrders = orderedSchedules.map((_schedule, index) => index + 1);
+      const targetScheduleIdsForRoute = orderedSchedules.map((schedule) => schedule.id);
+      const targetPharmacistId = orderedSchedules[0].pharmacist_id;
+      const targetDateKey = formatDateKey(orderedSchedules[0].scheduled_date);
+      const [existingScheduleRouteOrderConflict, existingProposalRouteOrderConflict] =
+        await Promise.all([
+          tx.visitSchedule.findFirst({
+            where: {
+              org_id: req.orgId,
+              id: { notIn: targetScheduleIdsForRoute },
+              pharmacist_id: targetPharmacistId,
+              scheduled_date: new Date(targetDateKey),
+              route_order: { in: routeOrders },
+            },
+            select: { id: true },
+          }),
+          tx.visitScheduleProposal.findFirst({
+            where: {
+              org_id: req.orgId,
+              proposed_pharmacist_id: targetPharmacistId,
+              proposed_date: new Date(targetDateKey),
+              route_order: { in: routeOrders },
+              finalized_schedule_id: null,
+              proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+            },
+            select: { id: true },
+          }),
+        ]);
+      if (existingScheduleRouteOrderConflict || existingProposalRouteOrderConflict) {
+        return { error: 'duplicate_route_order' as const };
+      }
+
       const batch =
         existingBatchIds.length === 1
           ? await tx.facilityVisitBatch.update({
@@ -311,17 +352,26 @@ export const POST = withAuth(
               },
             });
 
-      await Promise.all(
+      const updateResults = await Promise.all(
         orderedSchedules.map((schedule, index) =>
-          tx.visitSchedule.update({
-            where: { id: schedule.id },
+          tx.visitSchedule.updateMany({
+            where: {
+              org_id: req.orgId,
+              id: schedule.id,
+              facility_batch_id: schedule.facility_batch_id,
+              version: schedule.version,
+            },
             data: {
               facility_batch_id: batch.id,
               route_order: index + 1,
+              version: { increment: 1 },
             },
           }),
         ),
       );
+      if (updateResults.some((updateResult) => updateResult.count !== 1)) {
+        return { error: 'stale_schedule' as const };
+      }
 
       if (parsed.data.carry_items_confirmed) {
         await Promise.all(
@@ -417,6 +467,12 @@ export const POST = withAuth(
       }
       if (result.error === 'ordered_contains_unknown') {
         return validationError('順序指定に自動取得対象外の訪問予定が含まれています');
+      }
+      if (result.error === 'duplicate_route_order') {
+        return validationError('同一セル内で route_order は重複できません');
+      }
+      if (result.error === 'stale_schedule') {
+        return conflict('施設一括訪問の対象予定が同時に更新されました。再読み込みしてください');
       }
     }
 

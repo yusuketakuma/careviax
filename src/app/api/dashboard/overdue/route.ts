@@ -1,14 +1,9 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
 import type { DashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
-
-function startOfDay(value = new Date()) {
-  const next = new Date(value);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
 
 function buildOverdueTaskAssignmentWhere(scope: DashboardAssignmentScope) {
   if (scope.caseIds === undefined && scope.patientIds === undefined) return {};
@@ -37,7 +32,8 @@ function buildOverdueTaskAssignmentWhere(scope: DashboardAssignmentScope) {
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
-    const today = startOfDay();
+    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜
+    const today = utcDateFromLocalKey(localDateKey());
     const now = new Date();
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,

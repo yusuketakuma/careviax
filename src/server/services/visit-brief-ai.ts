@@ -2,6 +2,7 @@ import type { VisitBriefAiSummary } from '@/types/visit-brief';
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from './fetch-timeout';
 
 type VisitBriefAiInput = {
   patientName: string;
@@ -95,55 +96,61 @@ export async function generateVisitBriefAiSummary(
   });
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_completion_tokens: 400,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'visit_brief_summary',
-            strict: true,
-            schema: {
-              type: 'object',
-              properties: {
-                headline: { type: 'string' },
-                bullets: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  maxItems: 3,
+    const abort = createFetchTimeout(timeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          max_completion_tokens: 400,
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'visit_brief_summary',
+              strict: true,
+              schema: {
+                type: 'object',
+                properties: {
+                  headline: { type: 'string' },
+                  bullets: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    maxItems: 3,
+                  },
+                  must_check_today: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    maxItems: 4,
+                  },
                 },
-                must_check_today: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  maxItems: 4,
-                },
+                required: ['headline', 'bullets', 'must_check_today'],
+                additionalProperties: false,
               },
-              required: ['headline', 'bullets', 'must_check_today'],
-              additionalProperties: false,
             },
           },
-        },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'あなたは在宅訪問薬剤管理の要約支援です。入力事実だけを使い、断定診断や新規の医療判断を行わず、短く端的にまとめてください。',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify(input),
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+          messages: [
+            {
+              role: 'system',
+              content:
+                'あなたは在宅訪問薬剤管理の要約支援です。入力事実だけを使い、断定診断や新規の医療判断を行わず、短く端的にまとめてください。',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(input),
+            },
+          ],
+        }),
+        signal: abort.signal,
+      });
+    } finally {
+      abort.clear();
+    }
 
     if (!response.ok) {
       console.warn('[visit-brief-ai] fallback', {

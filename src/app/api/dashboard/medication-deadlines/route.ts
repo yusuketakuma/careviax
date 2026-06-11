@@ -3,6 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 const DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS = 7;
 const MAX_MEDICATION_DEADLINE_WITHIN_DAYS = 365;
@@ -25,10 +26,9 @@ export const GET = withAuth(
     }
     const withinDays = parsed.data.within_days;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const deadline = new Date(today);
-    deadline.setDate(deadline.getDate() + withinDays);
+    // medication_end_date(@db.Date)は UTC 深夜で保存されるため UTC 深夜境界で比較する
+    const today = utcDateFromLocalKey(localDateKey());
+    const deadline = addUtcDays(today, withinDays);
 
     // Find visit schedules with medication_end_date approaching
     const schedules = await prisma.visitSchedule.findMany({
@@ -52,8 +52,7 @@ export const GET = withAuth(
     });
 
     // Group by urgency (3 days / 7 days)
-    const threeDays = new Date(today);
-    threeDays.setDate(threeDays.getDate() + 3);
+    const threeDays = addUtcDays(today, 3);
 
     const critical = schedules.filter(
       (s) => s.medication_end_date && s.medication_end_date <= threeDays,

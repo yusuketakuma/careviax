@@ -9,6 +9,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { derivePatientStatusIcon, STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
@@ -116,8 +117,8 @@ export async function trackPatientStatusChanges(
     return { changed: [], notifications: [] };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜
+  const today = utcDateFromLocalKey(localDateKey());
 
   // Fetch supplemental data for status derivation
   const [cases, lastVisits, nextVisits, overdueVisits, recentCycles] = await Promise.all([
@@ -177,7 +178,9 @@ export async function trackPatientStatusChanges(
   const nextVisitSet = new Set(nextVisits.map((v) => v.case_.patient_id));
   const overdueSet = new Set(overdueVisits.map((v) => v.case_.patient_id));
   const exceptionMap = new Map<string, string>();
-  const sevenDaysAgo = new Date(today);
+  // created_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜基準
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setHours(0, 0, 0, 0);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const recentMedChangeSet = new Set<string>();
   for (const rx of recentCycles) {

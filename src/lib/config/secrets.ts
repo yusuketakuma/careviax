@@ -23,12 +23,16 @@
  */
 
 import { readJsonObject } from '@/lib/db/json';
+import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
 
 import { APP_ENV } from './app-env';
 
 type SecretsManagerModule = {
-  SecretsManagerClient: new (args: { region: string }) => {
-    send(command: unknown): Promise<{ SecretString?: string }>;
+  SecretsManagerClient: new (args: { region: string; maxAttempts?: number }) => {
+    send(
+      command: unknown,
+      options?: { abortSignal?: AbortSignal },
+    ): Promise<{ SecretString?: string }>;
   };
   GetSecretValueCommand: new (args: { SecretId: string }) => unknown;
 };
@@ -69,7 +73,12 @@ function readRequiredSecretString(
 
 let cachedSecrets: AppSecrets | null = null;
 let cachePopulatedAt: number | null = null;
+let cachedSecretsSource: string | null = null;
 let cachedSecretsManagerModule: Promise<SecretsManagerModule | null> | null = null;
+const secretsManagerClients = new Map<
+  string,
+  InstanceType<SecretsManagerModule['SecretsManagerClient']>
+>();
 
 /** Re-fetch secrets after this many milliseconds (12 hours). */
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -80,6 +89,10 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 function secretName(): string {
   return `ph-os/${APP_ENV}/app-secrets`;
+}
+
+function secretCacheSource() {
+  return `${process.env.AWS_REGION ?? 'ap-northeast-1'}:${secretName()}`;
 }
 
 export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName()}"`): AppSecrets {
@@ -124,9 +137,10 @@ async function fetchFromSecretsManager(): Promise<AppSecrets> {
     throw new Error('SECRETS_MANAGER_SDK_UNAVAILABLE');
   }
 
-  const client = new secretsManagerModule.SecretsManagerClient({
-    region: process.env.AWS_REGION ?? 'ap-northeast-1',
-  });
+  const client = getSecretsManagerClient(
+    secretsManagerModule,
+    process.env.AWS_REGION ?? 'ap-northeast-1',
+  );
 
   const response = await client.send(
     new secretsManagerModule.GetSecretValueCommand({ SecretId: secretName() }),
@@ -138,6 +152,17 @@ async function fetchFromSecretsManager(): Promise<AppSecrets> {
   }
 
   return parseAppSecrets(raw, `Secret "${secretName()}"`);
+}
+
+function getSecretsManagerClient(secretsManagerModule: SecretsManagerModule, region: string) {
+  const cached = secretsManagerClients.get(region);
+  if (cached) return cached;
+
+  const client = withAwsClientTimeout(
+    new secretsManagerModule.SecretsManagerClient({ region, ...awsClientConfig() }),
+  );
+  secretsManagerClients.set(region, client);
+  return client;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,10 +183,7 @@ async function loadSecretsManagerModule(): Promise<SecretsManagerModule | null> 
   if (!cachedSecretsManagerModule) {
     cachedSecretsManagerModule = (async () => {
       try {
-        const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-          specifier: string,
-        ) => Promise<unknown>;
-        const loaded = await dynamicImport('@aws-sdk/client-secrets-manager');
+        const loaded = await import('@aws-sdk/client-secrets-manager');
 
         if (
           loaded &&
@@ -199,7 +221,13 @@ export async function getSecrets(): Promise<AppSecrets> {
   }
 
   const now = Date.now();
-  if (cachedSecrets && cachePopulatedAt && now - cachePopulatedAt < CACHE_TTL_MS) {
+  const source = secretCacheSource();
+  if (
+    cachedSecrets &&
+    cachePopulatedAt &&
+    cachedSecretsSource === source &&
+    now - cachePopulatedAt < CACHE_TTL_MS
+  ) {
     return cachedSecrets;
   }
 
@@ -213,6 +241,7 @@ export async function getSecrets(): Promise<AppSecrets> {
     cachedSecrets = fromEnv();
   }
   cachePopulatedAt = now;
+  cachedSecretsSource = source;
   return cachedSecrets;
 }
 
@@ -232,4 +261,5 @@ export async function getSecret<K extends keyof AppSecrets>(key: K): Promise<App
 export function clearSecretsCache(): void {
   cachedSecrets = null;
   cachePopulatedAt = null;
+  cachedSecretsSource = null;
 }

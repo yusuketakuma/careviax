@@ -328,7 +328,7 @@ export function buildHomeVisit2026ReadinessItems({
 
   const blockerItems = billingBlockers.map((blocker) => ({
     key: `billing_blocker:${blocker.key}`,
-    label: '請求根拠ブロッカー',
+    label: '請求根拠の不足',
     description: blocker.reason,
     done: false,
     required: true,

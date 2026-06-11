@@ -73,7 +73,7 @@ export const VISIT_READY_CHECKLIST_BLOCKED_MESSAGE =
   '訪問準備チェックリストが未完了のため ready へ進めません';
 
 export const VISIT_READY_CONTEXT_BLOCKED_MESSAGE =
-  '訪問準備に未解決のブロッカーがあるため ready へ進めません';
+  '訪問準備に未解決の止まっている理由があるため ready へ進めません';
 
 export const VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER = '持参物ステータス未解決';
 

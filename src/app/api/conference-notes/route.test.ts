@@ -13,9 +13,11 @@ const {
   taskCreateManyMock,
   billingCandidateUpsertMock,
   visitScheduleProposalFindFirstMock,
+  visitScheduleProposalFindManyMock,
   visitScheduleProposalCreateMock,
   visitScheduleProposalUpdateMock,
   visitScheduleFindFirstMock,
+  visitScheduleFindManyMock,
   careReportFindManyMock,
   careReportCreateManyMock,
   medicationIssueFindManyMock,
@@ -40,9 +42,11 @@ const {
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
   visitScheduleProposalFindFirstMock: vi.fn(),
+  visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
   visitScheduleProposalUpdateMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careReportCreateManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
@@ -122,11 +126,13 @@ function buildTxMock() {
     },
     visitScheduleProposal: {
       findFirst: visitScheduleProposalFindFirstMock,
+      findMany: visitScheduleProposalFindManyMock,
       create: visitScheduleProposalCreateMock,
       update: visitScheduleProposalUpdateMock,
     },
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
+      findMany: visitScheduleFindManyMock,
     },
     careReport: {
       findMany: careReportFindManyMock,
@@ -162,6 +168,8 @@ describe('/api/conference-notes', () => {
     );
 
     // default happy-path mocks
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       patient_id: 'patient_1',

@@ -352,13 +352,16 @@ export class MissingExternalAccessSecretError extends Error {
 }
 
 function getExternalAccessSecret() {
-  // EXTERNAL_ACCESS_TOKEN_SECRET is preferred; fall back to NEXTAUTH_SECRET for
-  // environments that share the NextAuth secret (e.g. test/staging).
-  const secret = process.env.EXTERNAL_ACCESS_TOKEN_SECRET ?? process.env.NEXTAUTH_SECRET;
-  if (!secret) {
-    throw new MissingExternalAccessSecretError();
+  const dedicated = process.env.EXTERNAL_ACCESS_TOKEN_SECRET;
+  if (dedicated) {
+    return dedicated;
   }
-  return secret;
+  // Production must configure the dedicated secret: sharing NEXTAUTH_SECRET
+  // would let a leaked NextAuth secret mint external-access tokens too.
+  if (process.env.NODE_ENV !== 'production' && process.env.NEXTAUTH_SECRET) {
+    return process.env.NEXTAUTH_SECRET;
+  }
+  throw new MissingExternalAccessSecretError();
 }
 
 function readRequiredTokenString(payload: Record<string, unknown>, key: string) {

@@ -36,6 +36,20 @@ function createRequest(url: string) {
   });
 }
 
+function mockBoardTx(board: unknown, monthItemCount = 0) {
+  withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+    fn({
+      handoffBoard: {
+        findUnique: vi.fn().mockResolvedValue(board),
+        create: vi.fn(),
+      },
+      handoffItem: {
+        count: vi.fn().mockResolvedValue(monthItemCount),
+      },
+    }),
+  );
+}
+
 describe('/api/handoff-board', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,17 +63,10 @@ describe('/api/handoff-board', () => {
       org_id: 'org_1',
       shift_date: '2026-04-01',
       items: [
-        { id: 'item_1', content: 'test', created_by: 'user_1' },
+        { id: 'item_1', content: 'test', created_by: 'user_1', recipient_user_id: null },
       ],
     };
-    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-      fn({
-        handoffBoard: {
-          findUnique: vi.fn().mockResolvedValue(board),
-          create: vi.fn(),
-        },
-      })
-    );
+    mockBoardTx(board, 5);
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: 'Taro' }]);
 
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
@@ -68,6 +75,7 @@ describe('/api/handoff-board', () => {
     const json = await res!.json();
     expect(json.data.id).toBe('board_1');
     expect(json.data.items[0].created_by_name).toBe('Taro');
+    expect(json.data.month_item_count).toBe(5);
   });
 
   it('returns 200 creating a new board when none exists', async () => {
@@ -83,6 +91,9 @@ describe('/api/handoff-board', () => {
           findUnique: vi.fn().mockResolvedValue(null),
           create: vi.fn().mockResolvedValue(newBoard),
         },
+        handoffItem: {
+          count: vi.fn().mockResolvedValue(0),
+        },
       })
     );
     userFindManyMock.mockResolvedValue([]);
@@ -92,5 +103,73 @@ describe('/api/handoff-board', () => {
     expect(res!.status).toBe(200);
     const json = await res!.json();
     expect(json.data.id).toBe('board_new');
+    expect(json.data.summary).toEqual({ outgoing_count: 0, incoming_count: 0 });
+  });
+
+  it('splits items into outgoing/incoming for the viewer (responsibility transfer)', async () => {
+    const board = {
+      id: 'board_1',
+      org_id: 'org_1',
+      shift_date: '2026-06-11',
+      items: [
+        // 自分が渡した(transfer)
+        {
+          id: 'item_out',
+          content: 'セット先行準備(施設GH)',
+          created_by: 'user_1',
+          recipient_user_id: 'user_2',
+          recipient_label: '鈴木さん(事務)',
+          lifecycle_status: 'in_progress',
+          read_by: [],
+        },
+        // 自分宛に来た(transfer)
+        {
+          id: 'item_in',
+          content: '疑義照会の判断をお願いします',
+          created_by: 'user_2',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          lifecycle_status: 'proposed',
+          read_by: [],
+        },
+        // legacy 申し送り(宛先なし・他人作成)→ 来た扱い
+        {
+          id: 'item_legacy',
+          content: '冷蔵庫の温度ログ確認お願いします',
+          created_by: 'user_2',
+          recipient_user_id: null,
+          read_by: [],
+        },
+      ],
+    };
+    mockBoardTx(board, 31);
+    userFindManyMock.mockResolvedValue([
+      { id: 'user_1', name: '山田 花子' },
+      { id: 'user_2', name: '鈴木 一郎' },
+    ]);
+
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    const directions = Object.fromEntries(
+      json.data.items.map((item: { id: string; direction: string }) => [item.id, item.direction]),
+    );
+    expect(directions).toEqual({
+      item_out: 'outgoing',
+      item_in: 'incoming',
+      item_legacy: 'incoming',
+    });
+    expect(json.data.summary).toEqual({ outgoing_count: 1, incoming_count: 2 });
+    expect(json.data.month_item_count).toBe(31);
+    const outgoing = json.data.items.find((item: { id: string }) => item.id === 'item_out');
+    expect(outgoing.recipient_name).toBe('鈴木 一郎');
+  });
+
+  it('returns 400 on invalid date format', async () => {
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-6-1');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(400);
   });
 });

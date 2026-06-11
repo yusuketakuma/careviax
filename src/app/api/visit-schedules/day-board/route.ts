@@ -1,0 +1,327 @@
+import { z } from 'zod';
+import { withAuthContext } from '@/lib/auth/context';
+import { success, validationError } from '@/lib/api/response';
+import { parseSearchParams } from '@/lib/api/validation';
+import { prisma } from '@/lib/db/client';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
+import type {
+  DayBoardPendingProposal,
+  DayBoardStaff,
+  DayBoardVisit,
+  ScheduleDayBoardResponse,
+} from '@/types/schedule-day-board';
+
+/**
+ * new_03_schedule(今日のスケジュール — 全員)用 BFF。
+ * 薬剤師・事務の担当者レーン(当日訪問+タスク件数)と未確定(受入判断)を
+ * 1 リクエストで返す読み取り専用集計(docs/design-gap-analysis-new.md 03_schedule)。
+ * 右レール(次にやること/止まっている理由)は /api/dashboard/cockpit を共用する。
+ */
+
+const STAFF_ROW_LIMIT = 6;
+const PENDING_PROPOSAL_LIMIT = 3;
+/** 余白試算: 勤務帯 9:00-18:00 から昼休みを除いた基準分 */
+const WORKDAY_MINUTES = 9 * 60;
+const LUNCH_MINUTES = 60;
+const TRAVEL_MINUTES_PER_VISIT = 30;
+const DEFAULT_VISIT_MINUTES = 60;
+
+const BOARD_MEMBER_ROLES = ['owner', 'admin', 'pharmacist', 'pharmacist_trainee', 'clerk'] as const;
+
+const dayBoardQuerySchema = z.object({
+  date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+});
+
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function minutesOfTimeValue(value: Date | null): number | null {
+  if (!value) return null;
+  return value.getHours() * 60 + value.getMinutes();
+}
+
+/** 訪問の占有分(時間未設定は既定 60 分)。 */
+function visitOccupiedMinutes(start: Date | null, end: Date | null): number {
+  const startMinutes = minutesOfTimeValue(start);
+  const endMinutes = minutesOfTimeValue(end);
+  if (startMinutes == null) return DEFAULT_VISIT_MINUTES;
+  if (endMinutes == null || endMinutes <= startMinutes) return DEFAULT_VISIT_MINUTES;
+  return endMinutes - startMinutes;
+}
+
+export const GET = withAuthContext(
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const parsed = parseSearchParams(dayBoardQuerySchema, searchParams);
+    if (!parsed.ok) {
+      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const now = new Date();
+    const dateKey = parsed.data.date ?? toLocalDateKey(now);
+    const dayStart = new Date(`${dateKey}T00:00:00`);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const [memberships, schedules, auditTaskGroups, openTaskGroups, reportPendingCount, proposals] =
+      await Promise.all([
+        prisma.membership.findMany({
+          where: {
+            org_id: ctx.orgId,
+            is_active: true,
+            role: { in: [...BOARD_MEMBER_ROLES] },
+          },
+          orderBy: [{ user: { name_kana: 'asc' } }],
+          select: {
+            role: true,
+            user: { select: { id: true, name: true } },
+          },
+        }),
+        prisma.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            scheduled_date: { gte: dayStart, lt: dayEnd },
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+          },
+          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+          select: {
+            id: true,
+            pharmacist_id: true,
+            visit_type: true,
+            schedule_status: true,
+            priority: true,
+            time_window_start: true,
+            time_window_end: true,
+            confirmed_at: true,
+            facility_batch_id: true,
+            facility_batch: { select: { id: true, facility_id: true } },
+            case_: { select: { patient: { select: { name: true } } } },
+          },
+        }),
+        prisma.dispenseTask.groupBy({
+          by: ['assigned_to'],
+          where: { org_id: ctx.orgId, status: 'completed' },
+          _count: { id: true },
+        }),
+        prisma.task.groupBy({
+          by: ['assigned_to'],
+          where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
+          _count: { id: true },
+        }),
+        prisma.medicationCycle.count({
+          where: { org_id: ctx.orgId, overall_status: 'visit_completed' },
+        }),
+        prisma.visitScheduleProposal.findMany({
+          where: {
+            org_id: ctx.orgId,
+            proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+            proposed_date: { gte: dayStart },
+          },
+          orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+          take: PENDING_PROPOSAL_LIMIT,
+          select: {
+            id: true,
+            visit_type: true,
+            proposal_status: true,
+            proposed_date: true,
+            time_window_start: true,
+            time_window_end: true,
+            proposed_pharmacist_id: true,
+            case_: { select: { patient: { select: { name: true } } } },
+          },
+        }),
+      ]);
+
+    // 施設名(facility_batch.facility_id → Facility.name)
+    const facilityIds = Array.from(
+      new Set(
+        schedules
+          .map((schedule) => schedule.facility_batch?.facility_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const facilities =
+      facilityIds.length === 0
+        ? []
+        : await prisma.facility.findMany({
+            where: { org_id: ctx.orgId, id: { in: facilityIds } },
+            select: { id: true, name: true },
+          });
+    const facilityNameById = new Map(facilities.map((facility) => [facility.id, facility.name]));
+    const batchPatientCounts = new Map<string, number>();
+    for (const schedule of schedules) {
+      if (!schedule.facility_batch_id) continue;
+      batchPatientCounts.set(
+        schedule.facility_batch_id,
+        (batchPatientCounts.get(schedule.facility_batch_id) ?? 0) + 1,
+      );
+    }
+
+    const auditCountByUser = new Map(
+      auditTaskGroups
+        .filter((group) => group.assigned_to)
+        .map((group) => [group.assigned_to as string, group._count.id]),
+    );
+    const unassignedAuditCount =
+      auditTaskGroups.find((group) => group.assigned_to == null)?._count.id ?? 0;
+    const openTaskCountByUser = new Map(
+      openTaskGroups
+        .filter((group) => group.assigned_to)
+        .map((group) => [group.assigned_to as string, group._count.id]),
+    );
+
+    const schedulesByPharmacist = new Map<string, typeof schedules>();
+    for (const schedule of schedules) {
+      const list = schedulesByPharmacist.get(schedule.pharmacist_id) ?? [];
+      list.push(schedule);
+      schedulesByPharmacist.set(schedule.pharmacist_id, list);
+    }
+
+    const toBoardVisit = (schedule: (typeof schedules)[number]): DayBoardVisit => ({
+      id: schedule.id,
+      patient_name: schedule.case_.patient.name,
+      visit_type: schedule.visit_type,
+      schedule_status: schedule.schedule_status,
+      priority: schedule.priority,
+      time_start: schedule.time_window_start?.toISOString() ?? null,
+      time_end: schedule.time_window_end?.toISOString() ?? null,
+      confirmed: schedule.confirmed_at != null,
+      facility_label: schedule.facility_batch
+        ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
+        : null,
+      facility_patient_count: schedule.facility_batch_id
+        ? (batchPatientCounts.get(schedule.facility_batch_id) ?? 1)
+        : 1,
+    });
+
+    // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る
+    const seenUserIds = new Set<string>();
+    const staffAll: DayBoardStaff[] = [];
+    for (const membership of memberships) {
+      if (seenUserIds.has(membership.user.id)) continue;
+      seenUserIds.add(membership.user.id);
+      staffAll.push({
+        id: membership.user.id,
+        name: membership.user.name,
+        role: membership.role,
+        role_kind: membership.role === 'clerk' ? 'clerk' : 'pharmacist',
+        visits: (schedulesByPharmacist.get(membership.user.id) ?? []).map(toBoardVisit),
+        open_task_count: openTaskCountByUser.get(membership.user.id) ?? 0,
+        audit_task_count: auditCountByUser.get(membership.user.id) ?? 0,
+      });
+    }
+    const staff = [...staffAll]
+      .sort((left, right) => {
+        if (left.role_kind !== right.role_kind) return left.role_kind === 'pharmacist' ? -1 : 1;
+        if (left.visits.length !== right.visits.length) {
+          return right.visits.length - left.visits.length;
+        }
+        return left.name.localeCompare(right.name, 'ja');
+      })
+      .slice(0, STAFF_ROW_LIMIT);
+
+    // 担当未割当の監査待ちは先頭の薬剤師行に仮配分(デスク作業ブロックの仮置き)
+    const firstPharmacist = staff.find((member) => member.role_kind === 'pharmacist');
+    if (firstPharmacist && unassignedAuditCount > 0) {
+      firstPharmacist.audit_task_count += unassignedAuditCount;
+    }
+
+    // 未確定候補: 確定した場合の担当余白(分)の変化を試算
+    const pharmacistNameById = new Map(staffAll.map((member) => [member.id, member.name]));
+    const proposalImpactPairs = proposals.map((proposal) => ({
+      pharmacistId: proposal.proposed_pharmacist_id,
+      dayStart: new Date(`${toLocalDateKey(proposal.proposed_date)}T00:00:00`),
+    }));
+    const impactSchedules =
+      proposalImpactPairs.length === 0
+        ? []
+        : await prisma.visitSchedule.findMany({
+            where: {
+              org_id: ctx.orgId,
+              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+              OR: proposalImpactPairs.map((pair) => {
+                const nextDay = new Date(pair.dayStart);
+                nextDay.setDate(nextDay.getDate() + 1);
+                return {
+                  pharmacist_id: pair.pharmacistId,
+                  scheduled_date: { gte: pair.dayStart, lt: nextDay },
+                };
+              }),
+            },
+            select: {
+              pharmacist_id: true,
+              scheduled_date: true,
+              time_window_start: true,
+              time_window_end: true,
+            },
+          });
+
+    const pendingProposals: DayBoardPendingProposal[] = await Promise.all(
+      proposals.map(async (proposal) => {
+        const proposedDateKey = toLocalDateKey(proposal.proposed_date);
+        const sameDayVisits = impactSchedules.filter(
+          (schedule) =>
+            schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
+            toLocalDateKey(schedule.scheduled_date) === proposedDateKey,
+        );
+        const occupied = sameDayVisits.reduce(
+          (sum, schedule) =>
+            sum +
+            visitOccupiedMinutes(schedule.time_window_start, schedule.time_window_end) +
+            TRAVEL_MINUTES_PER_VISIT,
+          0,
+        );
+        const idleBefore = Math.max(0, WORKDAY_MINUTES - LUNCH_MINUTES - occupied);
+        const proposalMinutes =
+          visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
+          TRAVEL_MINUTES_PER_VISIT;
+        const idleAfter = Math.max(0, idleBefore - proposalMinutes);
+
+        const latestContactLog = await prisma.visitScheduleContactLog.findFirst({
+          where: { org_id: ctx.orgId, proposal_id: proposal.id },
+          orderBy: { called_at: 'desc' },
+          select: { callback_due_at: true },
+        });
+
+        return {
+          id: proposal.id,
+          patient_name: proposal.case_.patient.name,
+          pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
+          proposed_date: proposedDateKey,
+          time_start: proposal.time_window_start?.toISOString() ?? null,
+          badge_label:
+            proposal.proposal_status === 'reschedule_pending'
+              ? '再調整'
+              : proposal.visit_type === 'initial'
+                ? '受入判断'
+                : '確定待ち',
+          response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
+          idle_before_minutes: idleBefore,
+          idle_after_minutes: idleAfter,
+        } satisfies DayBoardPendingProposal;
+      }),
+    );
+
+    const auditPendingCount =
+      auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
+
+    const responseData: ScheduleDayBoardResponse = {
+      generated_at: now.toISOString(),
+      date: dateKey,
+      staff,
+      audit_pending_count: auditPendingCount,
+      report_pending_count: reportPendingCount,
+      pending_proposals: pendingProposals,
+    };
+
+    return success({ data: responseData });
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問予定の閲覧権限がありません',
+  },
+);

@@ -10,7 +10,9 @@ const {
   taskCreateManyMock,
   billingCandidateUpsertMock,
   visitScheduleFindFirstMock,
+  visitScheduleFindManyMock,
   visitScheduleProposalFindFirstMock,
+  visitScheduleProposalFindManyMock,
   visitScheduleProposalCreateMock,
   visitScheduleProposalUpdateMock,
   careReportFindManyMock,
@@ -30,7 +32,9 @@ const {
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
   visitScheduleProposalFindFirstMock: vi.fn(),
+  visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
   visitScheduleProposalUpdateMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
@@ -205,6 +209,8 @@ describe('/api/conference-notes/[id] PATCH', () => {
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'pref_1' });
     upsertOperationalTaskMock.mockResolvedValue({});
     resolveOperationalTasksMock.mockResolvedValue({ count: 0 });
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         conferenceNote: {
@@ -223,9 +229,11 @@ describe('/api/conference-notes/[id] PATCH', () => {
         },
         visitSchedule: {
           findFirst: visitScheduleFindFirstMock,
+          findMany: visitScheduleFindManyMock,
         },
         visitScheduleProposal: {
           findFirst: visitScheduleProposalFindFirstMock,
+          findMany: visitScheduleProposalFindManyMock,
           create: visitScheduleProposalCreateMock,
           update: visitScheduleProposalUpdateMock,
         },

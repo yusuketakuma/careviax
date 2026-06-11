@@ -1,6 +1,7 @@
 import { decode, encode } from 'next-auth/jwt';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { getAuthSecret } from '@/lib/auth/secret';
+import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
 import { APP_ENV } from '@/lib/config/app-env';
 import { readJsonObject } from '@/lib/db/json';
 import type { CollaborationEntityType } from '@/server/services/collaboration-access';
@@ -13,6 +14,8 @@ const SECRETS_MANAGER_CACHE_TTL_MS = COLLABORATION_ROOM_TOKEN_TTL_SECONDS * 1000
 
 let cachedSecretsManagerSecret: string | null = null;
 let cachedSecretsManagerSecretAt: number | null = null;
+let cachedSecretsManagerSecretSource: string | null = null;
+const secretsManagerClients = new Map<string, Pick<SecretsManagerClient, 'send'>>();
 
 export type CollaborationRoomTokenPayload = {
   sub: string;
@@ -47,6 +50,7 @@ export class MissingCollaborationRoomTokenSecretError extends Error {
 export function clearCollaborationRoomTokenSecretCache() {
   cachedSecretsManagerSecret = null;
   cachedSecretsManagerSecretAt = null;
+  cachedSecretsManagerSecretSource = null;
 }
 
 function isProductionLikeRuntime() {
@@ -95,24 +99,35 @@ function parseSecretString(raw: string) {
 
 async function getCollaborationRoomTokenSecretFromSecretsManager(secretArn: string) {
   const now = Date.now();
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const source = `${region}:${secretArn}`;
   if (
     cachedSecretsManagerSecret &&
     cachedSecretsManagerSecretAt &&
+    cachedSecretsManagerSecretSource === source &&
     now - cachedSecretsManagerSecretAt < SECRETS_MANAGER_CACHE_TTL_MS
   ) {
     return cachedSecretsManagerSecret;
   }
 
-  const client = new SecretsManagerClient({
-    region: process.env.AWS_REGION ?? 'ap-northeast-1',
-  });
+  const client = getSecretsManagerClient(region);
   const response = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
   const raw = response.SecretString;
   if (!raw) throw new MissingCollaborationRoomTokenSecretError();
 
   cachedSecretsManagerSecret = requireStrongCollaborationRoomTokenSecret(parseSecretString(raw));
   cachedSecretsManagerSecretAt = now;
+  cachedSecretsManagerSecretSource = source;
   return cachedSecretsManagerSecret;
+}
+
+function getSecretsManagerClient(region: string) {
+  const cached = secretsManagerClients.get(region);
+  if (cached) return cached;
+
+  const client = withAwsClientTimeout(new SecretsManagerClient({ region, ...awsClientConfig() }));
+  secretsManagerClients.set(region, client);
+  return client;
 }
 
 async function getCollaborationRoomTokenSecret() {

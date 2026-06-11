@@ -1,4 +1,5 @@
 import type { InsuranceApplicationStatus, InsuranceType } from '@prisma/client';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 type PatientInsuranceReader = {
   patientInsurance: {
@@ -30,8 +31,8 @@ export async function resolvePatientInsurance(
   },
 ) {
   const asOf = args.asOf ?? new Date();
-  const today = new Date(asOf);
-  today.setHours(0, 0, 0, 0);
+  // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜で比較する
+  const today = utcDateFromLocalKey(localDateKey(asOf));
 
   const record = await prisma.patientInsurance.findFirst({
     where: {

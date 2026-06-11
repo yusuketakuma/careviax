@@ -18,6 +18,7 @@ const {
   inquiryRecordFindManyMock,
   facilityStandardRegistrationFindManyMock,
   consentRecordFindManyMock,
+  medicationCycleFindManyMock,
   notificationCreateMock,
   dispatchNotificationEventMock,
   taskFindManyMock,
@@ -45,6 +46,7 @@ const {
   inquiryRecordFindManyMock: vi.fn(),
   facilityStandardRegistrationFindManyMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   taskFindManyMock: vi.fn(),
@@ -97,6 +99,9 @@ vi.mock('@/lib/db', () => ({
     },
     consentRecord: {
       findMany: consentRecordFindManyMock,
+    },
+    medicationCycle: {
+      findMany: medicationCycleFindManyMock,
     },
     visitRecord: {
       findMany: visitRecordFindManyMock,
@@ -178,6 +183,7 @@ import {
   checkPcaPumpReturnInspectionPending,
   checkPcaPumpRentalOverdues,
   checkPrescriptionExpiry,
+  generateVisitDemands,
   checkVisitRecordRetention,
   cleanupAbandonedQrDrafts,
   cleanupTerminalQrDraftPayloads,
@@ -185,6 +191,7 @@ import {
   syncVisitSupportFeatureTasks,
 } from './daily';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
+import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 
 function useTimezone(timezone: string) {
   const originalTimezone = process.env.TZ;
@@ -262,7 +269,8 @@ describe('checkPcaPumpRentalOverdues', () => {
 
   it('marks due active rentals overdue and creates follow-up tasks', async () => {
     const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
-    const today = new Date(2026, 5, 8);
+    // due_at(@db.Date)比較は「ローカル日付の UTC 深夜」規約(JST 6/8 → 2026-06-08T00:00Z)
+    const today = new Date('2026-06-08T00:00:00.000Z');
     pcaPumpRentalFindManyMock.mockResolvedValue([
       {
         id: 'rental_1',
@@ -699,6 +707,137 @@ describe('daily job local date keys', () => {
         dedupeKey: 'consent-expiry:consent_1',
       }),
     );
+  });
+});
+
+describe('generateVisitDemands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('allocates generated proposal route order after active schedules and open proposals', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            lines: [{ end_date: new Date('2026-06-10T00:00:00.000Z') }],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    vi.mocked(generateVisitScheduleProposalDrafts).mockResolvedValue({
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+      drafts: [
+        {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          case_id: 'case_1',
+          site_id: 'site_1',
+          visit_type: 'regular',
+          priority: 'urgent',
+          proposal_status: 'proposed',
+          patient_contact_status: 'pending',
+          proposed_date: new Date('2026-06-09T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          proposed_pharmacist_id: 'pharmacist_1',
+          assignment_mode: 'primary',
+          route_order: 1,
+          route_distance_score: 0,
+          medication_end_date: null,
+          visit_deadline_date: new Date('2026-06-10T00:00:00.000Z'),
+          proposal_reason: 'daily demand',
+          escalation_reason: null,
+          reschedule_source_schedule_id: null,
+        },
+      ],
+    });
+    const activeRouteOrderFindManyMock = vi.fn().mockResolvedValue([
+      {
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-06-09T00:00:00.000Z'),
+        route_order: 3,
+      },
+    ]);
+    const proposalRouteOrderFindManyMock = vi.fn().mockResolvedValue([
+      {
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-06-09T00:00:00.000Z'),
+        route_order: 5,
+        reschedule_source_schedule_id: null,
+      },
+    ]);
+    const visitScheduleProposalCreateMock = vi.fn().mockResolvedValue({});
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: activeRouteOrderFindManyMock,
+        },
+        visitScheduleProposal: {
+          findMany: proposalRouteOrderFindManyMock,
+          create: visitScheduleProposalCreateMock,
+        },
+        task: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(activeRouteOrderFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: [
+            {
+              pharmacist_id: 'pharmacist_1',
+              scheduled_date: new Date('2026-06-09T00:00:00.000Z'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(proposalRouteOrderFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: [
+            {
+              proposed_pharmacist_id: 'pharmacist_1',
+              proposed_date: new Date('2026-06-09T00:00:00.000Z'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-06-09T00:00:00.000Z'),
+        route_order: 6,
+      }),
+    });
   });
 });
 

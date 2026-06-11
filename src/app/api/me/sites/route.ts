@@ -1,0 +1,65 @@
+import { withAuthContext } from '@/lib/auth/context';
+import { success } from '@/lib/api/response';
+import { prisma } from '@/lib/db/client';
+
+export const GET = withAuthContext(async (_req, ctx) => {
+  const today = new Date();
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const tomorrowDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+  // Resolve memberships for the current user in the current org
+  const memberships = await prisma.membership.findMany({
+    where: { user_id: ctx.userId, org_id: ctx.orgId, is_active: true },
+    select: { site_id: true },
+  });
+
+  const hasUniversalAccess = memberships.some((m) => m.site_id === null);
+  const memberSiteIds = memberships.map((m) => m.site_id).filter((id): id is string => id !== null);
+
+  // Fetch sites scoped to membership
+  const sites = await prisma.pharmacySite.findMany({
+    where: {
+      org_id: ctx.orgId,
+      ...(hasUniversalAccess ? {} : { id: { in: memberSiteIds } }),
+    },
+    select: {
+      id: true,
+      name: true,
+      is_regional_support: true,
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  const siteIds = sites.map((s) => s.id);
+
+  // Count today's non-cancelled visit schedules per site
+  const visitCounts = await prisma.visitSchedule.groupBy({
+    by: ['site_id'],
+    where: {
+      org_id: ctx.orgId,
+      site_id: { in: siteIds },
+      scheduled_date: { gte: todayDate, lt: tomorrowDate },
+      schedule_status: { not: 'cancelled' },
+    },
+    _count: { _all: true },
+  });
+
+  const countBySiteId = new Map(visitCounts.map((c) => [c.site_id, c._count._all]));
+
+  // Resolve current user's default site
+  const user = await prisma.user.findUnique({
+    where: { id: ctx.userId },
+    select: { default_site_id: true },
+  });
+
+  const result = sites.map((site) => ({
+    id: site.id,
+    name: site.name,
+    todays_visit_count: countBySiteId.get(site.id) ?? 0,
+    // is_regional_support serves as the home-visit indicator until a dedicated flag is added
+    has_home_visit: site.is_regional_support,
+    is_current: user?.default_site_id === site.id,
+  }));
+
+  return success({ data: result });
+});

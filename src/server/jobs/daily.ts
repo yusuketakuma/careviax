@@ -1,5 +1,6 @@
 import { addDays, addYears, subHours } from 'date-fns';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { normalizeJsonInput } from '@/lib/db/json';
@@ -38,6 +39,7 @@ import {
 } from './daily-helpers';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
+import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import {
   scheduleManagementPlanReviewAlert,
   formatVisitWorkflowGateIssues,
@@ -212,7 +214,8 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
   return runJob(
     'pca_pump_rental_overdue_check',
     async () => {
-      const today = startOfDay();
+      // due_at(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
+      const today = utcDateFromLocalKey(localDateKey());
       const overdueRentals = await prisma.pcaPumpRental.findMany({
         where: {
           ...(context.orgId ? { org_id: context.orgId } : {}),
@@ -259,7 +262,8 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
           const overdueDays = rental.due_at
             ? Math.max(
                 1,
-                Math.floor((today.getTime() - startOfDay(rental.due_at).getTime()) / 86_400_000),
+                // due_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
+                Math.floor((today.getTime() - rental.due_at.getTime()) / 86_400_000),
               )
             : 0;
           const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
@@ -302,7 +306,8 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
   return runJob(
     'pca_pump_return_inspection_pending_check',
     async () => {
-      const today = startOfDay();
+      // returned_at(@db.Date)との日数差は UTC 深夜の今日を基準に取る
+      const today = utcDateFromLocalKey(localDateKey());
       const rentals = await prisma.pcaPumpRental.findMany({
         where: {
           ...(context.orgId ? { org_id: context.orgId } : {}),
@@ -334,7 +339,8 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
       });
 
       const taskSpecs: GeneratedTaskSpec[] = rentals.map((rental) => {
-        const returnedAt = rental.returned_at ? startOfDay(rental.returned_at) : today;
+        // returned_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
+        const returnedAt = rental.returned_at ?? today;
         const pendingDays = Math.max(
           0,
           Math.floor((today.getTime() - returnedAt.getTime()) / 86_400_000),
@@ -673,9 +679,10 @@ export async function checkVisitRecordRetention() {
 
 export async function generateVisitDemands() {
   return runJob('visit_demand_generation', async () => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const demandWindow = addDays(startOfToday, 7);
+    // end_date / refill_next_dispense_date 等の服薬期限(@db.Date 規約の UTC 深夜値)と
+    // 比較するため、今日もローカル日付の UTC 深夜で表す
+    const startOfToday = utcDateFromLocalKey(localDateKey());
+    const demandWindow = addUtcDays(startOfToday, 7);
 
     const cycles = await prisma.medicationCycle.findMany({
       where: {
@@ -749,17 +756,22 @@ export async function generateVisitDemands() {
           orgId: cycle.org_id,
           caseId: cycle.case_id,
           visitType: 'regular',
-          priority: visitDeadline <= addDays(startOfToday, 3) ? 'urgent' : 'normal',
+          priority: visitDeadline <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal',
           candidateCount: 3,
-          startDate: addDays(startOfToday, 1),
+          startDate: addUtcDays(startOfToday, 1),
         });
         const drafts = result.drafts;
 
         if (drafts.length === 0) continue;
 
         await withOrgContext(cycle.org_id, async (tx) => {
+          const routeOrderDrafts = await allocateProposalRouteOrders(tx, {
+            orgId: cycle.org_id,
+            drafts,
+          });
+
           await Promise.all(
-            drafts.map((draft) =>
+            routeOrderDrafts.map((draft) =>
               tx.visitScheduleProposal.create({
                 data: draft,
               }),
@@ -771,7 +783,7 @@ export async function generateVisitDemands() {
             taskType: 'visit_demand',
             title: '訪問候補の承認が必要です',
             description: '服薬期限前の訪問候補を自動提案しました。',
-            priority: visitDeadline <= addDays(startOfToday, 3) ? 'urgent' : 'high',
+            priority: visitDeadline <= addUtcDays(startOfToday, 3) ? 'urgent' : 'high',
             assignedTo: cycle.case_.primary_pharmacist_id ?? null,
             dueDate: visitDeadline,
             slaDueAt: visitDeadline,
@@ -1017,8 +1029,9 @@ export async function checkPreparationBacklog() {
 
 export async function checkInitialHomeVisitAssessmentBacklog() {
   return runJob('initial_home_visit_assessment_check', async () => {
-    const tomorrow = addDays(startOfDay(), 1);
-    const dayAfterTomorrow = addDays(tomorrow, 1);
+    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜境界
+    const tomorrow = addUtcDays(utcDateFromLocalKey(localDateKey()), 1);
+    const dayAfterTomorrow = addUtcDays(tomorrow, 1);
 
     const schedules = await prisma.visitSchedule.findMany({
       where: {
@@ -1477,9 +1490,9 @@ export async function checkCarryItemReadiness() {
 
 export async function checkEmergencyCoverageGaps() {
   return runJob('emergency_coverage_gap_check', async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const horizon = addDays(today, 3);
+    // holiday / shift の date(@db.Date)比較用: ローカル日付の UTC 深夜境界
+    const today = utcDateFromLocalKey(localDateKey());
+    const horizon = addUtcDays(today, 3);
 
     const [holidays, shifts] = await Promise.all([
       prisma.businessHoliday.findMany({
@@ -1557,9 +1570,10 @@ export async function checkEmergencyCoverageGaps() {
 
 export async function syncVisitSupportFeatureTasks() {
   return runJob('visit_support_feature_task_sync', async () => {
-    const today = startOfDay();
-    const sevenDaysFromNow = addDays(today, 7);
-    const twoDaysFromNow = addDays(today, 2);
+    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜境界
+    const today = utcDateFromLocalKey(localDateKey());
+    const sevenDaysFromNow = addUtcDays(today, 7);
+    const twoDaysFromNow = addUtcDays(today, 2);
 
     const [activeCases, firstVisitDocs, openSelfReports, unresolvedInquiries, upcomingSchedules] =
       await Promise.all([
@@ -1689,7 +1703,8 @@ export async function syncVisitSupportFeatureTasks() {
       const hasFirstVisitDoc = firstVisitCaseIds.has(careCase.id);
       if (hasEmergencyContact && hasFirstVisitDoc) continue;
 
-      const dueAt = addDays(today, 1);
+      // due_date / sla_due_at(DateTime, 表示・SLA 用)は従来どおりローカル深夜基準
+      const dueAt = addDays(startOfDay(), 1);
       const missingItems = [
         !hasEmergencyContact ? '緊急連絡先' : null,
         !hasFirstVisitDoc ? '初回文書' : null,

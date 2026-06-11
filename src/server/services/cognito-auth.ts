@@ -13,6 +13,7 @@ import {
   VerifySoftwareTokenCommand,
   type AuthenticationResultType,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
 import { encodeCognitoChallenge, type CognitoChallengePayload } from '@/lib/auth/cognito-challenge';
 import { parseJsonObjectOrNull } from '@/lib/db/json';
 
@@ -22,7 +23,7 @@ export const LOCAL_DEMO_LOGIN_PASSWORD = 'PhOsDemo-2026';
 const LOCAL_DEMO_COGNITO_SUB = 'demo-cognito-sub-001';
 const LOCAL_DEMO_USER_NAME = '山田 太郎';
 
-let cachedClient: CognitoIdentityProviderClient | null = null;
+const cognitoClients = new Map<string, CognitoIdentityProviderClient>();
 
 function isLocalDemoPasswordLoginAllowed() {
   return (
@@ -67,11 +68,15 @@ function getRequiredCognitoAuthConfig() {
 }
 
 function getClient() {
-  if (cachedClient) return cachedClient;
-
   const { region } = getRequiredCognitoAuthConfig();
-  cachedClient = new CognitoIdentityProviderClient({ region });
-  return cachedClient;
+  const cached = cognitoClients.get(region);
+  if (cached) return cached;
+
+  const client = withAwsClientTimeout(
+    new CognitoIdentityProviderClient({ region, ...awsClientConfig() }),
+  );
+  cognitoClients.set(region, client);
+  return client;
 }
 
 function normalizeEmail(email: string) {

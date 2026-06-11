@@ -1,6 +1,7 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from './fetch-timeout';
 
 type RoutePoint = {
   lat: number | null;
@@ -91,13 +92,12 @@ class OsrmProvider implements RoutingProvider {
     url.searchParams.set('sources', '0');
     url.searchParams.set('destinations', '1');
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const abort = createFetchTimeout(this.timeoutMs);
 
     try {
       const response = await fetch(url, {
         method: 'GET',
-        signal: controller.signal,
+        signal: abort.signal,
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
@@ -117,7 +117,7 @@ class OsrmProvider implements RoutingProvider {
     } catch {
       return null;
     } finally {
-      clearTimeout(timeout);
+      abort.clear();
     }
   }
 }
@@ -142,13 +142,12 @@ class GoogleRoutesProvider implements RoutingProvider {
       return null;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const abort = createFetchTimeout(this.timeoutMs);
 
     try {
       const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
         method: 'POST',
-        signal: controller.signal,
+        signal: abort.signal,
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': this.apiKey,
@@ -174,7 +173,7 @@ class GoogleRoutesProvider implements RoutingProvider {
     } catch {
       return null;
     } finally {
-      clearTimeout(timeout);
+      abort.clear();
     }
   }
 }

@@ -155,6 +155,15 @@ describe('/api/admin/pharmacist-credentials GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          pharmacist_id: { in: ['user_2'] },
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({

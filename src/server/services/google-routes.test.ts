@@ -127,7 +127,7 @@ describe('google-routes', () => {
     process.env.ROUTING_API_PROVIDER = 'google';
     process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
     process.env.ROUTING_API_TIMEOUT_MS = 'NaN';
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -158,7 +158,7 @@ describe('google-routes', () => {
       ],
     });
 
-    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
     expect(result).toMatchObject({
       status: 'ok',
       orderedScheduleIds: ['schedule_1'],

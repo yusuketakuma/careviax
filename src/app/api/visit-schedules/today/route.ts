@@ -3,6 +3,7 @@ import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -10,18 +11,11 @@ export const GET = withAuth(
     const pharmacistId = searchParams.get('pharmacist_id');
     const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
     const schedules = await prisma.visitSchedule.findMany({
       where: {
         org_id: req.orgId,
-        scheduled_date: {
-          gte: today,
-          lt: tomorrow,
-        },
+        // scheduled_date(@db.Date)は UTC 深夜で保存されるため UTC レンジで比較する
+        scheduled_date: todayUtcRange(),
         schedule_status: {
           in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
         },

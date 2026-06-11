@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { visitScheduleFindManyMock } = vi.hoisted(() => ({
@@ -12,11 +12,13 @@ vi.mock('@/lib/auth/middleware', () => ({
     ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler(Object.assign(req, {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as const));
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        } as const),
+      );
   },
 }));
 
@@ -30,10 +32,28 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const ORIGINAL_TZ = process.env.TZ;
+
 describe('/api/visit-schedules/today', () => {
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_TZ === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = ORIGINAL_TZ;
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     visitScheduleFindManyMock.mockResolvedValue([{ id: 'schedule_1' }]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('lists today visit schedules', async () => {
@@ -63,5 +83,18 @@ describe('/api/visit-schedules/today', () => {
         }),
       }),
     );
+  });
+
+  it('JST 朝(UTC では前日)でも scheduled_date(@db.Date)をローカル日付の UTC レンジで比較する', async () => {
+    vi.useFakeTimers();
+    // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+
+    const response = (await GET(new NextRequest('http://localhost/api/visit-schedules/today')))!;
+
+    expect(response.status).toBe(200);
+    const where = visitScheduleFindManyMock.mock.calls[0][0].where;
+    expect(where.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+    expect(where.scheduled_date.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
   });
 });

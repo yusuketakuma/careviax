@@ -17,16 +17,12 @@ import {
 } from '@/server/services/workflow-dashboard-cache';
 import { buildWorkflowDashboardData } from '@/server/services/workflow-dashboard-sections';
 import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
-
-function startOfDay(value = new Date()) {
-  const next = new Date(value);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
-    const today = startOfDay();
+    // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
+    const today = utcDateFromLocalKey(localDateKey());
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: req.orgId,
@@ -44,12 +40,9 @@ export const GET = withAuth(
       return success(cachedData);
     }
 
-    const upcomingWindow = new Date(today);
-    upcomingWindow.setDate(upcomingWindow.getDate() + UPCOMING_WINDOW_DAYS);
-    const sevenDaysFromNow = new Date(today);
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + RECENT_WINDOW_DAYS);
-    const recentOutcomeWindow = new Date(today);
-    recentOutcomeWindow.setDate(recentOutcomeWindow.getDate() - RECENT_WINDOW_DAYS);
+    const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
+    const sevenDaysFromNow = addUtcDays(today, RECENT_WINDOW_DAYS);
+    const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
 
     const core = await fetchWorkflowCoreData(
       prisma,

@@ -2,6 +2,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -46,6 +47,8 @@ export const GET = withAuth(
       });
     }
 
+    // shift / holiday の date(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
+    const todayUtc = utcDateFromLocalKey(localDateKey());
     const sites = await prisma.pharmacySite.findMany({
       where: {
         org_id: req.orgId,
@@ -67,7 +70,7 @@ export const GET = withAuth(
         pharmacist_shifts: {
           where: {
             date: {
-              gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              gte: todayUtc,
             },
           },
           select: {
@@ -85,7 +88,7 @@ export const GET = withAuth(
           where: {
             is_closed: true,
             date: {
-              gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              gte: todayUtc,
             },
           },
           select: {

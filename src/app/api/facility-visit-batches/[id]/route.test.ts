@@ -548,10 +548,29 @@ describe('/api/facility-visit-batches/[id]', () => {
       expectNoMutationSideEffects();
     });
 
-    it('de-dupes duplicate schedule ids, updates org-scoped batch order, and notifies workflow cache', async () => {
+    it('rejects duplicate schedule ids before batch lookup, route reorder, or notify', async () => {
       const response = await PATCH(
         createRequest({
           ordered_schedule_ids: ['schedule_2', 'schedule_1', 'schedule_2', 'schedule_1'],
+        }),
+        routeContext('  batch_1  '),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '同じ訪問予定IDを複数回指定できません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoMutationSideEffects();
+    });
+
+    it('updates org-scoped batch order with guarded writes and notifies workflow cache', async () => {
+      visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
+
+      const response = await PATCH(
+        createRequest({
+          ordered_schedule_ids: ['schedule_2', 'schedule_1'],
         }),
         routeContext('  batch_1  '),
       );
@@ -569,20 +588,51 @@ describe('/api/facility-visit-batches/[id]', () => {
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
         select: { id: true },
       });
-      expect(visitScheduleUpdateMock).toHaveBeenCalledTimes(2);
-      expect(visitScheduleUpdateMock).toHaveBeenNthCalledWith(1, {
-        where: { id: 'schedule_2' },
-        data: { route_order: 1 },
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+      expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+        where: {
+          org_id: 'org_1',
+          id: 'schedule_2',
+          facility_batch_id: 'batch_1',
+        },
+        data: { route_order: 1, version: { increment: 1 } },
       });
-      expect(visitScheduleUpdateMock).toHaveBeenNthCalledWith(2, {
-        where: { id: 'schedule_1' },
-        data: { route_order: 2 },
+      expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+        where: {
+          org_id: 'org_1',
+          id: 'schedule_1',
+          facility_batch_id: 'batch_1',
+        },
+        data: { route_order: 2, version: { increment: 1 } },
       });
       expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
       expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
         orgId: 'org_1',
         payload: { source: 'facility_visit_batch_reorder' },
       });
+    });
+
+    it('returns conflict when a batch schedule changes before guarded reorder write', async () => {
+      visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({
+        count: 0,
+      });
+
+      const response = await PATCH(
+        createRequest({
+          ordered_schedule_ids: ['schedule_2', 'schedule_1'],
+        }),
+        routeContext('batch_1'),
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        message: '施設一括訪問の順序が同時に更新されました。再読み込みしてください',
+      });
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchDeleteMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
     });
   });
 });

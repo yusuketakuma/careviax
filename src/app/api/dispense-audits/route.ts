@@ -60,6 +60,7 @@ export const GET = withAuth(
                 unit: true,
                 is_generic: true,
                 packaging_instructions: true,
+                packaging_instruction_tags: true,
                 notes: true,
               },
             },
@@ -113,6 +114,7 @@ export const GET = withAuth(
                     unit: true,
                     is_generic: true,
                     packaging_instructions: true,
+                    packaging_instruction_tags: true,
                     notes: true,
                   },
                 },
@@ -161,6 +163,22 @@ const createDispenseAuditSchema = z.object({
       image_check_summary: z.string().optional(),
     })
     .optional(),
+  /**
+   * 麻薬ダブルカウント(08_audit): 監査者が入力した計数 1 回目 / 2 回目。
+   * スキーマ変更を避け、承認/差戻し時に AuditLog(action='dispense_audit_double_count')
+   * として記録する(3省2ガイドラインの操作証跡)。
+   */
+  double_count: z
+    .array(
+      z.object({
+        line_id: z.string().min(1),
+        drug_name: z.string().min(1),
+        dispensed_quantity: z.number().nullable(),
+        first_count: z.number().nullable(),
+        second_count: z.number().nullable(),
+      }),
+    )
+    .optional(),
 });
 
 function mergeRejectDetail(args: {
@@ -207,8 +225,15 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { task_id, result, reject_reason, reject_reason_code, reject_detail, external_audit } =
-      parsed.data;
+    const {
+      task_id,
+      result,
+      reject_reason,
+      reject_reason_code,
+      reject_detail,
+      external_audit,
+      double_count,
+    } = parsed.data;
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
 
     if (result === 'rejected' && !reject_reason) {
@@ -322,6 +347,22 @@ export const POST = withAuth(
         }
       })();
       if ('error' in audit) return audit;
+
+      // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
+      if (double_count && double_count.length > 0) {
+        await tx.auditLog.create({
+          data: {
+            org_id: req.orgId,
+            actor_id: req.userId,
+            action: 'dispense_audit_double_count',
+            target_type: 'DispenseAudit',
+            target_id: audit.id,
+            changes: { task_id, result, counts: double_count },
+            ip_address: req.ipAddress,
+            user_agent: req.userAgent,
+          },
+        });
+      }
 
       const transitionHelper = async (toStatus: string) => {
         try {

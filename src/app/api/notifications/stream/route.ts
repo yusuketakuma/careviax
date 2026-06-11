@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { sanitizeOrgRealtimeEvent } from '@/server/services/org-realtime';
+import { scheduleSseTimer } from './sse-timer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
       };
       teardownStream = teardown;
 
-      const lifetime = setTimeout(teardown, MAX_STREAM_DURATION_MS);
+      const lifetime = scheduleSseTimer(teardown, MAX_STREAM_DURATION_MS);
       abortHandler = teardown;
       req.signal.addEventListener('abort', abortHandler, { once: true });
       if (req.signal.aborted) {
@@ -93,9 +94,9 @@ export async function GET(req: NextRequest) {
           teardown();
           return;
         }
-        keepaliveTimer = setTimeout(heartbeat, KEEPALIVE_INTERVAL_MS);
+        keepaliveTimer = scheduleSseTimer(heartbeat, KEEPALIVE_INTERVAL_MS);
       };
-      keepaliveTimer = setTimeout(heartbeat, KEEPALIVE_INTERVAL_MS);
+      keepaliveTimer = scheduleSseTimer(heartbeat, KEEPALIVE_INTERVAL_MS);
 
       // Try realtime adapter subscription
       try {
@@ -154,11 +155,11 @@ export async function GET(req: NextRequest) {
           // Swallow DB errors to keep stream alive
         }
         if (!stopped) {
-          pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+          pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
         }
       };
 
-      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+      pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
     },
     cancel() {
       teardownStream?.();

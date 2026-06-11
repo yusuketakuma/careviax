@@ -188,6 +188,7 @@ function buildTxMock() {
     },
     visitScheduleProposal: {
       findFirst: proposalFindFirstMock,
+      findMany: proposalFindManyMock,
       update: proposalUpdateMock,
       updateMany: proposalUpdateManyMock,
     },
@@ -1543,6 +1544,77 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: expect.objectContaining({
         proposal_status: 'confirmed',
         route_order: 2,
+      }),
+    });
+  });
+
+  it('finalizes after remaining open proposal route orders while ignoring siblings that will be superseded', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        route_order: 1,
+      }),
+    );
+    scheduleFindManyMock.mockResolvedValueOnce([]);
+    proposalFindManyMock.mockResolvedValueOnce([
+      {
+        route_order: 4,
+      },
+    ]);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: {
+          not: 'proposal_1',
+        },
+        org_id: 'org_1',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        route_order: {
+          not: null,
+        },
+        NOT: {
+          case_id: 'case_1',
+          reschedule_source_schedule_id: null,
+        },
+      },
+      select: {
+        route_order: true,
+      },
+    });
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        route_order: {
+          gte: 5,
+        },
+      }),
+      data: {
+        route_order: {
+          increment: 1,
+        },
+      },
+    });
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 5,
+      }),
+    });
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: expect.objectContaining({
+        proposal_status: 'confirmed',
+        route_order: 5,
       }),
     });
   });

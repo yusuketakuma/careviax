@@ -17,6 +17,7 @@ import {
   omitProposalRejectReason,
   omitProposalRejectReasons,
 } from '@/lib/visit-schedule-proposals/response';
+import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
@@ -594,8 +595,13 @@ export const POST = withAuth(
         });
       }
 
+      const allocatedDrafts = await allocateProposalRouteOrders(tx, {
+        orgId: req.orgId,
+        drafts: validDrafts,
+      });
+
       const created = await Promise.all(
-        validDrafts.map((draft) =>
+        allocatedDrafts.map((draft) =>
           tx.visitScheduleProposal.create({
             data: draft,
           }),

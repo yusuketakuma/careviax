@@ -1,6 +1,7 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from './fetch-timeout';
 import { createRoadTravelEstimator, type RouteTravelMode } from './road-routing';
 
 export type VisitRouteTravelMode = RouteTravelMode;
@@ -260,15 +261,16 @@ async function computeGoogleWaypointRoute(args: {
   waypoints: VisitRouteWaypoint[];
   apiKey: string;
 }): Promise<VisitRoutePlan> {
+  const abort = createFetchTimeout(
+    normalizePositiveTimeoutMs(process.env.ROUTING_API_TIMEOUT_MS, {
+      fallbackMs: DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS,
+    }),
+  );
   let response: Response;
   try {
     response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
-      signal: AbortSignal.timeout(
-        normalizePositiveTimeoutMs(process.env.ROUTING_API_TIMEOUT_MS, {
-          fallbackMs: DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS,
-        }),
-      ),
+      signal: abort.signal,
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': args.apiKey,
@@ -323,6 +325,8 @@ async function computeGoogleWaypointRoute(args: {
       };
     }
     throw error;
+  } finally {
+    abort.clear();
   }
 
   if (!response.ok) {

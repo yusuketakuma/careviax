@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -66,12 +67,11 @@ function buildOverrideAssignmentScope(caseIds: string[] | undefined) {
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const sevenDaysFromNow = new Date(today);
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    // scheduled_date(@db.Date)および日付値で保存される期限カラム比較用:
+    // ローカル日付の UTC 深夜境界
+    const today = utcDateFromLocalKey(localDateKey());
+    const tomorrow = addUtcDays(today, 1);
+    const sevenDaysFromNow = addUtcDays(today, 7);
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: req.orgId,

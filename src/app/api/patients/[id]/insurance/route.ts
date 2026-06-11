@@ -8,6 +8,7 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const publicProgramCodeSchema = z
@@ -158,8 +159,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if (!patient) return notFound('患者が見つかりません');
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
+  const today = utcDateFromLocalKey(localDateKey());
 
   const insurances = await prisma.patientInsurance.findMany({
     where: { patient_id: id, org_id: ctx.orgId },

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { runJob } from './runner';
 
 /**
@@ -7,15 +8,10 @@ import { runJob } from './runner';
  */
 export async function checkUnrecordedVisits() {
   return runJob('unrecorded_visit_check', async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // 当日の完了済みスケジュールを取得
+    // 当日の完了済みスケジュールを取得(scheduled_date は @db.Date のため UTC レンジで比較)
     const completedSchedules = await prisma.visitSchedule.findMany({
       where: {
-        scheduled_date: { gte: today, lt: tomorrow },
+        scheduled_date: todayUtcRange(),
         schedule_status: 'completed',
       },
       select: { id: true, org_id: true, pharmacist_id: true },

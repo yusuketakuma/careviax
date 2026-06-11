@@ -20,6 +20,7 @@ import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import {
   buildVisitScheduleCommunicationTargets,
@@ -311,8 +312,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
 
+      const allocatedDrafts = await allocateProposalRouteOrders(tx, {
+        orgId: ctx.orgId,
+        drafts,
+      });
       const createdProposals = await Promise.all(
-        drafts.map((draft) =>
+        allocatedDrafts.map((draft) =>
           tx.visitScheduleProposal.create({
             data: {
               ...draft,
@@ -464,8 +469,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           });
 
+          const allocatedImpactedDrafts = await allocateProposalRouteOrders(tx, {
+            orgId: ctx.orgId,
+            drafts: impactedDrafts,
+            excludeProposalSourceScheduleIds: [impactedSchedule.id],
+          });
           const createdImpactProposals = await Promise.all(
-            impactedDrafts.map((draft) =>
+            allocatedImpactedDrafts.map((draft) =>
               tx.visitScheduleProposal.create({
                 data: {
                   ...draft,

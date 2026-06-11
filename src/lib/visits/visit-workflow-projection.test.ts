@@ -88,7 +88,7 @@ describe('visit-workflow-projection', () => {
         label: '同意を確認',
         href: '/visits/schedule_1/record',
       },
-      evidence: ['ブロッカー 1件'],
+      evidence: ['止まっている理由 1件'],
     });
     expect(actions.find((action) => action.key === 'report')).toMatchObject({
       primary_action: {

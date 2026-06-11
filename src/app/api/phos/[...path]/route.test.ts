@@ -13,6 +13,7 @@ import { GET, POST } from './route';
 
 const originalPhosApiBaseUrl = process.env.PHOS_API_BASE_URL;
 const originalPublicPhosApiBaseUrl = process.env.NEXT_PUBLIC_PHOS_API_BASE_URL;
+const originalPhosProxyUpstreamTimeoutMs = process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS;
 type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
 function request(url: string, init: NextRequestInit = {}) {
@@ -32,7 +33,11 @@ describe('/api/phos proxy', () => {
     if (originalPublicPhosApiBaseUrl === undefined)
       delete process.env.NEXT_PUBLIC_PHOS_API_BASE_URL;
     else process.env.NEXT_PUBLIC_PHOS_API_BASE_URL = originalPublicPhosApiBaseUrl;
+    if (originalPhosProxyUpstreamTimeoutMs === undefined)
+      delete process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS;
+    else process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS = originalPhosProxyUpstreamTimeoutMs;
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('forwards catalog requests with a server-side bearer token', async () => {
@@ -107,5 +112,34 @@ describe('/api/phos proxy', () => {
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({ code: 'PHOS_ROUTE_NOT_FOUND' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('aborts stalled upstream requests with a bounded gateway timeout', async () => {
+    vi.useFakeTimers();
+    process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS = '5';
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    let observedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn<typeof fetch>(
+      async (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          observedSignal = init?.signal ?? undefined;
+          observedSignal?.addEventListener('abort', () => reject(observedSignal?.reason), {
+            once: true,
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const responsePromise = GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+    await vi.advanceTimersByTimeAsync(5);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({ code: 'PHOS_UPSTREAM_TIMEOUT' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(observedSignal?.aborted).toBe(true);
+    expect(observedSignal?.reason).toEqual(new Error('PHOS_PROXY_UPSTREAM_TIMEOUT'));
   });
 });

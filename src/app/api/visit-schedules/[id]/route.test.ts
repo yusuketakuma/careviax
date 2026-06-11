@@ -7,6 +7,8 @@ const {
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
   visitScheduleTxFindFirstMock,
+  visitScheduleProposalFindFirstMock,
+  visitScheduleProposalTxFindFirstMock,
   visitScheduleCountMock,
   visitScheduleUpdateManyMock,
   visitScheduleUpdateMock,
@@ -24,6 +26,8 @@ const {
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   visitScheduleTxFindFirstMock: vi.fn(),
+  visitScheduleProposalFindFirstMock: vi.fn(),
+  visitScheduleProposalTxFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitScheduleUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
@@ -50,6 +54,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
       count: visitScheduleCountMock,
+    },
+    visitScheduleProposal: {
+      findFirst: visitScheduleProposalFindFirstMock,
     },
     visitVehicleResource: {
       findFirst: visitVehicleResourceFindFirstMock,
@@ -142,7 +149,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     evaluateReadyTransitionMock.mockResolvedValue({ ok: true });
     getReadyTransitionErrorMessageMock.mockReturnValue(
-      '訪問準備に未解決のブロッカーがあるため ready へ進めません',
+      '訪問準備に未解決の止まっている理由があるため ready へ進めません',
     );
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1', schedule_status: 'in_progress' });
@@ -173,8 +180,13 @@ describe('/api/visit-schedules/[id] GET', () => {
           updateMany: visitScheduleUpdateManyMock,
           update: visitScheduleUpdateMock,
         },
+        visitScheduleProposal: {
+          findFirst: visitScheduleProposalTxFindFirstMock,
+        },
       }),
     );
+    visitScheduleProposalFindFirstMock.mockResolvedValue(null);
+    visitScheduleProposalTxFindFirstMock.mockResolvedValue(null);
     visitScheduleTxFindFirstMock.mockImplementation(async (args) => {
       if (args?.where?.id?.not) return null;
       return { id: 'schedule_1', schedule_status: 'in_progress', version: 2 };
@@ -392,7 +404,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'VALIDATION_ERROR',
-      message: '訪問準備に未解決のブロッカーがあるため ready へ進めません',
+      message: '訪問準備に未解決の止まっている理由があるため ready へ進めません',
       details: {
         readiness_blockers: [],
         onboarding_blockers: [{ key: 'management_plan_approved', label: '管理計画未承認' }],
@@ -999,6 +1011,60 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects route_order changes that conflict with an open proposal in the same pharmacist day', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      })
+      .mockResolvedValueOnce(null);
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({ id: 'proposal_1' });
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '同一薬剤師・同一日付で route_order は重複できません',
+    });
+    expect(visitScheduleProposalFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        proposed_pharmacist_id: 'user_1',
+        proposed_date: new Date('2026-03-26T00:00:00.000Z'),
+        route_order: 2,
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      select: { id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rechecks route_order conflicts inside the update transaction', async () => {
     visitScheduleFindFirstMock
       .mockResolvedValueOnce({
@@ -1041,6 +1107,62 @@ describe('/api/visit-schedules/[id] GET', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         route_order: 2,
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks open proposal route_order conflicts inside the update transaction', async () => {
+    visitScheduleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      })
+      .mockResolvedValueOnce(null);
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce(null);
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce(null);
+    visitScheduleProposalTxFindFirstMock.mockResolvedValueOnce({ id: 'proposal_1' });
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '同一薬剤師・同一日付で route_order は重複できません',
+    });
+    expect(visitScheduleProposalTxFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        proposed_pharmacist_id: 'user_1',
+        proposed_date: new Date('2026-03-26T00:00:00.000Z'),
+        route_order: 2,
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
       },
       select: { id: true },
     });

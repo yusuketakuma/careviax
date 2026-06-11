@@ -11,6 +11,7 @@ import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { forbiddenResponse, validationError } from '@/lib/api/response';
 import { timeDateToString } from '@/lib/visits/time-of-day';
+import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
 import {
   evaluateVisitWorkflowGate,
@@ -295,6 +296,17 @@ export async function createSchedule(
   const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
 
   return withOrgContext(orgId, async (tx) => {
+    const [routeOrderDraft] = await allocateProposalRouteOrders(tx, {
+      orgId,
+      drafts: [
+        {
+          proposed_pharmacist_id: rest.pharmacist_id,
+          proposed_date: scheduledDate,
+          route_order: 1,
+        },
+      ],
+    });
+
     return tx.visitSchedule.create({
       data: {
         org_id: orgId,
@@ -313,24 +325,7 @@ export async function createSchedule(
         ...(time_window_end ? { time_window_end: new Date(`1970-01-01T${time_window_end}`) } : {}),
         confirmed_at: new Date(),
         confirmed_by: userId,
-        route_order:
-          ((
-            await tx.visitSchedule.findFirst({
-              where: {
-                org_id: orgId,
-                pharmacist_id: rest.pharmacist_id,
-                scheduled_date: scheduledDate,
-                schedule_status: {
-                  not: 'cancelled',
-                },
-                route_order: {
-                  not: null,
-                },
-              },
-              orderBy: { route_order: 'desc' },
-              select: { route_order: true },
-            })
-          )?.route_order ?? 0) + 1,
+        route_order: routeOrderDraft?.route_order ?? 1,
         ...rest,
       },
     });

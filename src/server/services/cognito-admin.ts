@@ -9,12 +9,13 @@ import {
   CognitoIdentityProviderClient,
   type AttributeType,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
 import { normalizePhosRole } from '@/lib/auth/phos-role';
 import type { UserRole as PhosUserRole } from '@/phos/contracts/phos_contracts';
 
 const DEFAULT_REGION = 'ap-northeast-1';
 
-let cachedClient: CognitoIdentityProviderClient | null = null;
+const cognitoClients = new Map<string, CognitoIdentityProviderClient>();
 
 function getRequiredCognitoConfig() {
   const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
@@ -28,11 +29,15 @@ function getRequiredCognitoConfig() {
 }
 
 function getClient() {
-  if (cachedClient) return cachedClient;
-
   const { region } = getRequiredCognitoConfig();
-  cachedClient = new CognitoIdentityProviderClient({ region });
-  return cachedClient;
+  const cached = cognitoClients.get(region);
+  if (cached) return cached;
+
+  const client = withAwsClientTimeout(
+    new CognitoIdentityProviderClient({ region, ...awsClientConfig() }),
+  );
+  cognitoClients.set(region, client);
+  return client;
 }
 
 function getAttributeValue(attributes: AttributeType[] | undefined, name: string) {

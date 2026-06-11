@@ -18,6 +18,7 @@ import {
   conflict,
 } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validations/visit-schedule';
 import { prisma } from '@/lib/db/client';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
@@ -341,17 +342,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       : null;
   if (routeOrderTarget) {
-    const routeOrderConflict = await prisma.visitSchedule.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        id: { not: id },
-        pharmacist_id: routeOrderTarget.pharmacistId,
-        scheduled_date: routeOrderTarget.date,
-        route_order: rest.route_order,
-      },
-      select: { id: true },
-    });
-    if (routeOrderConflict) {
+    const [scheduleRouteOrderConflict, proposalRouteOrderConflict] = await Promise.all([
+      prisma.visitSchedule.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          id: { not: id },
+          pharmacist_id: routeOrderTarget.pharmacistId,
+          scheduled_date: routeOrderTarget.date,
+          route_order: rest.route_order,
+        },
+        select: { id: true },
+      }),
+      prisma.visitScheduleProposal.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          proposed_pharmacist_id: routeOrderTarget.pharmacistId,
+          proposed_date: routeOrderTarget.date,
+          route_order: rest.route_order,
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (scheduleRouteOrderConflict || proposalRouteOrderConflict) {
       return validationError('同一薬剤師・同一日付で route_order は重複できません');
     }
   }
@@ -381,17 +395,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     if (routeOrderTarget) {
-      const routeOrderConflict = await tx.visitSchedule.findFirst({
-        where: {
-          org_id: ctx.orgId,
-          id: { not: id },
-          pharmacist_id: routeOrderTarget.pharmacistId,
-          scheduled_date: routeOrderTarget.date,
-          route_order: rest.route_order,
-        },
-        select: { id: true },
-      });
-      if (routeOrderConflict) {
+      const [scheduleRouteOrderConflict, proposalRouteOrderConflict] = await Promise.all([
+        tx.visitSchedule.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            id: { not: id },
+            pharmacist_id: routeOrderTarget.pharmacistId,
+            scheduled_date: routeOrderTarget.date,
+            route_order: rest.route_order,
+          },
+          select: { id: true },
+        }),
+        tx.visitScheduleProposal.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            proposed_pharmacist_id: routeOrderTarget.pharmacistId,
+            proposed_date: routeOrderTarget.date,
+            route_order: rest.route_order,
+            finalized_schedule_id: null,
+            proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (scheduleRouteOrderConflict || proposalRouteOrderConflict) {
         return {
           ok: false as const,
           response: validationError('同一薬剤師・同一日付で route_order は重複できません'),

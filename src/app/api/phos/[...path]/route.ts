@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthAccessToken } from '@/lib/auth/config';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { PHOS_API_ROUTES, type PhosApiRoute } from '@/phos/infra/api-gateway-routes';
+import { createFetchTimeout } from '@/server/services/fetch-timeout';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +13,8 @@ type PhosProxyRouteContext = {
 const LOCAL_HTTP_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-correlation-id'];
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'last-modified', 'x-request-id'];
+const DEFAULT_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
+const MAX_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 60_000;
 
 function jsonError(status: number, code: string, message: string) {
   return NextResponse.json(
@@ -40,6 +44,13 @@ function normalizeUpstreamBaseUrl(): string | null {
   if (parsed.protocol === 'http:' && !LOCAL_HTTP_HOSTS.has(parsed.hostname)) return null;
   if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
   return trimmed;
+}
+
+function resolveUpstreamTimeoutMs() {
+  return normalizePositiveTimeoutMs(process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_PHOS_PROXY_UPSTREAM_TIMEOUT_MS,
+    maxMs: MAX_PHOS_PROXY_UPSTREAM_TIMEOUT_MS,
+  });
 }
 
 function routeSegments(path: string): string[] {
@@ -126,6 +137,11 @@ async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteCon
     upstreamUrl.searchParams.append(key, value);
   });
 
+  const body = request.method === 'GET' ? undefined : await request.arrayBuffer();
+  const abort = createFetchTimeout(
+    resolveUpstreamTimeoutMs(),
+    new Error('PHOS_PROXY_UPSTREAM_TIMEOUT'),
+  );
   let upstreamResponse: Response;
   try {
     upstreamResponse = await fetch(upstreamUrl, {
@@ -133,10 +149,16 @@ async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteCon
       headers: buildUpstreamHeaders(request, accessToken),
       cache: 'no-store',
       redirect: 'error',
-      ...(request.method === 'GET' ? {} : { body: await request.arrayBuffer() }),
+      signal: abort.signal,
+      ...(body === undefined ? {} : { body }),
     });
   } catch {
+    if (abort.signal.aborted) {
+      return jsonError(504, 'PHOS_UPSTREAM_TIMEOUT', 'PH-OS API upstream timed out');
+    }
     return jsonError(502, 'PHOS_UPSTREAM_UNAVAILABLE', 'PH-OS API upstream is unavailable');
+  } finally {
+    abort.clear();
   }
 
   return new Response(upstreamResponse.body, {

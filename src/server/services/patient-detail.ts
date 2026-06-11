@@ -1,8 +1,9 @@
-import { format } from 'date-fns';
+import { endOfDay, format, startOfDay } from 'date-fns';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectString } from '@/lib/db/json';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { getCycleWorkspaceAction } from '@/lib/prescription/cycle-workspace';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   getPatientPrivacyFlags,
@@ -11,6 +12,8 @@ import {
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { detectMedicationChanges } from '@/lib/prescription/medication-diff';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
@@ -275,6 +278,443 @@ function compactPreviewValues(values: Array<string | null | undefined | false>) 
   return values.filter((value): value is string => Boolean(value && value.trim()));
 }
 
+/**
+ * 06_card「直近の動き」: 工程遷移(to_status)→ 出来事ラベル。
+ * 例: dispensed への遷移 =「調剤 完了」(設計画像の『調剤 完了 — 佐藤』)。
+ */
+const CYCLE_TRANSITION_EVENT_LABELS: Record<string, string> = {
+  intake_received: '処方 取込',
+  structuring: '処方入力 開始',
+  inquiry_pending: '疑義照会 送信',
+  inquiry_resolved: '疑義照会 回答受領',
+  ready_to_dispense: '処方確認 完了',
+  dispensing: '調剤 開始',
+  dispensed: '調剤 完了',
+  audit_pending: '監査 開始',
+  audited: '監査 完了',
+  setting: 'セット作業 開始',
+  set_audited: 'セット監査 完了',
+  visit_ready: '訪問準備 完了',
+  visit_completed: '訪問 完了',
+  reported: '報告 完了',
+  on_hold: '保留',
+  cancelled: '中止',
+};
+
+/** セーフティボード取扱タグの表示優先順(危険度の高い順)。未知タグは末尾。 */
+const HANDLING_TAG_PRIORITY = [
+  'narcotic',
+  'cold_storage',
+  'unit_dose',
+  'half_tablet',
+  'crush_prohibited',
+  'separate_pack',
+  'staple_required',
+  'label_required',
+];
+
+function sortHandlingTags(tags: Iterable<string>): string[] {
+  return [...new Set(tags)].sort((left, right) => {
+    const leftIndex = HANDLING_TAG_PRIORITY.indexOf(left);
+    const rightIndex = HANDLING_TAG_PRIORITY.indexOf(right);
+    return (
+      (leftIndex === -1 ? HANDLING_TAG_PRIORITY.length : leftIndex) -
+      (rightIndex === -1 ? HANDLING_TAG_PRIORITY.length : rightIndex)
+    );
+  });
+}
+
+/** allergy_info(Json)から表示ラベルを合成。例: セフェム系(2019)。 */
+function buildAllergyLabel(allergyInfo: unknown): string | null {
+  if (!Array.isArray(allergyInfo)) return null;
+  const labels = allergyInfo
+    .filter(
+      (entry): entry is { drug_name: string; confirmed_at?: string } =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as { drug_name?: unknown }).drug_name === 'string' &&
+        (entry as { drug_name: string }).drug_name.trim().length > 0,
+    )
+    .map((entry) => {
+      const withReaction = entry as { reaction?: unknown; noted_year?: unknown };
+      const reaction =
+        typeof withReaction.reaction === 'string' && withReaction.reaction.trim().length > 0
+          ? withReaction.reaction
+          : null;
+      const year =
+        typeof withReaction.noted_year === 'number'
+          ? String(withReaction.noted_year)
+          : typeof entry.confirmed_at === 'string' && entry.confirmed_at.length >= 4
+            ? entry.confirmed_at.slice(0, 4)
+            : null;
+      const detail = [reaction, year].filter(Boolean).join(' ');
+      return detail ? `${entry.drug_name}(${detail})` : entry.drug_name;
+    });
+  return labels.length > 0 ? labels.join('、') : null;
+}
+
+type WorkspaceConditionInput = {
+  condition_type: string;
+  name: string;
+  is_active: boolean;
+  noted_at: Date | null;
+  notes: string | null;
+};
+
+/** PatientCondition(problem)→ 注意ラベル。例: ふらつき(6/5〜経過観察)。 */
+function buildCautionLabels(conditions: WorkspaceConditionInput[]): string[] {
+  return conditions
+    .filter((condition) => condition.condition_type === 'problem' && condition.is_active)
+    .map((condition) => {
+      const dateLabel = condition.noted_at ? format(condition.noted_at, 'M/d') : null;
+      const notes = condition.notes?.trim() || null;
+      if (dateLabel) return `${condition.name}(${dateLabel}〜${notes ?? ''})`;
+      if (notes) return `${condition.name}(${notes})`;
+      return condition.name;
+    });
+}
+
+/**
+ * p0_08 カード詳細ワークスペース用の工程集約。
+ * 進行中サイクルの現在工程・止まっている理由・処方の変化・セットの注意に加え、
+ * 06_card(カード=1 RX の作業台)用に安全情報・処方明細全行・直近の動き・今日のタスクを集約する。
+ */
+async function buildPatientWorkspace(
+  db: DbClient,
+  args: Pick<DetailArgs, 'orgId' | 'patientId'> & {
+    caseIds: string[];
+    allergyInfo: unknown;
+    conditions: WorkspaceConditionInput[];
+    swallowingRoute: string | null;
+  },
+) {
+  if (args.caseIds.length === 0) return null;
+
+  const cycle = await db.medicationCycle.findFirst({
+    where: {
+      org_id: args.orgId,
+      case_id: { in: args.caseIds },
+      overall_status: { notIn: ['reported', 'cancelled'] },
+    },
+    orderBy: { created_at: 'desc' },
+    select: {
+      id: true,
+      overall_status: true,
+      exception_status: true,
+      prescription_intakes: {
+        orderBy: { prescribed_date: 'desc' },
+        take: 2,
+        select: {
+          id: true,
+          prescribed_date: true,
+          original_document_url: true,
+          prescription_category: true,
+          prescriber_institution: true,
+          created_at: true,
+          lines: {
+            orderBy: { line_number: 'asc' },
+            select: {
+              id: true,
+              drug_name: true,
+              drug_code: true,
+              dose: true,
+              frequency: true,
+              days: true,
+              quantity: true,
+              unit: true,
+              start_date: true,
+              end_date: true,
+              dispensing_method: true,
+              packaging_instruction_tags: true,
+            },
+          },
+        },
+      },
+      set_plans: {
+        orderBy: { created_at: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          set_method: true,
+          notes: true,
+          target_period_start: true,
+          target_period_end: true,
+        },
+      },
+      workflow_exceptions: {
+        where: { status: 'open' },
+        orderBy: [{ severity: 'asc' }, { created_at: 'asc' }],
+        select: {
+          id: true,
+          exception_type: true,
+          description: true,
+          severity: true,
+          created_at: true,
+        },
+      },
+      transition_logs: {
+        orderBy: { created_at: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          from_status: true,
+          to_status: true,
+          actor_id: true,
+          created_at: true,
+        },
+      },
+      inquiries: {
+        orderBy: { inquired_at: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          reason: true,
+          inquired_at: true,
+          resolved_at: true,
+        },
+      },
+      dispense_tasks: {
+        // completed = 調剤完了・監査待ち(/api/dispense-audits のキュー前提)も
+        // 期限表示の対象に含める
+        where: { status: { in: ['pending', 'in_progress', 'completed'] } },
+        orderBy: { due_date: 'asc' },
+        take: 1,
+        select: {
+          id: true,
+          due_date: true,
+        },
+      },
+    },
+  });
+
+  if (!cycle) return null;
+
+  const now = new Date();
+  const [egfrObservation, todayVisits, actorNameMap] = await Promise.all([
+    db.patientLabObservation.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        analyte_code: 'egfr',
+      },
+      orderBy: { measured_at: 'desc' },
+      select: {
+        value_numeric: true,
+        value_text: true,
+        measured_at: true,
+      },
+    }),
+    db.visitSchedule.findMany({
+      where: {
+        org_id: args.orgId,
+        case_id: { in: args.caseIds },
+        scheduled_date: { gte: startOfDay(now), lte: endOfDay(now) },
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+      },
+      orderBy: [{ time_window_start: 'asc' }],
+      select: {
+        id: true,
+        time_window_start: true,
+      },
+    }),
+    batchResolveNames(
+      db as typeof prisma,
+      args.orgId,
+      [...new Set(cycle.transition_logs.map((log) => log.actor_id))],
+    ),
+  ]);
+
+  const [currentIntake, previousIntake] = cycle.prescription_intakes;
+
+  const toPeriod = (lines: Array<{ start_date: Date | null; end_date: Date | null }>) => {
+    const starts = lines.map((line) => line.start_date).filter((d): d is Date => d != null);
+    const ends = lines.map((line) => line.end_date).filter((d): d is Date => d != null);
+    return {
+      start: starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null,
+      end: ends.length > 0 ? new Date(Math.max(...ends.map((d) => d.getTime()))) : null,
+    };
+  };
+
+  const rawChanges =
+    currentIntake && previousIntake
+      ? detectMedicationChanges(currentIntake.lines, previousIntake.lines)
+      : [];
+  const currentLineByName = new Map(
+    (currentIntake?.lines ?? []).map((line) => [line.drug_name, line]),
+  );
+  const medicationChanges = rawChanges.map((change) => {
+    const currentLine = currentLineByName.get(change.drug_name) ?? null;
+    return {
+      change_type: change.change_type,
+      drug_name: change.drug_name,
+      frequency: change.change_type === 'removed' ? null : (currentLine?.frequency ?? null),
+      days: change.change_type === 'removed' ? null : (currentLine?.days ?? null),
+    };
+  });
+
+  const currentLines = currentIntake?.lines ?? [];
+
+  // セーフティボード: 取扱タグ = 現行処方行の packaging_instruction_tags + 一包化(dispensing_method)集約
+  const handlingTags = sortHandlingTags([
+    ...currentLines.flatMap((line) => line.packaging_instruction_tags as string[]),
+    ...(currentLines.some((line) => line.dispensing_method === 'unit_dose') ? ['unit_dose'] : []),
+  ]);
+  const egfrValue = egfrObservation?.value_numeric ?? egfrObservation?.value_text ?? null;
+  const safety = {
+    allergy: buildAllergyLabel(args.allergyInfo),
+    renal:
+      egfrObservation && egfrValue != null
+        ? `eGFR ${egfrValue}(${format(egfrObservation.measured_at, 'M/d')})`
+        : null,
+    handling_tags: handlingTags,
+    swallowing: args.swallowingRoute?.trim() || null,
+    cautions: buildCautionLabels(args.conditions),
+  };
+
+  // 直近の動き: 工程遷移 + 疑義照会 + 処方取込を時系列(降順)で 5 件
+  const recentActivities = [
+    ...cycle.transition_logs.map((log) => ({
+      id: `transition-${log.id}`,
+      type: 'transition' as const,
+      label:
+        CYCLE_TRANSITION_EVENT_LABELS[log.to_status] ?? `${log.from_status} → ${log.to_status}`,
+      actor: actorNameMap.get(log.actor_id) ?? null,
+      at: log.created_at,
+      href: getCycleWorkspaceAction(log.to_status)?.actionHref ?? '/workflow',
+    })),
+    ...cycle.inquiries.map((inquiry) => ({
+      id: `inquiry-${inquiry.id}`,
+      type: 'inquiry' as const,
+      label: inquiry.resolved_at
+        ? `${inquiry.reason} → 疑義照会 回答受領`
+        : `${inquiry.reason} → 疑義照会 回答待ち`,
+      actor: null,
+      at: inquiry.resolved_at ?? inquiry.inquired_at,
+      href: '/communications/requests',
+    })),
+    ...cycle.prescription_intakes.map((intake) => ({
+      id: `intake-${intake.id}`,
+      type: 'intake' as const,
+      label: `${intake.prescription_category === 'emergency' ? '臨時' : '定期'}処方 取込${
+        intake.prescriber_institution ? `(${intake.prescriber_institution})` : ''
+      }`,
+      actor: null,
+      at: intake.created_at,
+      href: '/prescriptions',
+    })),
+  ]
+    .sort((left, right) => right.at.getTime() - left.at.getTime())
+    .slice(0, 5)
+    .map((activity) => ({ ...activity, at: activity.at.toISOString() }));
+
+  // このカードに紐づく今日: 監査待ち → セット予定 → 当日訪問の順序つきタスク
+  const hasNarcotic = currentLines.some((line) =>
+    (line.packaging_instruction_tags as string[]).includes('narcotic'),
+  );
+  const auditPending = ['dispensed', 'audit_pending'].includes(cycle.overall_status);
+  const auditDue = cycle.dispense_tasks[0]?.due_date ?? null;
+  const auditDueTime = auditDue ? format(auditDue, 'HH:mm') : null;
+  const todayTasks = [
+    ...(auditPending
+      ? [
+          {
+            id: `audit-${cycle.id}`,
+            tone: 'deadline' as const,
+            time_label: auditDueTime ? `期限 ${auditDueTime}` : '監査待ち',
+            label: hasNarcotic ? '麻薬監査' : '調剤監査',
+            href: '/auditing',
+            action_label: '監査へ',
+            due_time: auditDueTime,
+          },
+        ]
+      : []),
+    ...(['dispensed', 'audit_pending', 'audited', 'setting'].includes(cycle.overall_status)
+      ? [
+          {
+            id: `set-${cycle.id}`,
+            tone: 'waiting' as const,
+            time_label: auditPending
+              ? '監査後'
+              : cycle.overall_status === 'setting'
+                ? '進行中'
+                : '未着手',
+            label: 'セット作成',
+            href: '/medication-sets',
+            action_label: 'セットへ',
+            due_time: null,
+          },
+        ]
+      : []),
+    ...todayVisits.map((visit) => ({
+      id: `visit-${visit.id}`,
+      tone: 'scheduled' as const,
+      time_label: visit.time_window_start ? format(visit.time_window_start, 'HH:mm') : '時間未定',
+      label: '訪問',
+      href: '/schedules',
+      action_label: '訪問へ',
+      due_time: null,
+    })),
+  ];
+
+  return {
+    cycle_id: cycle.id,
+    overall_status: cycle.overall_status,
+    exception_status: cycle.exception_status,
+    current_intake: currentIntake
+      ? {
+          id: currentIntake.id,
+          prescribed_date: currentIntake.prescribed_date.toISOString(),
+        }
+      : null,
+    safety,
+    prescription_lines: currentLines.map((line) => ({
+      id: line.id,
+      drug_name: line.drug_name,
+      dose: line.dose,
+      frequency: line.frequency,
+      days: line.days,
+      quantity: line.quantity,
+      unit: line.unit,
+      packaging_instruction_tags: line.packaging_instruction_tags as string[],
+    })),
+    recent_activities: recentActivities,
+    today_tasks: todayTasks,
+    open_exceptions: cycle.workflow_exceptions.map((exception) => ({
+      id: exception.id,
+      exception_type: exception.exception_type,
+      description: exception.description,
+      severity: exception.severity === 'critical' ? 'critical' : 'warning',
+      created_at: exception.created_at.toISOString(),
+    })),
+    medication_changes: medicationChanges,
+    previous_medication: previousIntake ? toPeriod(previousIntake.lines) : null,
+    current_medication: currentIntake ? toPeriod(currentIntake.lines) : null,
+    set_plan: cycle.set_plans[0]
+      ? {
+          id: cycle.set_plans[0].id,
+          set_method: cycle.set_plans[0].set_method,
+          notes: cycle.set_plans[0].notes,
+          target_period_start: cycle.set_plans[0].target_period_start,
+          target_period_end: cycle.set_plans[0].target_period_end,
+          processing: {
+            unit_dose: (currentIntake?.lines ?? []).some(
+              (line) => line.dispensing_method === 'unit_dose',
+            ),
+            separate_pack: (currentIntake?.lines ?? []).some((line) =>
+              line.packaging_instruction_tags.includes('separate_pack'),
+            ),
+            crushed: (currentIntake?.lines ?? []).some(
+              (line) => line.dispensing_method === 'crushed',
+            ),
+          },
+        }
+      : null,
+    prescription_document_url: currentIntake?.original_document_url ?? null,
+  };
+}
+
 export async function getPatientOverview(db: DbClient, args: DetailArgs) {
   const patient = await findPatientOverviewBase(db, args);
   if (!patient) return null;
@@ -288,6 +728,7 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     labSummary,
     jahisSupplementalRecords,
     archivedByNameMap,
+    workspace,
   ] = await Promise.all([
     caseIds.length === 0
       ? Promise.resolve([])
@@ -302,6 +743,8 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
             id: true,
             scheduled_date: true,
             schedule_status: true,
+            time_window_start: true,
+            confirmed_at: true,
             visit_record: {
               select: {
                 id: true,
@@ -368,6 +811,14 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
       args.orgId,
       patient.archived_by ? [patient.archived_by] : [],
     ),
+    buildPatientWorkspace(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      caseIds,
+      allergyInfo: patient.allergy_info,
+      conditions: patient.conditions,
+      swallowingRoute: patient.scheduling_preference?.swallowing_route ?? null,
+    }),
   ]);
 
   const privacy = getPatientPrivacyFlags(args.role);
@@ -400,6 +851,7 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     visit_brief: visitBrief,
     lab_summary: labSummary,
     jahis_supplemental_records: jahisSupplementalRecords,
+    workspace,
     privacy: {
       sensitive_fields_masked: privacy.sensitiveFieldsMasked,
       address_fields_masked: privacy.addressFieldsMasked,
@@ -424,11 +876,12 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const currentMonthStart = new Date();
-  currentMonthStart.setHours(0, 0, 0, 0);
-  currentMonthStart.setDate(1);
-  const nextMonthStart = new Date(currentMonthStart);
-  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
+  // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
+  const [currentYear, currentMonth] = localDateKey().split('-').map(Number);
+  const currentMonthStart = utcDateFromLocalKey(
+    `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
+  );
+  const nextMonthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
 
   const [visitSchedules, currentMonthVisitCount, visitRecords, homeCareFeatureSummary] =
     await Promise.all([

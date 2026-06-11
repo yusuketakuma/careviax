@@ -15,22 +15,25 @@ const FALLBACK_AUTH_SECRET = 'fallback-application-auth-secret-32';
 const SECRETS_MANAGER_ROOM_TOKEN_SECRET = 'secrets-manager-room-token-secret';
 const DIRECT_PRODUCTION_SECRET = 'direct-production-room-token-secret';
 
-const { secretsManagerSendMock, getSecretValueCommandMock } = vi.hoisted(() => ({
-  secretsManagerSendMock: vi.fn(),
-  getSecretValueCommandMock: vi.fn(function MockGetSecretValueCommand(
-    this: { input?: unknown },
-    input: unknown,
-  ) {
-    this.input = input;
+const { secretsManagerClientMock, secretsManagerSendMock, getSecretValueCommandMock } = vi.hoisted(
+  () => ({
+    secretsManagerClientMock: vi.fn(function MockSecretsManagerClient() {
+      return {
+        send: secretsManagerSendMock,
+      };
+    }),
+    secretsManagerSendMock: vi.fn(),
+    getSecretValueCommandMock: vi.fn(function MockGetSecretValueCommand(
+      this: { input?: unknown },
+      input: unknown,
+    ) {
+      this.input = input;
+    }),
   }),
-}));
+);
 
 vi.mock('@aws-sdk/client-secrets-manager', () => ({
-  SecretsManagerClient: vi.fn().mockImplementation(function MockSecretsManagerClient() {
-    return {
-      send: secretsManagerSendMock,
-    };
-  }),
+  SecretsManagerClient: secretsManagerClientMock,
   GetSecretValueCommand: getSecretValueCommandMock,
 }));
 
@@ -43,6 +46,7 @@ describe('collaboration-room-token', () => {
 
   beforeEach(() => {
     clearCollaborationRoomTokenSecretCache();
+    secretsManagerClientMock.mockClear();
     secretsManagerSendMock.mockReset();
     getSecretValueCommandMock.mockClear();
     process.env.COLLABORATION_ROOM_TOKEN_SECRET = TEST_ROOM_TOKEN_SECRET;
@@ -109,7 +113,7 @@ describe('collaboration-room-token', () => {
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN;
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.AUTH_SECRET;
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
 
     await expect(
       issueCollaborationRoomToken({
@@ -124,7 +128,7 @@ describe('collaboration-room-token', () => {
   it('requires Secrets Manager instead of direct secret env in production', async () => {
     process.env.COLLABORATION_ROOM_TOKEN_SECRET = DIRECT_PRODUCTION_SECRET;
     delete process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN;
-    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
+    process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs24.x';
 
     await expect(
       issueCollaborationRoomToken({
@@ -192,7 +196,102 @@ describe('collaboration-room-token', () => {
       SecretId:
         'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token',
     });
+    expect(secretsManagerClientMock).toHaveBeenCalledOnce();
+    expect(secretsManagerClientMock).toHaveBeenCalledWith({
+      region: 'ap-northeast-1',
+      maxAttempts: 2,
+    });
     expect(secretsManagerSendMock).toHaveBeenCalledTimes(1);
+    expect(secretsManagerSendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
+  });
+
+  it('reuses the Secrets Manager client across collaboration token secret cache clears', async () => {
+    process.env.AWS_REGION = 'us-west-2';
+    process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN =
+      'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token';
+    secretsManagerSendMock
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: SECRETS_MANAGER_ROOM_TOKEN_SECRET,
+        }),
+      })
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: 'rotated-secrets-manager-room-token-secret',
+        }),
+      });
+
+    await issueCollaborationRoomToken({
+      orgId: 'org_1',
+      userId: 'user_1',
+      entityType: 'dispense_task',
+      entityId: 'dt_1',
+    });
+    clearCollaborationRoomTokenSecretCache();
+    await issueCollaborationRoomToken({
+      orgId: 'org_1',
+      userId: 'user_1',
+      entityType: 'dispense_task',
+      entityId: 'dt_2',
+    });
+
+    expect(secretsManagerClientMock).toHaveBeenCalledOnce();
+    expect(secretsManagerClientMock).toHaveBeenCalledWith({ region: 'us-west-2', maxAttempts: 2 });
+    expect(secretsManagerSendMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refetches the signing secret when the configured Secrets Manager ARN changes', async () => {
+    const firstSecretArn =
+      'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token-a';
+    const secondSecretArn =
+      'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token-b';
+    const rotatedSecret = 'rotated-secrets-manager-room-token-secret';
+    process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN = firstSecretArn;
+    secretsManagerSendMock
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: SECRETS_MANAGER_ROOM_TOKEN_SECRET,
+        }),
+      })
+      .mockResolvedValueOnce({
+        SecretString: JSON.stringify({
+          COLLABORATION_ROOM_TOKEN_SECRET: rotatedSecret,
+        }),
+      });
+
+    await issueCollaborationRoomToken({
+      orgId: 'org_1',
+      userId: 'user_1',
+      entityType: 'dispense_task',
+      entityId: 'dt_1',
+    });
+    process.env.COLLABORATION_ROOM_TOKEN_SECRET_ARN = secondSecretArn;
+    const rotatedToken = await issueCollaborationRoomToken({
+      orgId: 'org_1',
+      userId: 'user_1',
+      entityType: 'dispense_task',
+      entityId: 'dt_2',
+    });
+
+    await expect(
+      decode({
+        token: rotatedToken,
+        secret: rotatedSecret,
+        salt: TOKEN_SALT,
+      }),
+    ).resolves.toMatchObject({ room: 'org_1:dispense_task:dt_2' });
+    await expect(
+      decode({
+        token: rotatedToken,
+        secret: SECRETS_MANAGER_ROOM_TOKEN_SECRET,
+        salt: TOKEN_SALT,
+      }),
+    ).rejects.toThrow();
+    expect(getSecretValueCommandMock).toHaveBeenNthCalledWith(1, { SecretId: firstSecretArn });
+    expect(getSecretValueCommandMock).toHaveBeenNthCalledWith(2, { SecretId: secondSecretArn });
+    expect(secretsManagerSendMock).toHaveBeenCalledTimes(2);
   });
 
   it('rejects the known local fallback secret from Secrets Manager', async () => {

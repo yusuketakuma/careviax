@@ -8,13 +8,14 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { MemberRole } from '@prisma/client';
-import { prisma } from '@/lib/db/client';
-import { readJsonObject } from '@/lib/db/json';
+import { awsClientConfig, withAwsClientTimeout } from '@/lib/aws/client-timeout';
 import { hasPermission } from '@/lib/auth/permissions';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
+import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 const FILE_SETTING_PREFIX = 'file_asset:';
 const UPLOAD_EXPIRY_SECONDS = 60 * 5;
@@ -131,6 +132,7 @@ export class FileStorageError extends Error {
       | 'FILE_STORAGE_NOT_CONFIGURED'
       | 'FILE_METADATA_NOT_FOUND'
       | 'FILE_NOT_READY'
+      | 'FILE_UPLOAD_REFERENCE_MISSING'
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
       | 'FILE_COMPLETE_FORBIDDEN'
@@ -145,7 +147,7 @@ export class FileStorageError extends Error {
   }
 }
 
-let cachedClient: S3Client | null = null;
+const s3Clients = new Map<string, S3Client>();
 
 function getRequiredStorageConfig() {
   const bucketName = process.env.S3_BUCKET_NAME;
@@ -242,11 +244,13 @@ function getS3EncryptionConfig(purpose: AnyFilePurpose) {
 }
 
 function getClient() {
-  if (cachedClient) return cachedClient;
-
   const { region } = getRequiredStorageConfig();
-  cachedClient = new S3Client({ region });
-  return cachedClient;
+  const cached = s3Clients.get(region);
+  if (cached) return cached;
+
+  const client = withAwsClientTimeout(new S3Client({ region, ...awsClientConfig() }));
+  s3Clients.set(region, client);
+  return client;
 }
 
 function normalizeEtag(etag: string | null | undefined) {
@@ -310,6 +314,21 @@ function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; siz
   }
 }
 
+function assertUploadReferenceIds(args: CreatePresignedUploadArgs) {
+  const missingReference =
+    (args.purpose === 'prescription' && !args.patientId) ||
+    (args.purpose === 'visit-photo' && !args.visitRecordId) ||
+    (args.purpose === 'report' && !args.reportId);
+
+  if (!missingReference) return;
+
+  throw new FileStorageError(
+    'FILE_UPLOAD_REFERENCE_MISSING',
+    'ファイルアップロードに必要な参照先 ID が指定されていません',
+    400,
+  );
+}
+
 export function assertFileUploadConstraints(args: {
   purpose: FilePurpose;
   mimeType: string;
@@ -346,6 +365,70 @@ function toSettingKey(fileId: string) {
   return `${FILE_SETTING_PREFIX}${fileId}`;
 }
 
+function normalizeStoredReferenceId(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function inferBulkExportJobIdFromStorageKey(storageKey: string, orgId: string) {
+  const prefix = `bulk-exports/${orgId}/`;
+  if (!storageKey.startsWith(prefix)) return null;
+  const [jobId, fileSegment, ...extraSegments] = storageKey.slice(prefix.length).split('/');
+  if (!jobId || !fileSegment || extraSegments.length > 0) return null;
+  return jobId;
+}
+
+function hasExpectedStorageKeyPrefix(storageKey: string, prefix: string) {
+  const suffix = storageKey.slice(prefix.length);
+  return storageKey.startsWith(prefix) && suffix.length > 0 && !suffix.includes('/');
+}
+
+function isStoredFileReferenceConsistent(record: {
+  orgId: string;
+  purpose: AnyFilePurpose;
+  storageKey: string;
+  patientId: string | null;
+  visitRecordId: string | null;
+  reportId: string | null;
+  jobId: string | null;
+}) {
+  switch (record.purpose) {
+    case 'prescription':
+      return (
+        record.patientId !== null &&
+        hasExpectedStorageKeyPrefix(
+          record.storageKey,
+          `prescriptions/${record.orgId}/${record.patientId}/`,
+        )
+      );
+    case 'visit-photo':
+      return (
+        record.visitRecordId !== null &&
+        hasExpectedStorageKeyPrefix(
+          record.storageKey,
+          `visit-photos/${record.orgId}/${record.visitRecordId}/`,
+        )
+      );
+    case 'report':
+      return (
+        record.reportId !== null &&
+        hasExpectedStorageKeyPrefix(
+          record.storageKey,
+          `reports/${record.orgId}/${record.reportId}/`,
+        )
+      );
+    case 'bulk-export':
+      return (
+        record.jobId !== null &&
+        hasExpectedStorageKeyPrefix(
+          record.storageKey,
+          `bulk-exports/${record.orgId}/${record.jobId}/`,
+        )
+      );
+  }
+}
+
 function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
   const record = readJsonObject(value);
   if (!record) return null;
@@ -366,20 +449,36 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
     return null;
   }
 
+  const normalizedRecord = {
+    orgId: record.orgId,
+    purpose: record.purpose,
+    storageKey: record.storageKey,
+    patientId: normalizeStoredReferenceId(record.patientId),
+    visitRecordId: normalizeStoredReferenceId(record.visitRecordId),
+    reportId: normalizeStoredReferenceId(record.reportId),
+    jobId:
+      normalizeStoredReferenceId(record.jobId) ??
+      inferBulkExportJobIdFromStorageKey(record.storageKey, record.orgId),
+  };
+
+  if (!isStoredFileReferenceConsistent(normalizedRecord)) {
+    return null;
+  }
+
   return {
     version: 1,
     id: record.id,
     orgId: record.orgId,
     purpose: record.purpose,
     storageKey: record.storageKey,
-    originalName: record.originalName,
+    originalName: sanitizeFileName(record.originalName),
     mimeType: record.mimeType,
     sizeBytes: record.sizeBytes,
     status: record.status,
-    patientId: typeof record.patientId === 'string' ? record.patientId : null,
-    visitRecordId: typeof record.visitRecordId === 'string' ? record.visitRecordId : null,
-    reportId: typeof record.reportId === 'string' ? record.reportId : null,
-    jobId: typeof record.jobId === 'string' ? record.jobId : null,
+    patientId: normalizedRecord.patientId,
+    visitRecordId: normalizedRecord.visitRecordId,
+    reportId: normalizedRecord.reportId,
+    jobId: normalizedRecord.jobId,
     uploadedBy: typeof record.uploadedBy === 'string' ? record.uploadedBy : null,
     etag: typeof record.etag === 'string' ? record.etag : null,
     createdAt: record.createdAt,
@@ -730,6 +829,7 @@ function assertUploadedObjectMatchesRecord(
 export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
   const { bucketName } = getRequiredStorageConfig();
   assertAllowedUpload(args);
+  assertUploadReferenceIds(args);
   const objectLock = buildPrescriptionObjectLockRetention(args.purpose);
   const encryption = getS3EncryptionConfig(args.purpose);
 

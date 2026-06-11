@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { unzipSync } from 'fflate';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from '@/server/services/fetch-timeout';
 
 export type DrugMasterImportDbClient = Pick<
   PrismaClient,
@@ -303,19 +304,6 @@ function normalizeImportRequestedMaxBytes(value: number | undefined, policyMaxBy
   return Math.min(normalized, policyMaxBytes);
 }
 
-function createImportTimeout(timeoutMs: number) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort(new Error('外部ファイルの取得がタイムアウトしました'));
-  }, timeoutMs);
-  timeout.unref?.();
-
-  return {
-    signal: controller.signal,
-    clear: () => clearTimeout(timeout),
-  };
-}
-
 function timeoutError(signal: AbortSignal) {
   const reason = signal.reason;
   if (reason instanceof Error && reason.message) {
@@ -361,7 +349,10 @@ async function fetchImportResponse(
       await assertPublicDnsResolution(validation.url, resolveHostname);
     }
 
-    const timeout = createImportTimeout(timeoutMs);
+    const timeout = createFetchTimeout(
+      timeoutMs,
+      new Error('外部ファイルの取得がタイムアウトしました'),
+    );
     let response: Response;
     try {
       response = await fetchImpl(validation.url.toString(), {

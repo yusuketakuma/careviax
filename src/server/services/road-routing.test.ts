@@ -58,6 +58,40 @@ describe('createRoadTravelEstimator', () => {
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1500);
   });
 
+  it('unrefs OSRM timeout timers and passes an abort signal to fetch', async () => {
+    process.env.ROUTING_API_PROVIDER = 'osrm';
+    process.env.ROUTING_API_BASE_URL = 'https://osrm.example.test';
+    process.env.ROUTING_API_TIMEOUT_MS = '2500';
+    const unrefMock = vi.fn();
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      (handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        void handler;
+        void timeout;
+        void args;
+        return { unref: unrefMock } as unknown as ReturnType<typeof setTimeout>;
+      },
+    );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          durations: [[600]],
+          distances: [[2500]],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel({ lat: 35.0, lng: 139.0 }, { lat: 35.1, lng: 139.1 }),
+    ).resolves.toMatchObject({
+      durationMinutes: 10,
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(unrefMock).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects malformed OSRM duration matrices', async () => {
     process.env.ROUTING_API_PROVIDER = 'osrm';
     process.env.ROUTING_API_BASE_URL = 'https://osrm.example.test';
@@ -115,6 +149,39 @@ describe('createRoadTravelEstimator', () => {
       durationMinutes: 7.5,
       distanceKm: 1.2,
     });
+  });
+
+  it('unrefs Google Routes timeout timers and passes an abort signal to fetch', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
+    process.env.ROUTING_API_TIMEOUT_MS = '2500';
+    const unrefMock = vi.fn();
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      (handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        void handler;
+        void timeout;
+        void args;
+        return { unref: unrefMock } as unknown as ReturnType<typeof setTimeout>;
+      },
+    );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [{ duration: '450s', distanceMeters: 1200 }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel({ lat: 35.0, lng: 139.0 }, { lat: 35.1, lng: 139.1 }),
+    ).resolves.toMatchObject({
+      durationMinutes: 7.5,
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(unrefMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects malformed Google duration strings instead of partially parsing them', async () => {

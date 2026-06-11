@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from 'date-fns';
 import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import { createRoadTravelEstimator } from './road-routing';
@@ -689,12 +690,13 @@ export async function generateVisitScheduleProposalDrafts(
 ): Promise<GenerateVisitScheduleProposalResult> {
   const travelMode = params.travelMode ?? 'DRIVE';
   const estimateRoadTravel = createRoadTravelEstimator(travelMode);
-  const planningStart = params.startDate ?? addDays(new Date(), 1);
-  planningStart.setHours(0, 0, 0, 0);
-  const lockedDate = params.lockedDate ? new Date(params.lockedDate) : null;
-  if (lockedDate) {
-    lockedDate.setHours(0, 0, 0, 0);
-  }
+  // shift date / scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜に正規化する
+  const planningStart = utcDateFromLocalKey(
+    localDateKey(params.startDate ?? addDays(new Date(), 1)),
+  );
+  const lockedDate = params.lockedDate
+    ? utcDateFromLocalKey(localDateKey(params.lockedDate))
+    : null;
 
   const careCase = await prisma.careCase.findFirst({
     where: {

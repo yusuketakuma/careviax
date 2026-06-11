@@ -1,6 +1,7 @@
 import type { InsuranceApplicationStatus, PayerBasis, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
@@ -1025,8 +1026,8 @@ async function findPendingPublicSubsidyInsurance(
     asOf: Date;
   },
 ) {
-  const asOf = new Date(args.asOf);
-  asOf.setHours(0, 0, 0, 0);
+  // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜で比較する
+  const asOf = utcDateFromLocalKey(localDateKey(args.asOf));
 
   const [record] = await tx.patientInsurance.findMany({
     where: {

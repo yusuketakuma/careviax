@@ -8,6 +8,7 @@ import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
@@ -246,7 +247,7 @@ export const POST = withAuth(
           org_id: req.orgId,
           pharmacist_id,
           scheduled_date: { in: candidateDates },
-          schedule_status: { not: 'cancelled' },
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
           route_order: { not: null },
         },
         select: {
@@ -254,10 +255,32 @@ export const POST = withAuth(
           route_order: true,
         },
       });
+      const existingProposalRouteOrders = await tx.visitScheduleProposal.findMany({
+        where: {
+          org_id: req.orgId,
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+          proposed_pharmacist_id: pharmacist_id,
+          proposed_date: { in: candidateDates },
+          route_order: { not: null },
+        },
+        select: {
+          proposed_date: true,
+          route_order: true,
+        },
+      });
       const maxRouteOrderByDate = new Map<string, number>();
       for (const schedule of existingRouteOrders) {
         const routeOrder = schedule.route_order ?? 0;
         const dateKey = buildDateKey(schedule.scheduled_date);
+        maxRouteOrderByDate.set(
+          dateKey,
+          Math.max(maxRouteOrderByDate.get(dateKey) ?? 0, routeOrder),
+        );
+      }
+      for (const proposal of existingProposalRouteOrders) {
+        const routeOrder = proposal.route_order ?? 0;
+        const dateKey = buildDateKey(proposal.proposed_date);
         maxRouteOrderByDate.set(
           dateKey,
           Math.max(maxRouteOrderByDate.get(dateKey) ?? 0, routeOrder),

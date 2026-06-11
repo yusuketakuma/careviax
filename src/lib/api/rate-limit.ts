@@ -244,6 +244,22 @@ function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetA
   return { count, resetAt };
 }
 
+function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
+  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
+    (timeout as { unref?: () => void }).unref?.();
+  }
+}
+
+function createDynamoAbortController() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), resolveDynamoTimeoutMs());
+  maybeUnrefTimeout(timeout);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
 async function resolveAwsCredentials(): Promise<AwsCredentials> {
   const now = Date.now();
   if (
@@ -261,13 +277,12 @@ async function resolveAwsCredentials(): Promise<AwsCredentials> {
       headers.Authorization = authToken;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), resolveDynamoTimeoutMs());
+    const abort = createDynamoAbortController();
     try {
       const response = await fetch(credentialsUrl, {
         method: 'GET',
         headers,
-        signal: controller.signal,
+        signal: abort.signal,
       });
       if (!response.ok) {
         throw new Error(`AWS container credentials request failed: ${response.status}`);
@@ -279,7 +294,7 @@ async function resolveAwsCredentials(): Promise<AwsCredentials> {
       cachedAwsCredentials = parsed;
       return parsed.credentials;
     } finally {
-      clearTimeout(timeout);
+      abort.clear();
     }
   }
 
@@ -340,18 +355,17 @@ class DynamoRateLimitStore implements RateLimitStore {
         target: 'DynamoDB_20120810.UpdateItem',
         credentials: await resolveAwsCredentials(),
       });
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), resolveDynamoTimeoutMs());
+      const abort = createDynamoAbortController();
       let response: Response;
       try {
         response = await fetch(`https://${signedRequest.host}/`, {
           method: 'POST',
           headers: signedRequest.headers,
           body: requestBody,
-          signal: controller.signal,
+          signal: abort.signal,
         });
       } finally {
-        clearTimeout(timeout);
+        abort.clear();
       }
 
       if (!response.ok) {
@@ -452,6 +466,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/admin/facilities/:id/visit-batches',
   '/api/admin/facility-standards',
   '/api/admin/flush-metrics',
+  '/api/admin/master-hub',
   '/api/admin/master-readiness',
   '/api/admin/metrics',
   '/api/admin/organizations',
@@ -478,6 +493,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/billing-candidates/close',
   '/api/billing-candidates/export',
   '/api/billing-evidence/analytics',
+  '/api/billing-evidence/check',
   '/api/billing-evidence/stats',
   '/api/billing-rules',
   '/api/billing-rules/:id',
@@ -490,6 +506,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/care-reports/analytics',
   '/api/care-reports/generate-from-visit',
   '/api/care-reports/reminders',
+  '/api/care-reports/today-workspace',
   '/api/cases',
   '/api/cases/:id',
   '/api/cases/:id/transition',
@@ -520,6 +537,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/dashboard/medication-deadlines',
   '/api/dashboard/monthly-stats',
   '/api/dashboard/overdue',
+  '/api/dashboard/cockpit',
   '/api/dashboard/today',
   '/api/dashboard/workflow',
   '/api/dispense-audits',
@@ -529,6 +547,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/dispense-tasks',
   '/api/dispense-tasks/:id',
   '/api/dispense-tasks/:id/verify-barcode',
+  '/api/dispense-tasks/:id/workbench',
   '/api/document-delivery-rules',
   '/api/document-delivery-rules/:id',
   '/api/drug-alert-rules',
@@ -587,13 +606,17 @@ export const API_ROUTE_TEMPLATES = [
   '/api/me/mfa/verify',
   '/api/me/org',
   '/api/me/password',
+  '/api/me/preferences',
   '/api/me/profile',
+  '/api/me/site',
+  '/api/me/sites',
   '/api/medication-cycles',
   '/api/medication-cycles/:id/history',
   '/api/medication-cycles/:id/transition',
   '/api/medication-issues',
   '/api/medication-issues/:id',
   '/api/medication-profiles',
+  '/api/medication-sets/workspace',
   '/api/meta/route-catalog',
   '/api/notification-rules',
   '/api/notification-rules/:id',
@@ -633,6 +656,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/:id/visit-records/pdf',
   '/api/patients/:id/visits',
   '/api/patients/:id/workflow-preview',
+  '/api/patients/board',
   '/api/patients/check-duplicate',
   '/api/patients/export',
   '/api/patients/medications/bulk-export',
@@ -675,6 +699,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/prescription-intakes',
   '/api/prescription-intakes/:id',
   '/api/prescription-intakes/facility-batch',
+  '/api/prescription-intakes/triage',
   '/api/presence',
   '/api/push-subscription',
   '/api/qr-scan-drafts',
@@ -690,6 +715,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/set-plans/:id',
   '/api/set-plans/:id/generate-batches',
   '/api/settings',
+  '/api/settings/operational-policy',
   '/api/tasks',
   '/api/tasks/:id',
   '/api/templates',
@@ -720,7 +746,9 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-schedules/:id/reschedule/approve',
   '/api/visit-schedules/generate',
   '/api/visit-schedules/reorder',
+  '/api/visit-schedules/day-board',
   '/api/visit-schedules/today',
+  '/api/visits/today-preparation',
   '/api/workflow-exceptions/:id',
 ] as const;
 

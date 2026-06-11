@@ -1,10 +1,35 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   authenticateWithPassword,
   LOCAL_DEMO_LOGIN_EMAIL,
   LOCAL_DEMO_LOGIN_PASSWORD,
   parseCognitoIdTokenPayload,
 } from './cognito-auth';
+
+const { cognitoClientMock, cognitoSendMock, initiateAuthCommandMock } = vi.hoisted(() => ({
+  cognitoSendMock: vi.fn(),
+  cognitoClientMock: vi.fn(function MockCognitoIdentityProviderClient() {
+    return {
+      send: cognitoSendMock,
+    };
+  }),
+  initiateAuthCommandMock: vi.fn(function MockInitiateAuthCommand(
+    this: { input?: unknown },
+    input: unknown,
+  ) {
+    this.input = input;
+  }),
+}));
+
+vi.mock('@aws-sdk/client-cognito-identity-provider', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('@aws-sdk/client-cognito-identity-provider')>();
+  return {
+    ...original,
+    CognitoIdentityProviderClient: cognitoClientMock,
+    InitiateAuthCommand: initiateAuthCommandMock,
+  };
+});
 
 function makeJwt(payload: unknown) {
   return [
@@ -67,6 +92,7 @@ describe('authenticateWithPassword local demo login', () => {
     allowLocalDemoPasswordLogin: process.env.ALLOW_LOCAL_DEMO_PASSWORD_LOGIN,
     localDemoPassword: process.env.LOCAL_DEMO_PASSWORD,
     cognitoClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+    awsRegion: process.env.AWS_REGION,
   };
 
   beforeEach(() => {
@@ -88,6 +114,8 @@ describe('authenticateWithPassword local demo login', () => {
     else process.env.LOCAL_DEMO_PASSWORD = originalEnv.localDemoPassword;
     if (originalEnv.cognitoClientId === undefined) delete process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
     else process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID = originalEnv.cognitoClientId;
+    if (originalEnv.awsRegion === undefined) delete process.env.AWS_REGION;
+    else process.env.AWS_REGION = originalEnv.awsRegion;
   });
 
   it('accepts the seeded demo user password only in the local Playwright runtime', async () => {
@@ -127,5 +155,93 @@ describe('authenticateWithPassword local demo login', () => {
         password: LOCAL_DEMO_LOGIN_PASSWORD,
       }),
     ).rejects.toThrow('COGNITO_NOT_CONFIGURED');
+  });
+
+  it('wraps Cognito password auth sends with bounded AWS client options', async () => {
+    delete process.env.PLAYWRIGHT;
+    process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID = 'client_1';
+    process.env.AWS_REGION = 'us-west-2';
+    cognitoClientMock.mockClear();
+    cognitoSendMock.mockReset();
+    initiateAuthCommandMock.mockClear();
+    cognitoSendMock.mockResolvedValue({
+      AuthenticationResult: {
+        IdToken: makeJwt({
+          sub: 'cognito-sub-1',
+          email: 'user@example.jp',
+          name: '利用者 太郎',
+        }),
+        AccessToken: 'access-token',
+        RefreshToken: 'refresh-token',
+      },
+    });
+
+    await expect(
+      authenticateWithPassword({
+        email: 'USER@example.jp',
+        password: 'password-1',
+      }),
+    ).resolves.toMatchObject({
+      email: 'user@example.jp',
+      accessToken: 'access-token',
+    });
+
+    expect(cognitoClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'us-west-2',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
+    expect(cognitoSendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
+    expect(initiateAuthCommandMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ClientId: 'client_1',
+        AuthParameters: expect.objectContaining({ USERNAME: 'user@example.jp' }),
+      }),
+    );
+  });
+
+  it('creates a separate Cognito auth client when AWS_REGION changes', async () => {
+    delete process.env.PLAYWRIGHT;
+    process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID = 'client_1';
+    cognitoClientMock.mockClear();
+    cognitoSendMock.mockReset();
+    initiateAuthCommandMock.mockClear();
+    cognitoSendMock.mockResolvedValue({
+      AuthenticationResult: {
+        IdToken: makeJwt({
+          sub: 'cognito-sub-1',
+          email: 'user@example.jp',
+          name: '利用者 太郎',
+        }),
+        AccessToken: 'access-token',
+      },
+    });
+
+    process.env.AWS_REGION = 'eu-central-1';
+    await authenticateWithPassword({ email: 'user@example.jp', password: 'password-1' });
+    process.env.AWS_REGION = 'ca-central-1';
+    await authenticateWithPassword({ email: 'user@example.jp', password: 'password-1' });
+
+    expect(cognitoClientMock).toHaveBeenCalledTimes(2);
+    expect(cognitoClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        region: 'eu-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
+    expect(cognitoClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'ca-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
   });
 });

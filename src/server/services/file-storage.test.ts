@@ -13,6 +13,7 @@ const {
   visitRecordFindFirstMock,
   careReportFindFirstMock,
   randomUuidMock,
+  s3ClientMock,
   s3SendMock,
 } = vi.hoisted(() => ({
   getSignedUrlMock: vi.fn(),
@@ -27,6 +28,7 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   randomUuidMock: vi.fn(),
+  s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
 }));
 
@@ -39,6 +41,10 @@ vi.mock('node:crypto', () => ({
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: class S3Client {
     send = s3SendMock;
+
+    constructor(config: unknown) {
+      s3ClientMock(config);
+    }
   },
   PutObjectCommand: class PutObjectCommand {
     input: Record<string, unknown>;
@@ -278,6 +284,13 @@ describe('file-storage', () => {
     });
 
     expect(getSignedUrlMock).toHaveBeenCalledOnce();
+    expect(s3ClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
     const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
       input: Record<string, unknown>;
     };
@@ -292,6 +305,47 @@ describe('file-storage', () => {
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
     });
+  });
+
+  it('creates a separate S3 client when the configured bucket region changes', async () => {
+    process.env.S3_BUCKET_REGION = 'eu-central-1';
+    await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      reportId: 'report_1',
+    });
+    process.env.S3_BUCKET_REGION = 'ca-central-1';
+    randomUuidMock.mockReturnValueOnce('file-uuid-2');
+
+    await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report-2.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      reportId: 'report_1',
+    });
+
+    expect(s3ClientMock).toHaveBeenCalledTimes(2);
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        region: 'eu-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'ca-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+      }),
+    );
   });
 
   it('rejects unsupported MIME types before signing uploads or writing metadata', async () => {
@@ -313,6 +367,33 @@ describe('file-storage', () => {
     expect(getSignedUrlMock).not.toHaveBeenCalled();
     expect(settingUpsertMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['prescription', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
+    ['visit-photo', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
+    ['report', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
+  ] as const)(
+    'rejects %s uploads without the required domain reference before signing',
+    async (purpose, references) => {
+      await expect(
+        createPresignedUpload({
+          orgId: 'org_1',
+          purpose,
+          fileName: 'clinical.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          ...references,
+        }),
+      ).rejects.toMatchObject({
+        code: 'FILE_UPLOAD_REFERENCE_MISSING',
+        status: 400,
+      });
+
+      expect(randomUuidMock).not.toHaveBeenCalled();
+      expect(getSignedUrlMock).not.toHaveBeenCalled();
+      expect(settingUpsertMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('sanitizes path-like filenames before using them in storage keys and metadata', async () => {
     const result = await createPresignedUpload({
@@ -358,6 +439,9 @@ describe('file-storage', () => {
     });
 
     expect(s3SendMock).toHaveBeenCalledOnce();
+    expect(s3SendMock).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
     const putObjectCommand = s3SendMock.mock.calls[0]?.[0] as {
       input: Record<string, unknown>;
     };
@@ -475,6 +559,16 @@ describe('file-storage', () => {
     ['unsupported purpose', { ...buildStoredFileRecord(), purpose: 'unknown-purpose' }],
     ['unsupported status', { ...buildStoredFileRecord(), status: 'deleted' }],
     ['non-finite file size', { ...buildStoredFileRecord(), sizeBytes: Number.NaN }],
+    [
+      'storage key outside the recorded purpose scope',
+      {
+        ...buildStoredFileRecord({
+          purpose: 'report',
+          reportId: 'report_1',
+          storageKey: 'prescriptions/org_1/patient_1/file_1-report.pdf',
+        }),
+      },
+    ],
   ])('rejects malformed stored metadata before S3 access: %s', async (_caseName, value) => {
     settingFindFirstMock.mockResolvedValue({
       id: 'setting_1',
@@ -493,6 +587,30 @@ describe('file-storage', () => {
     });
     expect(getSignedUrlMock).not.toHaveBeenCalled();
     expect(s3SendMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes stored filenames before building download response metadata', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report"\r\nx.pdf',
+      status: 'uploaded',
+    });
+
+    const result = await createPresignedDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result.fileName).toBe('report___x.pdf');
+    const getObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(getObjectCommand.input).toMatchObject({
+      ResponseContentDisposition: 'inline; filename="report___x.pdf"',
+    });
   });
 
   it('rejects expired generated bulk export downloads before signing', async () => {
@@ -941,6 +1059,7 @@ describe('file-storage', () => {
         mimeType: 'application/pdf',
         sizeBytes: 1024,
         status: 'uploaded',
+        reportId: 'report_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
         completedAt: '2026-03-28T00:00:00.000Z',

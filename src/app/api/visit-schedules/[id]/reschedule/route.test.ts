@@ -9,6 +9,7 @@ const {
   visitScheduleUpdateMock,
   visitScheduleCountMock,
   visitScheduleProposalCreateMock,
+  visitScheduleProposalFindManyMock,
   visitScheduleProposalUpdateManyMock,
   visitScheduleOverrideCreateMock,
   contactPartyFindManyMock,
@@ -30,6 +31,7 @@ const {
   visitScheduleUpdateMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
+  visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleOverrideCreateMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
@@ -254,6 +256,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         proposed_pharmacist_id: data.proposed_pharmacist_id,
       }),
     );
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
     visitScheduleProposalUpdateManyMock.mockResolvedValue({ count: 1 });
     visitScheduleOverrideCreateMock.mockImplementation(
       async ({
@@ -316,6 +319,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         },
         visitScheduleProposal: {
           create: visitScheduleProposalCreateMock,
+          findMany: visitScheduleProposalFindManyMock,
           updateMany: visitScheduleProposalUpdateManyMock,
         },
         visitScheduleOverride: {
@@ -723,6 +727,143 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           current_vehicle_resource_id: 'vehicle_1',
           vehicle_reassignment_mode: 'auto',
         }),
+      }),
+    });
+  });
+
+  it('reallocates emergency impacted proposal route orders after other open proposals', async () => {
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_1',
+        route_order: 9,
+        reschedule_source_schedule_id: 'schedule_2',
+      },
+      {
+        proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_1',
+        route_order: 3,
+        reschedule_source_schedule_id: 'schedule_other',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '緊急訪問が割り込んだため',
+          reason_code: 'emergency_insert',
+          communication_channel: 'phone',
+          communication_result: 'pending',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        reschedule_source_schedule_id: 'schedule_2',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        route_order: { not: null },
+        OR: [
+          {
+            proposed_pharmacist_id: 'pharmacist_1',
+            proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+          },
+        ],
+      },
+      select: {
+        proposed_date: true,
+        proposed_pharmacist_id: true,
+        route_order: true,
+        reschedule_source_schedule_id: true,
+      },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_2',
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+        route_order: 4,
+        reschedule_source_schedule_id: 'schedule_2',
+      }),
+    });
+  });
+
+  it('reallocates replacement proposal route orders after open proposal collisions', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([
+      {
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_2',
+        route_order: 2,
+        reschedule_source_schedule_id: 'schedule_other',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        route_order: { not: null },
+        OR: [
+          {
+            proposed_pharmacist_id: 'pharmacist_2',
+            proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+          },
+        ],
+      },
+      select: {
+        proposed_date: true,
+        proposed_pharmacist_id: true,
+        route_order: true,
+        reschedule_source_schedule_id: true,
+      },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_1',
+        proposed_pharmacist_id: 'pharmacist_2',
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        route_order: 3,
+        reschedule_source_schedule_id: 'schedule_1',
       }),
     });
   });

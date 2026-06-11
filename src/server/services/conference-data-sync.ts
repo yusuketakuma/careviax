@@ -9,6 +9,7 @@ import {
   upsertOperationalTask,
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
+import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 
 type TransactionClient = {
   billingCandidate: ConferenceSyncTransactionClient['billingCandidate'];
@@ -59,9 +60,24 @@ type TransactionClient = {
       route_order: number | null;
       recurrence_rule: string | null;
     } | null>;
+    findMany(args: unknown): Promise<
+      Array<{
+        scheduled_date: Date;
+        pharmacist_id: string;
+        route_order: number | null;
+      }>
+    >;
   };
   visitScheduleProposal: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
+    findMany(args: unknown): Promise<
+      Array<{
+        proposed_date: Date;
+        proposed_pharmacist_id: string;
+        route_order: number | null;
+        reschedule_source_schedule_id: string | null;
+      }>
+    >;
     create(args: unknown): Promise<{ id: string }>;
     update(args: unknown): Promise<{ id: string }>;
   };
@@ -726,6 +742,21 @@ async function syncServiceManagerUsage(
           });
           visitProposalId = updatedProposal.id;
         } else {
+          let routeOrder = latestSchedule?.route_order ?? null;
+          if (routeOrder != null) {
+            const [routeOrderDraft] = await allocateProposalRouteOrders(tx, {
+              orgId,
+              drafts: [
+                {
+                  proposed_pharmacist_id: careCase.primary_pharmacist_id,
+                  proposed_date: proposedDateOnly,
+                  route_order: routeOrder,
+                },
+              ],
+            });
+            routeOrder = routeOrderDraft?.route_order ?? routeOrder;
+          }
+
           const createdProposal = await tx.visitScheduleProposal.create({
             data: {
               org_id: orgId,
@@ -741,7 +772,7 @@ async function syncServiceManagerUsage(
               time_window_end: latestSchedule?.time_window_end ?? null,
               proposed_pharmacist_id: careCase.primary_pharmacist_id,
               assignment_mode: 'primary',
-              route_order: latestSchedule?.route_order ?? null,
+              route_order: routeOrder,
               medication_end_date: latestSchedule?.medication_end_date ?? null,
               visit_deadline_date: latestSchedule?.visit_deadline_date ?? null,
               proposal_reason: dedupeKey,

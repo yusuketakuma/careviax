@@ -175,6 +175,49 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
+  it('GET classifies a record valid from today as current even in JST mornings (@db.Date boundary)', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    try {
+      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。
+      // valid_from は @db.Date 規約どおり当日の UTC 深夜で保存されている。
+      vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+      patientInsuranceFindManyMock.mockResolvedValue([
+        {
+          id: 'insurance_starts_today',
+          is_active: true,
+          valid_from: new Date('2026-06-12T00:00:00.000Z'),
+          valid_until: null,
+          created_at: new Date('2026-06-01T01:00:00.000Z'),
+        },
+        {
+          id: 'insurance_ends_today',
+          is_active: true,
+          valid_from: new Date('2026-01-01T00:00:00.000Z'),
+          valid_until: new Date('2026-06-12T00:00:00.000Z'),
+          created_at: new Date('2026-01-01T01:00:00.000Z'),
+        },
+      ]);
+
+      const response = await GET(createGetRequest(), routeParams);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          current: [{ id: 'insurance_starts_today' }, { id: 'insurance_ends_today' }],
+          upcoming: [],
+          history: [],
+        },
+      });
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
   it('GET returns 404 for an inaccessible patient without reading insurance records', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 

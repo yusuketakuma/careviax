@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { createRoadTravelEstimatorMock } = vi.hoisted(() => ({
   createRoadTravelEstimatorMock: vi.fn(),
@@ -9,6 +9,12 @@ vi.mock('./road-routing', () => ({
 }));
 
 import { computeOptimizedVisitRoute } from './visit-route-engine';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  createRoadTravelEstimatorMock.mockReset();
+});
 
 describe('computeOptimizedVisitRoute (heuristic path)', () => {
   const origin = { lat: 35.0, lng: 139.0, label: '本店' };
@@ -154,5 +160,74 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(result.status).toBe('ok');
     expect(result.note).toBe('優先度補正を含むヒューリスティック順序を表示しています');
     expect(result.orderedScheduleIds).toEqual(['emergency_far', 'normal_near']);
+  });
+});
+
+describe('computeOptimizedVisitRoute (Google Routes path)', () => {
+  const origin = { lat: 35.0, lng: 139.0, label: '本店' };
+  const travelMode = 'DRIVE' as const;
+
+  it('uses an unrefed cleanup timer for Google waypoint optimization requests', async () => {
+    vi.stubEnv('ROUTING_API_PROVIDER', 'google');
+    vi.stubEnv('GOOGLE_MAPS_SERVER_API_KEY', 'server-api-key');
+
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+    const abortSignalTimeoutSpy =
+      typeof AbortSignal.timeout === 'function' ? vi.spyOn(AbortSignal, 'timeout') : null;
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [
+            {
+              duration: '600s',
+              distanceMeters: 1200,
+              optimizedIntermediateWaypointIndex: [0],
+              polyline: { encodedPolyline: 'encoded-path' },
+              legs: [{ duration: '600s', distanceMeters: 1200 }],
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        {
+          scheduleId: 'sched_google',
+          patientName: '患者A',
+          address: '住所A',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.encodedPath).toBe('encoded-path');
+    expect(result.orderedScheduleIds).toEqual(['sched_google']);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://routes.googleapis.com/directions/v2:computeRoutes',
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+    expect(abortSignalTimeoutSpy).not.toHaveBeenCalled();
   });
 });

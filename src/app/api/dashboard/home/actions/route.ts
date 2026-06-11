@@ -6,6 +6,7 @@ import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { DASHBOARD_PIPELINE_STEPS } from '@/lib/dashboard/home-config';
 import { formatDateKey } from '@/lib/date-key';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -84,10 +85,9 @@ function buildCycleAggregateActionItems(statusMap: Record<string, number>): Acti
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const sevenDaysFromNow = new Date(today);
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜境界
+    const today = utcDateFromLocalKey(localDateKey());
+    const sevenDaysFromNow = addUtcDays(today, 7);
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: req.orgId,

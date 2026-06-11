@@ -774,6 +774,9 @@ function buildTx(state: TestState) {
         return { count: 1 };
       }),
     },
+    visitScheduleProposal: {
+      findMany: vi.fn(async () => []),
+    },
     visitPreparation: {
       upsert: vi.fn(
         async ({

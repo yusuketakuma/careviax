@@ -7,6 +7,8 @@ const {
   pharmacistShiftFindFirstMock,
   visitScheduleFindManyMock,
   visitScheduleFindFirstMock,
+  visitScheduleRouteFindManyMock,
+  visitScheduleProposalRouteFindManyMock,
   visitScheduleCountMock,
   visitVehicleResourceFindFirstMock,
   careCaseFindFirstMock,
@@ -21,6 +23,8 @@ const {
   pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleRouteFindManyMock: vi.fn(),
+  visitScheduleProposalRouteFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -152,6 +156,8 @@ describe('/api/visit-schedules', () => {
       available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
     visitScheduleFindFirstMock.mockResolvedValue(null);
+    visitScheduleRouteFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     visitVehicleResourceFindFirstMock.mockResolvedValue({
       id: 'vehicle_1',
@@ -178,7 +184,11 @@ describe('/api/visit-schedules', () => {
       callback({
         visitSchedule: {
           findFirst: visitScheduleFindFirstMock,
+          findMany: visitScheduleRouteFindManyMock,
           create: visitScheduleCreateMock,
+        },
+        visitScheduleProposal: {
+          findMany: visitScheduleProposalRouteFindManyMock,
         },
       }),
     );
@@ -341,7 +351,13 @@ describe('/api/visit-schedules', () => {
       available_from: new Date('1970-01-01T08:30:00.000Z'),
       available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
-    visitScheduleFindFirstMock.mockResolvedValueOnce({ route_order: 3 });
+    visitScheduleRouteFindManyMock.mockResolvedValueOnce([
+      {
+        scheduled_date: new Date('2026-03-31'),
+        pharmacist_id: 'user_2',
+        route_order: 3,
+      },
+    ]);
 
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedules', {
@@ -364,6 +380,75 @@ describe('/api/visit-schedules', () => {
       data: expect.objectContaining({
         site_id: 'shift_site_1',
         route_order: 4,
+      }),
+    });
+  });
+
+  it('appends manual schedule route order after open proposals in the same pharmacist day', async () => {
+    visitScheduleRouteFindManyMock.mockResolvedValueOnce([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
+      {
+        proposed_date: new Date('2026-03-31'),
+        proposed_pharmacist_id: 'user_2',
+        route_order: 4,
+        reschedule_source_schedule_id: null,
+      },
+    ]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        route_order: { not: null },
+        OR: [
+          {
+            pharmacist_id: 'user_2',
+            scheduled_date: new Date('2026-03-31'),
+          },
+        ],
+      },
+      select: {
+        scheduled_date: true,
+        pharmacist_id: true,
+        route_order: true,
+      },
+    });
+    expect(visitScheduleProposalRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+        route_order: { not: null },
+        OR: [
+          {
+            proposed_pharmacist_id: 'user_2',
+            proposed_date: new Date('2026-03-31'),
+          },
+        ],
+      },
+      select: {
+        proposed_date: true,
+        proposed_pharmacist_id: true,
+        route_order: true,
+        reschedule_source_schedule_id: true,
+      },
+    });
+    expect(visitScheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 5,
       }),
     });
   });

@@ -26,6 +26,7 @@ describe('patient-mcs-ai', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     process.env.PATIENT_MCS_AI_API_KEY = originalEnv.apiKey;
     process.env.PATIENT_MCS_AI_PROVIDER = originalEnv.provider;
     process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = originalEnv.allowExternal;
@@ -145,32 +146,40 @@ describe('patient-mcs-ai', () => {
     expect(summary.suggested_actions).toEqual(['次回訪問時に水分摂取量を確認してください。']);
   });
 
-  it('uses the default AI timeout when the configured timeout is invalid', async () => {
+  it('uses an unrefed default AI timeout when the configured timeout is invalid', async () => {
     process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
     process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
     process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
     process.env.PATIENT_MCS_AI_TIMEOUT_MS = 'NaN';
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  headline: '看護師から共有があります。',
-                  bullets: ['食欲低下が続いています。'],
-                  must_check_today: ['脱水兆候を確認してください。'],
-                  suggested_actions: ['水分摂取量を確認してください。'],
-                }),
-              },
+
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+    const abortSignalTimeoutSpy =
+      typeof AbortSignal.timeout === 'function' ? vi.spyOn(AbortSignal, 'timeout') : null;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                headline: '看護師から共有があります。',
+                bullets: ['食欲低下が続いています。'],
+                must_check_today: ['脱水兆候を確認してください。'],
+                suggested_actions: ['水分摂取量を確認してください。'],
+              }),
             },
-          ],
-        }),
+          },
+        ],
       }),
-    );
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const summary = await generatePatientMcsAiSummary({
       patientName: '青葉 花子',
@@ -188,7 +197,16 @@ describe('patient-mcs-ai', () => {
       ],
     });
 
-    expect(timeoutSpy).toHaveBeenCalledWith(4000);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/chat/completions',
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 4000);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+    expect(abortSignalTimeoutSpy).not.toHaveBeenCalled();
     expect(summary.provider).toBe('openai');
   });
 

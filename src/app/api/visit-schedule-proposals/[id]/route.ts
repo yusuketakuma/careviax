@@ -37,6 +37,7 @@ import {
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
 import { omitProposalRejectReason } from '@/lib/visit-schedule-proposals/response';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 
 type RoutePreviewPoint = {
   schedule_id: string;
@@ -1170,7 +1171,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       (maxOrder, schedule) => Math.max(maxOrder, schedule.route_order ?? 0),
       0,
     );
-    const finalizedRouteOrder = Math.max(existing.route_order ?? 1, routeOrderFloor + 1);
+
+    const supersededSiblingWhere = existing.reschedule_source_schedule_id
+      ? { reschedule_source_schedule_id: existing.reschedule_source_schedule_id }
+      : { reschedule_source_schedule_id: null };
+    const remainingOpenProposals = await tx.visitScheduleProposal.findMany({
+      where: {
+        id: {
+          not: id,
+        },
+        org_id: ctx.orgId,
+        proposed_pharmacist_id: existing.proposed_pharmacist_id,
+        proposed_date: existing.proposed_date,
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: OPEN_PROPOSAL_STATUSES,
+        },
+        route_order: {
+          not: null,
+        },
+        NOT: {
+          case_id: existing.case_id,
+          ...supersededSiblingWhere,
+        },
+      },
+      select: {
+        route_order: true,
+      },
+    });
+    const proposalRouteOrderFloor = remainingOpenProposals.reduce(
+      (maxOrder, proposal) => Math.max(maxOrder, proposal.route_order ?? 0),
+      0,
+    );
+    const finalizedRouteOrder = Math.max(
+      existing.route_order ?? 1,
+      routeOrderFloor + 1,
+      proposalRouteOrderFloor + 1,
+    );
 
     await tx.visitSchedule.updateMany({
       where: {

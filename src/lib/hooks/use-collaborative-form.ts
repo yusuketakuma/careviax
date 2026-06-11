@@ -134,11 +134,14 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const queryKey = ['presence', entityType, entityId, orgId];
-  const [collaborationAccessDenied, setCollaborationAccessDenied] = useState(false);
-
-  useEffect(() => {
-    setCollaborationAccessDenied(false);
-  }, [entityType, entityId, orgId]);
+  const collaborationAccessKey = `${orgId}\u0000${entityType}\u0000${entityId}`;
+  const [collaborationAccessDeniedState, setCollaborationAccessDeniedState] = useState<{
+    key: string;
+    denied: boolean;
+  }>({ key: '', denied: false });
+  const collaborationAccessDenied =
+    collaborationAccessDeniedState.denied &&
+    collaborationAccessDeniedState.key === collaborationAccessKey;
 
   // --- Presence polling (unchanged from Phase 5) ---
   const { data: presenceData = [] } = useQuery<PresenceUser[]>({
@@ -194,7 +197,10 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
   const bridgeRef = useRef<FormYjsBridge | null>(null);
   const textFieldNamesRef = useRef(textFieldNames);
   const registeredFieldNamesRef = useRef(new Set<string>());
-  textFieldNamesRef.current = textFieldNames;
+
+  useEffect(() => {
+    textFieldNamesRef.current = textFieldNames;
+  }, [textFieldNames]);
 
   useEffect(() => {
     if (!orgId || !entityId) return;
@@ -441,7 +447,7 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
       const tokenResult = await fetchRoomToken();
       if (cancelled) return;
       if (tokenResult.kind === 'access-denied') {
-        setCollaborationAccessDenied(true);
+        setCollaborationAccessDeniedState({ key: collaborationAccessKey, denied: true });
         disconnectCurrentProvider();
         destroyCollaborationDoc();
         cancelled = true;

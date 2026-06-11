@@ -13,7 +13,10 @@ const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATIO
 
 export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEventsOptions) {
   const orgId = useOrgId();
-  const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<{
+    orgId: string | null;
+    connected: boolean;
+  }>({ orgId: null, connected: false });
   const handleEvent = useEffectEvent(onEvent);
 
   const reconnectAttemptRef = useRef(0);
@@ -34,12 +37,10 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
   useEffect(() => {
     if (!enabled || !orgId || NOTIFICATION_STREAM_DISABLED) {
       cleanup();
-      setConnected(false);
       return;
     }
 
     let unmounted = false;
-    setConnected(false);
 
     async function connect() {
       if (unmounted) return;
@@ -58,7 +59,7 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
         }
 
         if (unmounted) return;
-        setConnected(true);
+        setConnectionState({ orgId, connected: true });
         reconnectAttemptRef.current = 0;
 
         const reader = response.body.getReader();
@@ -83,13 +84,13 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
         // Stream closed normally (e.g. server-side 5-minute timeout).
         // Reconnect immediately with a clean backoff counter.
         if (!unmounted) {
-          setConnected(false);
+          setConnectionState({ orgId, connected: false });
           reconnectAttemptRef.current = 0;
           timerRef.current = setTimeout(connect, 1_000);
         }
       } catch {
         if (unmounted) return;
-        setConnected(false);
+        setConnectionState({ orgId, connected: false });
 
         const attempt = reconnectAttemptRef.current;
         reconnectAttemptRef.current = attempt + 1;
@@ -111,5 +112,11 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
     };
   }, [enabled, cleanup, orgId]);
 
-  return { connected: enabled && connected };
+  return {
+    connected:
+      enabled &&
+      !NOTIFICATION_STREAM_DISABLED &&
+      connectionState.orgId === orgId &&
+      connectionState.connected,
+  };
 }

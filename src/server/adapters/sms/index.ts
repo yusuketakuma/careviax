@@ -1,3 +1,6 @@
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { createFetchTimeout } from '@/server/services/fetch-timeout';
+
 type SmsAdapterConfig =
   | {
       provider: 'stub';
@@ -9,11 +12,19 @@ type SmsAdapterConfig =
       fromNumber: string;
     };
 
+const DEFAULT_SMS_DELIVERY_TIMEOUT_MS = 10_000;
+
 export class SmsNotificationAdapterError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SmsNotificationAdapterError';
   }
+}
+
+function resolveSmsDeliveryTimeoutMs() {
+  return normalizePositiveTimeoutMs(process.env.SMS_DELIVERY_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_SMS_DELIVERY_TIMEOUT_MS,
+  });
 }
 
 function resolveSmsConfig(): SmsAdapterConfig {
@@ -49,23 +60,30 @@ export class SmsNotificationAdapter {
     }
 
     if (this.config.provider === 'twilio') {
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${this.config.accountSid}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Basic ${Buffer.from(
-              `${this.config.accountSid}:${this.config.authToken}`,
-            ).toString('base64')}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
+      const abort = createFetchTimeout(resolveSmsDeliveryTimeoutMs());
+      let response: Response;
+      try {
+        response = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${this.config.accountSid}/Messages.json`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Basic ${Buffer.from(
+                `${this.config.accountSid}:${this.config.authToken}`,
+              ).toString('base64')}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              To: phoneNumber,
+              From: this.config.fromNumber,
+              Body: message,
+            }).toString(),
+            signal: abort.signal,
           },
-          body: new URLSearchParams({
-            To: phoneNumber,
-            From: this.config.fromNumber,
-            Body: message,
-          }).toString(),
-        },
-      );
+        );
+      } finally {
+        abort.clear();
+      }
 
       if (!response.ok) {
         throw new Error(`SMS delivery failed: ${response.status}`);

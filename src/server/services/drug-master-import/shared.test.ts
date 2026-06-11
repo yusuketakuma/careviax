@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { zipSync } from 'fflate';
 import {
   MHLW_IMPORT_URL_POLICY,
@@ -6,6 +6,10 @@ import {
   unzipWithLimits,
   validateImportSourceUrl,
 } from './shared';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('validateImportSourceUrl', () => {
   it('allows official HTTPS import URLs', () => {
@@ -242,6 +246,31 @@ describe('fetchBytes', () => {
     ).resolves.toEqual(Buffer.from('ok'));
 
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
+  });
+
+  it('unrefs and clears the fetch timeout after a successful download', async () => {
+    const timeoutHandle = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation(() => undefined);
+    const fetchImpl = vi.fn(async () => new Response('ok', { status: 200 }));
+
+    await expect(
+      fetchBytes('https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx', {
+        fetchImpl,
+        policy: {
+          ...MHLW_IMPORT_URL_POLICY,
+          timeoutMs: 2_500,
+        },
+        maxBytes: 8,
+        resolveHostname: async () => ['8.8.8.8'],
+      }),
+    ).resolves.toEqual(Buffer.from('ok'));
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 2_500);
+    expect(timeoutHandle.unref).toHaveBeenCalled();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 
   it('aborts stalled response body reads with the configured timeout', async () => {

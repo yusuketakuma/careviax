@@ -94,10 +94,12 @@ function createTx() {
     },
     visitSchedule: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     visitScheduleProposal: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
     },
   };
@@ -170,5 +172,98 @@ describe('ConferenceDataSyncService', () => {
 
     expect(tx.conferenceNote.update).not.toHaveBeenCalled();
     expect(result.note).toBe(note);
+  });
+
+  it('allocates service manager recurrence proposal route order after active and open route cells', async () => {
+    const tx = createTx();
+    const note: PersistedConferenceNote = {
+      ...baseNote,
+      case_id: 'case_1',
+      note_type: 'service_manager',
+      structured_content: {
+        sections: [
+          {
+            key: 'service_adjustments',
+            label: 'サービス調整',
+            body: '月2回へ訪問頻度を変更',
+          },
+        ],
+      },
+    };
+    tx.careCase.findFirst.mockResolvedValue({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_1',
+      required_visit_support: null,
+    });
+    tx.visitSchedule.findFirst.mockResolvedValue({
+      id: 'schedule_1',
+      cycle_id: 'cycle_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      route_order: 2,
+      recurrence_rule: null,
+    });
+    tx.visitSchedule.findMany.mockResolvedValue([
+      {
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 4,
+      },
+    ]);
+    tx.visitScheduleProposal.findFirst.mockResolvedValue(null);
+    tx.visitScheduleProposal.findMany.mockResolvedValue([
+      {
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 6,
+        reschedule_source_schedule_id: null,
+      },
+    ]);
+    tx.visitScheduleProposal.create.mockResolvedValue({ id: 'proposal_1' });
+
+    const result = await ConferenceDataSyncService.syncSavedNote(tx, 'org_1', 'user_1', note);
+
+    expect(result.sync.visit_proposal_id).toBe('proposal_1');
+    expect(tx.visitSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: [
+            {
+              pharmacist_id: 'pharmacist_1',
+              scheduled_date: new Date('2026-04-08T12:00:00.000Z'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(tx.visitScheduleProposal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: [
+            {
+              proposed_pharmacist_id: 'pharmacist_1',
+              proposed_date: new Date('2026-04-08T12:00:00.000Z'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(tx.visitScheduleProposal.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 7,
+      }),
+      select: { id: true },
+    });
   });
 });

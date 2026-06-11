@@ -5,11 +5,13 @@ const {
   authMock,
   membershipFindFirstMock,
   visitScheduleProposalFindManyMock,
+  visitScheduleProposalRouteFindManyMock,
   userFindManyMock,
   userFindFirstMock,
   careCaseFindFirstMock,
   patientInsuranceFindFirstMock,
   billingCandidateFindManyMock,
+  visitScheduleFindManyMock,
   visitScheduleCountMock,
   prescriptionIntakeFindFirstMock,
   visitVehicleResourceFindFirstMock,
@@ -26,11 +28,13 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
+  visitScheduleProposalRouteFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
@@ -71,6 +75,7 @@ vi.mock('@/lib/db/client', () => ({
       findMany: billingCandidateFindManyMock,
     },
     visitSchedule: {
+      findMany: visitScheduleFindManyMock,
       count: visitScheduleCountMock,
     },
     prescriptionIntake: {
@@ -173,6 +178,8 @@ describe('/api/visit-schedule-proposals', () => {
     });
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     billingCandidateFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
     visitVehicleResourceFindFirstMock.mockResolvedValue({
@@ -199,6 +206,7 @@ describe('/api/visit-schedule-proposals', () => {
           proposed_pharmacist_id: 'user_2',
           proposed_date: new Date('2026-04-03T00:00:00.000Z'),
           site_id: 'site_1',
+          route_order: 1,
         },
       ],
       diagnostics: {
@@ -211,8 +219,12 @@ describe('/api/visit-schedule-proposals', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitScheduleProposal: {
+          findMany: visitScheduleProposalRouteFindManyMock,
           updateMany: visitScheduleProposalUpdateManyMock,
           create: visitScheduleProposalCreateMock,
+        },
+        visitSchedule: {
+          findMany: visitScheduleFindManyMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -345,6 +357,79 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+  });
+
+  it('reallocates created proposal route orders after active schedules and remaining open proposals', async () => {
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        scheduled_date: new Date('2026-04-03T00:00:00.000Z'),
+        pharmacist_id: 'user_2',
+        route_order: 2,
+      },
+    ]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
+      {
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        route_order: 4,
+      },
+    ]);
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_2', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        route_order: { not: null },
+        OR: [
+          {
+            pharmacist_id: 'user_2',
+            scheduled_date: new Date('2026-04-03T00:00:00.000Z'),
+          },
+        ],
+      },
+      select: {
+        scheduled_date: true,
+        pharmacist_id: true,
+        route_order: true,
+      },
+    });
+    expect(visitScheduleProposalRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+        route_order: { not: null },
+        OR: [
+          {
+            proposed_pharmacist_id: 'user_2',
+            proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          },
+        ],
+      },
+      select: {
+        proposed_date: true,
+        proposed_pharmacist_id: true,
+        route_order: true,
+        reschedule_source_schedule_id: true,
+      },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 5,
+      }),
+    });
   });
 
   it('persists selected vehicle resources on generated proposal drafts', async () => {
@@ -595,6 +680,7 @@ describe('/api/visit-schedule-proposals', () => {
           case_id: 'case_1',
           proposed_pharmacist_id: 'user_2',
           proposed_date: new Date(2026, 3, 3, 0, 0, 0),
+          route_order: 1,
         },
       ],
       diagnostics: {

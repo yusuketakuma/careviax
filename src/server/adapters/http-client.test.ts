@@ -5,6 +5,8 @@ import { fetchJson, HttpAdapterError, unwrapDataEnvelope } from './http-client';
 describe('http-client adapter helpers', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('parses JSON responses as unknown data and applies JSON request headers', async () => {
@@ -33,8 +35,38 @@ describe('http-client adapter helpers', () => {
           'x-api-key': 'api-key',
         },
         body: JSON.stringify({ id: 'resource_1' }),
+        signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it('uses an unrefed cleanup timer for adapter requests', async () => {
+    vi.stubEnv('HTTP_ADAPTER_TIMEOUT_MS', '1200');
+    const unref = vi.fn();
+    const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => timeoutHandle) as unknown as typeof setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => undefined) as typeof clearTimeout);
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchJson('https://partner.example.test/resource')).resolves.toEqual({
+      status: 200,
+      data: {},
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://partner.example.test/resource',
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1200);
+    expect(unref).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 
   it('returns null data for no-content responses without reading a body', async () => {

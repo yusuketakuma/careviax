@@ -38,7 +38,7 @@ export const GET = withAuth(
             where: {
               org_id: req.orgId,
               pharmacist_id: { in: pharmacistIds },
-              schedule_status: { not: 'cancelled' },
+              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
               case_: {
                 patient: {
                   consents: {

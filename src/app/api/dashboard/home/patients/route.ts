@@ -5,6 +5,7 @@ import { success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientCard, DashboardPatientsResponse } from '@/types/dashboard-home';
 import { derivePatientStatusIcon } from '@/lib/patient/status-icon';
@@ -211,8 +212,8 @@ export const GET = withAuth(
     const scopedCases = await listDashboardActiveCases(req.orgId, paginatedPatientIds, req);
     const scopedCaseIds = scopedCases.map((careCase) => careCase.id);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜
+    const today = utcDateFromLocalKey(localDateKey());
 
     // Parallel queries for all needed data
     const [
@@ -379,7 +380,9 @@ export const GET = withAuth(
     const nextRxMap = new Map<string, string>();
     const exceptionMap = new Map<string, string>();
     const recentMedChangeSet = new Set<string>();
-    const sevenDaysAgo = new Date(today);
+    // created_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜基準
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setHours(0, 0, 0, 0);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     for (const rx of lastPrescriptions) {

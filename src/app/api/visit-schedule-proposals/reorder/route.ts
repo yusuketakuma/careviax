@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Prisma, type VisitProposalStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -7,13 +7,9 @@ import { success, validationError, notFound, conflict } from '@/lib/api/response
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
-const OPEN_PROPOSAL_STATUSES: VisitProposalStatus[] = [
-  'proposed',
-  'patient_contact_pending',
-  'reschedule_pending',
-];
 const PROPOSAL_ROUTE_REORDER_SERIALIZABLE_RETRY_LIMIT = 3;
 
 const routeOrderConfirmationContextSchema = z.object({

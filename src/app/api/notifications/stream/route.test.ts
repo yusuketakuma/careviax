@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { scheduleSseTimer } from './sse-timer';
 
 const {
   requireAuthContextMock,
@@ -110,6 +111,18 @@ describe('/api/notifications/stream', () => {
     expect(releaseSseConnectionMock).toHaveBeenCalledTimes(1);
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('org:org_1', expect.any(Function));
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('user:user_1', expect.any(Function));
+  });
+
+  it('unrefs SSE timers when the runtime exposes timer handles', () => {
+    const timeout = { unref: vi.fn() };
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeout as never);
+    const callback = vi.fn();
+
+    expect(scheduleSseTimer(callback, 1000)).toBe(timeout);
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(callback, 1000);
+    expect(timeout.unref).toHaveBeenCalledOnce();
+    setTimeoutSpy.mockRestore();
   });
 
   it('rejects streams when the per-user connection cap is reached', async () => {
