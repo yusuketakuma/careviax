@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 type TestRole = 'owner' | 'admin' | 'pharmacist' | 'pharmacist_trainee' | 'clerk';
 type AuthenticatedTestRequest = NextRequest & {
@@ -14,7 +15,8 @@ const {
   withOrgContextMock,
   scheduleFindManyMock,
   scheduleFindFirstMock,
-  scheduleUpdateMock,
+  scheduleUpdateManyMock,
+  proposalFindFirstMock,
   membershipFindManyMock,
   pharmacistShiftFindManyMock,
   auditLogCreateMock,
@@ -37,7 +39,8 @@ const {
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
     scheduleFindFirstMock: vi.fn(),
-    scheduleUpdateMock: vi.fn(),
+    scheduleUpdateManyMock: vi.fn(),
+    proposalFindFirstMock: vi.fn(),
     membershipFindManyMock: vi.fn(),
     pharmacistShiftFindManyMock: vi.fn(),
     auditLogCreateMock: vi.fn(),
@@ -59,6 +62,13 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { PATCH } from './route';
 
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/reorder', {
     method: 'PATCH',
@@ -76,7 +86,7 @@ function createMalformedJsonRequest() {
 }
 
 function expectNoWriteAuditOrNotify() {
-  expect(scheduleUpdateMock).not.toHaveBeenCalled();
+  expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
   expect(auditLogCreateMock).not.toHaveBeenCalled();
   expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
@@ -94,6 +104,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        version: 1,
       },
       {
         id: 'schedule_2',
@@ -103,6 +114,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T10:00:00'),
         time_window_end: new Date('1970-01-01T11:00:00'),
         confirmed_at: null,
+        version: 1,
       },
       {
         id: 'schedule_3',
@@ -112,6 +124,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        version: 1,
       },
     ];
     scheduleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
@@ -119,6 +132,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       return Promise.resolve(schedules.filter((schedule) => ids.includes(schedule.id)));
     });
     scheduleFindFirstMock.mockResolvedValue(null);
+    proposalFindFirstMock.mockResolvedValue(null);
     membershipFindManyMock.mockResolvedValue([{ user_id: 'pharmacist_2' }]);
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
@@ -130,7 +144,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         available_to: new Date('1970-01-01T18:00:00'),
       },
     ]);
-    scheduleUpdateMock.mockResolvedValue({});
+    scheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({});
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -138,7 +152,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         visitSchedule: {
           findMany: scheduleFindManyMock,
           findFirst: scheduleFindFirstMock,
-          update: scheduleUpdateMock,
+          updateMany: scheduleUpdateManyMock,
+        },
+        visitScheduleProposal: {
+          findFirst: proposalFindFirstMock,
         },
         membership: {
           findMany: membershipFindManyMock,
@@ -170,7 +187,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
+    expect(scheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
 
     const duplicateResponse = (await PATCH(
       createRequest({
@@ -203,6 +223,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        version: 1,
       },
       {
         id: 'schedule_daytime',
@@ -212,6 +233,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T13:00:00'),
         time_window_end: new Date('1970-01-01T14:00:00'),
         confirmed_at: null,
+        version: 1,
       },
     ]);
 
@@ -247,6 +269,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        version: 1,
       },
     ]);
 
@@ -291,9 +314,11 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: true,
         time_window_end: true,
         confirmed_at: true,
+        version: true,
       },
     });
     expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
     expectNoWriteAuditOrNotify();
   });
@@ -421,6 +446,156 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('rejects existing open proposal route order conflicts before update, audit, or notify', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce({ id: 'proposal_existing' });
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 3,
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同一セル内で route_order は重複できません',
+    });
+    expect(proposalFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+        OR: [
+          {
+            proposed_pharmacist_id: 'pharmacist_1',
+            proposed_date: new Date('2026-04-09'),
+            route_order: 3,
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects arbitrary audit source text before loading schedules', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'patient-name-or-free-text',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects duplicate schedule targets before loading schedules', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1 },
+          { schedule_id: 'schedule_1', route_order: 2 },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同じ訪問予定を複数回指定できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects confirmation context that does not match a single target route cell', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        confirmation_context: {
+          source: 'schedule_day_route_preview',
+          date: '2026-04-10',
+          pharmacist_id: 'pharmacist_1',
+          target_count: 1,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '確認コンテキストが訪問予定の対象セルと一致しません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('retries serializable schedule route conflicts and succeeds on retry', async () => {
+    withOrgContextMock.mockImplementationOnce(async () => {
+      throw buildSerializableConflictError();
+    });
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(scheduleUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict when serializable schedule route conflicts exceed retry limit', async () => {
+    withOrgContextMock.mockImplementation(async () => {
+      throw buildSerializableConflictError();
+    });
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('returns conflict when a guarded schedule write loses the race', async () => {
+    scheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('denies non-bypass assigned users from reassigning to another pharmacist before side effects', async () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {
@@ -486,9 +661,15 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(scheduleUpdateMock).toHaveBeenCalledWith(
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'schedule_2' },
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: 'schedule_2',
+          pharmacist_id: 'pharmacist_1',
+          scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+          version: 1,
+        }),
         data: expect.objectContaining({
           route_order: 1,
           pharmacist_id: 'pharmacist_2',
