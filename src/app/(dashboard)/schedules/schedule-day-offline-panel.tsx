@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSection } from '@/components/layout/page-section';
 import { cn } from '@/lib/utils';
 import type { CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
 import { timeLabel } from './day-view.shared';
@@ -60,7 +61,12 @@ export function ScheduleDayOfflinePanel({
     Boolean(offlineStatus.manualSyncDisabledReason);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <PageSection
+      title="オフライン同期"
+      description="訪問先で参照する軽量ブリーフと帰局後同期の状態を確認します"
+      contentClassName="grid gap-4 xl:grid-cols-2"
+      tone="subtle"
+    >
       <Card>
         <CardHeader>
           <CardTitle className="text-base">モバイル訪問モード</CardTitle>
@@ -157,7 +163,7 @@ export function ScheduleDayOfflinePanel({
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageSection>
   );
 }
 

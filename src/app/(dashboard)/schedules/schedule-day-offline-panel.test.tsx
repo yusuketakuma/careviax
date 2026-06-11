@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
@@ -110,6 +110,10 @@ describe('ScheduleDayOfflinePanel', () => {
       />,
     );
 
+    const offlineSync = screen.getByRole('region', { name: 'オフライン同期' });
+    expect(
+      within(offlineSync).getByText('訪問先で参照する軽量ブリーフと帰局後同期の状態を確認します'),
+    ).toBeTruthy();
     const statusText = screen.getByRole('status').textContent ?? '';
     expect(statusText).toContain('オンライン');
     expect(statusText).toContain('同期待ち 0 件');
