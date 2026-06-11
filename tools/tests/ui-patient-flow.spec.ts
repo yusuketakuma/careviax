@@ -14,11 +14,10 @@ async function openFirstPatientDetail(
   page: Page,
   options: { view?: 'card' | 'profile'; tab?: string } = {},
 ) {
-  const firstPatientLink = page
-    .locator('tbody tr')
-    .first()
-    .locator('a[href^="/patients/"]')
-    .first();
+  // 遷移の起点は /patients 最上部の patients-board カード(氏名リンク)。
+  // 旧テーブル(patients-classic)は md 未満で hidden になるため、tbody 行リンク前提だと
+  // mobile-chromium で要素不可視になる。board カードは全ビューポートで表示される。
+  const firstPatientLink = page.getByTestId('patient-board-card-link').first();
   await expect(firstPatientLink).toBeVisible({ timeout: 30_000 });
   const href = await firstPatientLink.getAttribute('href');
   expect(href).toBeTruthy();
@@ -50,20 +49,28 @@ test.describe('patient list and navigation flow', () => {
     await attachLocalSession(context);
   });
 
-  test('patient list loads with data and table columns', async ({ context }) => {
+  test('patient list loads with data and table columns', async ({ context, isMobile }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Table should render with expected column headers
-    await expect(page.getByRole('columnheader', { name: '氏名' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: '年齢' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'ケース状態' })).toBeVisible();
+    if (isMobile) {
+      // 旧テーブル(patients-classic)は md 未満で hidden になるため、
+      // モバイルは最上部の patients-board カードで患者データの表示を検証する。
+      const cards = page.getByTestId('patient-board-card');
+      await expect(cards.first()).toBeVisible({ timeout: 30_000 });
+      expect(await cards.count()).toBeGreaterThan(0);
+    } else {
+      // Table should render with expected column headers
+      await expect(page.getByRole('columnheader', { name: '氏名' })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: '年齢' })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: 'ケース状態' })).toBeVisible();
 
-    // At least one patient row should be visible (demo data)
-    const rows = page.locator('table tbody tr');
-    await expect(rows.first()).toBeVisible();
-    const rowCount = await rows.count();
-    expect(rowCount).toBeGreaterThan(0);
+      // At least one patient row should be visible (demo data)
+      const rows = page.locator('table tbody tr');
+      await expect(rows.first()).toBeVisible();
+      const rowCount = await rows.count();
+      expect(rowCount).toBeGreaterThan(0);
+    }
 
     // Page header should show title
     await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
@@ -75,9 +82,26 @@ test.describe('patient list and navigation flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('search filters patient list by name', async ({ context }) => {
+  test('search filters patient list by name', async ({ context, isMobile }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
+
+    if (isMobile) {
+      // テーブル(と氏名検索の結果リンク)は md 未満で hidden のため、
+      // モバイルは patients-board の検索ボックスで氏名絞り込みを検証する。
+      const firstCardLink = page.getByTestId('patient-board-card-link').first();
+      await expect(firstCardLink).toBeVisible({ timeout: 30_000 });
+      const cardPatientName = (await firstCardLink.textContent())?.trim();
+      expect(cardPatientName).toBeTruthy();
+
+      await page.getByLabel('氏名・住所で検索').fill(cardPatientName!);
+      await expect(
+        page.getByTestId('patient-board-card-link').filter({ hasText: cardPatientName! }).first(),
+      ).toBeVisible();
+
+      expect(errors).toEqual([]);
+      return;
+    }
 
     // Get the first patient name from the table for searching
     const firstPatientName = await page
@@ -89,15 +113,24 @@ test.describe('patient list and navigation flow', () => {
     expect(firstPatientName).toBeTruthy();
 
     // Search for the patient
-    const searchInput = page.getByPlaceholder('氏名');
+    // NOTE: placeholder の「氏名」は board 検索(氏名・住所で検索)とテーブル検索
+    // (氏名・ふりがなを検索)の両方に部分一致して strict mode violation になるため、
+    // テーブル側のフィルタ入力を aria-label で特定する。
+    const searchInput = page.getByLabel('患者検索');
     if (await searchInput.isVisible()) {
       await searchInput.fill(firstPatientName!.trim());
       // Wait for the query to refetch
       await page.waitForResponse((res) => res.url().includes('/api/patients'));
       await waitForStableUi(page);
 
-      // The searched patient should still be visible
-      await expect(page.getByRole('link', { name: firstPatientName!.trim() })).toBeVisible();
+      // The searched patient should still be visible in the table
+      // (board カードにも同名リンクがあり得るため tbody にスコープする)
+      await expect(
+        page
+          .locator('table tbody')
+          .getByRole('link', { name: firstPatientName!.trim() })
+          .first(),
+      ).toBeVisible();
     }
 
     expect(errors).toEqual([]);
@@ -121,7 +154,7 @@ test.describe('patient list and navigation flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('patient profile back link returns to patient list', async ({ context }) => {
+  test('patient profile back link returns to patient list', async ({ context, isMobile }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
@@ -129,10 +162,21 @@ test.describe('patient list and navigation flow', () => {
     const href = await openFirstPatientDetail(page, { view: 'profile' });
     expect(page.url()).toContain(`${href}?view=profile`);
 
-    // Click back link
-    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-      page.getByRole('link', { name: '一覧へ戻る' }).click({ noWaitAfter: true }),
-    );
+    if (isMobile) {
+      // 「一覧へ戻る」を持つ患者ミニカードは md 以上のみ表示されるため、
+      // モバイルの実際の一覧復帰導線である下部ナビの「患者」を検証する。
+      await clickAndWaitForStableRoute(page, /\/patients$/, () =>
+        page
+          .getByTestId('mobile-bottom-nav')
+          .getByRole('link', { name: '患者' })
+          .click({ noWaitAfter: true }),
+      );
+    } else {
+      // Click back link
+      await clickAndWaitForStableRoute(page, /\/patients$/, () =>
+        page.getByRole('link', { name: '一覧へ戻る' }).click({ noWaitAfter: true }),
+      );
+    }
 
     // Should be back on patient list
     await expect(page).toHaveURL(/\/patients$/);
@@ -141,9 +185,24 @@ test.describe('patient list and navigation flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('action buttons on patient row link to correct pages', async ({ context }) => {
+  test('action buttons on patient row link to correct pages', async ({ context, isMobile }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
+
+    if (isMobile) {
+      // テーブルの行アクション列(詳細/薬歴/処方受付)は mobileHidden のデスクトップ専用 UI。
+      // モバイルの行相当は patients-board カードのため、患者詳細への導線を検証する。
+      const firstCard = page.getByTestId('patient-board-card').first();
+      await expect(firstCard).toBeVisible({ timeout: 30_000 });
+
+      const detailLink = firstCard.getByTestId('patient-board-card-link');
+      await expect(detailLink).toBeVisible();
+      const cardDetailHref = await detailLink.getAttribute('href');
+      expect(cardDetailHref).toMatch(/\/patients\/.+/);
+
+      expect(errors).toEqual([]);
+      return;
+    }
 
     const firstRow = page.locator('table tbody tr').first();
 
@@ -281,11 +340,9 @@ test.describe('patient detail page', () => {
 
     // The gender field in patient master card should display Japanese label via a Select component
     // Previously it was a plain <Input> showing raw "male"/"female"/"other"
-    const genderTrigger = page
-      .locator('text=性別')
-      .first()
-      .locator('..')
-      .locator('button[role="combobox"]');
+    // NOTE: `text=性別` の先頭マッチは受付票の「年齢 / 性別」行に当たることがあるため、
+    // aria-label で一意に特定する。
+    const genderTrigger = page.getByRole('combobox', { name: '性別' });
     await expect(genderTrigger).toBeVisible();
     const genderText = await genderTrigger.textContent();
 
@@ -421,8 +478,12 @@ test.describe('patient profile tabs', () => {
       await tabTrigger.click();
       await expect(tabTrigger).toHaveAttribute('aria-selected', 'true');
 
-      // Only the active panel stays mounted, so the visible tabpanel follows the tab
-      await expect(page.getByRole('tabpanel')).toBeVisible({ timeout: 5000 });
+      // Only the active panel stays mounted. ただし leave/enter のトランジション中は
+      // 旧パネル(inert)と新パネルが一瞬共存して strict mode violation になるため、
+      // タブ名で対象パネルを特定する。
+      await expect(page.getByRole('tabpanel', { name: tab.label })).toBeVisible({
+        timeout: 5000,
+      });
     }
 
     // Switch back to first tab

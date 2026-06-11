@@ -295,7 +295,9 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           </TabsList>
         </div>
 
-        <div className="md:grid md:grid-cols-[280px_minmax(0,1fr)] md:items-start md:gap-6 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+        {/* 右レール(300px)は 2xl 以上のみ 3 カラム化する。xl(1280)〜1535px で 3 カラムにすると
+            中央カラムが約 360px まで潰れ、受付票 DetailBlock の値(dd)が幅 0 になるため。 */}
+        <div className="md:grid md:grid-cols-[280px_minmax(0,1fr)] md:items-start md:gap-6 2xl:grid-cols-[260px_minmax(0,1fr)_300px]">
           <aside className="hidden space-y-4 md:sticky md:top-6 md:block">
             <Card data-testid="patient-mini-card">
               <CardContent className="flex flex-col gap-4 pt-6 text-sm">
@@ -519,7 +521,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           </div>
 
           <aside
-            className="hidden xl:sticky xl:top-6 xl:block"
+            className="hidden 2xl:sticky 2xl:top-6 2xl:block"
             aria-label="次にやること・止まっている理由・根拠"
           >
             <PatientWorkspaceRail

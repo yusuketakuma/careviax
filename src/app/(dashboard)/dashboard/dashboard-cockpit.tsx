@@ -50,6 +50,8 @@ import {
  * new_01_dashboard の運用コックピット(docs/design-gap-analysis-new.md)。
  * 本文(条件バナー → 今すぐ対応 → 今日の流れ → 工程の今)+ 右レール
  * (次にやること / 止まっている理由 / 根拠・記録 + 私の今日)の 2 カラム構成。
+ * レスポンシブ方針: lg(1024px)以上で 2 カラム、未満は 1 カラム縦積み。
+ * どの幅でも全要素を表示し、viewport 条件で内容を隠さない。
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
@@ -515,7 +517,7 @@ function buildNextAction(
 function CockpitSkeleton() {
   return (
     <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
+      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
       role="status"
       aria-label="ダッシュボード読み込み中"
     >
@@ -597,7 +599,10 @@ export function DashboardCockpit() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-xl font-bold text-foreground">ダッシュボード</h2>
-          <p className="text-sm text-muted-foreground">{dateLabel}</p>
+          {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
+          <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+            {dateLabel}
+          </p>
         </div>
         <FilterChipBar
           options={VIEW_SCOPE_OPTIONS}
@@ -623,7 +628,7 @@ export function DashboardCockpit() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={data} />
               <UrgentNowSection items={data.audit_queue} now={now} />

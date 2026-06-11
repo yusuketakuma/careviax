@@ -207,6 +207,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
           <Link
             href={`/patients/${card.patient_id}`}
             className="font-bold text-foreground hover:underline"
+            data-testid="patient-board-card-link"
           >
             {card.name}
           </Link>
@@ -401,7 +402,10 @@ export function PatientsBoard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-xl font-bold text-foreground">患者一覧</h2>
-          <p className="text-sm text-muted-foreground">{dateLabel}</p>
+          {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
+          <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+            {dateLabel}
+          </p>
         </div>
         <FilterChipBar
           options={SCOPE_OPTIONS}

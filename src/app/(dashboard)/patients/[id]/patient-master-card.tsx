@@ -263,7 +263,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   setForm((current) => ({ ...current, gender: value ?? current.gender }))
                 }
               >
-                <SelectTrigger>
+                {/* Field の label は非ネイティブの Select trigger に htmlFor で結び付かないため、
+                    アクセシブルネームを aria-label で明示する */}
+                <SelectTrigger aria-label="性別">
                   <SelectValue placeholder="性別を選択">
                     {GENDER_LABELS[form.gender] ?? form.gender}
                   </SelectValue>

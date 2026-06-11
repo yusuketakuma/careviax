@@ -24,7 +24,10 @@ import type { PrismaClient } from '@prisma/client';
  * - 07_dispense: 佐々木ハル=照会回答済(09:31)の調剤再開 1 件(DispenseTask pending)
  * - 08_audit: 田中タスクに調剤実績 4 行(調剤者=佐藤・09:30)→ 二人制バナー
  * - 09_set: 施設グリーンヒル(101 小川/102 山口/103 中村)の SetPlan/SetBatch + 本日15:30 訪問
+ *   + 入居 104〜112 の 9 名(患者+居室のみ)で FacilityVisitBatch.patient_ids 12 名を全実在化
  * - 10_report: 報告下書き(伊藤)+ 返信待ち(加藤・高橋)+ 今日解決(佐々木 09:31)
+ * - 11_billing: 当月の自動チェック合格 3 件(小林・加藤・松本の完了訪問 + BillingEvidence)
+ *   + 疑義 1 件(高橋・同意書旧版の BillingCandidate)+ 算定ルール版(令和8年改定)
  * - 12_handoff: 既存ハンドオフ 3 件に責任移動の構造化フィールドを付与
  *
  * 日付は実行日基準の相対値(静止画原則: 比較対象は状態・文言形式であり日付値ではない)。
@@ -284,6 +287,50 @@ export const DEMO_SEED_IDS = {
   ],
   /** 08: 棚卸しメタ(在庫更新日)用の在庫 1 行 */
   drugStockSample: 'cmnhdemostock001amq9ph-os',
+
+  /**
+   * 04/09/10: グリーンヒル入居 104〜112 の 9 名(patient_ids 全実在化)。
+   * 患者+居室(Residence)のみ upsert し、ケース/サイクル/訪問は作らない
+   * (02 患者一覧・09 セットの行数を変えずに名前解決だけ 12 名成立させる)。
+   */
+  greenHillRosterPatients: [
+    'cmnhdemopt014amq9ph-os',
+    'cmnhdemopt015amq9ph-os',
+    'cmnhdemopt016amq9ph-os',
+    'cmnhdemopt017amq9ph-os',
+    'cmnhdemopt018amq9ph-os',
+    'cmnhdemopt019amq9ph-os',
+    'cmnhdemopt020amq9ph-os',
+    'cmnhdemopt021amq9ph-os',
+    'cmnhdemopt022amq9ph-os',
+  ],
+  greenHillRosterResidences: [
+    'cmnhdemores005amq9ph-os',
+    'cmnhdemores006amq9ph-os',
+    'cmnhdemores007amq9ph-os',
+    'cmnhdemores008amq9ph-os',
+    'cmnhdemores009amq9ph-os',
+    'cmnhdemores010amq9ph-os',
+    'cmnhdemores011amq9ph-os',
+    'cmnhdemores012amq9ph-os',
+    'cmnhdemores013amq9ph-os',
+  ],
+
+  /** 11_billing: 自動チェック合格 3 件(当月の完了訪問 + 訪問記録 + BillingEvidence) */
+  visitKobayashiDone: 'cmnhdemovis014amq9ph-os',
+  visitRecordKobayashiDone: 'cmnhdemovrec003amq9ph-os',
+  visitMatsumotoDone: 'cmnhdemovis015amq9ph-os',
+  visitRecordMatsumotoDone: 'cmnhdemovrec004amq9ph-os',
+  visitKatoDone: 'cmnhdemovis016amq9ph-os',
+  visitRecordKatoDone: 'cmnhdemovrec005amq9ph-os',
+  billingEvidencePassed: [
+    'cmnhdemobev001amq9ph-os',
+    'cmnhdemobev002amq9ph-os',
+    'cmnhdemobev003amq9ph-os',
+  ],
+  /** 11_billing: 疑義 1 件(根拠 pill 用の算定ルール + 人の確認待ち候補) */
+  billingRuleHomeVisitSsot: 'cmnhdemobrul001amq9ph-os',
+  billingCandidateConsentReview: 'cmnhdemobcan001amq9ph-os',
 } as const;
 
 /**
@@ -393,6 +440,33 @@ function atLocalTimeToday(hours: number, minutes: number): Date {
 
 function formatMonthDay(date: Date): string {
   return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/**
+ * 実行日から daysAgo 日前のローカル日付。前月へはみ出すと当月の算定 KPI に
+ * 乗らないため、当月 1 日を下限にクランプする(11_billing の完了訪問用)。
+ */
+function daysAgoClampedToCurrentMonth(now: Date, daysAgo: number): Date {
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+  return candidate < monthStart ? monthStart : candidate;
+}
+
+/** ローカル日付 date の hours:minutes を指す Date(完了訪問の visit_date 用)。 */
+function atTimeOn(date: Date, hours: number, minutes: number): Date {
+  const d = new Date(date);
+  d.setHours(hours, minutes, 0, 0);
+  return d;
+}
+
+/**
+ * BillingEvidence / BillingCandidate.billing_month(@db.Date)用の JST 当月 1 日。
+ * /api/billing-evidence/check が使う billingMonthForJapanTimestamp と同じ正規化
+ * (seed から src を import しない方針のためローカルに再実装)。
+ */
+function billingMonthStartFor(now: Date): Date {
+  const jst = new Date(now.getTime() + 9 * 3_600_000);
+  return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), 1));
 }
 
 /* ── Phase2b 拡張用ヘルパー(患者・取込・訪問の冪等 upsert)──────────── */
@@ -2239,17 +2313,66 @@ export async function seedDesignFidelityDemo(
     },
   });
 
-  // 施設一括訪問(本日15:30・12名): 実在 3 名 + ダミー入居者 ID 9 件で
-  // 「3＋施設12名」「12名分を1通に集約」の件数を成立させる(ID は参照されない)。
-  const greenHillGhostIds = Array.from(
-    { length: 9 },
-    (_, index) => `cmnhdemoghres${`${index + 1}`.padStart(2, '0')}amq9ph-os`,
-  );
+  // 施設一括訪問(本日15:30・12名): patient_ids は 12 名全員を実在患者で構成する。
+  // 居室 101〜103 はセット工程の 3 名(SetPlan/SetBatch あり)、104〜112 の 9 名は
+  // 患者+居室(Residence)のみの入居者として upsert する。ケース/サイクル/訪問を
+  // 作らないため 02 患者一覧(cases 必須)・09 セット(本日訪問由来)の行数は不変で、
+  // 「3＋施設12名」「12名分を1通に集約」の件数と patient_ids の名前解決が両立する。
+  const greenHillRosterProfiles: Array<{
+    name: string;
+    nameKana: string;
+    age: number;
+    gender: 'male' | 'female';
+    unitName: string;
+  }> = [
+    { name: '斎藤 ハツ', nameKana: 'サイトウ ハツ', age: 88, gender: 'female', unitName: '104' },
+    { name: '井上 正雄', nameKana: 'イノウエ マサオ', age: 84, gender: 'male', unitName: '105' },
+    { name: '木村 シゲ', nameKana: 'キムラ シゲ', age: 91, gender: 'female', unitName: '106' },
+    { name: '林 武夫', nameKana: 'ハヤシ タケオ', age: 79, gender: 'male', unitName: '107' },
+    { name: '清水 トミ', nameKana: 'シミズ トミ', age: 93, gender: 'female', unitName: '108' },
+    { name: '山崎 茂雄', nameKana: 'ヤマザキ シゲオ', age: 86, gender: 'male', unitName: '109' },
+    { name: '森 キヨ', nameKana: 'モリ キヨ', age: 90, gender: 'female', unitName: '110' },
+    { name: '池田 静江', nameKana: 'イケダ シズエ', age: 82, gender: 'female', unitName: '111' },
+    { name: '橋本 勇', nameKana: 'ハシモト イサム', age: 85, gender: 'male', unitName: '112' },
+  ];
+  for (const [index, profile] of greenHillRosterProfiles.entries()) {
+    const rosterPatientId = DEMO_SEED_IDS.greenHillRosterPatients[index];
+    const rosterResidenceId = DEMO_SEED_IDS.greenHillRosterResidences[index];
+    const rosterPatientData = {
+      name: profile.name,
+      name_kana: profile.nameKana,
+      birth_date: new Date(`${today.getFullYear() - profile.age}-01-15`),
+      gender: profile.gender,
+      allergy_info: [],
+    };
+    await prisma.patient.upsert({
+      where: { id: rosterPatientId },
+      create: { id: rosterPatientId, org_id: ctx.orgId, ...rosterPatientData },
+      update: rosterPatientData,
+    });
+    const rosterResidenceData = {
+      address: '東京都千代田区丸の内2-2-2 グリーンヒル',
+      facility_id: DEMO_SEED_IDS.facilityGreenHill,
+      facility_unit_id: DEMO_SEED_IDS.facilityUnitGreenHill,
+      unit_name: profile.unitName,
+      is_primary: true,
+    };
+    await prisma.residence.upsert({
+      where: { id: rosterResidenceId },
+      create: {
+        id: rosterResidenceId,
+        org_id: ctx.orgId,
+        patient_id: rosterPatientId,
+        ...rosterResidenceData,
+      },
+      update: rosterResidenceData,
+    });
+  }
   const greenHillPatientIds = [
     DEMO_SEED_IDS.patientOgawa,
     DEMO_SEED_IDS.patientYamaguchi,
     DEMO_SEED_IDS.patientNakamura,
-    ...greenHillGhostIds,
+    ...DEMO_SEED_IDS.greenHillRosterPatients,
   ];
   await prisma.facilityVisitBatch.upsert({
     where: { id: DEMO_SEED_IDS.facilityBatchGreenHill },
@@ -2586,6 +2709,205 @@ export async function seedDesignFidelityDemo(
     });
   }
 
+  // ── 11_billing: 算定チェック(/api/billing-evidence/check)────────────────
+  // KPI「自動チェック合格」: 当月 BillingEvidence(claimable=true)3 件。
+  //   完了訪問+訪問記録に紐付ける(小林=昨日 / 加藤=4日前 / 松本=7日前。
+  //   月初実行でも当月集計に乗るよう訪問日は当月 1 日でクランプ)。
+  // KPI「疑義(人の確認待ち)」: BillingCandidate(status='candidate')1 件。
+  //   確認文は exclusion_reason、根拠 pill は rule.source_note『算定要件』→ source_url。
+  // KPI「本日訪問の算定候補」: 本日の未完了 VisitSchedule 由来のため追加投入なし
+  //   (田中14:00 / 伊藤10:30 / グリーンヒル3名15:30 がソース)。
+  // 右レール「算定ルール版」: home_care_ssot + effective_from 2026-04-01(令和8年改定)。
+  //   is_system=false のため ensureHomeCareBillingSsot の整理 deleteMany 対象外。
+  const billingMonthStart = billingMonthStartFor(now);
+
+  type PassedEvidenceSpec = {
+    visitId: string;
+    recordId: string;
+    evidenceId: string;
+    patientId: string;
+    caseId: string;
+    cycleId: string;
+    daysAgo: number;
+    startTime: [number, number];
+    payerBasis: 'medical' | 'care';
+    serviceType: 'medical_home_visit' | 'care_home_management';
+    appliedRuleKeys: string[];
+    soapSubjective: string;
+  };
+  const passedEvidenceSpecs: PassedEvidenceSpec[] = [
+    {
+      // 小林 勝: cycle=visit_completed(02 報告工程)の根拠になる昨日の完了訪問
+      visitId: DEMO_SEED_IDS.visitKobayashiDone,
+      recordId: DEMO_SEED_IDS.visitRecordKobayashiDone,
+      evidenceId: DEMO_SEED_IDS.billingEvidencePassed[0],
+      patientId: DEMO_SEED_IDS.patientKobayashi,
+      caseId: DEMO_SEED_IDS.caseKobayashi,
+      cycleId: DEMO_SEED_IDS.cycleKobayashi,
+      daysAgo: 1,
+      startTime: [10, 0],
+      payerBasis: 'medical',
+      serviceType: 'medical_home_visit',
+      appliedRuleKeys: ['medical.home_visit.single'],
+      soapSubjective: '服薬は自己管理。残薬なし、体調安定。',
+    },
+    {
+      // 加藤 ミサ: 報告送付(3日前)の前提になる 4 日前の完了訪問(介護=居宅療養)
+      visitId: DEMO_SEED_IDS.visitKatoDone,
+      recordId: DEMO_SEED_IDS.visitRecordKatoDone,
+      evidenceId: DEMO_SEED_IDS.billingEvidencePassed[1],
+      patientId: DEMO_SEED_IDS.patientKato,
+      caseId: DEMO_SEED_IDS.caseKato,
+      cycleId: DEMO_SEED_IDS.cycleKato,
+      daysAgo: 4,
+      startTime: [11, 0],
+      payerBasis: 'care',
+      serviceType: 'care_home_management',
+      appliedRuleKeys: ['care.home_management.pharmacy.single'],
+      soapSubjective: '飲み忘れなし。ケアマネへ服薬状況を共有予定。',
+    },
+    {
+      // 松本 トヨ: 明日訪問(週次)の前回にあたる 7 日前の完了訪問
+      visitId: DEMO_SEED_IDS.visitMatsumotoDone,
+      recordId: DEMO_SEED_IDS.visitRecordMatsumotoDone,
+      evidenceId: DEMO_SEED_IDS.billingEvidencePassed[2],
+      patientId: DEMO_SEED_IDS.patientMatsumoto,
+      caseId: DEMO_SEED_IDS.caseMatsumoto,
+      cycleId: DEMO_SEED_IDS.cycleMatsumoto,
+      daysAgo: 7,
+      startTime: [14, 0],
+      payerBasis: 'medical',
+      serviceType: 'medical_home_visit',
+      appliedRuleKeys: ['medical.home_visit.single'],
+      soapSubjective: '血圧安定。次回も同時間帯で訪問予定。',
+    },
+  ];
+  for (const spec of passedEvidenceSpecs) {
+    const visitLocalDate = daysAgoClampedToCurrentMonth(now, spec.daysAgo);
+    await upsertDemoVisit(prisma, ctx, {
+      id: spec.visitId,
+      caseId: spec.caseId,
+      cycleId: spec.cycleId,
+      scheduledDate: atMidnight(visitLocalDate),
+      startTime: spec.startTime,
+      scheduleStatus: 'completed',
+    });
+    const visitDate = atTimeOn(visitLocalDate, spec.startTime[0], spec.startTime[1]);
+    await prisma.visitRecord.upsert({
+      where: { schedule_id: spec.visitId },
+      create: {
+        id: spec.recordId,
+        org_id: ctx.orgId,
+        schedule_id: spec.visitId,
+        patient_id: spec.patientId,
+        pharmacist_id: ctx.userId,
+        visit_date: visitDate,
+        outcome_status: 'completed',
+        soap_subjective: spec.soapSubjective,
+      },
+      update: {
+        patient_id: spec.patientId,
+        pharmacist_id: ctx.userId,
+        visit_date: visitDate,
+        outcome_status: 'completed',
+      },
+    });
+    const evidenceData = {
+      patient_id: spec.patientId,
+      cycle_id: spec.cycleId,
+      billing_month: billingMonthStart,
+      payer_basis: spec.payerBasis,
+      billing_service_type: spec.serviceType,
+      provider_scope: 'pharmacy',
+      claimable: true,
+      exclusion_reason: null,
+      visit_record_ref: spec.recordId,
+      building_patient_count: 1,
+      monthly_count_snapshot: 1,
+      weekly_count_snapshot: 1,
+      applied_rule_keys: spec.appliedRuleKeys,
+      validation_notes: '自動チェック合格(訪問記録・同意・処方の根拠リンク済み)',
+    };
+    await prisma.billingEvidence.upsert({
+      where: {
+        org_id_visit_record_id: {
+          org_id: ctx.orgId,
+          visit_record_id: spec.recordId,
+        },
+      },
+      create: {
+        id: spec.evidenceId,
+        org_id: ctx.orgId,
+        visit_record_id: spec.recordId,
+        ...evidenceData,
+      },
+      update: evidenceData,
+    });
+  }
+
+  // 疑義行の根拠 pill(算定要件→)と右レール「算定ルール版 令和8年改定」のソース
+  const billingRuleData = {
+    billing_scope: 'home_care_ssot',
+    rule_type: 'base',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical' as const,
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 0,
+    name: '在宅患者訪問薬剤管理指導料 単一建物1人',
+    code: 'MED_HOME_VISIT_SINGLE',
+    source_url: 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000188411_00045.html',
+    source_note: '算定要件',
+    amount: 650,
+    effective_from: new Date(Date.UTC(2026, 3, 1)),
+    is_system: false,
+    is_active: true,
+  };
+  await prisma.billingRule.upsert({
+    where: { id: DEMO_SEED_IDS.billingRuleHomeVisitSsot },
+    create: {
+      id: DEMO_SEED_IDS.billingRuleHomeVisitSsot,
+      org_id: ctx.orgId,
+      ...billingRuleData,
+    },
+    update: billingRuleData,
+  });
+
+  // 疑義(人の確認待ち)1 件: 高橋 茂 — 訪問記録はあるが同意書が旧版
+  const reviewCandidateDedupeKey = 'design-demo-billing-review-consent';
+  const reviewCandidateData = {
+    patient_id: DEMO_SEED_IDS.patientTakahashi,
+    billing_domain: 'home_care',
+    billing_target_type: 'patient',
+    billing_target_id: DEMO_SEED_IDS.patientTakahashi,
+    billing_target_name: '高橋 茂',
+    cycle_id: DEMO_SEED_IDS.cycleTakahashi,
+    rule_id: DEMO_SEED_IDS.billingRuleHomeVisitSsot,
+    billing_month: billingMonthStart,
+    billing_code: 'MED_HOME_VISIT_SINGLE',
+    billing_name: '在宅患者訪問薬剤管理指導料',
+    points: 650,
+    quantity: 1,
+    status: 'candidate',
+    exclusion_reason: '訪問記録はあるが同意書が改定前の旧版 — ご家族の再同意を確認',
+  };
+  await prisma.billingCandidate.upsert({
+    where: {
+      org_id_dedupe_key: {
+        org_id: ctx.orgId,
+        dedupe_key: reviewCandidateDedupeKey,
+      },
+    },
+    create: {
+      id: DEMO_SEED_IDS.billingCandidateConsentReview,
+      org_id: ctx.orgId,
+      dedupe_key: reviewCandidateDedupeKey,
+      ...reviewCandidateData,
+    },
+    update: reviewCandidateData,
+  });
+
   // ── 05_import: QR 取込ドラフト(確定1=読取98% / 破棄2=今月の破棄ログ)──
   await prisma.qrScanDraft.upsert({
     where: { id: DEMO_SEED_IDS.qrDraftConfirmed },
@@ -2883,6 +3205,9 @@ export async function seedDesignFidelityDemo(
     dispenseResults: DEMO_SEED_IDS.dispenseResultsTanaka.length,
     boardPatients: 12,
     facilityResidents: greenHillResidents.length,
+    facilityRosterPatientIds: greenHillPatientIds.length,
+    billingEvidencePassed: passedEvidenceSpecs.length,
+    billingReviewCandidates: 1,
     handoffItems: handoffItems.length,
     workflowExceptions: 2,
     notifications: notifications.length,

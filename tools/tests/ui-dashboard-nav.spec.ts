@@ -13,13 +13,14 @@ test.describe('dashboard page', () => {
 
   test('dashboard loads with cockpit sections', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    // コックピットの条件バナーは xl 超で表示(デスクトップ基準 1600 で検証)
-    await page.setViewportSize({ width: 1600, height: 900 });
+    // 条件バナーは viewport 条件なしで常時表示する(xl 境界 1280px で回帰検証)。
+    // dev サーバーのコールドコンパイル時は集計 API が遅れるため待ち時間を広げる。
+    await page.setViewportSize({ width: 1280, height: 720 });
     await openStableRoute(page, '/dashboard');
 
     // 新デザインのコックピット(条件バナー+今すぐ対応)
     await expect(page.getByRole('heading', { name: 'ダッシュボード' }).first()).toBeVisible();
-    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible();
+    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible({ timeout: 30_000 });
 
     expect(errors).toEqual([]);
   });
@@ -187,7 +188,7 @@ test.describe('global navigation', () => {
       sidebar.getByRole('link', { name: 'ダッシュボード' }).click(),
     );
 
-    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible();
+    await expect(page.getByTestId('dashboard-condition-banner')).toBeVisible({ timeout: 30_000 });
     expect(errors).toEqual([]);
   });
 });
