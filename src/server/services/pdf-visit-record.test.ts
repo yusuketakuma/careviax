@@ -120,6 +120,20 @@ describe('pdf visit record fetchers', () => {
     expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed visit records without schedule context as PDF-safe not-found', async () => {
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        ...visitRecord,
+        schedule: null,
+      },
+    ]);
+
+    await expect(getVisitRecordEntry('org_1', 'visit_1')).rejects.toBeInstanceOf(PdfNotFoundError);
+
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('hydrates patient, residual, pharmacist, and latest audit actor details', async () => {
     residualMedicationFindManyMock.mockResolvedValue([
       {

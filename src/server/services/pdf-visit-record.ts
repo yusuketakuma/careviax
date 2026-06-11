@@ -120,7 +120,7 @@ async function getVisitRecordEntries(
   });
 
   const scopedRecords = records.filter(
-    (record) => record.schedule.case_.patient_id === record.patient_id,
+    (record) => record.schedule?.case_?.patient_id === record.patient_id,
   );
 
   if (scopedRecords.length === 0) {
