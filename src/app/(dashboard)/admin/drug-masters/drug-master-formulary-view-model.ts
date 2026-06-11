@@ -237,6 +237,67 @@ export function buildDrugMasterSelectionViewModel<
   };
 }
 
+type BulkPreviewSummary = {
+  unmatchedCount: number;
+  invalidCount: number;
+  processableRows: number;
+};
+
+type BulkPreviewRow = {
+  rowNumber: number;
+  status: string;
+};
+
+export function buildBulkPreviewViewModel<
+  TSummary extends BulkPreviewSummary,
+  TRow extends BulkPreviewRow,
+>({
+  bulkPreview,
+  bulkPreviewExpanded,
+  effectiveSelectedSiteId,
+  bulkCsv,
+}: {
+  bulkPreview:
+    | {
+        preview: {
+          summary: TSummary;
+          rows: TRow[];
+        };
+      }
+    | null
+    | undefined;
+  bulkPreviewExpanded: boolean;
+  effectiveSelectedSiteId: string;
+  bulkCsv: string;
+}) {
+  const bulkPreviewSummary = bulkPreview?.preview.summary ?? null;
+  const bulkPreviewBlockingCount = bulkPreviewSummary
+    ? bulkPreviewSummary.unmatchedCount + bulkPreviewSummary.invalidCount
+    : 0;
+  const bulkPreviewRowsForDisplay = [...(bulkPreview?.preview.rows ?? [])].sort((a, b) => {
+    const aBlocking = ['invalid', 'unmatched'].includes(a.status) ? 0 : 1;
+    const bBlocking = ['invalid', 'unmatched'].includes(b.status) ? 0 : 1;
+    return aBlocking - bBlocking || a.rowNumber - b.rowNumber;
+  });
+  const visibleBulkPreviewRows = bulkPreviewExpanded
+    ? bulkPreviewRowsForDisplay
+    : bulkPreviewRowsForDisplay.slice(0, 6);
+  const canApplyBulkPreview =
+    !!effectiveSelectedSiteId &&
+    bulkCsv.trim().length > 0 &&
+    !!bulkPreviewSummary &&
+    bulkPreviewBlockingCount === 0 &&
+    bulkPreviewSummary.processableRows > 0;
+
+  return {
+    bulkPreviewSummary,
+    bulkPreviewBlockingCount,
+    bulkPreviewRowsForDisplay,
+    visibleBulkPreviewRows,
+    canApplyBulkPreview,
+  };
+}
+
 type FormularyOperationsStock = {
   drug_master: {
     yj_code: string;

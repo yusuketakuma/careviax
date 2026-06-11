@@ -45,6 +45,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
 import {
+  buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
   buildFormularyOperationsViewModel,
@@ -1782,24 +1783,18 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     impactQueue,
     expiryReferenceTime,
   });
-  const bulkPreviewSummary = bulkPreview?.preview.summary ?? null;
-  const bulkPreviewBlockingCount = bulkPreviewSummary
-    ? bulkPreviewSummary.unmatchedCount + bulkPreviewSummary.invalidCount
-    : 0;
-  const bulkPreviewRowsForDisplay = [...(bulkPreview?.preview.rows ?? [])].sort((a, b) => {
-    const aBlocking = ['invalid', 'unmatched'].includes(a.status) ? 0 : 1;
-    const bBlocking = ['invalid', 'unmatched'].includes(b.status) ? 0 : 1;
-    return aBlocking - bBlocking || a.rowNumber - b.rowNumber;
+  const {
+    bulkPreviewSummary,
+    bulkPreviewBlockingCount,
+    bulkPreviewRowsForDisplay,
+    visibleBulkPreviewRows,
+    canApplyBulkPreview,
+  } = buildBulkPreviewViewModel({
+    bulkPreview,
+    bulkPreviewExpanded,
+    effectiveSelectedSiteId,
+    bulkCsv,
   });
-  const visibleBulkPreviewRows = bulkPreviewExpanded
-    ? bulkPreviewRowsForDisplay
-    : bulkPreviewRowsForDisplay.slice(0, 6);
-  const canApplyBulkPreview =
-    !!effectiveSelectedSiteId &&
-    bulkCsv.trim().length > 0 &&
-    !!bulkPreviewSummary &&
-    bulkPreviewBlockingCount === 0 &&
-    bulkPreviewSummary.processableRows > 0;
   const latestPackageInsert = detailQuery.data?.package_inserts[0] ?? null;
   const stockConfig = stockConfigQuery.data?.data ?? null;
   const stockHistory = stockHistoryQuery.data?.data ?? [];

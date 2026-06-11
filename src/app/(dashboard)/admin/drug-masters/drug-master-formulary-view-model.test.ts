@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
   buildDrugMasterSelectionViewModel,
   buildFormularyOperationsViewModel,
@@ -216,6 +217,109 @@ describe('formulary label formatters', () => {
     expect(formatStockHistoryActionLabel('custom_action')).toBe('custom_action');
     expect(formatFormularyRequestActionLabel('update_settings')).toBe('設定変更');
     expect(formatFormularyRequestActionLabel('custom_request')).toBe('custom_request');
+  });
+});
+
+describe('buildBulkPreviewViewModel', () => {
+  const summary = {
+    totalRows: 8,
+    processableRows: 6,
+    createCount: 2,
+    updateCount: 2,
+    deactivateCount: 1,
+    noChangeCount: 1,
+    unmatchedCount: 1,
+    invalidCount: 1,
+  };
+
+  it('sorts blocking rows first and limits collapsed preview rows', () => {
+    const model = buildBulkPreviewViewModel({
+      bulkPreview: {
+        preview: {
+          summary,
+          rows: [
+            { rowNumber: 4, status: 'update', drug_name: '更新薬' },
+            { rowNumber: 2, status: 'unmatched', drug_name: '未照合薬' },
+            { rowNumber: 3, status: 'invalid', drug_name: '無効薬' },
+            { rowNumber: 1, status: 'create', drug_name: '新規薬' },
+            { rowNumber: 5, status: 'no_change', drug_name: '変更なし薬' },
+            { rowNumber: 6, status: 'deactivate', drug_name: '解除薬' },
+            { rowNumber: 7, status: 'update', drug_name: '更新薬2' },
+          ],
+        },
+      },
+      bulkPreviewExpanded: false,
+      effectiveSelectedSiteId: 'site_1',
+      bulkCsv: 'yj_code,drug_name\n1,薬剤',
+    });
+
+    expect(model.bulkPreviewBlockingCount).toBe(2);
+    expect(model.bulkPreviewRowsForDisplay.map((row) => row.rowNumber)).toEqual([
+      2, 3, 1, 4, 5, 6, 7,
+    ]);
+    expect(model.visibleBulkPreviewRows.map((row) => row.rowNumber)).toEqual([2, 3, 1, 4, 5, 6]);
+    expect(model.canApplyBulkPreview).toBe(false);
+  });
+
+  it('allows apply only with a selected site, non-empty csv, no blocking rows, and processable rows', () => {
+    const basePreview = {
+      preview: {
+        summary: {
+          ...summary,
+          processableRows: 1,
+          unmatchedCount: 0,
+          invalidCount: 0,
+        },
+        rows: [{ rowNumber: 1, status: 'create' }],
+      },
+    };
+
+    expect(
+      buildBulkPreviewViewModel({
+        bulkPreview: basePreview,
+        bulkPreviewExpanded: true,
+        effectiveSelectedSiteId: 'site_1',
+        bulkCsv: 'yj_code\n123',
+      }).canApplyBulkPreview,
+    ).toBe(true);
+    expect(
+      buildBulkPreviewViewModel({
+        bulkPreview: basePreview,
+        bulkPreviewExpanded: true,
+        effectiveSelectedSiteId: '',
+        bulkCsv: 'yj_code\n123',
+      }).canApplyBulkPreview,
+    ).toBe(false);
+    expect(
+      buildBulkPreviewViewModel({
+        bulkPreview: {
+          preview: {
+            ...basePreview.preview,
+            summary: { ...basePreview.preview.summary, processableRows: 0 },
+          },
+        },
+        bulkPreviewExpanded: true,
+        effectiveSelectedSiteId: 'site_1',
+        bulkCsv: 'yj_code\n123',
+      }).canApplyBulkPreview,
+    ).toBe(false);
+  });
+
+  it('returns empty display state without a preview', () => {
+    const model = buildBulkPreviewViewModel({
+      bulkPreview: null,
+      bulkPreviewExpanded: true,
+      effectiveSelectedSiteId: 'site_1',
+      bulkCsv: 'yj_code\n123',
+    });
+
+    expect(model).toEqual({
+      bulkPreviewSummary: null,
+      bulkPreviewBlockingCount: 0,
+      bulkPreviewRowsForDisplay: [],
+      visibleBulkPreviewRows: [],
+      canApplyBulkPreview: false,
+    });
   });
 });
 
