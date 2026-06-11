@@ -8,6 +8,7 @@ const {
   careReportFindFirstMock,
   patientFindFirstMock,
   medicationProfileFindManyMock,
+  visitRecordFindManyMock,
 } = vi.hoisted(() => ({
   renderToBufferMock: vi.fn(),
   fontRegisterMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   careReportFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
 }));
 
 vi.mock('@react-pdf/renderer', async () => {
@@ -50,6 +52,9 @@ vi.mock('@/lib/db/client', () => ({
     medicationProfile: {
       findMany: medicationProfileFindManyMock,
     },
+    visitRecord: {
+      findMany: visitRecordFindManyMock,
+    },
   },
 }));
 
@@ -57,6 +62,7 @@ import {
   buildCareReportPdf,
   buildMedicationCalendarPdf,
   buildMedicationHistoryPdf,
+  buildPatientVisitRecordsPdf,
 } from './pdf-documents';
 import { PdfNotFoundError } from './pdf-errors';
 
@@ -83,6 +89,7 @@ describe('buildCareReportPdf', () => {
       gender: 'male',
     });
     medicationProfileFindManyMock.mockResolvedValue([]);
+    visitRecordFindManyMock.mockResolvedValue([]);
   });
 
   it('falls back to generic content rendering for malformed physician-report JSON', async () => {
@@ -118,6 +125,28 @@ describe('buildCareReportPdf', () => {
     expect(result.fileName).toBe('care-report-_-report_1.pdf');
     expect(result.buffer).toEqual(Buffer.from('pdf'));
     expect(renderToBufferMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('buildPatientVisitRecordsPdf', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    renderToBufferMock.mockResolvedValue(Buffer.from('pdf'));
+    organizationFindUniqueMock.mockResolvedValue({ name: 'ケアビア薬局' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ name: '本店' });
+  });
+
+  it('does not query visit records when patient access is denied', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+    visitRecordFindManyMock.mockResolvedValue([]);
+
+    await expect(buildPatientVisitRecordsPdf('org_1', 'patient_1')).rejects.toBeInstanceOf(
+      PdfNotFoundError,
+    );
+
+    expect(patientFindFirstMock).toHaveBeenCalledOnce();
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 });
 

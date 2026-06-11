@@ -1682,24 +1682,27 @@ async function getPatientVisitRecordRecord(
   dateTo?: Date | null,
   accessContext?: VisitScheduleAccessContext,
 ): Promise<PatientVisitRecordPdfRecord> {
-  const [patient, records] = await Promise.all([
-    prisma.patient.findFirst({
-      where: accessContext
-        ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
-        : { id: patientId, org_id: orgId },
-      select: {
-        id: true,
-        name: true,
-        birth_date: true,
-        gender: true,
-      },
-    }),
-    getVisitRecordEntries(orgId, { patientId, dateFrom, dateTo }, accessContext),
-  ]);
+  const patient = await prisma.patient.findFirst({
+    where: accessContext
+      ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
+      : { id: patientId, org_id: orgId },
+    select: {
+      id: true,
+      name: true,
+      birth_date: true,
+      gender: true,
+    },
+  });
 
   if (!patient) {
     throw new PdfNotFoundError('patient');
   }
+
+  const records = await getVisitRecordEntries(
+    orgId,
+    { patientId, dateFrom, dateTo },
+    accessContext,
+  );
 
   return {
     patient,
