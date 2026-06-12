@@ -104,9 +104,7 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
 function formatActivityTime(value: string): string {
   const date = parseISO(value);
   if (Number.isNaN(date.getTime())) return value;
-  return isSameDay(date, new Date())
-    ? format(date, 'HH:mm')
-    : format(date, 'M/d', { locale: ja });
+  return isSameDay(date, new Date()) ? format(date, 'HH:mm') : format(date, 'M/d', { locale: ja });
 }
 
 /** 経過時間ラベル(「1日」「30分」)。解釈できない値は undefined。 */
@@ -128,16 +126,9 @@ function formatQuantityLabel(line: {
   return `${line.days}日分`;
 }
 
-function SectionCard({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<'section'>) {
+function SectionCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
-    <section
-      className={cn('rounded-lg border border-border/70 bg-card p-4', className)}
-      {...props}
-    >
+    <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
       {children}
     </section>
   );
@@ -176,9 +167,7 @@ function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">
-          今日このカードでやることはありません。
-        </p>
+        <p className="mt-3 text-sm text-muted-foreground">今日このカードでやることはありません。</p>
       )}
     </SectionCard>
   );
@@ -361,7 +350,9 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
 
-      <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0">
+      {/* デザイン 06: 2xl〜は [本文 | このカードに紐づく今日 | 3点セット] の 3 カラム。
+          xl 帯で 3 カラムにすると中央が潰れるため、xl は右カラム縦積みの 2 カラムに留める */}
+      <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
         <div className="min-w-0 space-y-4">
           {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
           <SafetyBoard
@@ -461,7 +452,9 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
                     key={activity.id}
                     badgeLabel={ACTIVITY_TYPE_LABELS[activity.type]}
                     badgeClassName={ACTIVITY_BADGE_CLASSES[activity.type]}
-                    title={activity.actor ? `${activity.label} — ${activity.actor}` : activity.label}
+                    title={
+                      activity.actor ? `${activity.label} — ${activity.actor}` : activity.label
+                    }
                     subtitle={formatActivityTime(activity.at)}
                     openLabel="開く"
                     onOpen={() => router.push(activity.href)}
@@ -474,19 +467,23 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
           </SectionCard>
         </div>
 
-        {/* 右レール(xl〜): このカードに紐づく今日 + 3 点セット */}
+        {/* 右側(xl: 縦積みの 1 カラム / 2xl: contents 化して「紐づく今日」が中央・3点セットが右の独立カラム) */}
         <aside
-          className="space-y-4 xl:sticky xl:top-6"
+          className="space-y-4 xl:sticky xl:top-6 2xl:contents"
           aria-label="このカードに紐づく今日・次にやること・止まっている理由・根拠"
         >
-          <CardTodayPanel tasks={workspace.today_tasks} />
-          <WorkspaceActionRail
-            nextAction={nextAction}
-            blockedReasons={blockedReasons}
-            blockedReasonsEmptyLabel="止まっている作業はありません"
-            evidence={evidence}
-            evidenceOpenLabel="開く"
-          />
+          <div className="2xl:sticky 2xl:top-6">
+            <CardTodayPanel tasks={workspace.today_tasks} />
+          </div>
+          <div className="space-y-4 2xl:sticky 2xl:top-6">
+            <WorkspaceActionRail
+              nextAction={nextAction}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
+          </div>
         </aside>
       </div>
     </div>
