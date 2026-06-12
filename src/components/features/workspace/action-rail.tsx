@@ -51,6 +51,10 @@ export type NextActionPanelProps = {
   actionDisabled?: boolean;
   /** ボタンの代わりにリンクとして描画する場合の href */
   actionHref?: string;
+  /** 副操作ラベル(アウトライン・青テキスト。デザイン P0-32 の「問題なしにする」等) */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  secondaryActionDisabled?: boolean;
   className?: string;
 };
 
@@ -60,6 +64,9 @@ export function NextActionPanel({
   onAction,
   actionDisabled = false,
   actionHref,
+  secondaryActionLabel,
+  onSecondaryAction,
+  secondaryActionDisabled = false,
   className,
 }: NextActionPanelProps) {
   return (
@@ -78,6 +85,17 @@ export function NextActionPanel({
           {actionLabel}
         </Button>
       )}
+      {secondaryActionLabel ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-[44px] w-full text-primary hover:text-primary"
+          onClick={onSecondaryAction}
+          disabled={secondaryActionDisabled}
+        >
+          {secondaryActionLabel}
+        </Button>
+      ) : null}
       {description ? (
         <p className="text-sm leading-6 text-muted-foreground">{description}</p>
       ) : null}

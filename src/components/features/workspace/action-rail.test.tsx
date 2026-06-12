@@ -37,6 +37,37 @@ describe('NextActionPanel', () => {
     const link = screen.getByRole('link', { name: '訪問準備へ' });
     expect(link.getAttribute('href')).toBe('/visits');
   });
+
+  it('renders an outline secondary action when provided (P0-32)', () => {
+    const onAction = vi.fn();
+    const onSecondaryAction = vi.fn();
+    render(
+      <NextActionPanel
+        actionLabel="医師への確認を記録"
+        onAction={onAction}
+        secondaryActionLabel="問題なしにする"
+        onSecondaryAction={onSecondaryAction}
+      />,
+    );
+
+    const secondary = screen.getByRole('button', { name: '問題なしにする' });
+    fireEvent.click(secondary);
+    expect(onSecondaryAction).toHaveBeenCalledTimes(1);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('disables the secondary action via secondaryActionDisabled', () => {
+    render(
+      <NextActionPanel
+        actionLabel="医師への確認を記録"
+        secondaryActionLabel="問題なしにする"
+        secondaryActionDisabled
+      />,
+    );
+
+    const secondary = screen.getByRole('button', { name: '問題なしにする' });
+    expect(secondary.hasAttribute('disabled')).toBe(true);
+  });
 });
 
 describe('BlockedReasonsPanel', () => {

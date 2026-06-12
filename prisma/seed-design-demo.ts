@@ -29,6 +29,8 @@ import type { PrismaClient } from '@prisma/client';
  * - 11_billing: 当月の自動チェック合格 3 件(小林・加藤・松本の完了訪問 + BillingEvidence)
  *   + 疑義 1 件(高橋・同意書旧版の BillingCandidate)+ 算定ルール版(令和8年改定)
  * - 12_handoff: 既存ハンドオフ 3 件に責任移動の構造化フィールドを付与
+ * - p0_32_safety_check: 田中の服薬課題 4 件(飲み合わせ=critical/用量確認=相談中/
+ *   副作用疑い/重複)→ /patients/[id]/safety-check の気になる点 4 枚 + 確認の流れ 2 済
  *
  * 日付は実行日基準の相対値(静止画原則: 比較対象は状態・文言形式であり日付値ではない)。
  */
@@ -124,6 +126,14 @@ export const DEMO_SEED_IDS = {
   preparationTanaka: 'cmnhdemoprep001amq9ph-os',
   visitTanakaPast: 'cmnhdemovis013amq9ph-os',
   visitRecordTanakaPast: 'cmnhdemovrec001amq9ph-os',
+  /** p0_31: 田中の前回訪問で確認した残薬 3 剤(残28/10/14日) */
+  residualMedicationsTanaka: [
+    'cmnhdemorsdm001amq9ph-os',
+    'cmnhdemorsdm002amq9ph-os',
+    'cmnhdemorsdm003amq9ph-os',
+  ],
+  /** p0_31: 残薬調整の医師指示記録(昨日回答済み・酸化Mgは14日分に調整) */
+  inquiryResidualInstruction: 'cmnhdemoinq004amq9ph-os',
   vehicleKeiVan: 'cmnhdemoveh001amq9ph-os',
   /** 10: 田中の宛先「医師(山本先生)+ケアマネ」 */
   careTeamTanakaPhysician: 'cmnhdemoctl001amq9ph-os',
@@ -214,6 +224,14 @@ export const DEMO_SEED_IDS = {
   reportKato: 'cmnhdemorep001amq9ph-os',
   deliveryKato: 'cmnhdemodel001amq9ph-os',
   visitKato: 'cmnhdemovis008amq9ph-os',
+  /** p1_05: 加藤のケアチーム(主治医/ケアマネ/訪問看護)+ 家族連絡先 */
+  careTeamKatoPhysician: 'cmnhdemoctl004amq9ph-os',
+  careTeamKatoCareManager: 'cmnhdemoctl005amq9ph-os',
+  careTeamKatoNurse: 'cmnhdemoctl006amq9ph-os',
+  contactKatoFamily: 'cmnhdemoctp001amq9ph-os',
+  /** p1_05: 報告書共有へのケアマネ返信(昨日受領)→「次回タスクにする」 */
+  commRequestKatoShare: 'cmnhdemocreq003amq9ph-os',
+  commResponseKatoShare: 'cmnhdemocres002amq9ph-os',
 
   /** 02: 吉田進 — 入院中(休止チップ) */
   patientYoshida: 'cmnhdemopt010amq9ph-os',
@@ -332,6 +350,16 @@ export const DEMO_SEED_IDS = {
   /** 11_billing: 疑義 1 件(根拠 pill 用の算定ルール + 人の確認待ち候補) */
   billingRuleHomeVisitSsot: 'cmnhdemobrul001amq9ph-os',
   billingCandidateConsentReview: 'cmnhdemobcan001amq9ph-os',
+
+  /**
+   * p0_32 薬の安全チェック: 田中の服薬課題 4 件(気になる点 4 カテゴリ)。
+   * 飲み合わせ(critical/open)/ 用量確認(in_progress=「処方医へ相談」済)/
+   * 副作用疑い(open)/ 重複(open)→ 確認の流れは 2 済 + 2 未になる。
+   */
+  issueInteractionTanaka: 'cmnhdemoissu001amq9ph-os',
+  issueDoseTanaka: 'cmnhdemoissu002amq9ph-os',
+  issueAdverseTanaka: 'cmnhdemoissu003amq9ph-os',
+  issueDuplicateTanaka: 'cmnhdemoissu004amq9ph-os',
 } as const;
 
 /**
@@ -441,6 +469,13 @@ function atLocalTimeToday(hours: number, minutes: number): Date {
 
 function formatMonthDay(date: Date): string {
   return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/** ローカル日付の YYYY-MM-DD(報告書 content 内の日付文字列用) */
+function formatLocalDateKey(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 /**
@@ -877,6 +912,69 @@ export async function seedDesignFidelityDemo(
       primary_pharmacist_id: ctx.userId,
     },
   });
+
+  // ── p0_32 薬の安全チェック: 服薬課題 4 件(気になる点 4 カテゴリ)──────
+  // 用量確認のみ in_progress(処方医へ相談中)→ 確認の流れ 1・2 が済、3・4 が未。
+  const safetyIssueSpecs = [
+    {
+      id: DEMO_SEED_IDS.issueInteractionTanaka,
+      title: 'NSAIDsと腎機能低下',
+      description:
+        'ロキソプロフェン服用中で eGFR 38。腎機能低下時の NSAIDs 継続可否を処方医へ確認する。',
+      category: 'interaction',
+      priority: 'critical',
+      status: 'open',
+      identifiedAt: addHours(now, -26),
+    },
+    {
+      id: DEMO_SEED_IDS.issueDoseTanaka,
+      title: '高齢・eGFR 38',
+      description: '84歳・eGFR 38。腎排泄型薬剤の用量確認が必要。処方医へ相談中。',
+      category: 'other',
+      priority: 'high',
+      status: 'in_progress',
+      identifiedAt: addHours(now, -25),
+    },
+    {
+      id: DEMO_SEED_IDS.issueAdverseTanaka,
+      title: 'ふらつきあり',
+      description: '訪問時にふらつきの訴え。降圧薬・睡眠薬による副作用の可能性を確認する。',
+      category: 'side_effect',
+      priority: 'medium',
+      status: 'open',
+      identifiedAt: addHours(now, -24),
+    },
+    {
+      id: DEMO_SEED_IDS.issueDuplicateTanaka,
+      title: '睡眠薬の重なり',
+      description: '睡眠薬が 2 剤併用となっている。重複処方の整理を処方医へ確認する。',
+      category: 'duplicate',
+      priority: 'medium',
+      status: 'open',
+      identifiedAt: addHours(now, -23),
+    },
+  ] as const;
+
+  for (const spec of safetyIssueSpecs) {
+    const issueData = {
+      patient_id: DEMO_SEED_IDS.patientTanaka,
+      case_id: DEMO_SEED_IDS.caseTanaka,
+      title: spec.title,
+      description: spec.description,
+      status: spec.status,
+      priority: spec.priority,
+      category: spec.category,
+      identified_by: ctx.userId,
+      identified_at: spec.identifiedAt,
+      resolved_by: null,
+      resolved_at: null,
+    };
+    await prisma.medicationIssue.upsert({
+      where: { id: spec.id },
+      create: { id: spec.id, org_id: ctx.orgId, ...issueData },
+      update: issueData,
+    });
+  }
 
   // ── MedicationCycle: 調剤完了・監査待ち(工程: 監査(いまここ))──────
   await prisma.medicationCycle.upsert({
@@ -1452,6 +1550,91 @@ export async function seedDesignFidelityDemo(
       pharmacist_id: ctx.userId,
       visit_date: tanakaPastVisitDate,
       outcome_status: 'completed',
+    },
+  });
+
+  // ── p0_31 残薬調整: 田中の残薬 3 剤(昨日の事前確認で記録)────────────
+  // 表示導出(residual-adjustment.shared.ts): 1日量 = remaining_quantity ÷ remaining_days、
+  // 今回処方日数 = prescribed_quantity ÷ 1日量。
+  // アムロジピン: 28錠÷1錠/日=28日 → 残28日 ≥ 28日 →「今回は中止・回収」
+  // ロキソニン: 頓用で今回処方なし(prescribed_quantity 無し)→ 調整案テーブル対象外
+  // 酸化Mg: 84錠÷3錠/日=28日 → 残14日 → 28-14=「14日分へ調整」
+  const residualMedicationsTanaka = [
+    {
+      id: DEMO_SEED_IDS.residualMedicationsTanaka[0],
+      drug_name: 'アムロジピン',
+      prescribed_quantity: 28,
+      remaining_quantity: 28,
+      remaining_days: 28,
+      excess_days: 28,
+      is_reduction_target: true,
+      is_prohibited_reduction: false,
+    },
+    {
+      id: DEMO_SEED_IDS.residualMedicationsTanaka[1],
+      drug_name: 'ロキソニン',
+      prescribed_quantity: null,
+      remaining_quantity: 10,
+      remaining_days: 10,
+      excess_days: 10,
+      is_reduction_target: false,
+      is_prohibited_reduction: false,
+    },
+    {
+      id: DEMO_SEED_IDS.residualMedicationsTanaka[2],
+      drug_name: '酸化Mg',
+      prescribed_quantity: 84,
+      remaining_quantity: 42,
+      remaining_days: 14,
+      excess_days: 14,
+      is_reduction_target: true,
+      is_prohibited_reduction: false,
+    },
+  ];
+  for (const [index, residual] of residualMedicationsTanaka.entries()) {
+    const { id: residualId, ...residualData } = residual;
+    await prisma.residualMedication.upsert({
+      where: { id: residualId },
+      create: {
+        id: residualId,
+        org_id: ctx.orgId,
+        visit_record_id: DEMO_SEED_IDS.visitRecordTanakaPast,
+        ...residualData,
+        // 並び順(created_at asc)= アムロジピン → ロキソニン → 酸化Mg
+        created_at: addMinutes(addHours(now, -26), index),
+      },
+      update: {
+        visit_record_id: DEMO_SEED_IDS.visitRecordTanakaPast,
+        ...residualData,
+      },
+    });
+  }
+
+  // ── p0_31 残薬調整: 医師の指示記録(昨日回答済みの残薬調整照会)────────
+  await prisma.inquiryRecord.upsert({
+    where: { id: DEMO_SEED_IDS.inquiryResidualInstruction },
+    create: {
+      id: DEMO_SEED_IDS.inquiryResidualInstruction,
+      org_id: ctx.orgId,
+      cycle_id: DEMO_SEED_IDS.cycleTanaka,
+      reason: '残薬調整',
+      inquiry_to_physician: 'やまもと内科 山本 健',
+      inquiry_content: '酸化Mgの残薬14日分を確認。今回処方の日数調整可否を照会',
+      result: 'changed',
+      residual_adjustment: true,
+      change_detail: '医師へ確認済み。酸化Mgは14日分に調整。',
+      inquired_at: addHours(now, -25),
+      resolved_at: addHours(now, -24),
+    },
+    update: {
+      reason: '残薬調整',
+      inquiry_to_physician: 'やまもと内科 山本 健',
+      inquiry_content: '酸化Mgの残薬14日分を確認。今回処方の日数調整可否を照会',
+      result: 'changed',
+      residual_adjustment: true,
+      change_detail: '医師へ確認済み。酸化Mgは14日分に調整。',
+      inquired_at: addHours(now, -25),
+      resolved_at: addHours(now, -24),
     },
   });
 
@@ -2220,6 +2403,43 @@ export async function seedDesignFidelityDemo(
     cycleUpdatedAt: addDays(now, -3),
   });
   const katoSentAt = addDays(atLocalTimeToday(15, 30), -3);
+  // p1_05: 共有プレビュー(服薬状況/残薬/お願い/次回確認)が埋まる構造化 content
+  const katoReportContent = {
+    title: 'ケアマネへの服薬状況報告',
+    patient: { name: '加藤 ミサ', birth_date: '1941-02-14' },
+    care_manager: { name: '中島 桜', organization: 'きたきゅうケアプラン' },
+    report_date: formatLocalDateKey(addDays(today, -3)),
+    visit_date: formatLocalDateKey(addDays(today, -3)),
+    pharmacist_name: '山田 花子',
+    medication_management_summary: {
+      total_drugs: 6,
+      compliance_summary: '朝・夕は服用できています。昼分の飲み忘れが週2回ほどあります。',
+      self_management: '一部介助(ヘルパー声かけあり)',
+      calendar_used: true,
+    },
+    functional_impact: {
+      sleep_impact: '影響なし',
+      cognition_impact: '変化なし',
+      diet_impact: '食欲やや低下',
+      mobility_impact: 'ふらつきなし',
+      excretion_impact: '便秘気味',
+    },
+    residual_status: {
+      summary: 'マグミット錠が約10日分残っています。',
+      reduction_proposals: ['次回処方で7日分の調整を提案予定'],
+    },
+    care_service_coordination: {
+      medication_assistance: '昼分はヘルパー訪問時の声かけをお願いしたいです。',
+      unit_dose_packaging: true,
+      calendar_recommendation: true,
+      other_items: '服薬カレンダーは継続使用中です。',
+    },
+    next_visit_plan: {
+      date: formatLocalDateKey(addDays(today, 5)),
+      followup_items: ['昼分の服薬状況を確認', '残薬(マグミット錠)の数を確認'],
+    },
+    warnings: [],
+  };
   await prisma.careReport.upsert({
     where: { id: DEMO_SEED_IDS.reportKato },
     create: {
@@ -2229,13 +2449,13 @@ export async function seedDesignFidelityDemo(
       case_id: DEMO_SEED_IDS.caseKato,
       report_type: 'care_manager_report',
       status: 'sent',
-      content: { title: 'ケアマネへの服薬状況報告' },
+      content: katoReportContent,
       created_by: ctx.userId,
     },
     update: {
       report_type: 'care_manager_report',
       status: 'sent',
-      content: { title: 'ケアマネへの服薬状況報告' },
+      content: katoReportContent,
       created_by: ctx.userId,
     },
   });
@@ -2257,6 +2477,129 @@ export async function seedDesignFidelityDemo(
       confirmed_at: null,
     },
   });
+
+  // ── p1_05: 他職種向け共有ページ(/reports/[id]/share)────────────────────
+  // 左カラム「共有する相手」: ケアチーム(主治医/ケアマネ/訪問看護)+ 家族連絡先
+  await prisma.careTeamLink.upsert({
+    where: { id: DEMO_SEED_IDS.careTeamKatoPhysician },
+    create: {
+      id: DEMO_SEED_IDS.careTeamKatoPhysician,
+      org_id: ctx.orgId,
+      case_id: DEMO_SEED_IDS.caseKato,
+      role: 'physician',
+      name: '山本 健',
+      organization_name: 'やまもと内科',
+      is_primary: true,
+    },
+    update: {
+      role: 'physician',
+      name: '山本 健',
+      organization_name: 'やまもと内科',
+      is_primary: true,
+    },
+  });
+  await prisma.careTeamLink.upsert({
+    where: { id: DEMO_SEED_IDS.careTeamKatoCareManager },
+    create: {
+      id: DEMO_SEED_IDS.careTeamKatoCareManager,
+      org_id: ctx.orgId,
+      case_id: DEMO_SEED_IDS.caseKato,
+      role: 'care_manager',
+      name: '中島 桜',
+      organization_name: 'きたきゅうケアプラン',
+      is_primary: true,
+    },
+    update: {
+      role: 'care_manager',
+      name: '中島 桜',
+      organization_name: 'きたきゅうケアプラン',
+      is_primary: true,
+    },
+  });
+  await prisma.careTeamLink.upsert({
+    where: { id: DEMO_SEED_IDS.careTeamKatoNurse },
+    create: {
+      id: DEMO_SEED_IDS.careTeamKatoNurse,
+      org_id: ctx.orgId,
+      case_id: DEMO_SEED_IDS.caseKato,
+      role: 'nurse',
+      name: '三浦 恵',
+      organization_name: '訪問看護ステーションあおぞら',
+      is_primary: true,
+    },
+    update: {
+      role: 'nurse',
+      name: '三浦 恵',
+      organization_name: '訪問看護ステーションあおぞら',
+      is_primary: true,
+    },
+  });
+  await prisma.contactParty.upsert({
+    where: { id: DEMO_SEED_IDS.contactKatoFamily },
+    create: {
+      id: DEMO_SEED_IDS.contactKatoFamily,
+      org_id: ctx.orgId,
+      patient_id: DEMO_SEED_IDS.patientKato,
+      name: '加藤 直子',
+      relation: 'child',
+      phone: '090-0000-0009',
+      is_primary: true,
+      is_emergency_contact: true,
+      notes: '長女・近隣在住',
+    },
+    update: {
+      name: '加藤 直子',
+      relation: 'child',
+      is_primary: true,
+      is_emergency_contact: true,
+    },
+  });
+  // 右カラム「返信・確認」: 報告書共有に対するケアマネ返信(昨日受領)。
+  // status='responded' は 10_report の返信待ち集計(sent/received/in_progress)に乗らず、
+  // responded_at=昨日 は「今日解決した待ち」(当日分のみ)にも乗らない。
+  await prisma.communicationRequest.upsert({
+    where: { id: DEMO_SEED_IDS.commRequestKatoShare },
+    create: {
+      id: DEMO_SEED_IDS.commRequestKatoShare,
+      org_id: ctx.orgId,
+      patient_id: DEMO_SEED_IDS.patientKato,
+      case_id: DEMO_SEED_IDS.caseKato,
+      request_type: 'report_share',
+      recipient_name: '中島 桜',
+      recipient_role: 'care_manager',
+      related_entity_type: 'care_report',
+      related_entity_id: DEMO_SEED_IDS.reportKato,
+      status: 'responded',
+      subject: 'ケアマネへの服薬状況報告(共有)',
+      content: '服薬状況と残薬の状況を共有します。昼分の声かけ可否をご確認ください。',
+      requested_by: ctx.userId,
+      requested_at: katoSentAt,
+    },
+    update: {
+      recipient_role: 'care_manager',
+      related_entity_type: 'care_report',
+      related_entity_id: DEMO_SEED_IDS.reportKato,
+      status: 'responded',
+      requested_at: katoSentAt,
+    },
+  });
+  await prisma.communicationResponse.upsert({
+    where: { id: DEMO_SEED_IDS.commResponseKatoShare },
+    create: {
+      id: DEMO_SEED_IDS.commResponseKatoShare,
+      org_id: ctx.orgId,
+      request_id: DEMO_SEED_IDS.commRequestKatoShare,
+      responder_name: '中島 桜(ケアマネ)',
+      content: 'ヘルパーへ声かけ依頼済み。次回確認をお願いします。',
+      responded_at: addDays(atLocalTimeToday(16, 40), -1),
+    },
+    update: {
+      responder_name: '中島 桜(ケアマネ)',
+      content: 'ヘルパーへ声かけ依頼済み。次回確認をお願いします。',
+      responded_at: addDays(atLocalTimeToday(16, 40), -1),
+    },
+  });
+
   await upsertDemoVisit(prisma, ctx, {
     id: DEMO_SEED_IDS.visitKato,
     caseId: DEMO_SEED_IDS.caseKato,
