@@ -419,6 +419,23 @@ export const DEMO_SEED_IDS = {
     'cmnhdemofres004amq9ph-os',
     'cmnhdemofres005amq9ph-os',
   ],
+
+  /* ── p0_45 キャパシティ・詰まり確認(/admin/capacity)──────────── */
+
+  /** p0_45: 行程「調剤」バー用の患者(ready_to_dispense / dispensing) */
+  patientCapacityOkada: 'cmnhdemocappt001amq9ph-os',
+  caseCapacityOkada: 'cmnhdemocapcase001amq9ph-os',
+  cycleCapacityOkada: 'cmnhdemocapcyc001amq9ph-os',
+  dispenseTaskCapacityOkada: 'cmnhdemocaptask001amq9ph-os',
+  patientCapacityUchida: 'cmnhdemocappt002amq9ph-os',
+  caseCapacityUchida: 'cmnhdemocapcase002amq9ph-os',
+  cycleCapacityUchida: 'cmnhdemocapcyc002amq9ph-os',
+  dispenseTaskCapacityUchida: 'cmnhdemocaptask002amq9ph-os',
+  /** p0_45: 訪問枠 KPI の完了側(午前 2 件)+ 佐藤担当の午後訪問 2 件 */
+  visitCapacityDoneSato: 'cmnhdemocapvis001amq9ph-os',
+  visitCapacityDoneSuzuki: 'cmnhdemocapvis002amq9ph-os',
+  visitCapacityOkada: 'cmnhdemocapvis003amq9ph-os',
+  visitCapacityUchida: 'cmnhdemocapvis004amq9ph-os',
 } as const;
 
 /**
@@ -751,6 +768,8 @@ type DemoVisitSpec = {
   preVisitChecklistCompleted?: boolean;
   /** 03 の確定🔒表示(confirmed_at/by) */
   confirmed?: boolean;
+  /** 担当薬剤師(省略時は ctx.userId = 山田) */
+  pharmacistId?: string;
 };
 
 /** 訪問予定(02 次回訪問 / 03 ガント / 04 準備カード / 09 施設グループ)。 */
@@ -770,7 +789,7 @@ async function upsertDemoVisit(
     scheduled_date: spec.scheduledDate,
     time_window_start: start,
     time_window_end: end,
-    pharmacist_id: ctx.userId,
+    pharmacist_id: spec.pharmacistId ?? ctx.userId,
     route_order: spec.routeOrder ?? null,
     facility_batch_id: spec.facilityBatchId ?? null,
     facility_unit_id: spec.facilityUnitId ?? null,
@@ -4176,5 +4195,114 @@ export async function seedDesignFidelityDemo(
     drugStocks: forecastStocks.length,
     nextWeekIndividualVisits: forecastIndividuals.length + 1, // 田中を含む
     facilityABatchPatients: facilityAPatientIds.length,
+  });
+
+  /* ── p0_45 キャパシティ・詰まり確認(/admin/capacity)─────────────── */
+  // 行程「調剤」バーが 0 本にならないよう ready_to_dispense / dispensing の患者を
+  // 追加し、訪問枠 KPI の完了側(午前 2 件)・14〜15 時の満枠・佐藤への負荷分散で
+  // 「混在した負荷」の状態を再現する(値の絶対一致ではなく状態の再現が目的)。
+
+  const capacityDispensePatients = [
+    {
+      patientId: DEMO_SEED_IDS.patientCapacityOkada,
+      caseId: DEMO_SEED_IDS.caseCapacityOkada,
+      cycleId: DEMO_SEED_IDS.cycleCapacityOkada,
+      taskId: DEMO_SEED_IDS.dispenseTaskCapacityOkada,
+      name: '岡田 健',
+      nameKana: 'オカダ ケン',
+      age: 79,
+      gender: 'male' as const,
+      cycleStatus: 'ready_to_dispense' as const,
+      taskStatus: 'pending' as const,
+    },
+    {
+      patientId: DEMO_SEED_IDS.patientCapacityUchida,
+      caseId: DEMO_SEED_IDS.caseCapacityUchida,
+      cycleId: DEMO_SEED_IDS.cycleCapacityUchida,
+      taskId: DEMO_SEED_IDS.dispenseTaskCapacityUchida,
+      name: '内田 静子',
+      nameKana: 'ウチダ シズコ',
+      age: 86,
+      gender: 'female' as const,
+      cycleStatus: 'dispensing' as const,
+      taskStatus: 'in_progress' as const,
+    },
+  ];
+  for (const person of capacityDispensePatients) {
+    await upsertDemoBoardPatient(prisma, ctx, {
+      patientId: person.patientId,
+      caseId: person.caseId,
+      cycleId: person.cycleId,
+      name: person.name,
+      nameKana: person.nameKana,
+      age: person.age,
+      gender: person.gender,
+      cycleStatus: person.cycleStatus,
+    });
+    // 調剤・セット KPI の「全体」側(進行中の調剤タスク)
+    await prisma.dispenseTask.upsert({
+      where: { id: person.taskId },
+      create: {
+        id: person.taskId,
+        org_id: ctx.orgId,
+        cycle_id: person.cycleId,
+        assigned_to: ctx.dispenserUserId,
+        priority: 'normal',
+        status: person.taskStatus,
+      },
+      update: {
+        cycle_id: person.cycleId,
+        assigned_to: ctx.dispenserUserId,
+        priority: 'normal',
+        status: person.taskStatus,
+      },
+    });
+  }
+
+  // 訪問枠 KPI の完了側: 午前に完了した訪問 2 件。時間未定のまま completed にして
+  // 当日タイムライン(new_01 今日の流れ)へは置かない。担当は山田/佐藤に分ける。
+  await upsertDemoVisit(prisma, ctx, {
+    id: DEMO_SEED_IDS.visitCapacityDoneSato,
+    caseId: DEMO_SEED_IDS.caseSatoHanako,
+    cycleId: DEMO_SEED_IDS.cycleSatoHanako,
+    scheduledDate: today,
+    scheduleStatus: 'completed',
+  });
+  await upsertDemoVisit(prisma, ctx, {
+    id: DEMO_SEED_IDS.visitCapacityDoneSuzuki,
+    caseId: DEMO_SEED_IDS.caseSuzukiJiro,
+    cycleId: DEMO_SEED_IDS.cycleSuzukiJiro,
+    scheduledDate: today,
+    scheduleStatus: 'completed',
+    pharmacistId: ctx.dispenserUserId,
+  });
+
+  // 佐藤担当の午後訪問 2 件: 14:30 で 14〜15 時を満枠(薬剤師 2 名に対し 2 単位)にし、
+  // スタッフ別の負荷バーで山田と佐藤の値が分かれるようにする。
+  await upsertDemoVisit(prisma, ctx, {
+    id: DEMO_SEED_IDS.visitCapacityOkada,
+    caseId: DEMO_SEED_IDS.caseCapacityOkada,
+    cycleId: DEMO_SEED_IDS.cycleCapacityOkada,
+    scheduledDate: today,
+    startTime: [14, 30],
+    durationMinutes: 60,
+    pharmacistId: ctx.dispenserUserId,
+    confirmed: true,
+  });
+  await upsertDemoVisit(prisma, ctx, {
+    id: DEMO_SEED_IDS.visitCapacityUchida,
+    caseId: DEMO_SEED_IDS.caseCapacityUchida,
+    cycleId: DEMO_SEED_IDS.cycleCapacityUchida,
+    scheduledDate: today,
+    startTime: [16, 0],
+    durationMinutes: 60,
+    pharmacistId: ctx.dispenserUserId,
+    confirmed: true,
+  });
+
+  console.log('p0_45 capacity seed created:', {
+    dispenseStagePatients: capacityDispensePatients.length,
+    completedTodayVisits: 2,
+    satoAfternoonVisits: 2,
   });
 }

@@ -593,8 +593,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_45_capacity_bottleneck_dashboard',
     targetImage: 'images/P0/p0_45_capacity_bottleneck_dashboard.png',
-    route: '/capacity',
-    note: 'CapacityDashboard は PHOS_API_BASE_URL 依存。撮影はスタブ注入の運用判断要(D-7)',
+    // キャパシティ・詰まり確認(KPI 4 枚 + 行程残/スタッフ負荷バー + 注意点)
+    route: '/admin/capacity',
+    setup: async (page) => {
+      // BFF 集計の取得完了 → KPI とバーの描画まで待つ
+      await page
+        .waitForSelector('[data-testid="capacity-page"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_46_ui_state_reference',

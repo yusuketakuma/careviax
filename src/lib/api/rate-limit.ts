@@ -448,6 +448,7 @@ function isReadMethod(method: string): boolean {
 const UNKNOWN_API_RATE_LIMIT_PATH = '/api/__unknown__';
 
 export const API_ROUTE_TEMPLATES = [
+  '/api/admin/capacity',
   '/api/admin/data-explorer/:id',
   '/api/admin/data-explorer/:id/:id',
   '/api/admin/data-explorer/models',
