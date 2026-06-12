@@ -116,14 +116,14 @@ pnpm test:e2e:local -- ui-design-fidelity
 | #   | screen_id                            | 対応ルート / 部品                    | 種別 | 状態   | メモ |
 | --- | ------------------------------------ | ------------------------------------ | ---- | ------ | ---- |
 | 01  | p1_01_saved_views_advanced_filter    | 一覧画面共通(保存ビュー)           | 部品 | 未着手 | バックエンド: 保存ビュー API 要 |
-| 02  | p1_02_multi_card_split_workspace     | カード詳細の分割表示                 | 改修 | 未着手 | |
+| 02  | p1_02_multi_card_split_workspace     | `/patients/compare`(複数カード並列) | 改修 | 実装済 | 既存 board/overview BFF 再利用。?patients=id1,id2,id3 |
 | 03  | p1_03_ai_visit_summary_review        | visit-brief(訪問前まとめ)          | 改修 | 未着手 | 既存 visit-brief 接続 |
 | 04  | p1_04_ai_report_draft                | `/reports`(AI 下書き)              | 改修 | 未着手 | |
 | 05  | p1_05_interprofessional_portal       | `/shared/[token]`(外部共有)        | 改修 | 未着手 | |
 | 06  | p1_06_management_analytics_detail    | `/admin/analytics`                   | 改修 | 未着手 | |
 | 07  | p1_07_inventory_linkage_prediction   | pharmacy-drug-stocks 系              | 改修 | 未着手 | |
 | 08  | p1_08_facility_criteria_dashboard    | `/admin/facility-standards`          | 改修 | 未着手 | |
-| 09  | p1_09_incident_hiyarihatto           | ヒヤリハット管理                     | 新規 | 未着手 | モデル/API の有無要精査 |
+| 09  | p1_09_incident_hiyarihatto           | `/admin/incidents`                   | 新規 | 実装済み | IncidentReport モデル+API 新設 |
 | 10  | p1_10_report_template_editor         | `/admin/document-templates`          | 改修 | 未着手 | |
 | 11  | p1_11_voice_memo_transcription       | 音声メモ・文字起こし                 | 新規 | 未着手 | バックエンド要(録音保存+転写ジョブ) |
 | 12  | p1_12_advanced_route_scenario_compare| ルート案比較                         | 改修 | 未着手 | |
@@ -140,7 +140,7 @@ pnpm test:e2e:local -- ui-design-fidelity
 2. **モード/ロール選択** — p0_03。UI ストア + サーバー側の表示モード保持(設定 API)
 3. **オフライン同期センター** — p0_34/35。同期キューの一覧化・手動再送・競合検出/解消 API(`If-Match`/version 比較は既存実装の有無を精査)
 4. **保存ビュー(saved views)** — p1_01。ユーザー別フィルタ保存 API
-5. **ヒヤリハット** — p1_09。モデル+API+画面(要精査: 既存 issues で代替可能か)
+5. **ヒヤリハット** — p1_09。実装済み: IncidentReport モデル+ `/api/incident-reports` + `/admin/incidents`(MedicationIssue/Task は patient 必須・タスク一覧混入のため不採用)
 6. **音声メモ転写** — p1_11。S3 保存+転写ジョブ(外部依存の場合は cc:blocked 候補)
 7. 各画面の右パネル「止まっている理由」— workflow-exceptions 集約 API の画面別 projection(既存 API の再利用を優先)
 

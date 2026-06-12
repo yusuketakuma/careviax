@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { format, formatDistanceToNowStrict, isSameDay, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { toast } from 'sonner';
 import { FileQuestion } from 'lucide-react';
-import { buttonVariants, Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import {
@@ -234,13 +233,13 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
         >
           → 患者プロフィール
         </Link>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => toast.info('カードの分割表示は今後対応予定です')}
+        <Link
+          href={`/patients/compare?patients=${patientId}`}
+          className={buttonVariants({ variant: 'outline' })}
+          data-testid="card-open-compare"
         >
           カードを分割表示
-        </Button>
+        </Link>
       </div>
     </div>
   );

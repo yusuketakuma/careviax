@@ -319,6 +319,8 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
       ? {
           id: currentIntake.id,
           prescribed_date: currentIntake.prescribed_date.toISOString(),
+          // 定期/臨時(regular | emergency)。p1_02 カード種別ラベルの導出に使う
+          prescription_category: currentIntake.prescription_category,
         }
       : null,
     safety,

@@ -38,7 +38,11 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
     cycle_id: 'cycle_1',
     overall_status: 'dispensed',
     exception_status: null,
-    current_intake: { id: 'intake_0500', prescribed_date: '2026-06-09T00:00:00.000Z' },
+    current_intake: {
+      id: 'intake_0500',
+      prescribed_date: '2026-06-09T00:00:00.000Z',
+      prescription_category: 'regular',
+    },
     safety: {
       allergy: 'セフェム系(2019)',
       renal: 'eGFR 38(6/1)',
@@ -198,7 +202,8 @@ describe('CardWorkspace', () => {
     expect(screen.getByText('RX-2026-0500 / 1枚で患者のいまが全部わかる作業台')).toBeTruthy();
     const profileLink = screen.getByRole('link', { name: '→ 患者プロフィール' });
     expect(profileLink.getAttribute('href')).toBe('/patients/patient_1?view=profile');
-    expect(screen.getByRole('button', { name: 'カードを分割表示' })).toBeTruthy();
+    const compareLink = screen.getByRole('link', { name: 'カードを分割表示' });
+    expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
 
     // タブ UI は廃止(単一スクロール構成)
     expect(screen.queryByRole('tab')).toBeNull();

@@ -779,8 +779,14 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_09_incident_hiyarihatto',
     targetImage: 'images/P1/p1_09_incident_hiyarihatto.png',
-    route: null,
-    note: 'ヒヤリハット管理は未実装(新規)',
+    route: '/admin/incidents',
+    setup: async (page) => {
+      // 記録一覧カード(seed 4件)の描画を待つ
+      await page
+        .waitForSelector('[data-testid="incident-record-list"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_10_report_template_editor',

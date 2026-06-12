@@ -199,7 +199,12 @@ export type PatientWorkspace = {
   overall_status: string;
   exception_status: string | null;
   /** 現行 intake(RX 番号の生成元)。formatPrescriptionCardNumber(id, prescribed_date, 'rx_year') */
-  current_intake: { id: string; prescribed_date: string } | null;
+  current_intake: {
+    id: string;
+    prescribed_date: string;
+    /** 定期/臨時(regular | emergency)。p1_02 カード種別ラベルの導出に使う */
+    prescription_category: string;
+  } | null;
   safety: PatientWorkspaceSafety;
   prescription_lines: PatientWorkspacePrescriptionLine[];
   recent_activities: PatientWorkspaceActivity[];
