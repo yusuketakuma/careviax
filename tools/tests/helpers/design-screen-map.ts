@@ -334,8 +334,14 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_24_facility_visit_packet',
     targetImage: 'images/P0/p0_24_facility_visit_packet.png',
-    route: '/visits',
-    note: '施設一括訪問ビューの正ルート精査後に更新',
+    // 小川タケ(グリーンヒル施設バッチ)の施設訪問パケット(seed-design-demo 固定 ID)
+    route: '/visits/cmnhdemovis010amq9ph-os/facility-packet',
+    setup: async (page) => {
+      await page
+        .waitForSelector('[data-testid="facility-packet-page"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   // ── 事務・連携 ──────────────────────────────────────────────
   {
