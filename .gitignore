@@ -59,7 +59,8 @@ tools/tests/.artifacts/
 .omc/
 artifacts/
 audits/
-reports/
+# ルートの成果物のみ。src/**/reports(アプリ実装)に誤爆させない
+/reports/
 tmp/
 
 # Local E2E runtime state

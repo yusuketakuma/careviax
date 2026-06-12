@@ -120,6 +120,7 @@ const COCKPIT: DashboardCockpitResponse = {
     },
   ],
   carryover_count: 0,
+  team_capacity: [],
 };
 
 function stubFetch(board: HandoffBoardResponse = BOARD) {
@@ -280,9 +281,9 @@ describe('HandoffWorkspace', () => {
 
 describe('handoff-workspace helpers', () => {
   it('builds header meta with summary', () => {
-    expect(
-      buildHeaderMeta(new Date(2026, 5, 11), { outgoing_count: 3, incoming_count: 0 }),
-    ).toBe('6/11(木) — 渡した3・来た0');
+    expect(buildHeaderMeta(new Date(2026, 5, 11), { outgoing_count: 3, incoming_count: 0 })).toBe(
+      '6/11(木) — 渡した3・来た0',
+    );
   });
 
   it('maps lifecycle status to badge labels and tones', () => {
@@ -311,9 +312,7 @@ describe('handoff-workspace helpers', () => {
 
   it('computes remaining deadline labels including overdue', () => {
     const now = new Date('2026-06-11T09:00:00');
-    expect(remainingLabel(new Date(now.getTime() + 90 * 60_000).toISOString(), now)).toBe(
-      '1時間',
-    );
+    expect(remainingLabel(new Date(now.getTime() + 90 * 60_000).toISOString(), now)).toBe('1時間');
     expect(remainingLabel(new Date(now.getTime() - 60_000).toISOString(), now)).toBe('超過');
   });
 
@@ -327,18 +326,12 @@ describe('handoff-workspace helpers', () => {
   });
 
   it('builds title and sub text per status', () => {
+    expect(buildItemTitle(buildItem({ content: 'A', recipient_label: 'Bさん' }))).toBe('A → Bさん');
     expect(
-      buildItemTitle(buildItem({ content: 'A', recipient_label: 'Bさん' })),
-    ).toBe('A → Bさん');
-    expect(
-      buildItemSubText(
-        buildItem({ lifecycle_status: 'proposed', rationale: 'WIP超過' }),
-      ),
+      buildItemSubText(buildItem({ lifecycle_status: 'proposed', rationale: 'WIP超過' })),
     ).toBe('根拠: WIP超過');
     expect(
-      buildItemSubText(
-        buildItem({ lifecycle_status: 'in_progress', scope: '数量セットまで' }),
-      ),
+      buildItemSubText(buildItem({ lifecycle_status: 'in_progress', scope: '数量セットまで' })),
     ).toBe('許可済みの範囲: 数量セットまで');
     expect(
       buildItemSubText(

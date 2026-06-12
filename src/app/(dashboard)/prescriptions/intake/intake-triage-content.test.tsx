@@ -168,6 +168,7 @@ function buildCockpitFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 0,
+    team_capacity: [],
   };
 }
 
@@ -214,9 +215,7 @@ describe('IntakeTriageContent', () => {
 
     // 取込キュー: 既定は FAX レーンの 3 行
     expect(screen.getByRole('heading', { name: '取込キュー' })).toBeTruthy();
-    expect(
-      screen.getByText('新着が上・読取の確からしさは必ず人が確認してから入力へ'),
-    ).toBeTruthy();
+    expect(screen.getByText('新着が上・読取の確からしさは必ず人が確認してから入力へ')).toBeTruthy();
     expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(3);
 
     // 行内容: 状態語彙 + 自動読取 % + RX 番号 + 動的アクション

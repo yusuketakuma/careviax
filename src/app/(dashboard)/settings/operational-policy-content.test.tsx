@@ -113,6 +113,7 @@ function buildCockpitFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 0,
+    team_capacity: [],
   };
 }
 
@@ -166,12 +167,10 @@ describe('OperationalPolicyContent', () => {
     const notification = screen.getByTestId('policy-notification-card');
     expect(within(notification).getByText('緊急(赤)の通知')).toBeTruthy();
     expect(within(notification).getAllByTestId('policy-locked-pill')).toHaveLength(1);
-    expect(
-      within(notification).getByRole('switch', { name: '待ち解除の通知' }).textContent,
-    ).toBe('ON');
-    expect(within(notification).getByRole('switch', { name: '静かな時間' }).textContent).toBe(
+    expect(within(notification).getByRole('switch', { name: '待ち解除の通知' }).textContent).toBe(
       'ON',
     );
+    expect(within(notification).getByRole('switch', { name: '静かな時間' }).textContent).toBe('ON');
 
     // 影響範囲バナー
     expect(screen.getByTestId('policy-impact-banner').textContent).toContain('影響範囲');
@@ -209,11 +208,9 @@ describe('OperationalPolicyContent', () => {
     mockQueries({ policy: buildPolicyFixture({ can_edit: false }) });
     render(<OperationalPolicyContent />);
 
-    expect(
-      (screen.getByRole('switch', { name: '余白の計算' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect((screen.getByRole('button', { name: '標準' }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole('switch', { name: '余白の計算' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+    expect((screen.getByRole('button', { name: '標準' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

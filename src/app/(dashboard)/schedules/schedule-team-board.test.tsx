@@ -4,10 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type {
-  DayBoardStaff,
-  ScheduleDayBoardResponse,
-} from '@/types/schedule-day-board';
+import type { DayBoardStaff, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import {
   buildScheduleRiskAlert,
   buildStaffLane,
@@ -169,6 +166,7 @@ function buildCockpitFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 1,
+    team_capacity: [],
   };
 }
 
@@ -246,9 +244,7 @@ describe('buildScheduleRiskAlert', () => {
   });
 
   it('returns null when no narcotic audit with deadline exists', () => {
-    expect(
-      buildScheduleRiskAlert({ auditQueue: [], staff: [buildPharmacist()] }),
-    ).toBeNull();
+    expect(buildScheduleRiskAlert({ auditQueue: [], staff: [buildPharmacist()] })).toBeNull();
   });
 });
 

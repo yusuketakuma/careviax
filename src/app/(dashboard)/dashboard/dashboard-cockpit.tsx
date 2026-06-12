@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Lock } from 'lucide-react';
+import { Lock, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -25,11 +25,13 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
 import type {
   CockpitAuditQueueItem,
+  CockpitTeamMember,
   CockpitVisit,
   DashboardCockpitResponse,
 } from '@/types/dashboard-cockpit';
 import {
   buildBottleneckNote,
+  buildTeamHandoffSuggestion,
   buildConditionSummary,
   buildProcessNowTiles,
   buildTimelineBlocks,
@@ -420,6 +422,114 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
 }
 
 // ---------------------------------------------------------------------------
+// チームの余白
+// ---------------------------------------------------------------------------
+
+const TEAM_SLACK_CRITICAL_MINUTES = 30;
+const TEAM_SLACK_AMPLE_MINUTES = 90;
+
+type TeamSlackTone = 'critical' | 'normal' | 'ample';
+
+const TEAM_SLACK_TONE_CLASSES: Record<TeamSlackTone, { bar: string; label: string }> = {
+  critical: { bar: 'bg-red-500', label: 'text-red-600' },
+  normal: { bar: 'bg-blue-500', label: 'text-foreground' },
+  ample: { bar: 'bg-green-500', label: 'text-green-600' },
+};
+
+function teamSlackTone(slackMinutes: number): TeamSlackTone {
+  if (slackMinutes < TEAM_SLACK_CRITICAL_MINUTES) return 'critical';
+  if (slackMinutes < TEAM_SLACK_AMPLE_MINUTES) return 'normal';
+  return 'ample';
+}
+
+function TeamCapacityCard({
+  team,
+  suggestion,
+}: {
+  team: CockpitTeamMember[];
+  suggestion: string | null;
+}) {
+  if (team.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby="dashboard-team-capacity-heading"
+      className="rounded-lg border border-border/70 bg-card p-4"
+      data-testid="dashboard-team-capacity"
+    >
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h3 id="dashboard-team-capacity-heading" className="text-base font-bold text-foreground">
+          チームの余白
+        </h3>
+        <p className="text-xs text-muted-foreground">残り時間</p>
+      </div>
+      <ul className="mt-3 space-y-3" role="list">
+        {team.map((member) => {
+          const familyName = member.name.split(/[\s　]+/)[0] ?? member.name;
+          if (member.status === 'off') {
+            return (
+              <li key={member.user_id} className="flex items-center gap-3">
+                <span className="w-24 shrink-0 text-sm font-medium text-muted-foreground">
+                  {familyName}({member.role_label})
+                </span>
+                <span className="h-2 min-w-0 flex-1 rounded-full bg-muted/60" aria-hidden="true" />
+                <span className="w-20 shrink-0 text-right text-sm text-muted-foreground">休み</span>
+              </li>
+            );
+          }
+
+          const slack = member.slack_minutes ?? 0;
+          const tone = teamSlackTone(slack);
+          const busyPercent = Math.round((member.busy_ratio ?? 0) * 100);
+          return (
+            <li key={member.user_id} className="flex items-center gap-3">
+              <span className="w-24 shrink-0 text-sm font-medium text-foreground">
+                {familyName}({member.role_label})
+              </span>
+              <span
+                className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
+                role="img"
+                aria-label={`残り時間の使用率 ${busyPercent}%`}
+              >
+                <span
+                  className={cn(
+                    'absolute inset-y-0 left-0 rounded-full',
+                    TEAM_SLACK_TONE_CLASSES[tone].bar,
+                  )}
+                  style={{ width: `${Math.max(busyPercent, 4)}%` }}
+                />
+              </span>
+              <span
+                className={cn(
+                  'flex w-24 shrink-0 items-center justify-end gap-1 text-right text-sm font-semibold tabular-nums',
+                  TEAM_SLACK_TONE_CLASSES[tone].label,
+                )}
+              >
+                余白 {slack}分
+                {tone === 'critical' ? (
+                  <TriangleAlert className="size-3.5 shrink-0" aria-label="余白がわずかです" />
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {suggestion ? (
+        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-900">
+          <span>{suggestion}</span>
+          <Link
+            href="/handoff"
+            className="inline-flex items-center rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+          >
+            → ハンドオフへ
+          </Link>
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 右レール(次にやること / 止まっている理由 / 根拠・記録)
 // ---------------------------------------------------------------------------
 
@@ -578,7 +688,16 @@ export function DashboardCockpit() {
                 reportCount={data.cycle_status_counts['visit_completed'] ?? 0}
                 now={now}
               />
-              <ProcessNowSection statusCounts={data.cycle_status_counts} />
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+                <ProcessNowSection statusCounts={data.cycle_status_counts} />
+                <TeamCapacityCard
+                  team={data.team_capacity ?? []}
+                  suggestion={buildTeamHandoffSuggestion(
+                    buildProcessNowTiles(data.cycle_status_counts),
+                    data.team_capacity ?? [],
+                  )}
+                />
+              </div>
             </div>
             <div className="space-y-4">
               {/*

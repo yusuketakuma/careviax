@@ -47,6 +47,19 @@ export type CockpitBlockedReason = {
   action_href: string;
 };
 
+export type CockpitTeamMember = {
+  user_id: string;
+  name: string;
+  /** 「薬」(薬剤師系)/「事務」 */
+  role_label: string;
+  /** off = 当日シフトで不在(「休み」表示) */
+  status: 'working' | 'off';
+  /** 今日の残り勤務から残予定の拘束を引いた目安(分)。off は null */
+  slack_minutes: number | null;
+  /** 残り勤務に対する拘束割合 0..1(余白バーの長さ)。off は null */
+  busy_ratio: number | null;
+};
+
 export type DashboardCockpitResponse = {
   /** サーバー集計時刻(ISO)。右レール「今朝の同期」に表示 */
   generated_at: string;
@@ -60,4 +73,6 @@ export type DashboardCockpitResponse = {
   blocked_reasons: CockpitBlockedReason[];
   /** 昨日以前に作成され、まだ完了していないタスク件数(根拠・記録「昨日からの持ち越し」) */
   carryover_count: number;
+  /** チームの余白(残り時間の目安)。工程の今の隣に表示 */
+  team_capacity: CockpitTeamMember[];
 };

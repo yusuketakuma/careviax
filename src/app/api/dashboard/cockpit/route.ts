@@ -14,6 +14,7 @@ import type {
   CockpitVisit,
   DashboardCockpitResponse,
 } from '@/types/dashboard-cockpit';
+import { buildTeamCapacity } from './team-capacity';
 
 /**
  * new_01_dashboard(運用コックピット)用 BFF。
@@ -148,116 +149,149 @@ export const GET = withAuthContext(
       ? { case_id: { in: assignmentScope.caseIds } }
       : {};
 
-    const [cycleCounts, auditTasks, todaySchedules, openExceptions, carryoverCount] =
-      await Promise.all([
-        prisma.medicationCycle.groupBy({
-          by: ['overall_status'],
-          where: {
-            org_id: ctx.orgId,
-            ...cycleCaseScope,
-            overall_status: { notIn: ['cancelled'] },
+    const [
+      cycleCounts,
+      auditTasks,
+      todaySchedules,
+      openExceptions,
+      carryoverCount,
+      teamMembers,
+      todayShifts,
+    ] = await Promise.all([
+      prisma.medicationCycle.groupBy({
+        by: ['overall_status'],
+        where: {
+          org_id: ctx.orgId,
+          ...cycleCaseScope,
+          overall_status: { notIn: ['cancelled'] },
+        },
+        _count: { id: true },
+      }),
+      prisma.dispenseTask.findMany({
+        where: {
+          org_id: ctx.orgId,
+          status: 'completed',
+          ...(assignmentScope.caseIds
+            ? { cycle: { case_id: { in: assignmentScope.caseIds } } }
+            : {}),
+        },
+        orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
+        take: AUDIT_QUEUE_FETCH_LIMIT,
+        select: {
+          id: true,
+          priority: true,
+          due_date: true,
+          updated_at: true,
+          audits: {
+            orderBy: { audited_at: 'desc' },
+            take: 1,
+            select: { result: true },
           },
-          _count: { id: true },
-        }),
-        prisma.dispenseTask.findMany({
-          where: {
-            org_id: ctx.orgId,
-            status: 'completed',
-            ...(assignmentScope.caseIds
-              ? { cycle: { case_id: { in: assignmentScope.caseIds } } }
-              : {}),
-          },
-          orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
-          take: AUDIT_QUEUE_FETCH_LIMIT,
-          select: {
-            id: true,
-            priority: true,
-            due_date: true,
-            updated_at: true,
-            audits: {
-              orderBy: { audited_at: 'desc' },
-              take: 1,
-              select: { result: true },
-            },
-            cycle: {
-              select: {
-                id: true,
-                case_: {
-                  select: {
-                    patient: { select: { name: true } },
-                  },
+          cycle: {
+            select: {
+              id: true,
+              case_: {
+                select: {
+                  patient: { select: { name: true } },
                 },
-                prescription_intakes: {
-                  orderBy: { created_at: 'desc' },
-                  take: 1,
-                  select: {
-                    id: true,
-                    prescribed_date: true,
-                    lines: {
-                      select: {
-                        packaging_instruction_tags: true,
-                        packaging_instructions: true,
-                        notes: true,
-                        dispensing_method: true,
-                      },
+              },
+              prescription_intakes: {
+                orderBy: { created_at: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  prescribed_date: true,
+                  lines: {
+                    select: {
+                      packaging_instruction_tags: true,
+                      packaging_instructions: true,
+                      notes: true,
+                      dispensing_method: true,
                     },
                   },
                 },
               },
             },
           },
-        }),
-        prisma.visitSchedule.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...cycleCaseScope,
-            scheduled_date: todayRange,
-            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-          },
-          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-          select: {
-            id: true,
-            visit_type: true,
-            schedule_status: true,
-            time_window_start: true,
-            time_window_end: true,
-            facility_batch_id: true,
-            case_: {
-              select: {
-                patient: { select: { name: true } },
-              },
+        },
+      }),
+      prisma.visitSchedule.findMany({
+        where: {
+          org_id: ctx.orgId,
+          ...cycleCaseScope,
+          scheduled_date: todayRange,
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        },
+        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+        select: {
+          id: true,
+          visit_type: true,
+          schedule_status: true,
+          time_window_start: true,
+          time_window_end: true,
+          facility_batch_id: true,
+          pharmacist_id: true,
+          case_: {
+            select: {
+              patient: { select: { name: true } },
             },
           },
-        }),
-        prisma.workflowException.findMany({
-          where: {
-            org_id: ctx.orgId,
-            status: 'open',
-            ...(assignmentScope.caseIds
-              ? {
-                  OR: [{ cycle_id: null }, { cycle: { case_id: { in: assignmentScope.caseIds } } }],
-                }
-              : {}),
-          },
-          orderBy: { created_at: 'asc' },
-          take: BLOCKED_REASONS_LIMIT,
-          select: {
-            id: true,
-            exception_type: true,
-            description: true,
-            severity: true,
-            created_at: true,
-          },
-        }),
-        prisma.task.count({
-          where: {
-            org_id: ctx.orgId,
-            status: { in: ['pending', 'in_progress'] },
-            created_at: { lt: localTodayStart },
-            ...buildDashboardTaskAssignmentWhere(assignmentScope),
-          },
-        }),
-      ]);
+        },
+      }),
+      prisma.workflowException.findMany({
+        where: {
+          org_id: ctx.orgId,
+          status: 'open',
+          ...(assignmentScope.caseIds
+            ? {
+                OR: [{ cycle_id: null }, { cycle: { case_id: { in: assignmentScope.caseIds } } }],
+              }
+            : {}),
+        },
+        orderBy: { created_at: 'asc' },
+        take: BLOCKED_REASONS_LIMIT,
+        select: {
+          id: true,
+          exception_type: true,
+          description: true,
+          severity: true,
+          created_at: true,
+        },
+      }),
+      prisma.task.count({
+        where: {
+          org_id: ctx.orgId,
+          status: { in: ['pending', 'in_progress'] },
+          created_at: { lt: localTodayStart },
+          ...buildDashboardTaskAssignmentWhere(assignmentScope),
+        },
+      }),
+      prisma.membership.findMany({
+        where: {
+          org_id: ctx.orgId,
+          is_active: true,
+          user: { is_active: true },
+        },
+        orderBy: { created_at: 'asc' },
+        select: {
+          user_id: true,
+          role: true,
+          user: { select: { name: true } },
+        },
+      }),
+      prisma.pharmacistShift.findMany({
+        where: {
+          org_id: ctx.orgId,
+          date: todayRange,
+        },
+        select: {
+          user_id: true,
+          available: true,
+          available_from: true,
+          available_to: true,
+        },
+      }),
+    ]);
 
     const cycleStatusCounts: Record<string, number> = {};
     for (const row of cycleCounts) {
@@ -323,6 +357,7 @@ export const GET = withAuthContext(
       today_visits: todayVisits,
       blocked_reasons: blockedReasons,
       carryover_count: carryoverCount,
+      team_capacity: buildTeamCapacity(teamMembers, todayShifts, todaySchedules, now),
     };
 
     return success({ data: responseData });

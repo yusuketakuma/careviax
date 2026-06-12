@@ -63,6 +63,7 @@ function buildCockpitFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 0,
+    team_capacity: [],
   };
 }
 

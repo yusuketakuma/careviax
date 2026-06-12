@@ -68,6 +68,10 @@ const SEED_IDS = {
   user: 'cmnb3swgz0008wgq9gfpgjq6r',
   /** 第2薬剤師「佐藤」: 二人制監査の調剤者表示・施設セット担当(design demo) */
   userSato: 'cmnhseedusr002amq9ph-os',
+  /** 事務「鈴木」: new_01 チームの余白(勤務中・余白大) */
+  userSuzukiClerk: 'cmnhseedusr003amq9ph-os',
+  /** 事務「田中」: new_01 チームの余白(当日休み) */
+  userTanakaClerk: 'cmnhseedusr004amq9ph-os',
   prescriberInstitution: 'cmnhseedinst001amq9ph-os',
   pcaPumpAvailable: 'cmnhseedpca001amq9ph-os',
   pcaPumpRented: 'cmnhseedpca002amq9ph-os',
@@ -327,6 +331,68 @@ async function main() {
       can_set: true,
       can_audit_set: true,
     },
+  });
+
+  // 事務2名(new_01「チームの余白」: 鈴木=勤務、田中=当日休み)
+  const clerkSeeds = [
+    {
+      id: SEED_IDS.userSuzukiClerk,
+      sub: 'demo-cognito-sub-003',
+      email: 'suzuki@ph-os.example.com',
+      name: '鈴木 さくら',
+      nameKana: 'スズキ サクラ',
+    },
+    {
+      id: SEED_IDS.userTanakaClerk,
+      sub: 'demo-cognito-sub-004',
+      email: 'tanaka-jimu@ph-os.example.com',
+      name: '田中 真',
+      nameKana: 'タナカ マコト',
+    },
+  ];
+  for (const clerk of clerkSeeds) {
+    const profile = {
+      org_id: org.id,
+      cognito_sub: clerk.sub,
+      cognito_username: clerk.email,
+      email: clerk.email,
+      name: clerk.name,
+      name_kana: clerk.nameKana,
+      account_status: 'active' as const,
+      activated_at: new Date(),
+    };
+    const clerkUser = await prisma.user.upsert({
+      where: { id: clerk.id },
+      create: { id: clerk.id, ...profile },
+      update: profile,
+    });
+    await prisma.membership.deleteMany({ where: { user_id: clerkUser.id } });
+    await prisma.membership.create({
+      data: {
+        org_id: org.id,
+        user_id: clerkUser.id,
+        site_id: site.id,
+        role: 'clerk',
+      },
+    });
+  }
+
+  // 田中(事務)は当日シフトで不在 → チームの余白に「休み」行を出す
+  const now = new Date();
+  const todayUtcMidnight = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  await prisma.pharmacistShift.upsert({
+    where: {
+      user_id_date: { user_id: SEED_IDS.userTanakaClerk, date: todayUtcMidnight },
+    },
+    create: {
+      org_id: org.id,
+      site_id: site.id,
+      user_id: SEED_IDS.userTanakaClerk,
+      date: todayUtcMidnight,
+      available: false,
+      note: '休み(デモ)',
+    },
+    update: { available: false, note: '休み(デモ)' },
   });
 
   // 患者サンプル

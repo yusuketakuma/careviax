@@ -162,6 +162,7 @@ function buildCockpitFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 0,
+    team_capacity: [],
   };
 }
 
@@ -207,9 +208,7 @@ describe('SetWorkspace', () => {
     expect(screen.getByRole('button', { name: /明日以降/ })).toBeTruthy();
 
     // 施設グループ見出し帯 + 先行準備の説明 + 進捗バー
-    expect(
-      screen.getByRole('heading', { name: '施設グリーンヒル — 15:30訪問分' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '施設グリーンヒル — 15:30訪問分' })).toBeTruthy();
     expect(screen.getByText(/2\/9 完了・事務が許可済みの範囲で先行準備中/)).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'セット完了の進捗' })).toBeTruthy();
 

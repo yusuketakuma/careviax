@@ -110,6 +110,40 @@ function buildFixture(): DashboardCockpitResponse {
       },
     ],
     carryover_count: 2,
+    team_capacity: [
+      {
+        user_id: 'user_1',
+        name: '山田 太郎',
+        role_label: '薬',
+        status: 'working',
+        slack_minutes: 11,
+        busy_ratio: 0.94,
+      },
+      {
+        user_id: 'user_2',
+        name: '佐藤 恵',
+        role_label: '薬',
+        status: 'working',
+        slack_minutes: 70,
+        busy_ratio: 0.6,
+      },
+      {
+        user_id: 'user_3',
+        name: '鈴木 さくら',
+        role_label: '事務',
+        status: 'working',
+        slack_minutes: 120,
+        busy_ratio: 0.2,
+      },
+      {
+        user_id: 'user_4',
+        name: '田中 真',
+        role_label: '事務',
+        status: 'off',
+        slack_minutes: null,
+        busy_ratio: null,
+      },
+    ],
   };
 }
 
@@ -219,6 +253,21 @@ describe('DashboardCockpit', () => {
       ),
     ).toBeTruthy();
     expect(within(section).getByRole('link', { name: '→ ハンドオフで再配分' })).toBeTruthy();
+  });
+
+  it('renders チームの余白 with slack tones, off member, and the handoff suggestion', () => {
+    render(<DashboardCockpit />);
+
+    const section = screen.getByTestId('dashboard-team-capacity');
+    expect(within(section).getByText('チームの余白')).toBeTruthy();
+    expect(within(section).getByText('山田(薬)')).toBeTruthy();
+    expect(within(section).getByText(/余白 11分/)).toBeTruthy();
+    expect(within(section).getByText(/余白 120分/)).toBeTruthy();
+    expect(within(section).getByText('田中(事務)')).toBeTruthy();
+    expect(within(section).getByText('休み')).toBeTruthy();
+    // 監査(dispensed 10 + audit_pending 14 = 24, 目安14)が最大超過 → 余白最大の鈴木へ
+    expect(within(section).getByText('監査キュー定型10件を鈴木さんへ回せます')).toBeTruthy();
+    expect(within(section).getByRole('link', { name: '→ ハンドオフへ' })).toBeTruthy();
   });
 
   it('renders the action rail with next action, blocked reasons, and evidence only', () => {

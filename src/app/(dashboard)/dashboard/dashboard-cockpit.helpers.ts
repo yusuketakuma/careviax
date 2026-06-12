@@ -1,7 +1,4 @@
-import {
-  PROCESS_STEPS_9,
-  type ProcessStepKey,
-} from '@/lib/prescription/cycle-workspace';
+import { PROCESS_STEPS_9, type ProcessStepKey } from '@/lib/prescription/cycle-workspace';
 import type { CockpitVisit } from '@/types/dashboard-cockpit';
 
 /**
@@ -337,4 +334,34 @@ export function buildTimelineBlocks(args: {
   }
 
   return blocks.sort((left, right) => left.startMinutes - right.startMinutes);
+}
+
+/**
+ * チームの余白 → ハンドオフ提案(new_01「判断キュー定型N件を◯◯さんへ回せます」)。
+ * 目安超過が最大の工程と、勤務中で余白が最も大きいメンバー(30分以上)を組み合わせる。
+ */
+export function buildTeamHandoffSuggestion(
+  tiles: ProcessNowTile[],
+  team: Array<{ name: string; status: 'working' | 'off'; slack_minutes: number | null }>,
+): string | null {
+  const overTiles = tiles.filter((tile) => tile.tone === 'over');
+  if (overTiles.length === 0) return null;
+  const worst = overTiles.reduce((left, right) =>
+    right.count - right.guide > left.count - left.guide ? right : left,
+  );
+
+  let candidate: { name: string; slack: number } | null = null;
+  for (const member of team) {
+    if (member.status !== 'working') continue;
+    const slack = member.slack_minutes ?? 0;
+    if (slack < 30) continue;
+    if (!candidate || slack > candidate.slack) {
+      candidate = { name: member.name, slack };
+    }
+  }
+  if (!candidate) return null;
+
+  const overflow = worst.count - worst.guide;
+  const familyName = candidate.name.split(/[\s　]+/)[0] ?? candidate.name;
+  return `${worst.label}キュー定型${overflow}件を${familyName}さんへ回せます`;
 }

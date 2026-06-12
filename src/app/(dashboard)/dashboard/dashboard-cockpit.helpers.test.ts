@@ -4,6 +4,7 @@ import {
   buildBottleneckNote,
   buildConditionSummary,
   buildProcessNowTiles,
+  buildTeamHandoffSuggestion,
   buildTimelineBlocks,
   formatAgeLabel,
   formatDeadlineCountdown,
@@ -160,9 +161,24 @@ describe('buildTimelineBlocks', () => {
   it('places visits as locked blocks and groups facility batches', () => {
     const blocks = buildTimelineBlocks({
       visits: [
-        buildVisit({ id: 'v1', patient_name: '伊藤', time_start: localIso(10, 30), time_end: localIso(11, 30) }),
-        buildVisit({ id: 'v2', patient_name: 'A', time_start: localIso(15, 0), facility_batch_id: 'batch_1' }),
-        buildVisit({ id: 'v3', patient_name: 'B', time_start: localIso(15, 30), facility_batch_id: 'batch_1' }),
+        buildVisit({
+          id: 'v1',
+          patient_name: '伊藤',
+          time_start: localIso(10, 30),
+          time_end: localIso(11, 30),
+        }),
+        buildVisit({
+          id: 'v2',
+          patient_name: 'A',
+          time_start: localIso(15, 0),
+          facility_batch_id: 'batch_1',
+        }),
+        buildVisit({
+          id: 'v3',
+          patient_name: 'B',
+          time_start: localIso(15, 30),
+          facility_batch_id: 'batch_1',
+        }),
         buildVisit({ id: 'v4', patient_name: '時間未定' }),
       ],
       auditCount: 0,
@@ -180,7 +196,12 @@ describe('buildTimelineBlocks', () => {
   it('clamps the morning audit block to the first visit start', () => {
     const blocks = buildTimelineBlocks({
       visits: [
-        buildVisit({ id: 'v1', patient_name: '伊藤', time_start: localIso(10, 30), time_end: localIso(11, 30) }),
+        buildVisit({
+          id: 'v1',
+          patient_name: '伊藤',
+          time_start: localIso(10, 30),
+          time_end: localIso(11, 30),
+        }),
       ],
       auditCount: 6,
       narcoticAuditCount: 1,
@@ -207,7 +228,12 @@ describe('buildTimelineBlocks', () => {
 
     const withoutLunch = buildTimelineBlocks({
       visits: [
-        buildVisit({ id: 'v1', patient_name: '伊藤', time_start: localIso(12, 30), time_end: localIso(13, 30) }),
+        buildVisit({
+          id: 'v1',
+          patient_name: '伊藤',
+          time_start: localIso(12, 30),
+          time_end: localIso(13, 30),
+        }),
       ],
       auditCount: 0,
       narcoticAuditCount: 0,
@@ -219,7 +245,12 @@ describe('buildTimelineBlocks', () => {
   it('adds a report block at the end of the day when reports are pending', () => {
     const blocks = buildTimelineBlocks({
       visits: [
-        buildVisit({ id: 'v1', patient_name: '伊藤', time_start: localIso(15, 30), time_end: localIso(16, 30) }),
+        buildVisit({
+          id: 'v1',
+          patient_name: '伊藤',
+          time_start: localIso(15, 30),
+          time_end: localIso(16, 30),
+        }),
       ],
       auditCount: 0,
       narcoticAuditCount: 0,
@@ -248,5 +279,50 @@ describe('timelinePercent', () => {
 describe('formatTimeOfDay', () => {
   it('formats local HH:MM with zero padding', () => {
     expect(formatTimeOfDay(localIso(9, 5))).toBe('09:05');
+  });
+});
+
+describe('buildTeamHandoffSuggestion', () => {
+  const tiles = (over: Array<{ label: string; count: number; guide: number }>) =>
+    over.map((tile, index) => ({
+      key: `step_${index}` as never,
+      label: tile.label,
+      count: tile.count,
+      guide: tile.guide,
+      tone: 'over' as const,
+    }));
+
+  it('combines the worst over tile with the most slack working member', () => {
+    const suggestion = buildTeamHandoffSuggestion(
+      [
+        ...tiles([
+          { label: '判断', count: 18, guide: 12 },
+          { label: '監査', count: 24, guide: 14 },
+        ]),
+        { key: 'visit' as never, label: '訪問', count: 3, guide: 8, tone: 'normal' },
+      ],
+      [
+        { name: '山田 太郎', status: 'working', slack_minutes: 11 },
+        { name: '鈴木 さくら', status: 'working', slack_minutes: 120 },
+        { name: '田中 真', status: 'off', slack_minutes: null },
+      ],
+    );
+
+    expect(suggestion).toBe('監査キュー定型10件を鈴木さんへ回せます');
+  });
+
+  it('returns null without an over tile or without a member with 30+ minutes of slack', () => {
+    expect(
+      buildTeamHandoffSuggestion(
+        [{ key: 'visit' as never, label: '訪問', count: 3, guide: 8, tone: 'normal' }],
+        [{ name: '鈴木', status: 'working', slack_minutes: 120 }],
+      ),
+    ).toBeNull();
+    expect(
+      buildTeamHandoffSuggestion(tiles([{ label: '判断', count: 18, guide: 12 }]), [
+        { name: '山田', status: 'working', slack_minutes: 11 },
+        { name: '田中', status: 'off', slack_minutes: null },
+      ]),
+    ).toBeNull();
   });
 });

@@ -9,6 +9,8 @@ const {
   workflowExceptionFindManyMock,
   taskCountMock,
   careCaseFindManyMock,
+  membershipFindManyMock,
+  pharmacistShiftFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   medicationCycleGroupByMock: vi.fn(),
@@ -17,6 +19,8 @@ const {
   workflowExceptionFindManyMock: vi.fn(),
   taskCountMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
+  pharmacistShiftFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -34,6 +38,8 @@ vi.mock('@/lib/db/client', () => ({
     workflowException: { findMany: workflowExceptionFindManyMock },
     task: { count: taskCountMock },
     careCase: { findMany: careCaseFindManyMock },
+    membership: { findMany: membershipFindManyMock },
+    pharmacistShift: { findMany: pharmacistShiftFindManyMock },
   },
 }));
 
@@ -141,6 +147,11 @@ describe('/api/dashboard/cockpit', () => {
     ]);
     taskCountMock.mockResolvedValue(2);
     careCaseFindManyMock.mockResolvedValue([]);
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist', user: { name: '山田 太郎' } },
+      { user_id: 'user_2', role: 'clerk', user: { name: '鈴木 さくら' } },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -158,6 +169,12 @@ describe('/api/dashboard/cockpit', () => {
       audit_pending: 14,
       visit_completed: 2,
     });
+
+    // チームの余白: 薬剤師 → 事務の順、シフト未登録は 9:00-18:00 勤務扱い(now=9:42)
+    expect(json.data.team_capacity).toEqual([
+      expect.objectContaining({ user_id: 'user_1', role_label: '薬', status: 'working' }),
+      expect.objectContaining({ user_id: 'user_2', role_label: '事務', status: 'working' }),
+    ]);
 
     // 監査済み(approved)タスクは除外され、麻薬を含むタスクが先頭に並ぶ
     expect(json.data.audit_pending_count).toBe(2);
