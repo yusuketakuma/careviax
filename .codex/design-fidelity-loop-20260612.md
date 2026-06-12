@@ -308,3 +308,9 @@ E の設計指針(次ループ):
 - **p1_10 合格**: /admin/document-templates に TemplateBodyEditor(テンプレ一覧/文面 textarea/差し込みチップ6種+保存する)。文面は content.body_text に PATCH 保存、チップは insertMergeField でカーソル位置へ {項目} 挿入(純関数テスト4件)
 - データ差: テンプレは seed 3種(target は5種)。デフォルト文面は target とほぼ同一
 - 次: p1_14(/admin/alert-rules に表示強度プリセット+患者カードプレビュー)→ p1_08(施設基準チェックリスト化)
+
+## p1_14 完了(2026-06-12 23:18)— 8c8f4575
+
+- **p1_14 合格**: /admin/alert-rules に SignalTuningPanel(表示を強める項目5種=renal_dose/pim_elderly/interaction/high_risk/duplicate を 強く表示⇔標準 トグル+患者カードプレビュー+保存する)。強く表示 = critical ルールの作成/有効化、標準 = 無効化(diffSignalTuning、テスト3件)
+- 意図的差分: 項目名は CDS の実 alert_type 語彙(target の転倒/低血糖/残薬多めは CDS マスタに無い概念)。撮影は setup で3項目を ON にして target の混在状態を再現
+- 次: p1_08(/admin/facility-standards 施設基準チェックリスト化+足りないもの)。届出一覧が空 seed なので、要件評価のデータ源(FacilityStandardNotification モデル)を確認してから判定表示を設計
