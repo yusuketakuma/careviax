@@ -322,6 +322,53 @@ const GANTT_ROUTE_MOCK_SCHEDULES = [
   }),
 ];
 
+function buildGanttDayBoardResponse() {
+  const toBoardVisit = (schedule: (typeof GANTT_ROUTE_MOCK_SCHEDULES)[number]) => ({
+    id: schedule.id,
+    patient_name: schedule.case_.patient.name,
+    visit_type: schedule.visit_type,
+    schedule_status: schedule.schedule_status,
+    priority: schedule.priority,
+    time_start: schedule.time_window_start,
+    time_end: schedule.time_window_end,
+    confirmed: schedule.confirmed_at != null,
+    facility_label: null,
+    facility_patient_count: 1,
+  });
+
+  return {
+    generated_at: `${GANTT_DATE}T08:00:00.000Z`,
+    date: GANTT_DATE,
+    staff: [
+      {
+        id: GANTT_PHARMACIST_A_ID,
+        name: '薬剤師A',
+        role: 'pharmacist',
+        role_kind: 'pharmacist',
+        visits: GANTT_ROUTE_MOCK_SCHEDULES.filter(
+          (schedule) => schedule.pharmacist_id === GANTT_PHARMACIST_A_ID,
+        ).map(toBoardVisit),
+        open_task_count: 0,
+        audit_task_count: 1,
+      },
+      {
+        id: GANTT_PHARMACIST_B_ID,
+        name: '薬剤師B',
+        role: 'pharmacist',
+        role_kind: 'pharmacist',
+        visits: GANTT_ROUTE_MOCK_SCHEDULES.filter(
+          (schedule) => schedule.pharmacist_id === GANTT_PHARMACIST_B_ID,
+        ).map(toBoardVisit),
+        open_task_count: 0,
+        audit_task_count: 0,
+      },
+    ],
+    audit_pending_count: 1,
+    report_pending_count: 0,
+    pending_proposals: [],
+  };
+}
+
 function buildGanttPreparationDetails(scheduleId: string) {
   const schedule = GANTT_ROUTE_MOCK_SCHEDULES.find((item) => item.id === scheduleId);
   if (!schedule) return null;
@@ -819,6 +866,14 @@ async function installFormularyRouteMocks(page: Page) {
     await fulfillJson(route, { data: [], hasMore: false, nextCursor: null });
   });
 
+  await page.route(apiPathPattern('/api/handoff-board'), async (route) => {
+    await fulfillJson(route, { board: null, items: [] });
+  });
+
+  await page.route(apiPathPattern('/api/dispense-audits'), async (route) => {
+    await fulfillJson(route, { data: [], hasMore: false });
+  });
+
   await page.route(apiPathPattern('/api/pharmacy-sites'), async (route) => {
     await fulfillJson(route, {
       data: [{ id: FORMULARY_SITE_ID, name: 'RouteMock 本店', address: '東京都千代田区' }],
@@ -1192,6 +1247,41 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
   const scheduleRequests: CapturedRouteRequest[] = [];
   const routeRequests: CapturedRouteRequest[] = [];
 
+  await page.route(apiPathPattern('/api/notifications/stream'), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: '',
+    });
+  });
+
+  await page.route(apiPathPattern('/api/notifications'), async (route) => {
+    await fulfillJson(route, { data: [], hasMore: false, nextCursor: null });
+  });
+
+  await page.route(apiPathPattern('/api/handoff-board'), async (route) => {
+    await fulfillJson(route, { board: null, items: [] });
+  });
+
+  await page.route(apiPathPattern('/api/dispense-audits'), async (route) => {
+    await fulfillJson(route, { data: [], hasMore: false });
+  });
+
+  await page.route(apiPathPattern('/api/dashboard/cockpit'), async (route) => {
+    await fulfillJson(route, {
+      data: {
+        generated_at: `${GANTT_DATE}T08:00:00.000Z`,
+        cycle_status_counts: {},
+        audit_pending_count: 0,
+        narcotic_audit_count: 0,
+        audit_queue: [],
+        today_visits: [],
+        blocked_reasons: [],
+        carryover_count: 0,
+      },
+    });
+  });
+
   await page.route(apiPathPattern('/api/cases'), async (route) => {
     await fulfillJson(route, { data: [] });
   });
@@ -1225,6 +1315,10 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
       await fulfillJson(route, { data: {} });
     },
   );
+
+  await page.route(apiPathPattern('/api/visit-schedules/day-board'), async (route) => {
+    await fulfillJson(route, { data: buildGanttDayBoardResponse() });
+  });
 
   await page.route(apiPathPattern('/api/visit-schedules'), async (route) => {
     if (route.request().method() !== 'GET') {
