@@ -624,7 +624,13 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_06_management_analytics_detail',
     targetImage: 'images/P1/p1_06_management_analytics_detail.png',
-    route: '/admin/analytics',
+    route: '/admin/operations-insights',
+    setup: async (page) => {
+      await page
+        .waitForSelector('[data-testid="operations-insights-page"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_07_inventory_linkage_prediction',
