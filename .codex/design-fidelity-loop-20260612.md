@@ -227,3 +227,17 @@ E の設計指針(次ループ):
 - p0_10 target を読む(服用期間+薬の加工指定チップ+止まっている理由)
 - 該当ルートの現状確認(処方カード/調剤の期間入力がどこにあるか: prescriptions 配下 or dispensing)
 - design-gap-analysis.md の p0_10 セクションを読む
+
+## p0_10 完了(2026-06-12 21:50)— 1de64206
+
+- **p0_10 合格**: /prescriptions/new の登録セクション直前に期間レビューカード新設。患者名+「今回の薬:開始〜終了」ヘッダ(最小開始〜最大終了を明細から合成、end_date 無しは start+days-1 で補完)+「保存して次へ」(submit 連動)/ 7列テーブル(薬剤名/用法/日数/開始日/終了日/加工・セット/注意)/ 薬の加工指定チップ5種(使用中=青+件数。別包・セット対象外は packaging_instructions の文字列判定)/ 止まっている理由(粉砕=赤、中止メモ=橙、submitBlockers=橙)+薬剤師へ相談(/handoff)
+- 意図的差分: チップは target の「選択UI」でなく「使用分布の可視化」(行選択が無いレビュー文脈ではこの方が実用的)。「保存して次へ」は患者未選択時 disabled(state 由来)
+- 教訓: **react-hooks/immutability は setter を宣言より前の行で参照する effect を弾く**(エラー行表示は別の行にズレて出る: 実位置はメッセージ本文を見る)。dev seed effect は対象 state 宣言の直後に置く
+- 純関数 prescription-period-review.shared.ts(テスト9件)。seed: window.__phosSeedPeriodReviewDemo(5明細+患者名)
+
+### 次: E 第二段(訪問モードウィザード拡張)の調査ポイント
+
+- p0_22(タブレット)target を再読(右列=写真・証跡、下部固定バー: 一時保存/前へ/次へ/訪問完了)
+- visit-step-nav の現5ステップ→10ステップ分割の要否判断(target のステップ一覧を数える)
+- p0_24 施設パケット target を読む(new_04 施設カードからの詳細)
+- visit-record-form 1858行のセクション構造と下部バー追加の差し込み点
