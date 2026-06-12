@@ -8,7 +8,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
-import { Prisma, type MemberRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   assertFacilityReference,
   assertFacilityUnitReference,
@@ -42,9 +42,12 @@ import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-vis
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import {
-  applyPatientAssignmentWhere,
-  buildCareCaseAssignmentWhere,
-} from '@/lib/auth/visit-schedule-access';
+  buildAssignedCareCaseWhere,
+  buildCareReportCaseScope,
+  buildNullableCaseScope,
+  buildPatientDetailWhere,
+  buildVisitRecordCaseScope,
+} from '@/server/services/patient-detail-scope';
 import {
   buildExternalAccessGrantVisibilityWhere,
   toPublicExternalAccessScope,
@@ -169,33 +172,6 @@ const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hol
 type PatientRequesterPatch = NonNullable<UpdatePatientData['requester']>;
 type PatientIntakePatch = NonNullable<UpdatePatientData['intake']>;
 const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
-
-function buildAssignedCareCaseWhere(ctx: {
-  userId: string;
-  role: MemberRole;
-}): Prisma.CareCaseWhereInput | undefined {
-  return buildCareCaseAssignmentWhere({ userId: ctx.userId, role: ctx.role }) ?? undefined;
-}
-
-function buildVisitRecordCaseScope(caseIds: string[]): Prisma.VisitRecordWhereInput {
-  return {
-    schedule: {
-      case_id: { in: caseIds },
-    },
-  };
-}
-
-function buildCareReportCaseScope(caseIds: string[]): Prisma.CareReportWhereInput {
-  return {
-    OR: [{ case_id: { in: caseIds } }, { case_id: null }],
-  };
-}
-
-function buildNullableCaseScope(caseIds: string[]) {
-  return {
-    OR: [{ case_id: null }, { case_id: { in: caseIds } }],
-  };
-}
 
 async function listVisibleExternalSharesForPatient(args: {
   orgId: string;
@@ -653,10 +629,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
 
   const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
+    where: buildPatientDetailWhere({
+      orgId: ctx.orgId,
+      patientId: id,
+      role: ctx.role,
+      userId: ctx.userId,
+    }),
     include: {
       residences: true,
       cases: {
@@ -1589,10 +1567,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
+    where: buildPatientDetailWhere({
+      orgId: ctx.orgId,
+      patientId: id,
+      role: ctx.role,
+      userId: ctx.userId,
+    }),
   });
   if (!existing) return notFound('患者が見つかりません');
 

@@ -1,12 +1,13 @@
-import type { MemberRole, Prisma } from '@prisma/client';
-import {
-  applyPatientAssignmentWhere,
-  buildCareCaseAssignmentWhere,
-} from '@/lib/auth/visit-schedule-access';
+import type { Prisma } from '@prisma/client';
 import {
   findActiveVisitConsent,
   findCurrentManagementPlan,
 } from '@/server/services/management-plans';
+import {
+  buildAssignedCareCaseWhere,
+  buildPatientDetailWhere,
+  type PatientDetailScopeArgs,
+} from '@/server/services/patient-detail-scope';
 
 type PatientReadinessDb = {
   consentRecord: Pick<Prisma.TransactionClient['consentRecord'], 'findFirst'>;
@@ -16,12 +17,7 @@ type PatientReadinessDb = {
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findFirst'>;
 };
 
-type DetailArgs = {
-  orgId: string;
-  patientId: string;
-  role: MemberRole;
-  userId: string;
-};
+type DetailArgs = PatientDetailScopeArgs;
 
 function normalizeCareTeamRole(role: string) {
   if (['physician', 'doctor', 'clinic', 'prescriber'].includes(role)) return 'physician';
@@ -34,35 +30,9 @@ function hasJsonArrayItems(value: Prisma.JsonValue | null | undefined) {
   return Array.isArray(value) && value.length > 0;
 }
 
-function buildPatientReadinessWhere(args: DetailArgs): Prisma.PatientWhereInput {
-  return applyPatientAssignmentWhere(
-    {
-      id: args.patientId,
-      org_id: args.orgId,
-    },
-    {
-      userId: args.userId,
-      role: args.role,
-    },
-  );
-}
-
-function buildAssignedCareCaseWhere(
-  args: DetailArgs,
-  base?: Prisma.CareCaseWhereInput,
-): Prisma.CareCaseWhereInput | undefined {
-  const assignmentWhere = buildCareCaseAssignmentWhere({
-    userId: args.userId,
-    role: args.role,
-  });
-  if (!assignmentWhere) return base;
-  if (!base) return assignmentWhere;
-  return { AND: [base, assignmentWhere] };
-}
-
 export async function getPatientReadinessData(db: PatientReadinessDb, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: buildPatientReadinessWhere(args),
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       name: true,

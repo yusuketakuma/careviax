@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import type { MemberRole, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectString } from '@/lib/db/json';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -27,9 +27,13 @@ import {
 import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
 import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import {
-  applyPatientAssignmentWhere,
-  buildCareCaseAssignmentWhere,
-} from '@/lib/auth/visit-schedule-access';
+  buildAssignedCareCaseWhere,
+  buildCareReportCaseScope,
+  buildNullableCaseScope,
+  buildPatientDetailWhere,
+  buildVisitRecordCaseScope,
+  type PatientDetailScopeArgs,
+} from '@/server/services/patient-detail-scope';
 import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/external-access';
 
 export { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
@@ -56,60 +60,9 @@ type PatientTimelineDb = {
   visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
 };
 
-type DetailArgs = {
-  orgId: string;
-  patientId: string;
-  role: MemberRole;
-  userId: string;
-};
+type DetailArgs = PatientDetailScopeArgs;
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
-
-function buildPatientDetailWhere(args: DetailArgs): Prisma.PatientWhereInput {
-  return applyPatientAssignmentWhere(
-    {
-      id: args.patientId,
-      org_id: args.orgId,
-    },
-    {
-      userId: args.userId,
-      role: args.role,
-    },
-  );
-}
-
-function buildAssignedCareCaseWhere(
-  args: DetailArgs,
-  base?: Prisma.CareCaseWhereInput,
-): Prisma.CareCaseWhereInput | undefined {
-  const assignmentWhere = buildCareCaseAssignmentWhere({
-    userId: args.userId,
-    role: args.role,
-  });
-  if (!assignmentWhere) return base;
-  if (!base) return assignmentWhere;
-  return { AND: [base, assignmentWhere] };
-}
-
-function buildVisitRecordCaseScope(caseIds: string[]): Prisma.VisitRecordWhereInput {
-  return {
-    schedule: {
-      case_id: { in: caseIds },
-    },
-  };
-}
-
-function buildCareReportCaseScope(caseIds: string[]): Prisma.CareReportWhereInput {
-  return {
-    OR: [{ case_id: { in: caseIds } }, { case_id: null }],
-  };
-}
-
-function buildNullableCaseScope(caseIds: string[]) {
-  return {
-    OR: [{ case_id: null }, { case_id: { in: caseIds } }],
-  };
-}
 
 async function listVisibleTimelineExternalShares(
   db: PatientTimelineDb,
