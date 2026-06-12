@@ -128,7 +128,8 @@
 
 - Communication: 日本語
 - Commit messages: English
-- Code / comments / variables: English (camelCase)
+- Identifiers and code symbols: English (camelCase)
+- Comments and documentation: 日本語可（医療ドメイン用語の正確性を優先）
 - DB columns: English (snake_case)
 
 ## Directory Structure
