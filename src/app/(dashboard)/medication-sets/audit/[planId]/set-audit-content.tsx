@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   Info,
   Loader2,
   CalendarDays,
@@ -17,24 +16,11 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import {
+  ReasonDialog,
+  type ReasonSubmission,
+} from '@/components/features/workflow/reason-dialog';
 import {
   buildSetAuditHydrationState,
   buildSetAuditSubmission,
@@ -63,13 +49,6 @@ type SetBatch = {
   };
 };
 
-type RejectReasonCode =
-  | 'drug_mismatch'
-  | 'quantity_error'
-  | 'patient_change'
-  | 'prescription_expired'
-  | 'other';
-
 type SetPlanAuditDetails = {
   audits: Array<{
     id: string;
@@ -92,13 +71,13 @@ const CARRY_TYPE_LABELS: Record<string, string> = {
   deferred: '後日対応',
 };
 
-const REJECT_REASON_OPTIONS: { value: RejectReasonCode; label: string }[] = [
-  { value: 'drug_mismatch', label: '薬剤不一致' },
-  { value: 'quantity_error', label: '数量誤り' },
-  { value: 'patient_change', label: '患者状態変化' },
-  { value: 'prescription_expired', label: '処方期限切れ' },
-  { value: 'other', label: 'その他' },
-];
+const REJECT_REASON_OPTIONS = [
+  { code: 'drug_mismatch', label: '薬剤不一致' },
+  { code: 'quantity_error', label: '数量誤り' },
+  { code: 'patient_change', label: '患者状態変化' },
+  { code: 'prescription_expired', label: '処方期限切れ' },
+  { code: 'other', label: 'その他' },
+] as const;
 
 // ── Sub-components ──
 
@@ -257,8 +236,6 @@ export function SetAuditContent({ planId }: { planId: string }) {
   // reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [pendingRejectDayNumber, setPendingRejectDayNumber] = useState<number | null>(null);
-  const [rejectReasonCode, setRejectReasonCode] = useState<RejectReasonCode | ''>('');
-  const [rejectNote, setRejectNote] = useState('');
 
   const { data, isLoading, isError } = useRealtimeQuery({
     queryKey: ['set-batches', planId],
@@ -367,9 +344,10 @@ export function SetAuditContent({ planId }: { planId: string }) {
   }
 
   // Confirm reject for a day
-  function handleRejectConfirm() {
-    if (!rejectReasonCode || pendingRejectDayNumber === null) {
-      toast.error('差戻し理由を選択してください');
+  function handleRejectConfirm({ label, note }: ReasonSubmission) {
+    if (pendingRejectDayNumber === null) return;
+    if (isAuditSaved) {
+      toast.error('監査は保存済みのため差戻しできません');
       return;
     }
 
@@ -383,10 +361,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
       return next;
     });
 
-    const rejectLabel =
-      REJECT_REASON_OPTIONS.find((o) => o.value === rejectReasonCode)?.label ??
-      rejectReasonCode;
-    const rejectText = rejectNote ? `${rejectLabel}: ${rejectNote}` : rejectLabel;
+    const rejectText = note ? `${label}: ${note}` : label;
     setDraftRejectReasonsByDay((prev) => {
       const next = new Map(prev ?? rejectReasonsByDay);
       next.set(pendingRejectDayNumber, rejectText);
@@ -396,8 +371,6 @@ export function SetAuditContent({ planId }: { planId: string }) {
 
     setRejectDialogOpen(false);
     setPendingRejectDayNumber(null);
-    setRejectReasonCode('');
-    setRejectNote('');
   }
 
   // Approve all pending days
@@ -554,66 +527,22 @@ export function SetAuditContent({ planId }: { planId: string }) {
         </div>
       )}
 
-      {/* Reject dialog */}
-      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              差戻し理由の入力
-              {pendingRejectDayNumber !== null && ` — Day ${pendingRejectDayNumber}`}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              <span>差戻し後は再計画が必要です。</span>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="reject-reason">差戻し理由コード</Label>
-              <Select
-                value={rejectReasonCode}
-                onValueChange={(v) =>
-                  setRejectReasonCode((v ?? '') as RejectReasonCode | '')
-                }
-              >
-                <SelectTrigger id="reject-reason" aria-label="差戻し理由を選択">
-                  <SelectValue placeholder="理由を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REJECT_REASON_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="reject-note">補足（任意）</Label>
-              <Textarea
-                id="reject-note"
-                value={rejectNote}
-                onChange={(e) => setRejectNote(e.target.value)}
-                placeholder="詳細な差戻し理由や対応指示を入力"
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" size="sm" />}>
-              キャンセル
-            </DialogClose>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleRejectConfirm}
-              disabled={isAuditSaved}
-            >
-              差戻し実行
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Reject dialog — p0_36 共通理由モーダル */}
+      <ReasonDialog
+        open={rejectDialogOpen}
+        onOpenChange={(open) => {
+          setRejectDialogOpen(open);
+          if (!open) setPendingRejectDayNumber(null);
+        }}
+        title={
+          pendingRejectDayNumber !== null
+            ? `差し戻し理由を入力 — Day ${pendingRejectDayNumber}`
+            : '差し戻し理由を入力'
+        }
+        options={REJECT_REASON_OPTIONS}
+        warning="差戻し後は再計画が必要です。"
+        onSubmit={handleRejectConfirm}
+      />
     </div>
   );
 }

@@ -7,24 +7,8 @@ import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -33,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
+import { ReasonDialog } from '@/components/features/workflow/reason-dialog';
 import {
   getHandlingTagBadgeClass,
   getHandlingTagLabel,
@@ -376,8 +360,6 @@ export function AuditWorkbench() {
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [counts, setCounts] = React.useState<CountEntryState>({});
   const [rejectOpen, setRejectOpen] = React.useState(false);
-  const [rejectReason, setRejectReason] = React.useState('');
-  const [rejectDetail, setRejectDetail] = React.useState('');
   const inputRefs = React.useRef(new Map<string, HTMLInputElement>());
 
   const queueQuery = useRealtimeQuery({
@@ -461,8 +443,6 @@ export function AuditWorkbench() {
     onSuccess: (_data, variables) => {
       toast.success(variables.result === 'approved' ? '合格 — セットへ送りました' : '差戻しました');
       setRejectOpen(false);
-      setRejectReason('');
-      setRejectDetail('');
       setSelectedTaskId(null);
       void queryClient.invalidateQueries({ queryKey: ['dispense-audits', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['dispense-workbench'] });
@@ -770,67 +750,23 @@ export function AuditWorkbench() {
         />
       </div>
 
-      {/* 差戻し(理由必須)ダイアログ */}
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>差戻し(理由必須)</DialogTitle>
-            <DialogDescription>
-              差戻すと調剤工程へ戻り、担当者に通知されます。理由の記録は必須です。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="audit-reject-reason">
-                理由コード <span className="text-destructive">*</span>
-              </Label>
-              <Select value={rejectReason} onValueChange={(value) => setRejectReason(value ?? '')}>
-                <SelectTrigger id="audit-reject-reason">
-                  <SelectValue placeholder="理由を選択してください" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REJECT_OPTIONS.map((option) => (
-                    <SelectItem key={option.code} value={option.code}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="audit-reject-detail">補足テキスト</Label>
-              <Textarea
-                id="audit-reject-detail"
-                value={rejectDetail}
-                onChange={(event) => setRejectDetail(event.target.value)}
-                placeholder="具体的な差戻し内容を入力してください"
-                className="min-h-[88px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRejectOpen(false)}>
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={rejectReason.length === 0 || auditMutation.isPending}
-              onClick={() => {
-                const option = REJECT_OPTIONS.find((candidate) => candidate.code === rejectReason);
-                auditMutation.mutate({
-                  result: 'rejected',
-                  reject_reason: option?.label ?? rejectReason,
-                  reject_reason_code: rejectReason,
-                  reject_detail: rejectDetail.trim() || undefined,
-                });
-              }}
-            >
-              {auditMutation.isPending ? '送信中...' : '差戻しを確定する'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* 差戻し(理由必須)ダイアログ — p0_36 共通理由モーダル */}
+      <ReasonDialog
+        open={rejectOpen}
+        onOpenChange={setRejectOpen}
+        title="差し戻し理由を入力"
+        options={REJECT_OPTIONS}
+        warning="差戻すと調剤工程へ戻り、担当者に通知されます。"
+        pending={auditMutation.isPending}
+        onSubmit={({ code, label, note }) =>
+          auditMutation.mutate({
+            result: 'rejected',
+            reject_reason: label,
+            reject_reason_code: code,
+            reject_detail: note || undefined,
+          })
+        }
+      />
     </section>
   );
 }

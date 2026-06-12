@@ -41,6 +41,10 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  ReasonDialog,
+  type ReasonSubmission,
+} from '@/components/features/workflow/reason-dialog';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { OFFLINE_CACHE_TTL_HOURS } from '@/lib/offline/cache-policy';
@@ -51,6 +55,7 @@ import {
   type FacilityVisitContext,
 } from '@/lib/visits/facility-visit-context';
 import { extractConferenceProposalOrigin } from '@/lib/visits/visit-workflow-projection';
+import { VISIT_SCHEDULE_CANCEL_REASON_OPTIONS } from '@/lib/visits/schedule-reason';
 import { type CachedVisitBriefCard } from '@/lib/visits/visit-brief-cache';
 import {
   discardSyncQueueItem,
@@ -298,6 +303,9 @@ export function ScheduleDayView({
     getDefaultScheduleDayContactLogForm(),
   );
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
+  // p0_37: 取消・再開の理由モーダル対象
+  const [cancelTarget, setCancelTarget] = useState<VisitSchedule | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
   const [departureWarningAcknowledged, setDepartureWarningAcknowledged] = useState(false);
   const [preparationDetails, setPreparationDetails] =
@@ -1334,6 +1342,83 @@ export function ScheduleDayView({
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '再架電タスクの更新に失敗しました');
+    },
+  });
+
+  // p0_37: 訪問予定の取消(理由必須)。成功トーストから「再開する」で戻せる
+  const cancelScheduleMutation = useMutation({
+    mutationFn: async ({
+      schedule,
+      reason,
+    }: {
+      schedule: VisitSchedule;
+      reason: ReasonSubmission;
+    }) => {
+      const res = await fetch(`/api/visit-schedules/${schedule.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          reason_code: reason.code,
+          ...(reason.note ? { reason_note: reason.note } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '訪問予定の取消に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, variables) => {
+      setCancelTarget(null);
+      toast.success(`${variables.schedule.case_.patient.name} 様の訪問予定を取り消しました`, {
+        action: {
+          label: '再開する',
+          onClick: () => setReopenTarget(variables.schedule),
+        },
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '訪問予定の取消に失敗しました');
+    },
+  });
+
+  // p0_37: 取消済み訪問予定の再開(理由必須)
+  const reopenScheduleMutation = useMutation({
+    mutationFn: async ({
+      schedule,
+      reason,
+    }: {
+      schedule: VisitSchedule;
+      reason: ReasonSubmission;
+    }) => {
+      const res = await fetch(`/api/visit-schedules/${schedule.id}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          reason_code: reason.code,
+          ...(reason.note ? { reason_note: reason.note } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '訪問予定の再開に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, variables) => {
+      setReopenTarget(null);
+      toast.success(`${variables.schedule.case_.patient.name} 様の訪問予定を再開しました`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '訪問予定の再開に失敗しました');
     },
   });
 
@@ -4826,6 +4911,23 @@ export function ScheduleDayView({
           <DialogFooter>
             <Button
               variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/5 sm:mr-auto"
+              aria-label={
+                preparationTarget
+                  ? scheduleActionLabel(preparationTarget, '訪問予定を取り消す')
+                  : undefined
+              }
+              onClick={() => {
+                if (!preparationTarget) return;
+                setCancelTarget(preparationTarget);
+                closePreparationDialog();
+              }}
+              disabled={preparationMutation.isPending}
+            >
+              この訪問を取り消す
+            </Button>
+            <Button
+              variant="outline"
               onClick={closePreparationDialog}
               disabled={preparationMutation.isPending}
             >
@@ -4871,6 +4973,42 @@ export function ScheduleDayView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* p0_37: 取消・再開の理由モーダル(共通部品 ReasonDialog) */}
+      <ReasonDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null);
+        }}
+        title="取消・再開の理由を入力"
+        options={VISIT_SCHEDULE_CANCEL_REASON_OPTIONS}
+        warning={
+          cancelTarget
+            ? `${cancelTarget.case_.patient.name} 様の訪問予定を取り消します。取消後も「再開する」で戻せます。`
+            : undefined
+        }
+        pending={cancelScheduleMutation.isPending}
+        onSubmit={(reason) =>
+          cancelTarget && cancelScheduleMutation.mutate({ schedule: cancelTarget, reason })
+        }
+      />
+      <ReasonDialog
+        open={reopenTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setReopenTarget(null);
+        }}
+        title="取消・再開の理由を入力"
+        options={VISIT_SCHEDULE_CANCEL_REASON_OPTIONS}
+        warning={
+          reopenTarget
+            ? `${reopenTarget.case_.patient.name} 様の訪問予定を再開します。`
+            : undefined
+        }
+        pending={reopenScheduleMutation.isPending}
+        onSubmit={(reason) =>
+          reopenTarget && reopenScheduleMutation.mutate({ schedule: reopenTarget, reason })
+        }
+      />
 
       <Dialog
         open={departureWarningTarget !== null}

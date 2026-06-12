@@ -376,14 +376,54 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_36_reject_reason_modal',
     targetImage: 'images/P0/p0_36_reject_reason_modal.png',
-    route: null,
-    note: '差戻し理由モーダルの起動操作は実装フェーズで追加',
+    route: '/auditing',
+    setup: async (page) => {
+      // 監査ワークベンチの差戻しボタンから共通理由モーダル(ReasonDialog)を開く
+      await page
+        .waitForSelector('[data-testid="audit-reject-button"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page
+        .getByTestId('audit-reject-button')
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="reason-dialog"]', { timeout: 20_000 })
+        .catch(() => {});
+      // target は先頭チップが選択済みの状態
+      await page
+        .getByTestId('reason-option')
+        .first()
+        .click()
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_37_cancel_reopen_reason_modal',
     targetImage: 'images/P0/p0_37_cancel_reopen_reason_modal.png',
-    route: null,
-    note: '取消/再開理由モーダルの起動操作は実装フェーズで追加',
+    route: '/schedules',
+    setup: async (page) => {
+      // 日ビューの訪問準備ダイアログ →「この訪問を取り消す」で理由モーダルを開く
+      await page
+        .getByRole('button', { name: /訪問準備を開く/ })
+        .first()
+        .click()
+        .catch(() => {});
+      await page
+        .getByRole('button', { name: /訪問予定を取り消す/ })
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="reason-dialog"]', { timeout: 20_000 })
+        .catch(() => {});
+      // target は先頭チップが選択済みの状態
+      await page
+        .getByTestId('reason-option')
+        .first()
+        .click()
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   // ── マスタ・設定 ────────────────────────────────────────────
   {

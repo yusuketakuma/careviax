@@ -21,6 +21,7 @@ const {
   evaluateReadyTransitionMock,
   getReadyTransitionErrorMessageMock,
   withOrgContextMock,
+  auditLogCreateMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -40,6 +41,7 @@ const {
   evaluateReadyTransitionMock: vi.fn(),
   getReadyTransitionErrorMessageMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -183,8 +185,12 @@ describe('/api/visit-schedules/[id] GET', () => {
         visitScheduleProposal: {
           findFirst: visitScheduleProposalTxFindFirstMock,
         },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
       }),
     );
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalTxFindFirstMock.mockResolvedValue(null);
     visitScheduleTxFindFirstMock.mockImplementation(async (args) => {
@@ -1436,5 +1442,61 @@ describe('/api/visit-schedules/[id] GET', () => {
       data: { schedule_status: 'cancelled', version: { increment: 1 } },
     });
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('records the cancel reason in the audit log when the body provides one', async () => {
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/visit-schedules/schedule_1', {
+        method: 'DELETE',
+        body: JSON.stringify({ reason_code: 'patient_request', reason_note: '家族から延期希望' }),
+        headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+      }),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_cancelled',
+        target_type: 'VisitSchedule',
+        target_id: 'schedule_1',
+        changes: expect.objectContaining({
+          reason_code: 'patient_request',
+          reason_label: '患者都合',
+          reason_note: '家族から延期希望',
+        }),
+      }),
+    });
+  });
+
+  it('still cancels without a body and logs an audit entry without a reason', async () => {
+    const response = await DELETE(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_cancelled',
+        changes: expect.objectContaining({ reason_code: null, reason_note: null }),
+      }),
+    });
+  });
+
+  it('rejects an unknown cancel reason code', async () => {
+    const response = await DELETE(
+      new NextRequest('http://localhost/api/visit-schedules/schedule_1', {
+        method: 'DELETE',
+        body: JSON.stringify({ reason_code: 'unknown_reason' }),
+        headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+      }),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   });
 });

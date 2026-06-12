@@ -5,9 +5,18 @@ import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { z } from 'zod';
+import {
+  readJsonObjectRequestBody,
+  readOptionalJsonObjectRequestBody,
+} from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { timeDateToString } from '@/lib/visits/time-of-day';
+import {
+  VISIT_SCHEDULE_CANCEL_REASON_CODES,
+  visitScheduleCancelReasonLabel,
+} from '@/lib/visits/schedule-reason';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import {
@@ -559,6 +568,15 @@ function sanitizeVisitReadyTransitionDetails(details: VisitReadyTransitionBlocke
   };
 }
 
+/**
+ * 取消理由(p0_37)。body は後方互換のため省略可。指定時は理由コードを検証し
+ * AuditLog(visit_schedule_cancelled)に構造化記録する。
+ */
+const cancelScheduleSchema = z.object({
+  reason_code: z.enum(VISIT_SCHEDULE_CANCEL_REASON_CODES).optional(),
+  reason_note: z.string().trim().max(500, 'メモは500文字以内で入力してください').optional(),
+});
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -571,12 +589,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
 
+  const payload = (await readOptionalJsonObjectRequestBody(req)) ?? {};
+  const parsedReason = cancelScheduleSchema.safeParse(payload);
+  if (!parsedReason.success) {
+    return validationError('入力値が不正です', parsedReason.error.flatten().fieldErrors);
+  }
+  const reasonCode = parsedReason.data.reason_code ?? null;
+  const reasonNote = parsedReason.data.reason_note || null;
+
   const existing = await prisma.visitSchedule.findFirst({
     where: { id, org_id: ctx.orgId },
     select: {
       id: true,
       pharmacist_id: true,
       version: true,
+      schedule_status: true,
       case_: {
         select: {
           primary_pharmacist_id: true,
@@ -612,6 +639,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
         };
       }
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_cancelled',
+        targetType: 'VisitSchedule',
+        targetId: id,
+        changes: {
+          schedule_status: { from: existing.schedule_status, to: 'cancelled' },
+          reason_code: reasonCode,
+          reason_label: reasonCode ? visitScheduleCancelReasonLabel(reasonCode) : null,
+          reason_note: reasonNote,
+        },
+      });
       return { ok: true as const, schedule: updatedSchedule };
     },
     { requestContext: ctx },
