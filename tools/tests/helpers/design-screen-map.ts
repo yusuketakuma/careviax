@@ -618,9 +618,17 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_48_mobile_evidence_capture',
     targetImage: 'images/P0/p0_48_mobile_evidence_capture.png',
-    route: null,
+    // 田中一郎の当日訪問(seed-design-demo 固定 ID)のモバイル証跡撮影(没入型)
+    route: '/visits/cmnhdemovis001amq9ph-os/capture',
     viewport: MOBILE_VIEWPORT,
-    note: 'モバイル証跡撮影の正ルート精査後にマッピング',
+    setup: async (page) => {
+      // 患者名の解決(visit-schedules API)完了まで待つ(カメラなし環境では
+      // target と同じ黒枠+「カメラ」プレースホルダーが表示される)
+      await page
+        .waitForSelector('[data-testid="capture-patient-name"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   // ── P1 ──────────────────────────────────────────────────────
   {
@@ -713,8 +721,13 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_07_inventory_linkage_prediction',
     targetImage: 'images/P1/p1_07_inventory_linkage_prediction.png',
-    route: null,
-    note: '在庫予測画面の正ルート精査後にマッピング',
+    route: '/admin/inventory-forecast',
+    setup: async (page) => {
+      await page
+        .waitForSelector('[data-testid="inventory-forecast-page"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_08_facility_criteria_dashboard',

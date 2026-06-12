@@ -360,6 +360,65 @@ export const DEMO_SEED_IDS = {
   issueDoseTanaka: 'cmnhdemoissu002amq9ph-os',
   issueAdverseTanaka: 'cmnhdemoissu003amq9ph-os',
   issueDuplicateTanaka: 'cmnhdemoissu004amq9ph-os',
+
+  /* ── p1_07 在庫と定期処方の予測(来週の必要量見込み × 在庫突合)──── */
+
+  /** p1_07: 在庫突合用の医薬品マスタ(アムロジピン / 酸化Mg / トラセミド) */
+  forecastDrugAmlodipine: 'cmnhdemofdrg001amq9ph-os',
+  forecastDrugMgOxide: 'cmnhdemofdrg002amq9ph-os',
+  forecastDrugTorasemide: 'cmnhdemofdrg003amq9ph-os',
+  /** p1_07: 上記 3 薬剤の薬局在庫(発注候補 / 余裕あり / 要発注の 3 状態) */
+  forecastStockAmlodipine: 'cmnhdemofstk001amq9ph-os',
+  forecastStockMgOxide: 'cmnhdemofstk002amq9ph-os',
+  forecastStockTorasemide: 'cmnhdemofstk003amq9ph-os',
+  /** p1_07: 来週訪問の個人患者(佐藤 花子 / 鈴木 次郎)+ 田中の来週訪問 */
+  patientSatoHanako: 'cmnhdemofpt001amq9ph-os',
+  caseSatoHanako: 'cmnhdemofcase001amq9ph-os',
+  cycleSatoHanako: 'cmnhdemofcyc001amq9ph-os',
+  intakeSatoHanako: 'cmnhdemofintk001amq9ph-os',
+  linesSatoHanako: [
+    'cmnhdemofline101amq9ph-os',
+    'cmnhdemofline102amq9ph-os',
+    'cmnhdemofline103amq9ph-os',
+  ],
+  visitSatoHanako: 'cmnhdemofvis001amq9ph-os',
+  patientSuzukiJiro: 'cmnhdemofpt002amq9ph-os',
+  caseSuzukiJiro: 'cmnhdemofcase002amq9ph-os',
+  cycleSuzukiJiro: 'cmnhdemofcyc002amq9ph-os',
+  intakeSuzukiJiro: 'cmnhdemofintk002amq9ph-os',
+  linesSuzukiJiro: [
+    'cmnhdemofline201amq9ph-os',
+    'cmnhdemofline202amq9ph-os',
+    'cmnhdemofline203amq9ph-os',
+  ],
+  visitSuzukiJiro: 'cmnhdemofvis002amq9ph-os',
+  visitTanakaForecast: 'cmnhdemofvis003amq9ph-os',
+  /** p1_07: 施設A(来週の一括訪問 5 名 →「施設A 5名 様」カード) */
+  facilityA: 'cmnhdemoffac001amq9ph-os',
+  facilityUnitA: 'cmnhdemofunit001amq9ph-os',
+  facilityBatchA: 'cmnhdemofbat001amq9ph-os',
+  /** p1_07: 施設A 入居者(処方あり 2 名: ケース/サイクル/取込/訪問つき) */
+  facilityAResidentPatients: ['cmnhdemofpt003amq9ph-os', 'cmnhdemofpt004amq9ph-os'],
+  facilityAResidentCases: ['cmnhdemofcase003amq9ph-os', 'cmnhdemofcase004amq9ph-os'],
+  facilityAResidentCycles: ['cmnhdemofcyc003amq9ph-os', 'cmnhdemofcyc004amq9ph-os'],
+  facilityAResidentIntakes: ['cmnhdemofintk003amq9ph-os', 'cmnhdemofintk004amq9ph-os'],
+  facilityAResidentLines: [
+    ['cmnhdemofline301amq9ph-os', 'cmnhdemofline302amq9ph-os'],
+    ['cmnhdemofline401amq9ph-os', 'cmnhdemofline402amq9ph-os'],
+  ],
+  facilityAResidentResidences: ['cmnhdemofres001amq9ph-os', 'cmnhdemofres002amq9ph-os'],
+  facilityAResidentVisits: ['cmnhdemofvis004amq9ph-os', 'cmnhdemofvis005amq9ph-os'],
+  /** p1_07: 施設A 入居者(名簿のみ 3 名: patient_ids の頭数 5 名分) */
+  facilityARosterPatients: [
+    'cmnhdemofpt005amq9ph-os',
+    'cmnhdemofpt006amq9ph-os',
+    'cmnhdemofpt007amq9ph-os',
+  ],
+  facilityARosterResidences: [
+    'cmnhdemofres003amq9ph-os',
+    'cmnhdemofres004amq9ph-os',
+    'cmnhdemofres005amq9ph-os',
+  ],
 } as const;
 
 /**
@@ -3664,5 +3723,458 @@ export async function seedDesignFidelityDemo(
     handoffItems: handoffItems.length,
     workflowExceptions: 2,
     notifications: notifications.length,
+  });
+
+  // ── p1_07 在庫と定期処方の予測: 来週(翌週月〜日)の定期訪問 × 在庫 ────
+  // 「来週」の規約は /api/admin/inventory-forecast の nextWeekUtcRange と同じ
+  // (翌週月曜〜日曜。today は UTC 深夜の @db.Date 値なので getUTCDay で曜日を取る)。
+  const daysToNextMonday = ((8 - today.getUTCDay()) % 7) || 7;
+  const nextMonday = addDays(today, daysToNextMonday);
+
+  // 在庫突合用の医薬品マスタ(グローバル: org_id なし)。YJ コードはデモ用の固定値
+  const forecastDrugs = [
+    {
+      id: DEMO_SEED_IDS.forecastDrugAmlodipine,
+      yjCode: '2171022FDM01',
+      name: 'アムロジピン 5mg',
+      nameKana: 'アムロジピン',
+    },
+    {
+      id: DEMO_SEED_IDS.forecastDrugMgOxide,
+      yjCode: '2344009FDM02',
+      name: '酸化Mg 330mg',
+      nameKana: 'サンカマグネシウム',
+    },
+    {
+      id: DEMO_SEED_IDS.forecastDrugTorasemide,
+      yjCode: '2139008FDM03',
+      name: 'トラセミド 4mg',
+      nameKana: 'トラセミド',
+    },
+  ];
+  for (const drug of forecastDrugs) {
+    await prisma.drugMaster.upsert({
+      where: { id: drug.id },
+      create: {
+        id: drug.id,
+        yj_code: drug.yjCode,
+        drug_name: drug.name,
+        drug_name_kana: drug.nameKana,
+        unit: '錠',
+        dosage_form: '錠剤',
+      },
+      update: {
+        drug_name: drug.name,
+        drug_name_kana: drug.nameKana,
+        unit: '錠',
+      },
+    });
+  }
+
+  // 在庫 3 状態(必要見込みは下の来週訪問患者の 1日量 × 7日 = 35 / 84 / 21 錠):
+  // アムロジピン=発注候補(20 < 35) / 酸化Mg=余裕あり(112 ≥ 84) /
+  // トラセミド=要発注(3 < 21 × 50%)
+  const forecastStocks = [
+    {
+      id: DEMO_SEED_IDS.forecastStockAmlodipine,
+      drugId: DEMO_SEED_IDS.forecastDrugAmlodipine,
+      qty: 20,
+    },
+    {
+      id: DEMO_SEED_IDS.forecastStockMgOxide,
+      drugId: DEMO_SEED_IDS.forecastDrugMgOxide,
+      qty: 112,
+    },
+    {
+      id: DEMO_SEED_IDS.forecastStockTorasemide,
+      drugId: DEMO_SEED_IDS.forecastDrugTorasemide,
+      qty: 3,
+    },
+  ];
+  for (const stock of forecastStocks) {
+    await prisma.pharmacyDrugStock.upsert({
+      where: {
+        site_id_drug_master_id: { site_id: ctx.siteId, drug_master_id: stock.drugId },
+      },
+      create: {
+        id: stock.id,
+        org_id: ctx.orgId,
+        site_id: ctx.siteId,
+        drug_master_id: stock.drugId,
+        is_stocked: true,
+        stock_qty: stock.qty,
+        last_reviewed_at: addDays(now, -2),
+      },
+      update: {
+        is_stocked: true,
+        stock_qty: stock.qty,
+      },
+    });
+  }
+
+  // 田中 一郎: 来週月曜の定期訪問(アムロジピン使用 → 影響患者カード 1 枚目)
+  await upsertDemoVisit(prisma, ctx, {
+    id: DEMO_SEED_IDS.visitTanakaForecast,
+    caseId: DEMO_SEED_IDS.caseTanaka,
+    cycleId: DEMO_SEED_IDS.cycleTanaka,
+    scheduledDate: nextMonday,
+    startTime: [10, 0],
+    confirmed: true,
+  });
+
+  // 佐藤 花子 / 鈴木 次郎: 来週の定期訪問 + 直近の定期処方(1週間前取込)
+  const forecastIndividuals = [
+    {
+      patientId: DEMO_SEED_IDS.patientSatoHanako,
+      caseId: DEMO_SEED_IDS.caseSatoHanako,
+      cycleId: DEMO_SEED_IDS.cycleSatoHanako,
+      intakeId: DEMO_SEED_IDS.intakeSatoHanako,
+      visitId: DEMO_SEED_IDS.visitSatoHanako,
+      name: '佐藤 花子',
+      nameKana: 'サトウ ハナコ',
+      age: 87,
+      gender: 'female' as const,
+      visitOffsetDays: 1,
+      startTime: [11, 0] as [number, number],
+      lines: [
+        {
+          id: DEMO_SEED_IDS.linesSatoHanako[0],
+          lineNumber: 1,
+          drugName: 'アムロジピン 5mg',
+          dose: '1錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 28,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.linesSatoHanako[1],
+          lineNumber: 2,
+          drugName: 'トラセミド 4mg',
+          dose: '1錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 28,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.linesSatoHanako[2],
+          lineNumber: 3,
+          drugName: '酸化Mg 330mg',
+          dose: '1錠',
+          frequency: '毎食後',
+          days: 28,
+          quantity: 84,
+          unit: '錠',
+        },
+      ],
+    },
+    {
+      patientId: DEMO_SEED_IDS.patientSuzukiJiro,
+      caseId: DEMO_SEED_IDS.caseSuzukiJiro,
+      cycleId: DEMO_SEED_IDS.cycleSuzukiJiro,
+      intakeId: DEMO_SEED_IDS.intakeSuzukiJiro,
+      visitId: DEMO_SEED_IDS.visitSuzukiJiro,
+      name: '鈴木 次郎',
+      nameKana: 'スズキ ジロウ',
+      age: 79,
+      gender: 'male' as const,
+      visitOffsetDays: 2,
+      startTime: [14, 0] as [number, number],
+      lines: [
+        {
+          id: DEMO_SEED_IDS.linesSuzukiJiro[0],
+          lineNumber: 1,
+          drugName: 'アムロジピン 5mg',
+          dose: '2錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 56,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.linesSuzukiJiro[1],
+          lineNumber: 2,
+          drugName: 'トラセミド 4mg',
+          dose: '1錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 28,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.linesSuzukiJiro[2],
+          lineNumber: 3,
+          drugName: '酸化Mg 330mg',
+          dose: '1錠',
+          frequency: '毎食後',
+          days: 28,
+          quantity: 84,
+          unit: '錠',
+        },
+      ],
+    },
+  ];
+  for (const person of forecastIndividuals) {
+    await upsertDemoBoardPatient(prisma, ctx, {
+      patientId: person.patientId,
+      caseId: person.caseId,
+      cycleId: person.cycleId,
+      name: person.name,
+      nameKana: person.nameKana,
+      age: person.age,
+      gender: person.gender,
+      cycleStatus: 'reported',
+    });
+    await upsertDemoIntake(prisma, ctx, {
+      id: person.intakeId,
+      cycleId: person.cycleId,
+      sourceType: 'fax',
+      prescribedDate: addDays(today, -7),
+      createdAt: addDays(atLocalTimeToday(10, 0), -7),
+      prescriberName: '山本 健',
+      prescriberInstitution: 'やまもと内科',
+      lines: person.lines,
+    });
+    await upsertDemoVisit(prisma, ctx, {
+      id: person.visitId,
+      caseId: person.caseId,
+      cycleId: person.cycleId,
+      scheduledDate: addDays(nextMonday, person.visitOffsetDays),
+      startTime: person.startTime,
+      confirmed: true,
+    });
+  }
+
+  // 施設A: 来週木曜の一括訪問(対象 5 名 →「施設A 5名 様」カード)
+  await prisma.facility.upsert({
+    where: { id: DEMO_SEED_IDS.facilityA },
+    create: {
+      id: DEMO_SEED_IDS.facilityA,
+      org_id: ctx.orgId,
+      name: '施設A',
+      facility_type: 'nursing_home',
+      address: '東京都千代田区丸の内3-3-3',
+      total_units: 5,
+    },
+    update: {
+      name: '施設A',
+      facility_type: 'nursing_home',
+      total_units: 5,
+    },
+  });
+  await prisma.facilityUnit.upsert({
+    where: { id: DEMO_SEED_IDS.facilityUnitA },
+    create: {
+      id: DEMO_SEED_IDS.facilityUnitA,
+      org_id: ctx.orgId,
+      facility_id: DEMO_SEED_IDS.facilityA,
+      name: '2F',
+      floor: '2F',
+      unit_type: 'floor',
+      capacity: 5,
+    },
+    update: {
+      name: '2F',
+      floor: '2F',
+      unit_type: 'floor',
+      capacity: 5,
+    },
+  });
+
+  const facilityAVisitDate = addDays(nextMonday, 3);
+
+  // 処方あり入居者 2 名(必要量見込みに寄与し、不足薬の影響患者になる)
+  const facilityAResidents = [
+    {
+      index: 0,
+      name: '山田 ウメ',
+      nameKana: 'ヤマダ ウメ',
+      age: 91,
+      gender: 'female' as const,
+      unitName: '201',
+      routeOrder: 1,
+      lines: [
+        {
+          id: DEMO_SEED_IDS.facilityAResidentLines[0][0],
+          lineNumber: 1,
+          drugName: 'アムロジピン 5mg',
+          dose: '1錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 28,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.facilityAResidentLines[0][1],
+          lineNumber: 2,
+          drugName: '酸化Mg 330mg',
+          dose: '1錠',
+          frequency: '毎食後',
+          days: 28,
+          quantity: 84,
+          unit: '錠',
+        },
+      ],
+    },
+    {
+      index: 1,
+      name: '田村 正',
+      nameKana: 'タムラ タダシ',
+      age: 85,
+      gender: 'male' as const,
+      unitName: '202',
+      routeOrder: 2,
+      lines: [
+        {
+          id: DEMO_SEED_IDS.facilityAResidentLines[1][0],
+          lineNumber: 1,
+          drugName: 'トラセミド 4mg',
+          dose: '1錠',
+          frequency: '朝',
+          days: 28,
+          quantity: 28,
+          unit: '錠',
+        },
+        {
+          id: DEMO_SEED_IDS.facilityAResidentLines[1][1],
+          lineNumber: 2,
+          drugName: '酸化Mg 330mg',
+          dose: '1錠',
+          frequency: '毎食後',
+          days: 28,
+          quantity: 84,
+          unit: '錠',
+        },
+      ],
+    },
+  ];
+  for (const resident of facilityAResidents) {
+    await upsertDemoBoardPatient(prisma, ctx, {
+      patientId: DEMO_SEED_IDS.facilityAResidentPatients[resident.index],
+      caseId: DEMO_SEED_IDS.facilityAResidentCases[resident.index],
+      cycleId: DEMO_SEED_IDS.facilityAResidentCycles[resident.index],
+      name: resident.name,
+      nameKana: resident.nameKana,
+      age: resident.age,
+      gender: resident.gender,
+      cycleStatus: 'reported',
+      referralSource: 'サンプル在宅クリニック',
+    });
+    await prisma.residence.upsert({
+      where: { id: DEMO_SEED_IDS.facilityAResidentResidences[resident.index] },
+      create: {
+        id: DEMO_SEED_IDS.facilityAResidentResidences[resident.index],
+        org_id: ctx.orgId,
+        patient_id: DEMO_SEED_IDS.facilityAResidentPatients[resident.index],
+        address: '東京都千代田区丸の内3-3-3 施設A',
+        facility_id: DEMO_SEED_IDS.facilityA,
+        facility_unit_id: DEMO_SEED_IDS.facilityUnitA,
+        unit_name: resident.unitName,
+        is_primary: true,
+      },
+      update: {
+        facility_id: DEMO_SEED_IDS.facilityA,
+        facility_unit_id: DEMO_SEED_IDS.facilityUnitA,
+        unit_name: resident.unitName,
+        is_primary: true,
+      },
+    });
+    await upsertDemoIntake(prisma, ctx, {
+      id: DEMO_SEED_IDS.facilityAResidentIntakes[resident.index],
+      cycleId: DEMO_SEED_IDS.facilityAResidentCycles[resident.index],
+      sourceType: 'paper',
+      prescribedDate: addDays(today, -7),
+      createdAt: addDays(atLocalTimeToday(10, 30), -7),
+      prescriberInstitution: 'サンプル在宅クリニック',
+      lines: resident.lines,
+    });
+  }
+
+  // 名簿のみ入居者 3 名(patient_ids の頭数。ケース/サイクルなしで患者一覧は不変)
+  const facilityARosterProfiles = [
+    { name: '河野 ツル', nameKana: 'コウノ ツル', age: 89, gender: 'female' as const, unitName: '203' },
+    { name: '岡本 茂', nameKana: 'オカモト シゲル', age: 84, gender: 'male' as const, unitName: '204' },
+    { name: '永井 ミツ', nameKana: 'ナガイ ミツ', age: 92, gender: 'female' as const, unitName: '205' },
+  ];
+  for (const [index, profile] of facilityARosterProfiles.entries()) {
+    const rosterPatientId = DEMO_SEED_IDS.facilityARosterPatients[index];
+    const rosterPatientData = {
+      name: profile.name,
+      name_kana: profile.nameKana,
+      birth_date: new Date(`${today.getFullYear() - profile.age}-01-15`),
+      gender: profile.gender,
+      allergy_info: [],
+    };
+    await prisma.patient.upsert({
+      where: { id: rosterPatientId },
+      create: { id: rosterPatientId, org_id: ctx.orgId, ...rosterPatientData },
+      update: rosterPatientData,
+    });
+    await prisma.residence.upsert({
+      where: { id: DEMO_SEED_IDS.facilityARosterResidences[index] },
+      create: {
+        id: DEMO_SEED_IDS.facilityARosterResidences[index],
+        org_id: ctx.orgId,
+        patient_id: rosterPatientId,
+        address: '東京都千代田区丸の内3-3-3 施設A',
+        facility_id: DEMO_SEED_IDS.facilityA,
+        facility_unit_id: DEMO_SEED_IDS.facilityUnitA,
+        unit_name: profile.unitName,
+        is_primary: true,
+      },
+      update: {
+        facility_id: DEMO_SEED_IDS.facilityA,
+        facility_unit_id: DEMO_SEED_IDS.facilityUnitA,
+        unit_name: profile.unitName,
+        is_primary: true,
+      },
+    });
+  }
+
+  const facilityAPatientIds = [
+    ...DEMO_SEED_IDS.facilityAResidentPatients,
+    ...DEMO_SEED_IDS.facilityARosterPatients,
+  ];
+  await prisma.facilityVisitBatch.upsert({
+    where: { id: DEMO_SEED_IDS.facilityBatchA },
+    create: {
+      id: DEMO_SEED_IDS.facilityBatchA,
+      org_id: ctx.orgId,
+      facility_id: DEMO_SEED_IDS.facilityA,
+      facility_unit_id: DEMO_SEED_IDS.facilityUnitA,
+      scheduled_date: facilityAVisitDate,
+      pharmacist_id: ctx.userId,
+      patient_ids: facilityAPatientIds,
+      estimated_duration: 60,
+      notes: '居室順 201 → 202(来週の定期一括訪問)',
+    },
+    update: {
+      scheduled_date: facilityAVisitDate,
+      pharmacist_id: ctx.userId,
+      patient_ids: facilityAPatientIds,
+      estimated_duration: 60,
+    },
+  });
+  for (const resident of facilityAResidents) {
+    await upsertDemoVisit(prisma, ctx, {
+      id: DEMO_SEED_IDS.facilityAResidentVisits[resident.index],
+      caseId: DEMO_SEED_IDS.facilityAResidentCases[resident.index],
+      cycleId: DEMO_SEED_IDS.facilityAResidentCycles[resident.index],
+      scheduledDate: facilityAVisitDate,
+      startTime: [15, 0],
+      durationMinutes: 60,
+      routeOrder: resident.routeOrder,
+      facilityBatchId: DEMO_SEED_IDS.facilityBatchA,
+      facilityUnitId: DEMO_SEED_IDS.facilityUnitA,
+      confirmed: true,
+    });
+  }
+
+  console.log('p1_07 inventory forecast seed created:', {
+    nextWeekStart: formatLocalDateKey(nextMonday),
+    drugStocks: forecastStocks.length,
+    nextWeekIndividualVisits: forecastIndividuals.length + 1, // 田中を含む
+    facilityABatchPatients: facilityAPatientIds.length,
   });
 }

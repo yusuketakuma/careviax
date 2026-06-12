@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -99,7 +100,15 @@ export function OperationsInsightsContent() {
 
   return (
     <div className="space-y-5" data-testid="operations-insights-page">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">在宅業務の動きを見る</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">在宅業務の動きを見る</h1>
+        <Link
+          href="/admin/inventory-forecast"
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          在庫と定期処方の予測 →
+        </Link>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-border/70 bg-card p-4">
