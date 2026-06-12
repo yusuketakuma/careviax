@@ -11,6 +11,7 @@ import {
   parsePackagingMethod,
   type PackagingMethodValue,
 } from '@/lib/prescription/packaging';
+import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import {
   collectDuplicatePrescriptionLines,
   collectStructuringBlockedLines,
@@ -27,6 +28,7 @@ import {
   type PrescriptionAccessContext,
 } from '@/server/services/prescription-access';
 import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export interface CreateIntakeLineInput {
   line_number: number;
@@ -103,6 +105,7 @@ type CreatedIntakeLine = {
 
 type CreatedIntake = {
   id: string;
+  rx_number: string | null;
   lines: CreatedIntakeLine[];
 };
 
@@ -132,7 +135,8 @@ type Tx = {
     'create' | 'findFirst' | 'updateMany'
   >;
   prescriberInstitution: Pick<Prisma.TransactionClient['prescriberInstitution'], 'findFirst'>;
-  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'create'>;
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'create'> &
+    Partial<Pick<Prisma.TransactionClient['prescriptionIntake'], 'update'>>;
   task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
   workflowException: Pick<Prisma.TransactionClient['workflowException'], 'create' | 'findFirst'>;
 };
@@ -657,7 +661,7 @@ export async function createPrescriptionIntakeInTx(
           org_id: orgId,
           cycle_id: cycle.id,
           exception_type: 'prescription_structuring_block',
-          status: 'open',
+          status: 'open' satisfies ExceptionStatus,
         },
         select: { id: true },
       });
@@ -667,10 +671,11 @@ export async function createPrescriptionIntakeInTx(
           data: {
             org_id: orgId,
             cycle_id: cycle.id,
+            patient_id: cycle.patient_id,
             exception_type: 'prescription_structuring_block',
             description: `未構造化または不明な処方明細があります: ${structuringBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
-            severity: 'warning',
-            status: 'open',
+            severity: 'warning' satisfies ExceptionSeverity,
+            status: 'open' satisfies ExceptionStatus,
           },
         });
       }
@@ -693,7 +698,7 @@ export async function createPrescriptionIntakeInTx(
         org_id: orgId,
         cycle_id: cycle.id,
         exception_type: 'outpatient_injection_eligibility_block',
-        status: 'open',
+        status: 'open' satisfies ExceptionStatus,
       },
       select: { id: true },
     });
@@ -703,10 +708,11 @@ export async function createPrescriptionIntakeInTx(
         data: {
           org_id: orgId,
           cycle_id: cycle.id,
+          patient_id: cycle.patient_id,
           exception_type: 'outpatient_injection_eligibility_block',
           description: `外来/在宅自己注射として調剤可否が未確認の注射剤があります: ${outpatientInjectionBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
-          severity: 'warning',
-          status: 'open',
+          severity: 'warning' satisfies ExceptionSeverity,
+          status: 'open' satisfies ExceptionStatus,
         },
       });
     }
@@ -767,6 +773,13 @@ export async function createPrescriptionIntakeInTx(
       },
     },
   });
+  const rxNumber = formatPrescriptionCardNumber(intake.id, prescribed_date);
+  if (typeof tx.prescriptionIntake.update === 'function') {
+    await tx.prescriptionIntake.update({
+      where: { id: intake.id },
+      data: { rx_number: rxNumber },
+    });
+  }
 
   if (source_type === 'fax') {
     await ensureFaxOriginalFollowupTaskTx(tx, {
@@ -834,6 +847,7 @@ export async function createPrescriptionIntakeInTx(
     kind: 'intake',
     intake: {
       id: intake.id,
+      rx_number: rxNumber,
       lines: lines.map((line) => ({
         drug_name: line.drug_name,
         drug_code: line.drug_code ?? null,

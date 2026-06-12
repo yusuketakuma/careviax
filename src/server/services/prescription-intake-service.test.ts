@@ -76,6 +76,7 @@ function createMockTx() {
     },
     prescriptionIntake: {
       create: vi.fn(),
+      update: vi.fn(),
     },
     inquiryRecord: {
       count: vi.fn(),
@@ -413,6 +414,7 @@ describe('createPrescriptionIntake', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         cycle_id: 'cycle_1',
+        patient_id: 'patient_1',
         exception_type: 'outpatient_injection_eligibility_block',
         severity: 'warning',
         status: 'open',
@@ -471,6 +473,8 @@ describe('createPrescriptionIntake', () => {
     );
 
     expect(result.kind).toBe('intake');
+    if (result.kind !== 'intake') throw new Error('expected intake result');
+    expect(result.intake.rx_number).toBe('RX-202604-0001');
     expect(tx.workflowException.create).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -485,6 +489,10 @@ describe('createPrescriptionIntake', () => {
           ],
         },
       }),
+    });
+    expect(tx.prescriptionIntake.update).toHaveBeenCalledWith({
+      where: { id: 'intake_1' },
+      data: { rx_number: 'RX-202604-0001' },
     });
     expect(createDispenseDraftMock).toHaveBeenCalled();
   });
