@@ -23,10 +23,6 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
-import {
-  VISIT_TYPE_LABELS,
-  type VisitType,
-} from '@/app/(dashboard)/schedules/day-view.shared';
 import type {
   CockpitAuditQueueItem,
   CockpitVisit,
@@ -75,11 +71,7 @@ const VIEW_SCOPE_OPTIONS: Array<{ value: DashboardViewScope; label: string }> = 
 // 条件バナー
 // ---------------------------------------------------------------------------
 
-function ConditionBanner({
-  data,
-}: {
-  data: DashboardCockpitResponse;
-}) {
+function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
   const visitTimes = data.today_visits
     .filter((visit) => visit.time_start != null)
     .map((visit) => formatTimeOfDay(visit.time_start as string));
@@ -222,10 +214,7 @@ function UrgentNowCard({
             <Link href="/auditing">監査を開く</Link>
           </Button>
         )}
-        <Link
-          href="/auditing"
-          className="text-sm font-medium text-primary hover:underline"
-        >
+        <Link href="/auditing" className="text-sm font-medium text-primary hover:underline">
           → 監査へ
         </Link>
       </div>
@@ -394,10 +383,7 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
           工程の今
         </h3>
         <p className="text-xs text-muted-foreground">チーム全体の仕掛かり</p>
-        <Link
-          href="/handoff"
-          className="ml-auto text-sm font-medium text-primary hover:underline"
-        >
+        <Link href="/handoff" className="ml-auto text-sm font-medium text-primary hover:underline">
           → ハンドオフで再配分
         </Link>
       </div>
@@ -428,51 +414,6 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
         <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800">
           {bottleneckNote}
         </p>
-      ) : null}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 右レール「私の今日」
-// ---------------------------------------------------------------------------
-
-const MY_TODAY_MAX_ROWS = 6;
-
-function MyTodayCard({ visits }: { visits: CockpitVisit[] }) {
-  const rows = visits.slice(0, MY_TODAY_MAX_ROWS);
-  const remaining = visits.length - rows.length;
-
-  return (
-    <section
-      aria-labelledby="dashboard-my-today-heading"
-      className="space-y-3 rounded-lg border border-border/70 bg-card p-4"
-      data-testid="dashboard-my-today"
-    >
-      <h3 id="dashboard-my-today-heading" className="text-sm font-semibold text-foreground">
-        私の今日
-      </h3>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">本日の訪問予定はありません。</p>
-      ) : (
-        <ol className="divide-y divide-border/60" role="list">
-          {rows.map((visit) => (
-            <li key={visit.id} className="flex items-baseline gap-2 py-2 first:pt-0 last:pb-0">
-              <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                {visit.time_start ? formatTimeOfDay(visit.time_start) : '--:--'}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                {visit.patient_name} 様
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {VISIT_TYPE_LABELS[visit.visit_type as VisitType] ?? visit.visit_type}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {remaining > 0 ? (
-        <p className="text-xs text-muted-foreground">ほか {remaining}件</p>
       ) : null}
     </section>
   );
@@ -621,9 +562,7 @@ export function DashboardCockpit() {
               variant="server"
               title="ダッシュボードを表示できません"
               description="運用コックピットの集計取得に失敗しました。再試行してください。"
-              detail={
-                cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined
-              }
+              detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
               action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
             />
           </div>
@@ -642,19 +581,18 @@ export function DashboardCockpit() {
               <ProcessNowSection statusCounts={data.cycle_status_counts} />
             </div>
             <div className="space-y-4">
+              {/*
+               * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
+               * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
+               * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
+               */}
               <WorkspaceActionRail
                 nextAction={buildNextAction(topAudit, todayVisits.length)}
                 blockedReasons={blockedReasons}
                 blockedReasonsEmptyLabel="止まっている作業はありません"
                 evidence={evidence}
                 evidenceOpenLabel="開く"
-              >
-                <MyTodayCard visits={todayVisits} />
-                {/*
-                 * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
-                 * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
-                 */}
-              </WorkspaceActionRail>
+              />
             </div>
           </div>
         )}

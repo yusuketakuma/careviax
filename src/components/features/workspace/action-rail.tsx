@@ -64,9 +64,6 @@ export function NextActionPanel({
 }: NextActionPanelProps) {
   return (
     <RailCard title="次にやること" className={className} data-testid="next-action-panel">
-      {description ? (
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-      ) : null}
       {actionHref ? (
         <Button asChild className="min-h-[44px] w-full" disabled={actionDisabled}>
           <a href={actionHref}>{actionLabel}</a>
@@ -81,6 +78,9 @@ export function NextActionPanel({
           {actionLabel}
         </Button>
       )}
+      {description ? (
+        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+      ) : null}
     </RailCard>
   );
 }
@@ -105,11 +105,11 @@ type BlockedCategoryTone = {
   container: string;
 };
 
-/** カテゴリ→色チップ/淡背景。未知カテゴリは中立トーン。 */
+/** カテゴリ→色チップ/淡背景(デザイン 01/06: 患者=紫、事務=黄)。未知カテゴリは中立トーン。 */
 const BLOCKED_CATEGORY_TONES: Record<string, BlockedCategoryTone> = {
-  患者: { chip: 'bg-amber-100 text-amber-800', container: 'border-amber-200 bg-amber-50/70' },
-  事務: { chip: 'bg-blue-100 text-blue-800', container: 'border-blue-200 bg-blue-50/70' },
-  医療機関: { chip: 'bg-violet-100 text-violet-800', container: 'border-violet-200 bg-violet-50/70' },
+  患者: { chip: 'bg-violet-100 text-violet-800', container: 'border-violet-200 bg-violet-50/70' },
+  事務: { chip: 'bg-amber-100 text-amber-800', container: 'border-amber-200 bg-amber-50/70' },
+  医療機関: { chip: 'bg-blue-100 text-blue-800', container: 'border-blue-200 bg-blue-50/70' },
 };
 
 const BLOCKED_CATEGORY_DEFAULT_TONE: BlockedCategoryTone = {
@@ -222,7 +222,10 @@ export function EvidencePanel({ items, openLabel = '見る', className }: Eviden
     <RailCard title="根拠・記録" className={className} data-testid="evidence-panel">
       <ul className="divide-y divide-border/60" role="list">
         {items.map((item) => (
-          <li key={item.id} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+          <li
+            key={item.id}
+            className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+          >
             <span className="flex min-w-0 flex-1 items-baseline gap-2">
               <span className="min-w-0 truncate text-sm text-foreground">{item.label}</span>
               {item.meta ? (

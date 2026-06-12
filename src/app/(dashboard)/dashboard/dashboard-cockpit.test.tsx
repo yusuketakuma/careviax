@@ -197,24 +197,38 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     const section = screen.getByTestId('dashboard-process-now');
-    for (const label of ['取込', '入力', '判断', '調剤', '監査', 'セット', '訪問', '報告', '算定']) {
+    for (const label of [
+      '取込',
+      '入力',
+      '判断',
+      '調剤',
+      '監査',
+      'セット',
+      '訪問',
+      '報告',
+      '算定',
+    ]) {
       expect(within(section).getByText(label)).toBeTruthy();
     }
     // 監査 = dispensed(10) + audit_pending(14)
     expect(within(section).getByText('24')).toBeTruthy();
     expect(within(section).getByText('目安14')).toBeTruthy();
     expect(
-      within(section).getByText('詰まりは判断と監査。上流の工程を今増やしても、今日は速くなりません。'),
+      within(section).getByText(
+        '詰まりは判断と監査。上流の工程を今増やしても、今日は速くなりません。',
+      ),
     ).toBeTruthy();
     expect(within(section).getByRole('link', { name: '→ ハンドオフで再配分' })).toBeTruthy();
   });
 
-  it('renders the action rail with next action, blocked reasons, evidence, and my-today list', () => {
+  it('renders the action rail with next action, blocked reasons, and evidence only', () => {
     render(<DashboardCockpit />);
 
     const nextAction = screen.getByTestId('next-action-panel');
     expect(within(nextAction).getByText('次にやること')).toBeTruthy();
-    expect(within(nextAction).getByRole('link', { name: '麻薬監査を開始 — 12:00期限' })).toBeTruthy();
+    expect(
+      within(nextAction).getByRole('link', { name: '麻薬監査を開始 — 12:00期限' }),
+    ).toBeTruthy();
 
     const blocked = screen.getByTestId('blocked-reasons-panel');
     expect(within(blocked).getByText('止まっている理由')).toBeTruthy();
@@ -232,10 +246,8 @@ describe('DashboardCockpit', () => {
     expect(within(evidence).getByText('2件')).toBeTruthy();
     expect(within(evidence).getAllByRole('button', { name: /開く/ }).length).toBeGreaterThan(0);
 
-    const myToday = screen.getByTestId('dashboard-my-today');
-    expect(within(myToday).getByText('私の今日')).toBeTruthy();
-    expect(within(myToday).getByText('10:30')).toBeTruthy();
-    expect(within(myToday).getByText('伊藤 様')).toBeTruthy();
+    // デザイン 01: 右レールは 3 点セットのみ。「私の今日」リストカードは置かない
+    expect(screen.queryByTestId('dashboard-my-today')).toBeNull();
   });
 
   it('shows the error state with retry when the cockpit fetch fails', () => {

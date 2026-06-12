@@ -53,6 +53,11 @@ type ExceptionPresentation = {
 const EXCEPTION_PRESENTATIONS: Record<string, ExceptionPresentation> = {
   consent_revoked: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
   missing_visit_consent: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
+  family_consent_pending: {
+    category: '患者',
+    actionLabel: '再連絡する →',
+    actionHref: '/patients',
+  },
   medication_gap: { category: '患者', actionLabel: '状況を見る →', actionHref: '/patients' },
   prescription_structuring_block: {
     category: '医療機関',
@@ -69,7 +74,11 @@ const EXCEPTION_PRESENTATIONS: Record<string, ExceptionPresentation> = {
     actionLabel: '状況を見る →',
     actionHref: '/workflow',
   },
-  dispense_audit_rejected: { category: '調剤', actionLabel: '状況を見る →', actionHref: '/dispensing' },
+  dispense_audit_rejected: {
+    category: '調剤',
+    actionLabel: '状況を見る →',
+    actionHref: '/dispensing',
+  },
   partial_dispense: { category: '調剤', actionLabel: '状況を見る →', actionHref: '/dispensing' },
   set_audit_rejected: {
     category: '調剤',
@@ -154,7 +163,9 @@ export const GET = withAuthContext(
           where: {
             org_id: ctx.orgId,
             status: 'completed',
-            ...(assignmentScope.caseIds ? { cycle: { case_id: { in: assignmentScope.caseIds } } } : {}),
+            ...(assignmentScope.caseIds
+              ? { cycle: { case_id: { in: assignmentScope.caseIds } } }
+              : {}),
           },
           orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
           take: AUDIT_QUEUE_FETCH_LIMIT,
@@ -224,10 +235,7 @@ export const GET = withAuthContext(
             status: 'open',
             ...(assignmentScope.caseIds
               ? {
-                  OR: [
-                    { cycle_id: null },
-                    { cycle: { case_id: { in: assignmentScope.caseIds } } },
-                  ],
+                  OR: [{ cycle_id: null }, { cycle: { case_id: { in: assignmentScope.caseIds } } }],
                 }
               : {}),
           },
