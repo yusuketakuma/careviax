@@ -289,13 +289,19 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_22_visit_mode_tablet',
     targetImage: 'images/P0/p0_22_visit_mode_tablet.png',
-    route: '/visits',
-    note: '訪問記録(動的 ID)はデモ seed 後に record 画面へ差し替え',
+    // 田中一郎の当日訪問(seed-design-demo 固定 ID)の記録画面 + 訪問ステップレール
+    route: '/visits/cmnhdemovis001amq9ph-os/record',
+    setup: async (page) => {
+      await page
+        .waitForSelector('[data-testid="visit-step-nav"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_23_visit_mode_smartphone',
     targetImage: 'images/P0/p0_23_visit_mode_smartphone.png',
-    route: '/visits',
+    route: '/visits/cmnhdemovis001amq9ph-os/record',
     viewport: MOBILE_VIEWPORT,
   },
   {

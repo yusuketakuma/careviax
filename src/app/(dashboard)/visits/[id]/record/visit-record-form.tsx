@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
+import { VisitStepNav } from './visit-step-nav';
 import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
@@ -211,13 +212,22 @@ function VisitRecordWorkflowSection({
   title,
   description,
   children,
+  id,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  /** 訪問ステップナビ(p0_22)のアンカー。scroll-margin で固定ヘッダー分を逃がす */
+  id?: string;
 }) {
   return (
-    <PageSection title={title} description={description} contentClassName="space-y-3 sm:space-y-4">
+    <PageSection
+      id={id}
+      title={title}
+      description={description}
+      className="scroll-mt-24"
+      contentClassName="space-y-3 sm:space-y-4"
+    >
       {children}
     </PageSection>
   );
@@ -1269,588 +1279,602 @@ export function VisitRecordForm({
   return (
     <FormProvider {...form}>
       <form onSubmit={handleVisitRecordFormSubmit} noValidate>
-        {/* Hidden fields */}
-        <input type="hidden" {...form.register('schedule_id')} />
-        <input type="hidden" {...form.register('patient_id')} />
+        {/* p0_22 訪問モード: xl〜 左に訪問ステップレール(スクロール現在地+ジャンプ) */}
+        <div className="xl:grid xl:grid-cols-[210px_minmax(0,1fr)] xl:items-start xl:gap-6">
+          <aside className="mb-4 xl:sticky xl:top-6 xl:mb-0 xl:self-start">
+            <VisitStepNav />
+          </aside>
+          {/* Hidden fields */}
+          <input type="hidden" {...form.register('schedule_id')} />
+          <input type="hidden" {...form.register('patient_id')} />
 
-        <div className="space-y-5 sm:space-y-6">
-          <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+          <div className="space-y-5 sm:space-y-6">
+            <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
 
-          <FacilityVisitRecordSwitcher
-            currentScheduleId={id}
-            context={effectiveFacilityVisitContext}
-          />
-
-          <VisitRecordWorkflowSection
-            title="訪問前確認"
-            description="現地で迷わないための担当者、会議からの引き継ぎ、薬学的管理、位置情報、同期状態を先に確認します。"
-          >
-            {medicationManagementSection}
-
-            {!visitPreparationLoading ? (
-              <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
-            ) : null}
-
-            {carryItemsWarning && (
-              <Card className="border-rose-200 bg-rose-50">
-                <CardHeader className="pb-3">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-rose-900">
-                    <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-                    {carryItemsWarning.title}
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-rose-900">
-                  <p>{carryItemsWarning.description}</p>
-                  {requiresCarryItemWarningAcknowledgement && (
-                    <div className="space-y-1.5">
-                      <label className="flex min-h-11 items-start gap-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-3">
-                        <Checkbox
-                          checked={Boolean(carryItemWarningAcknowledged)}
-                          onCheckedChange={(checked) => {
-                            const acknowledged = Boolean(checked);
-                            form.setValue('carry_item_warning_acknowledged', acknowledged, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            });
-                            if (acknowledged) {
-                              form.clearErrors('carry_item_warning_acknowledged');
-                            }
-                          }}
-                          aria-describedby={
-                            carryItemAcknowledgementError
-                              ? carryItemAcknowledgementErrorId
-                              : undefined
-                          }
-                          aria-invalid={Boolean(carryItemAcknowledgementError)}
-                          aria-labelledby="carry-item-warning-acknowledgement-label"
-                        />
-                        <span id="carry-item-warning-acknowledgement-label">
-                          未確定の持参物を確認し、代替手配または現地対応方針を確認しました。
-                        </span>
-                      </label>
-                      {carryItemAcknowledgementError && (
-                        <p
-                          id={carryItemAcknowledgementErrorId}
-                          className="text-xs text-destructive"
-                          role="alert"
-                        >
-                          {carryItemAcknowledgementError}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
-              <Card className="border-amber-200 bg-amber-50/40">
-                <CardHeader className="pb-3">
-                  <h3 className="font-heading text-sm leading-snug font-medium text-amber-950">
-                    訪問時チェック
-                  </h3>
-                </CardHeader>
-                <CardContent>
-                  <CdsAlertPanel
-                    alerts={visitAlerts}
-                    isLoading={visitAlertsLoading}
-                    isUnavailable={visitAlertsError}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            {(locationTrackingEnabled || visitGeoLog) && (
-              <Card className="border-sky-200 bg-sky-50/40">
-                <CardHeader className="pb-3">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-sky-950">
-                    <MapPin className="h-4 w-4 text-sky-700" aria-hidden="true" />
-                    訪問位置情報
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <p className="text-muted-foreground">
-                    開始時に現在地を記録し、保存時に終了位置を追加します。無効化は
-                    ユーザー設定から行えます。
-                  </p>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
-                      <p className="text-xs text-muted-foreground">開始位置</p>
-                      <p className="mt-1 font-medium text-foreground">
-                        {visitGeoLog?.start
-                          ? `${visitGeoLog.start.latitude.toFixed(5)}, ${visitGeoLog.start.longitude.toFixed(5)}`
-                          : '未記録'}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {visitGeoLog?.start
-                          ? `${format(
-                              new Date(visitGeoLog.start.captured_at),
-                              'yyyy/MM/dd HH:mm',
-                            )}${
-                              visitGeoLog.start.accuracy_meters != null
-                                ? ` / 精度 ±${visitGeoLog.start.accuracy_meters}m`
-                                : ''
-                            }`
-                          : '画面を開いた時点で取得を試みます'}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
-                      <p className="text-xs text-muted-foreground">終了位置</p>
-                      <p className="mt-1 font-medium text-foreground">
-                        {visitGeoLog?.end
-                          ? `${visitGeoLog.end.latitude.toFixed(5)}, ${visitGeoLog.end.longitude.toFixed(5)}`
-                          : '未記録'}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {visitGeoLog?.end
-                          ? `${format(new Date(visitGeoLog.end.captured_at), 'yyyy/MM/dd HH:mm')}${
-                              visitGeoLog.end.accuracy_meters != null
-                                ? ` / 精度 ±${visitGeoLog.end.accuracy_meters}m`
-                                : ''
-                            }`
-                          : '保存時に現在地を取得します'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>権限状態: {visitGeoLog?.permission ?? 'prompt'}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={() =>
-                        void captureLocationPhase(visitGeoLog?.start ? 'end' : 'start', {
-                          successMessage: visitGeoLog?.start
-                            ? '終了位置を更新しました'
-                            : '開始位置を記録しました',
-                        })
-                      }
-                      disabled={locationCaptureState !== 'idle'}
-                    >
-                      <LocateFixed className="h-4 w-4" aria-hidden="true" />
-                      {locationCaptureState === 'capturing-start'
-                        ? '開始位置を取得中...'
-                        : locationCaptureState === 'capturing-end'
-                          ? '終了位置を取得中...'
-                          : visitGeoLog?.start
-                            ? '現在地を再取得'
-                            : '開始位置を記録'}
-                    </Button>
-                    <a
-                      href="/settings"
-                      className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                    >
-                      設定で無効化
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {(isOffline || pendingSyncCount > 0) && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  <div className="space-y-1">
-                    <p className="font-medium">
-                      {isOffline
-                        ? '現在オフラインです。保存すると端末に下書きし、再接続後に同期します。'
-                        : '同期待ちの訪問記録があります。'}
-                    </p>
-                    {pendingSyncCount > 0 ? (
-                      <p className="text-xs text-amber-800/90">同期待ち {pendingSyncCount} 件</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
-          </VisitRecordWorkflowSection>
-
-          <VisitRecordWorkflowSection
-            title="入力状況"
-            description="報告書化と訪問薬剤管理の確認事項がどこまで揃っているかを見ます。"
-          >
-            <VisitReportReadinessPanel mode="visit_mobile" items={visitReportReadinessItems} />
-          </VisitRecordWorkflowSection>
-
-          <VisitRecordWorkflowSection
-            title="訪問結果"
-            description="訪問日の確定と、完了・延期・再訪などの結果を先に決めます。"
-          >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="visit_date">
-                  訪問日{' '}
-                  <span className="text-destructive" aria-label="必須">
-                    *
-                  </span>
-                </Label>
-                <Input
-                  id="visit_date"
-                  type="date"
-                  aria-invalid={!!form.formState.errors.visit_date}
-                  {...form.register('visit_date')}
-                />
-                {form.formState.errors.visit_date && (
-                  <p className="text-xs text-destructive" role="alert">
-                    {form.formState.errors.visit_date.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="outcome_status">
-                  訪問結果{' '}
-                  <span className="text-destructive" aria-label="必須">
-                    *
-                  </span>
-                </Label>
-                <Select
-                  value={outcomeStatus}
-                  onValueChange={(v) =>
-                    form.setValue('outcome_status', v as FormValues['outcome_status'])
-                  }
-                >
-                  <SelectTrigger id="outcome_status" className="w-full">
-                    <SelectValue placeholder="訪問結果を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {outcomeOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.outcome_status && (
-                  <p className="text-xs text-destructive" role="alert">
-                    {form.formState.errors.outcome_status.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {outcomeStatus === 'cancelled' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="cancellation_reason">キャンセル理由</Label>
-                <Textarea
-                  id="cancellation_reason"
-                  placeholder="キャンセルの理由を入力してください"
-                  rows={2}
-                  {...form.register('cancellation_reason')}
-                />
-              </div>
-            )}
-            {outcomeStatus === 'postponed' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="postpone_reason">延期理由</Label>
-                <Textarea
-                  id="postpone_reason"
-                  placeholder="延期の理由を入力してください"
-                  rows={2}
-                  {...form.register('postpone_reason')}
-                />
-              </div>
-            )}
-            {outcomeStatus === 'revisit_needed' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="revisit_reason">再訪理由</Label>
-                <Textarea
-                  id="revisit_reason"
-                  placeholder="再訪が必要な理由を入力してください"
-                  rows={2}
-                  {...form.register('revisit_reason')}
-                />
-              </div>
-            )}
-          </VisitRecordWorkflowSection>
-
-          <VisitRecordWorkflowSection
-            title="現地記録"
-            description="S/O/A/Pを中心に、訪問先で確認した薬学的評価と介入内容を記録します。"
-          >
-            <VoiceSoapAssist
-              activeField={voiceRecognition.activeField}
-              error={voiceRecognition.error}
-              interimTranscript={voiceRecognition.interimTranscript}
-              isOffline={isOffline}
-              isSupported={voiceRecognition.isSupported}
-              lastTranscript={voiceRecognition.transcript}
+            <FacilityVisitRecordSwitcher
+              currentScheduleId={id}
+              context={effectiveFacilityVisitContext}
             />
 
-            {isMobile ? (
-              <SoapStepWizard
-                isPending={createRecord.isPending}
-                recurrenceRule={schedule?.recurrence_rule}
-                attachmentsContent={attachmentsField}
-                voiceInput={{
-                  activeField: voiceRecognition.activeField,
-                  error: voiceRecognition.error,
-                  interimTranscript: voiceRecognition.interimTranscript,
-                  isOffline,
-                  isSupported: voiceRecognition.isSupported,
-                  onToggle: voiceRecognition.toggleListening,
-                }}
-              />
-            ) : (
-              <>
-                {/* SOAP — tablet 2-column */}
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:gap-5">
-                  {/* S + O (left column) */}
-                  <div className="space-y-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                          <span className="inline-flex items-center gap-2">
-                            <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S —
-                            主観情報（患者の訴え）
-                          </span>
-                          <SoapVoiceFieldToggle
-                            field="soap_subjective"
-                            activeField={voiceRecognition.activeField}
-                            disabled={createRecord.isPending}
-                            error={voiceRecognition.error}
-                            interimTranscript={voiceRecognition.interimTranscript}
-                            isOffline={isOffline}
-                            isSupported={voiceRecognition.isSupported}
-                            onToggle={voiceRecognition.toggleListening}
-                          />
-                        </h3>
-                      </CardHeader>
-                      <CardContent>
-                        <Textarea
-                          id="soap_subjective"
-                          placeholder="患者・家族からの訴え、服薬状況の自己申告など"
-                          rows={5}
-                          aria-label="主観情報"
-                          {...form.register('soap_subjective')}
-                        />
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                          <span className="inline-flex items-center gap-2">
-                            <Eye className="size-4 text-green-500" aria-hidden="true" />O —
-                            客観情報（観察・計測）
-                          </span>
-                          <SoapVoiceFieldToggle
-                            field="soap_objective"
-                            activeField={voiceRecognition.activeField}
-                            disabled={createRecord.isPending}
-                            error={voiceRecognition.error}
-                            interimTranscript={voiceRecognition.interimTranscript}
-                            isOffline={isOffline}
-                            isSupported={voiceRecognition.isSupported}
-                            onToggle={voiceRecognition.toggleListening}
-                          />
-                        </h3>
-                      </CardHeader>
-                      <CardContent>
-                        <Textarea
-                          id="soap_objective"
-                          placeholder="残薬確認、保管状況、副作用観察、バイタル、介助者の様子など"
-                          rows={5}
-                          aria-label="客観情報"
-                          {...form.register('soap_objective')}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* A + P (right column) */}
-                  <div className="space-y-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                          <span className="inline-flex items-center gap-2">
-                            <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
-                            薬学的評価
-                          </span>
-                          <SoapVoiceFieldToggle
-                            field="soap_assessment"
-                            activeField={voiceRecognition.activeField}
-                            disabled={createRecord.isPending}
-                            error={voiceRecognition.error}
-                            interimTranscript={voiceRecognition.interimTranscript}
-                            isOffline={isOffline}
-                            isSupported={voiceRecognition.isSupported}
-                            onToggle={voiceRecognition.toggleListening}
-                          />
-                        </h3>
-                      </CardHeader>
-                      <CardContent>
-                        <Textarea
-                          id="soap_assessment"
-                          placeholder="処方の適正評価、相互作用、副作用リスク、アドヒアランス評価など"
-                          rows={5}
-                          aria-label="薬学的評価"
-                          {...form.register('soap_assessment')}
-                        />
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                          <span className="inline-flex items-center gap-2">
-                            <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />P
-                            — 計画・介入
-                          </span>
-                          <SoapVoiceFieldToggle
-                            field="soap_plan"
-                            activeField={voiceRecognition.activeField}
-                            disabled={createRecord.isPending}
-                            error={voiceRecognition.error}
-                            interimTranscript={voiceRecognition.interimTranscript}
-                            isOffline={isOffline}
-                            isSupported={voiceRecognition.isSupported}
-                            onToggle={voiceRecognition.toggleListening}
-                          />
-                        </h3>
-                      </CardHeader>
-                      <CardContent>
-                        <Textarea
-                          id="soap_plan"
-                          placeholder="介入内容、次回対応事項、多職種連携の要否、処方医への報告など"
-                          rows={5}
-                          aria-label="計画・介入"
-                          {...form.register('soap_plan')}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </>
-            )}
-          </VisitRecordWorkflowSection>
-
-          {!isMobile ? (
             <VisitRecordWorkflowSection
-              title="保存前チェック"
-              description="受領記録、次回提案、残薬、添付をまとめて確認して保存します。"
+              id="visit-step-readiness"
+              title="訪問前確認"
+              description="現地で迷わないための担当者、会議からの引き継ぎ、薬学的管理、位置情報、同期状態を先に確認します。"
             >
-              {/* Receipt record */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                    <User className="size-4 text-muted-foreground" aria-hidden="true" />
-                    受領記録
-                  </h3>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="receipt_person_name">受領者名</Label>
-                      <Input
-                        id="receipt_person_name"
-                        placeholder="例: 山田 花子"
-                        {...form.register('receipt_person_name')}
-                      />
-                    </div>
+              {medicationManagementSection}
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="receipt_person_relation">続柄</Label>
-                      <Select
-                        value={receiptPersonRelation}
-                        onValueChange={(v) =>
-                          form.setValue('receipt_person_relation', v ?? undefined)
-                        }
-                      >
-                        <SelectTrigger id="receipt_person_relation" className="w-full">
-                          <SelectValue placeholder="続柄を選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {relationOptions.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="receipt_at">受領日時</Label>
-                      <Input
-                        id="receipt_at"
-                        type="datetime-local"
-                        {...form.register('receipt_at')}
-                        defaultValue={`${visitDate}T00:00`}
-                      />
-                      {form.formState.errors.receipt_at && (
-                        <p className="text-xs text-destructive" role="alert">
-                          {form.formState.errors.receipt_at.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Next visit suggestion */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                    <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                    次回訪問提案
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="next_visit_suggestion_date">次回提案日</Label>
-                    <Input
-                      id="next_visit_suggestion_date"
-                      type="date"
-                      {...form.register('next_visit_suggestion_date')}
-                    />
-                  </div>
-                  {schedule?.recurrence_rule && (
-                    <p className="text-xs text-muted-foreground">
-                      定期ルール: {schedule.recurrence_rule}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Residual medications */}
-              <Card>
-                <CardContent className="pt-4">
-                  <ResidualMedicationForm />
-                </CardContent>
-              </Card>
-
-              {isCompletionOutcome && missingHomeVisit2026Items.length > 0 ? (
-                <VisitCompletionReadinessWarning items={missingHomeVisit2026Items} />
+              {!visitPreparationLoading ? (
+                <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
               ) : null}
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                    <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
-                    写真・添付
-                  </h3>
-                </CardHeader>
-                <CardContent>{attachmentsField}</CardContent>
-              </Card>
+              {carryItemsWarning && (
+                <Card className="border-rose-200 bg-rose-50">
+                  <CardHeader className="pb-3">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-rose-900">
+                      <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                      {carryItemsWarning.title}
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-rose-900">
+                    <p>{carryItemsWarning.description}</p>
+                    {requiresCarryItemWarningAcknowledgement && (
+                      <div className="space-y-1.5">
+                        <label className="flex min-h-11 items-start gap-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-3">
+                          <Checkbox
+                            checked={Boolean(carryItemWarningAcknowledged)}
+                            onCheckedChange={(checked) => {
+                              const acknowledged = Boolean(checked);
+                              form.setValue('carry_item_warning_acknowledged', acknowledged, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                              if (acknowledged) {
+                                form.clearErrors('carry_item_warning_acknowledged');
+                              }
+                            }}
+                            aria-describedby={
+                              carryItemAcknowledgementError
+                                ? carryItemAcknowledgementErrorId
+                                : undefined
+                            }
+                            aria-invalid={Boolean(carryItemAcknowledgementError)}
+                            aria-labelledby="carry-item-warning-acknowledgement-label"
+                          />
+                          <span id="carry-item-warning-acknowledgement-label">
+                            未確定の持参物を確認し、代替手配または現地対応方針を確認しました。
+                          </span>
+                        </label>
+                        {carryItemAcknowledgementError && (
+                          <p
+                            id={carryItemAcknowledgementErrorId}
+                            className="text-xs text-destructive"
+                            role="alert"
+                          >
+                            {carryItemAcknowledgementError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
-              {/* Submit */}
-              <ActionRail className="pt-2">
-                <Button type="button" variant="outline" onClick={() => router.back()}>
-                  キャンセル
-                </Button>
-                <LoadingButton
-                  type="submit"
-                  loading={createRecord.isPending}
-                  loadingLabel="保存中..."
-                >
-                  保存
-                </LoadingButton>
-              </ActionRail>
+              {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
+                <Card className="border-amber-200 bg-amber-50/40">
+                  <CardHeader className="pb-3">
+                    <h3 className="font-heading text-sm leading-snug font-medium text-amber-950">
+                      訪問時チェック
+                    </h3>
+                  </CardHeader>
+                  <CardContent>
+                    <CdsAlertPanel
+                      alerts={visitAlerts}
+                      isLoading={visitAlertsLoading}
+                      isUnavailable={visitAlertsError}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+
+              {(locationTrackingEnabled || visitGeoLog) && (
+                <Card className="border-sky-200 bg-sky-50/40">
+                  <CardHeader className="pb-3">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-sky-950">
+                      <MapPin className="h-4 w-4 text-sky-700" aria-hidden="true" />
+                      訪問位置情報
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <p className="text-muted-foreground">
+                      開始時に現在地を記録し、保存時に終了位置を追加します。無効化は
+                      ユーザー設定から行えます。
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                        <p className="text-xs text-muted-foreground">開始位置</p>
+                        <p className="mt-1 font-medium text-foreground">
+                          {visitGeoLog?.start
+                            ? `${visitGeoLog.start.latitude.toFixed(5)}, ${visitGeoLog.start.longitude.toFixed(5)}`
+                            : '未記録'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {visitGeoLog?.start
+                            ? `${format(
+                                new Date(visitGeoLog.start.captured_at),
+                                'yyyy/MM/dd HH:mm',
+                              )}${
+                                visitGeoLog.start.accuracy_meters != null
+                                  ? ` / 精度 ±${visitGeoLog.start.accuracy_meters}m`
+                                  : ''
+                              }`
+                            : '画面を開いた時点で取得を試みます'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                        <p className="text-xs text-muted-foreground">終了位置</p>
+                        <p className="mt-1 font-medium text-foreground">
+                          {visitGeoLog?.end
+                            ? `${visitGeoLog.end.latitude.toFixed(5)}, ${visitGeoLog.end.longitude.toFixed(5)}`
+                            : '未記録'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {visitGeoLog?.end
+                            ? `${format(new Date(visitGeoLog.end.captured_at), 'yyyy/MM/dd HH:mm')}${
+                                visitGeoLog.end.accuracy_meters != null
+                                  ? ` / 精度 ±${visitGeoLog.end.accuracy_meters}m`
+                                  : ''
+                              }`
+                            : '保存時に現在地を取得します'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>権限状態: {visitGeoLog?.permission ?? 'prompt'}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() =>
+                          void captureLocationPhase(visitGeoLog?.start ? 'end' : 'start', {
+                            successMessage: visitGeoLog?.start
+                              ? '終了位置を更新しました'
+                              : '開始位置を記録しました',
+                          })
+                        }
+                        disabled={locationCaptureState !== 'idle'}
+                      >
+                        <LocateFixed className="h-4 w-4" aria-hidden="true" />
+                        {locationCaptureState === 'capturing-start'
+                          ? '開始位置を取得中...'
+                          : locationCaptureState === 'capturing-end'
+                            ? '終了位置を取得中...'
+                            : visitGeoLog?.start
+                              ? '現在地を再取得'
+                              : '開始位置を記録'}
+                      </Button>
+                      <a
+                        href="/settings"
+                        className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        設定で無効化
+                      </a>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(isOffline || pendingSyncCount > 0) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        {isOffline
+                          ? '現在オフラインです。保存すると端末に下書きし、再接続後に同期します。'
+                          : '同期待ちの訪問記録があります。'}
+                      </p>
+                      {pendingSyncCount > 0 ? (
+                        <p className="text-xs text-amber-800/90">同期待ち {pendingSyncCount} 件</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
             </VisitRecordWorkflowSection>
-          ) : null}
+
+            <VisitRecordWorkflowSection
+              id="visit-step-status"
+              title="入力状況"
+              description="報告書化と訪問薬剤管理の確認事項がどこまで揃っているかを見ます。"
+            >
+              <VisitReportReadinessPanel mode="visit_mobile" items={visitReportReadinessItems} />
+            </VisitRecordWorkflowSection>
+
+            <VisitRecordWorkflowSection
+              id="visit-step-result"
+              title="訪問結果"
+              description="訪問日の確定と、完了・延期・再訪などの結果を先に決めます。"
+            >
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="visit_date">
+                    訪問日{' '}
+                    <span className="text-destructive" aria-label="必須">
+                      *
+                    </span>
+                  </Label>
+                  <Input
+                    id="visit_date"
+                    type="date"
+                    aria-invalid={!!form.formState.errors.visit_date}
+                    {...form.register('visit_date')}
+                  />
+                  {form.formState.errors.visit_date && (
+                    <p className="text-xs text-destructive" role="alert">
+                      {form.formState.errors.visit_date.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="outcome_status">
+                    訪問結果{' '}
+                    <span className="text-destructive" aria-label="必須">
+                      *
+                    </span>
+                  </Label>
+                  <Select
+                    value={outcomeStatus}
+                    onValueChange={(v) =>
+                      form.setValue('outcome_status', v as FormValues['outcome_status'])
+                    }
+                  >
+                    <SelectTrigger id="outcome_status" className="w-full">
+                      <SelectValue placeholder="訪問結果を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {outcomeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.formState.errors.outcome_status && (
+                    <p className="text-xs text-destructive" role="alert">
+                      {form.formState.errors.outcome_status.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {outcomeStatus === 'cancelled' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="cancellation_reason">キャンセル理由</Label>
+                  <Textarea
+                    id="cancellation_reason"
+                    placeholder="キャンセルの理由を入力してください"
+                    rows={2}
+                    {...form.register('cancellation_reason')}
+                  />
+                </div>
+              )}
+              {outcomeStatus === 'postponed' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="postpone_reason">延期理由</Label>
+                  <Textarea
+                    id="postpone_reason"
+                    placeholder="延期の理由を入力してください"
+                    rows={2}
+                    {...form.register('postpone_reason')}
+                  />
+                </div>
+              )}
+              {outcomeStatus === 'revisit_needed' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="revisit_reason">再訪理由</Label>
+                  <Textarea
+                    id="revisit_reason"
+                    placeholder="再訪が必要な理由を入力してください"
+                    rows={2}
+                    {...form.register('revisit_reason')}
+                  />
+                </div>
+              )}
+            </VisitRecordWorkflowSection>
+
+            <VisitRecordWorkflowSection
+              id="visit-step-soap"
+              title="現地記録"
+              description="S/O/A/Pを中心に、訪問先で確認した薬学的評価と介入内容を記録します。"
+            >
+              <VoiceSoapAssist
+                activeField={voiceRecognition.activeField}
+                error={voiceRecognition.error}
+                interimTranscript={voiceRecognition.interimTranscript}
+                isOffline={isOffline}
+                isSupported={voiceRecognition.isSupported}
+                lastTranscript={voiceRecognition.transcript}
+              />
+
+              {isMobile ? (
+                <SoapStepWizard
+                  isPending={createRecord.isPending}
+                  recurrenceRule={schedule?.recurrence_rule}
+                  attachmentsContent={attachmentsField}
+                  voiceInput={{
+                    activeField: voiceRecognition.activeField,
+                    error: voiceRecognition.error,
+                    interimTranscript: voiceRecognition.interimTranscript,
+                    isOffline,
+                    isSupported: voiceRecognition.isSupported,
+                    onToggle: voiceRecognition.toggleListening,
+                  }}
+                />
+              ) : (
+                <>
+                  {/* SOAP — tablet 2-column */}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:gap-5">
+                    {/* S + O (left column) */}
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                            <span className="inline-flex items-center gap-2">
+                              <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S
+                              — 主観情報（患者の訴え）
+                            </span>
+                            <SoapVoiceFieldToggle
+                              field="soap_subjective"
+                              activeField={voiceRecognition.activeField}
+                              disabled={createRecord.isPending}
+                              error={voiceRecognition.error}
+                              interimTranscript={voiceRecognition.interimTranscript}
+                              isOffline={isOffline}
+                              isSupported={voiceRecognition.isSupported}
+                              onToggle={voiceRecognition.toggleListening}
+                            />
+                          </h3>
+                        </CardHeader>
+                        <CardContent>
+                          <Textarea
+                            id="soap_subjective"
+                            placeholder="患者・家族からの訴え、服薬状況の自己申告など"
+                            rows={5}
+                            aria-label="主観情報"
+                            {...form.register('soap_subjective')}
+                          />
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                            <span className="inline-flex items-center gap-2">
+                              <Eye className="size-4 text-green-500" aria-hidden="true" />O —
+                              客観情報（観察・計測）
+                            </span>
+                            <SoapVoiceFieldToggle
+                              field="soap_objective"
+                              activeField={voiceRecognition.activeField}
+                              disabled={createRecord.isPending}
+                              error={voiceRecognition.error}
+                              interimTranscript={voiceRecognition.interimTranscript}
+                              isOffline={isOffline}
+                              isSupported={voiceRecognition.isSupported}
+                              onToggle={voiceRecognition.toggleListening}
+                            />
+                          </h3>
+                        </CardHeader>
+                        <CardContent>
+                          <Textarea
+                            id="soap_objective"
+                            placeholder="残薬確認、保管状況、副作用観察、バイタル、介助者の様子など"
+                            rows={5}
+                            aria-label="客観情報"
+                            {...form.register('soap_objective')}
+                          />
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* A + P (right column) */}
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                            <span className="inline-flex items-center gap-2">
+                              <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
+                              薬学的評価
+                            </span>
+                            <SoapVoiceFieldToggle
+                              field="soap_assessment"
+                              activeField={voiceRecognition.activeField}
+                              disabled={createRecord.isPending}
+                              error={voiceRecognition.error}
+                              interimTranscript={voiceRecognition.interimTranscript}
+                              isOffline={isOffline}
+                              isSupported={voiceRecognition.isSupported}
+                              onToggle={voiceRecognition.toggleListening}
+                            />
+                          </h3>
+                        </CardHeader>
+                        <CardContent>
+                          <Textarea
+                            id="soap_assessment"
+                            placeholder="処方の適正評価、相互作用、副作用リスク、アドヒアランス評価など"
+                            rows={5}
+                            aria-label="薬学的評価"
+                            {...form.register('soap_assessment')}
+                          />
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                            <span className="inline-flex items-center gap-2">
+                              <ClipboardList
+                                className="size-4 text-orange-500"
+                                aria-hidden="true"
+                              />
+                              P — 計画・介入
+                            </span>
+                            <SoapVoiceFieldToggle
+                              field="soap_plan"
+                              activeField={voiceRecognition.activeField}
+                              disabled={createRecord.isPending}
+                              error={voiceRecognition.error}
+                              interimTranscript={voiceRecognition.interimTranscript}
+                              isOffline={isOffline}
+                              isSupported={voiceRecognition.isSupported}
+                              onToggle={voiceRecognition.toggleListening}
+                            />
+                          </h3>
+                        </CardHeader>
+                        <CardContent>
+                          <Textarea
+                            id="soap_plan"
+                            placeholder="介入内容、次回対応事項、多職種連携の要否、処方医への報告など"
+                            rows={5}
+                            aria-label="計画・介入"
+                            {...form.register('soap_plan')}
+                          />
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+                </>
+              )}
+            </VisitRecordWorkflowSection>
+
+            {!isMobile ? (
+              <VisitRecordWorkflowSection
+                id="visit-step-final"
+                title="保存前チェック"
+                description="受領記録、次回提案、残薬、添付をまとめて確認して保存します。"
+              >
+                {/* Receipt record */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                      <User className="size-4 text-muted-foreground" aria-hidden="true" />
+                      受領記録
+                    </h3>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="receipt_person_name">受領者名</Label>
+                        <Input
+                          id="receipt_person_name"
+                          placeholder="例: 山田 花子"
+                          {...form.register('receipt_person_name')}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="receipt_person_relation">続柄</Label>
+                        <Select
+                          value={receiptPersonRelation}
+                          onValueChange={(v) =>
+                            form.setValue('receipt_person_relation', v ?? undefined)
+                          }
+                        >
+                          <SelectTrigger id="receipt_person_relation" className="w-full">
+                            <SelectValue placeholder="続柄を選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {relationOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="receipt_at">受領日時</Label>
+                        <Input
+                          id="receipt_at"
+                          type="datetime-local"
+                          {...form.register('receipt_at')}
+                          defaultValue={`${visitDate}T00:00`}
+                        />
+                        {form.formState.errors.receipt_at && (
+                          <p className="text-xs text-destructive" role="alert">
+                            {form.formState.errors.receipt_at.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Next visit suggestion */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                      <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+                      次回訪問提案
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="next_visit_suggestion_date">次回提案日</Label>
+                      <Input
+                        id="next_visit_suggestion_date"
+                        type="date"
+                        {...form.register('next_visit_suggestion_date')}
+                      />
+                    </div>
+                    {schedule?.recurrence_rule && (
+                      <p className="text-xs text-muted-foreground">
+                        定期ルール: {schedule.recurrence_rule}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Residual medications */}
+                <Card>
+                  <CardContent className="pt-4">
+                    <ResidualMedicationForm />
+                  </CardContent>
+                </Card>
+
+                {isCompletionOutcome && missingHomeVisit2026Items.length > 0 ? (
+                  <VisitCompletionReadinessWarning items={missingHomeVisit2026Items} />
+                ) : null}
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                      <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
+                      写真・添付
+                    </h3>
+                  </CardHeader>
+                  <CardContent>{attachmentsField}</CardContent>
+                </Card>
+
+                {/* Submit */}
+                <ActionRail className="pt-2">
+                  <Button type="button" variant="outline" onClick={() => router.back()}>
+                    キャンセル
+                  </Button>
+                  <LoadingButton
+                    type="submit"
+                    loading={createRecord.isPending}
+                    loadingLabel="保存中..."
+                  >
+                    保存
+                  </LoadingButton>
+                </ActionRail>
+              </VisitRecordWorkflowSection>
+            ) : null}
+          </div>
         </div>
       </form>
     </FormProvider>
