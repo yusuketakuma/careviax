@@ -294,3 +294,11 @@ E の設計指針(次ループ):
 ### 次: p1_10(報告テンプレート3カラムエディタ)
 - /admin/document-templates の編集 UI を「テンプレート一覧(種別5)/文面を編集/差し込み項目チップ+保存」の3カラム化
 - 既存: 登録フォーム+登録済み一覧(care_report テンプレ3件 seed 済)。編集ダイアログ or インライン編集の現構造を確認してから差し込み
+
+## 一時停止(2026-06-12 23:05)— ユーザー指示「omc wait --start」により待機
+
+- p1_10 は調査完了・実装未着手の状態で中断。調査結果:
+  - /admin/document-templates = template-content.tsx(498行)。テンプレ API は /api/templates(GET/POST)+ /api/templates/[id](PATCH/DELETE、canAdmin、updateTemplateSchema は部分更新形)
+  - DocumentTemplateRow.content は Record<string, unknown>(自由 JSON)→ 文面は content.body_text 文字列を新設して保存する方針
+  - 実装案: template-body-editor.tsx 新設(左=テンプレ一覧カード/中央=文面 textarea/右=差し込みチップ{服薬状況}{残薬}{副作用}{薬剤師評価}{お願いしたいこと}{次回確認}+保存する)。純関数 insertMergeField(text, cursor, label)+readTemplateBodyText をテスト付きで切り出し、保存は PATCH {content: {...content, body_text}}
+- 再開時はこの節から: p1_10 実装 → p1_14 → p1_08。撮影保留(p0_45/p1_04 済→p0_45 のみ)と精査要(p1_03/05/07)も残
