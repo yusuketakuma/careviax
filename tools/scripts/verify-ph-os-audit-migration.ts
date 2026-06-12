@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { Client } from 'pg';
 import {
   AUDIT_TRIGGER_CATALOG_SQL,
@@ -6,6 +8,11 @@ import {
   validateAuditTriggerContracts,
 } from './audit-trigger-contract';
 import type { AuditTriggerCatalogRow } from './audit-trigger-contract';
+
+const USAGE = [
+  'Usage: pnpm db:verify-ph-os-audit-migration [--help]',
+  'Approved-DB verifier for PH-OS audit trigger and RLS contracts. Runs transaction-scoped DML proof and rolls it back.',
+].join('\n');
 
 async function queryValue<T>(client: Client, sql: string, params: unknown[] = []) {
   const result = await client.query<{ value: T }>(sql, params);
@@ -23,12 +30,21 @@ async function expectQueryFailure(client: Client, sql: string, params: unknown[]
 }
 
 async function main() {
+  if (process.argv.includes('--help')) {
+    console.log(USAGE);
+    return;
+  }
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required');
   }
 
-  const client = new Client({ connectionString: databaseUrl });
+  const client = new Client({
+    connectionString: databaseUrl,
+    statement_timeout: 120_000,
+    query_timeout: 120_000,
+  });
   await client.connect();
 
   try {
@@ -220,7 +236,17 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(
+      JSON.stringify({
+        ok: false,
+        message:
+          error instanceof Error && error.message.length > 0
+            ? error.message
+            : inspect(error, { depth: 2 }),
+      }),
+    );
+    process.exit(1);
+  });
+}

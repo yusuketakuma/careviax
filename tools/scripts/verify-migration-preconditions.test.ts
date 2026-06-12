@@ -16,7 +16,7 @@ function makeClient(counts: number[]): MigrationPreconditionClient {
 describe('verifyMigrationPreconditions', () => {
   it('passes when no blocking data issue exists and btree_gist is installed', async () => {
     const result = await verifyMigrationPreconditions(
-      makeClient([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]),
+      makeClient([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
     );
 
     expect(result.ok).toBe(true);
@@ -24,11 +24,13 @@ describe('verifyMigrationPreconditions', () => {
     expect(result.checked).toContain('patient-insurance-active-overlap');
     expect(result.checked).toContain('pca-duplicate-serial-numbers');
     expect(result.checked).toContain('file-asset-duplicate-storage-key');
+    expect(result.checked).toContain('file-asset-size-bytes-out-of-range');
+    expect(result.checked).toContain('file-asset-invalid-timestamps');
   });
 
   it('warns but does not fail when btree_gist is not installed', async () => {
     const result = await verifyMigrationPreconditions(
-      makeClient([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      makeClient([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
     );
 
     expect(result.ok).toBe(true);
@@ -42,7 +44,7 @@ describe('verifyMigrationPreconditions', () => {
 
   it('fails on patient insurance and PCA data that would block hardening migrations', async () => {
     const result = await verifyMigrationPreconditions(
-      makeClient([1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0]),
+      makeClient([1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0]),
     );
 
     expect(result.ok).toBe(false);
@@ -62,7 +64,7 @@ describe('verifyMigrationPreconditions', () => {
 
   it('fails on file asset rows that would block FileAsset backfill', async () => {
     const result = await verifyMigrationPreconditions(
-      makeClient([0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4]),
+      makeClient([0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6]),
     );
 
     expect(result.ok).toBe(false);
@@ -70,6 +72,11 @@ describe('verifyMigrationPreconditions', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'file-asset-duplicate-storage-key', severity: 'error' }),
         expect.objectContaining({ name: 'file-asset-invalid-size-bytes', severity: 'error' }),
+        expect.objectContaining({
+          name: 'file-asset-size-bytes-out-of-range',
+          severity: 'error',
+        }),
+        expect.objectContaining({ name: 'file-asset-invalid-timestamps', severity: 'error' }),
         expect.objectContaining({ name: 'file-asset-missing-organization', severity: 'error' }),
       ]),
     );

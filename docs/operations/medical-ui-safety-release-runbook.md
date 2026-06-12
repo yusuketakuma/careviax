@@ -21,6 +21,8 @@ The gate must prove:
 - Required package scripts and Playwright specs exist.
 - The local E2E CareReport duplicate precheck returns `duplicate_groups:0`.
 - The local E2E visit route_order conflict precheck returns `conflict_groups:0`.
+- The local E2E migration precondition verifier returns no `severity:"error"`
+  issues.
 - Targeted Playwright/axe medical UI tests pass.
 
 Use `db:e2e:check-care-report-duplicates` only for local E2E release
@@ -30,6 +32,10 @@ target database migration precheck below.
 Use `db:e2e:check-visit-route-order-conflicts` only for local E2E route-order
 release evidence. Use the generic `db:check-visit-route-order-conflicts`
 command in the target database route-order precheck below.
+
+Use `db:e2e:verify-migration-preconditions` only for local E2E migration
+precondition evidence. Use the generic `db:verify-migration-preconditions`
+command in the target database migration preconditions below.
 
 ## Target Database Migration Precheck
 
@@ -66,6 +72,36 @@ Stop the rollout if the command exits non-zero for conflict groups. Resolve the
 conflicting visit schedule/proposal route_order rows first, then rerun the
 precheck.
 
+## Target Database Migration Preconditions
+
+Before applying pending hardening migrations to any non-local environment, run
+the read-only migration precondition verifier against that target database:
+
+```bash
+DATABASE_URL='<target database url>' \
+DIRECT_URL='<target direct database url>' \
+pnpm --config.verify-deps-before-run=false db:verify-migration-preconditions
+```
+
+Stop the rollout if any `severity:"error"` issue is reported. Warnings, such
+as a missing extension that the migration role is explicitly allowed to create,
+must still be reviewed before applying migrations.
+
+## PH-OS Audit Migration Verification
+
+After PH-OS audit trigger/RLS migrations are applied in an approved database
+environment, run the audit verifier. This command performs transaction-scoped
+DML proof and rolls it back:
+
+```bash
+DATABASE_URL='<target database url>' \
+DIRECT_URL='<target direct database url>' \
+pnpm --config.verify-deps-before-run=false db:verify-ph-os-audit-migration
+```
+
+Stop the rollout if audit trigger contracts, no-op update behavior, audit
+metadata, or RLS isolation checks fail.
+
 ## External Access Case-Boundary Precheck
 
 Before releasing assignment-scoped external sharing, audit active legacy
@@ -77,12 +113,13 @@ DATABASE_URL='<target database url>' \
 pnpm --config.verify-deps-before-run=false db:external-access-case-boundary-audit
 ```
 
-If the dry run reports only `backfillable_grants`, rerun with `--apply` to
-attach the single active case ID to each grant:
+If the dry run reports only `backfillable_grants`, review the reported row
+count, choose an explicit upper bound, then rerun with `--apply --max-rows N`
+to attach the single active case ID to each grant:
 
 ```bash
 DATABASE_URL='<target database url>' \
-pnpm --config.verify-deps-before-run=false db:external-access-case-boundary-audit -- --apply
+pnpm --config.verify-deps-before-run=false db:external-access-case-boundary-audit -- --apply --max-rows 100
 ```
 
 Stop release if the command reports blockers. `multiple_active_cases` requires

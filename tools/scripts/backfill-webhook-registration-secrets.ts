@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { inspect } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { Client, type QueryResultRow } from 'pg';
 import {
@@ -41,6 +42,10 @@ type PgClientLike = {
 };
 
 const DEFAULT_BATCH_SIZE = 50;
+const USAGE = [
+  'Usage: pnpm db:webhook-secrets:backfill [--dry-run] [--apply --max-rows N] [--batch-size N] [--org-id ORG]',
+  'Default mode is --dry-run. --apply never runs unless --max-rows is provided.',
+].join('\n');
 
 function readValue(argv: string[], name: string) {
   const index = argv.indexOf(name);
@@ -63,12 +68,7 @@ function parsePositiveInt(value: string | null, name: string, fallback: number |
 
 export function parseBackfillArgs(argv: string[]): BackfillOptions {
   if (argv.includes('--help')) {
-    throw new Error(
-      [
-        'Usage: pnpm db:webhook-secrets:backfill [--dry-run] [--apply --max-rows N] [--batch-size N] [--org-id ORG]',
-        'Default mode is --dry-run. --apply never runs unless --max-rows is provided.',
-      ].join('\n'),
-    );
+    throw new Error(USAGE);
   }
 
   const apply = argv.includes('--apply');
@@ -319,6 +319,11 @@ export async function runWebhookSecretBackfill(client: PgClientLike, options: Ba
 }
 
 async function main() {
+  if (process.argv.includes('--help')) {
+    console.log(USAGE);
+    return;
+  }
+
   const options = parseBackfillArgs(process.argv.slice(2));
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -340,7 +345,15 @@ async function main() {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(
+      JSON.stringify({
+        ok: false,
+        message:
+          error instanceof Error && error.message.length > 0
+            ? error.message
+            : inspect(error, { depth: 2 }),
+      }),
+    );
     process.exit(1);
   });
 }

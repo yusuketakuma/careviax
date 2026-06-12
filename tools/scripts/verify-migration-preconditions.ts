@@ -1,4 +1,11 @@
+import { inspect } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { Client } from 'pg';
+
+const USAGE = [
+  'Usage: pnpm db:verify-migration-preconditions [--help]',
+  'Read-only precheck for approved DB migration targets.',
+].join('\n');
 
 export type MigrationPreconditionIssue = {
   name: string;
@@ -231,6 +238,55 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
     });
   }
 
+  const outOfRangeFileAssetSizeBytes = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM "Setting"
+      WHERE "scope" = 'organization'
+        AND "key" LIKE 'file_asset:%'
+        AND jsonb_typeof("value") = 'object'
+        AND value->>'version' = '1'
+        AND value->>'sizeBytes' ~ '^[0-9]+$'
+        AND (value->>'sizeBytes')::numeric > 2147483647
+    `,
+  );
+  if (outOfRangeFileAssetSizeBytes > 0) {
+    issues.push({
+      name: 'file-asset-size-bytes-out-of-range',
+      severity: 'error',
+      detail: `${outOfRangeFileAssetSizeBytes} file asset Setting row(s) have sizeBytes values outside PostgreSQL integer range`,
+    });
+  }
+
+  const invalidFileAssetTimestamps = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM "Setting" AS setting
+      CROSS JOIN LATERAL (
+        VALUES
+          ('createdAt', setting.value->>'createdAt'),
+          ('updatedAt', setting.value->>'updatedAt'),
+          ('completedAt', setting.value->>'completedAt'),
+          ('expiresAt', setting.value->>'expiresAt')
+      ) AS timestamp_field(field_name, raw_value)
+      WHERE setting."scope" = 'organization'
+        AND setting."key" LIKE 'file_asset:%'
+        AND jsonb_typeof(setting."value") = 'object'
+        AND setting.value->>'version' = '1'
+        AND NULLIF(timestamp_field.raw_value, '') IS NOT NULL
+        AND NOT pg_input_is_valid(timestamp_field.raw_value, 'timestamp')
+    `,
+  );
+  if (invalidFileAssetTimestamps > 0) {
+    issues.push({
+      name: 'file-asset-invalid-timestamps',
+      severity: 'error',
+      detail: `${invalidFileAssetTimestamps} file asset timestamp value(s) would fail FileAsset backfill casting`,
+    });
+  }
+
   const missingFileAssetOrganizations = await queryCount(
     client,
     `
@@ -267,18 +323,29 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
       'btree-gist-extension',
       'file-asset-duplicate-storage-key',
       'file-asset-invalid-size-bytes',
+      'file-asset-size-bytes-out-of-range',
+      'file-asset-invalid-timestamps',
       'file-asset-missing-organization',
     ],
   };
 }
 
 async function main() {
+  if (process.argv.includes('--help')) {
+    console.log(USAGE);
+    return;
+  }
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required');
   }
 
-  const client = new Client({ connectionString: databaseUrl });
+  const client = new Client({
+    connectionString: databaseUrl,
+    statement_timeout: 120_000,
+    query_timeout: 120_000,
+  });
   await client.connect();
   try {
     const result = await verifyMigrationPreconditions(client);
@@ -291,9 +358,17 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch((error) => {
-    console.error(error);
+    console.error(
+      JSON.stringify({
+        ok: false,
+        message:
+          error instanceof Error && error.message.length > 0
+            ? error.message
+            : inspect(error, { depth: 2 }),
+      }),
+    );
     process.exit(1);
   });
 }

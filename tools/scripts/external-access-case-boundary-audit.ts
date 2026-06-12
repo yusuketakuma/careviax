@@ -1,8 +1,9 @@
 import 'dotenv/config';
-import { Client } from 'pg';
 import { inspect } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { Client, type QueryResultRow } from 'pg';
 
-type LegacyGrantRow = {
+export type LegacyGrantRow = {
   id: string;
   org_id: string;
   patient_id: string;
@@ -12,7 +13,14 @@ type LegacyGrantRow = {
   has_self_report_history: boolean;
 };
 
-type Blocker = {
+export type ExternalAccessCaseBoundaryMode = 'dry-run' | 'apply';
+
+export type ExternalAccessCaseBoundaryOptions = {
+  mode: ExternalAccessCaseBoundaryMode;
+  maxRows: number | null;
+};
+
+export type ExternalAccessCaseBoundaryBlocker = {
   grant_id: string;
   org_id: string;
   patient_id: string;
@@ -20,14 +28,61 @@ type Blocker = {
   active_case_count: number;
 };
 
-const connectionString = process.env.DATABASE_URL;
-const shouldApply = process.argv.includes('--apply');
+export type PgClientLike = {
+  query<T extends QueryResultRow = QueryResultRow>(
+    sql: string,
+    values?: unknown[],
+  ): Promise<{
+    rows: T[];
+    rowCount: number | null;
+  }>;
+};
 
-if (!connectionString) {
-  throw new Error('DATABASE_URL is required');
+const USAGE = [
+  'Usage: pnpm db:external-access-case-boundary-audit [--dry-run] [--apply --max-rows N]',
+  'Default mode is --dry-run. --apply never runs unless --max-rows is provided.',
+].join('\n');
+
+function readValue(argv: string[], name: string) {
+  const index = argv.indexOf(name);
+  if (index === -1) return null;
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${name} requires a value`);
+  }
+  return value;
 }
 
-const client = new Client({ connectionString });
+function parsePositiveInt(value: string | null, name: string) {
+  if (value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
+export function parseExternalAccessCaseBoundaryArgs(
+  argv: string[],
+): ExternalAccessCaseBoundaryOptions {
+  if (argv.includes('--help')) {
+    throw new Error(USAGE);
+  }
+
+  const apply = argv.includes('--apply');
+  const dryRun = argv.includes('--dry-run');
+  if (apply && dryRun) throw new Error('Choose either --apply or --dry-run, not both');
+
+  const maxRows = parsePositiveInt(readValue(argv, '--max-rows'), '--max-rows');
+  if (apply && maxRows == null) {
+    throw new Error('--apply requires --max-rows to keep the write bounded');
+  }
+
+  return {
+    mode: apply ? 'apply' : 'dry-run',
+    maxRows,
+  };
+}
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -38,7 +93,9 @@ function activeCaseCount(row: Pick<LegacyGrantRow, 'active_case_count'>) {
   return Number(row.active_case_count);
 }
 
-function classifyBlocker(row: LegacyGrantRow): Blocker | null {
+export function classifyExternalAccessCaseBoundaryBlocker(
+  row: LegacyGrantRow,
+): ExternalAccessCaseBoundaryBlocker | null {
   const count = activeCaseCount(row);
   if (!row.has_supported_case_scope && row.has_self_report_history) {
     return {
@@ -70,7 +127,7 @@ function classifyBlocker(row: LegacyGrantRow): Blocker | null {
   return null;
 }
 
-async function findLegacyCaseBackedGrants() {
+async function findLegacyCaseBackedGrants(client: PgClientLike) {
   const result = await client.query<LegacyGrantRow>(`
     SELECT
       external_grant.id,
@@ -121,7 +178,7 @@ async function findLegacyCaseBackedGrants() {
   }));
 }
 
-async function backfillAllowedCaseId(grantId: string, caseId: string) {
+async function backfillAllowedCaseId(client: PgClientLike, grantId: string, caseId: string) {
   await client.query(
     `
       UPDATE "ExternalAccessGrant"
@@ -134,44 +191,102 @@ async function backfillAllowedCaseId(grantId: string, caseId: string) {
   );
 }
 
-async function main() {
-  await client.connect();
+export async function runExternalAccessCaseBoundaryAudit(
+  client: PgClientLike,
+  options: ExternalAccessCaseBoundaryOptions,
+) {
+  const legacyGrants = await findLegacyCaseBackedGrants(client);
+  const blockers = legacyGrants
+    .map(classifyExternalAccessCaseBoundaryBlocker)
+    .filter((item): item is ExternalAccessCaseBoundaryBlocker => Boolean(item));
+  const backfillable = legacyGrants.filter(
+    (row) => !classifyExternalAccessCaseBoundaryBlocker(row),
+  );
+  const updatedGrantIds: string[] = [];
 
-  try {
-    const legacyGrants = await findLegacyCaseBackedGrants();
-    const blockers = legacyGrants.map(classifyBlocker).filter((item): item is Blocker => Boolean(item));
-    const backfillable = legacyGrants.filter((row) => !classifyBlocker(row));
-    const updatedGrantIds: string[] = [];
+  if (options.mode === 'apply') {
+    if (blockers.length > 0) {
+      return {
+        ok: false,
+        mode: options.mode,
+        legacy_case_backed_grants: legacyGrants.length,
+        backfillable_grants: backfillable.length,
+        updated_grants: updatedGrantIds,
+        blockers,
+        message:
+          'Apply aborted because legacy grant blockers remain. Resolve blockers, then rerun --apply.',
+      };
+    }
 
-    if (shouldApply && blockers.length === 0) {
+    const maxRows = options.maxRows ?? 0;
+    if (backfillable.length > maxRows) {
+      return {
+        ok: false,
+        mode: options.mode,
+        legacy_case_backed_grants: legacyGrants.length,
+        backfillable_grants: backfillable.length,
+        updated_grants: updatedGrantIds,
+        blockers,
+        message: `Apply aborted because ${backfillable.length} backfillable grants exceed --max-rows ${maxRows}. Increase the explicit bound after review.`,
+      };
+    }
+
+    await client.query('BEGIN');
+    try {
       for (const row of backfillable) {
         const [caseId] = row.active_case_ids;
         if (!caseId) continue;
-        await backfillAllowedCaseId(row.id, caseId);
+        await backfillAllowedCaseId(client, row.id, caseId);
         updatedGrantIds.push(row.id);
       }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
     }
+  }
 
-    const ok = blockers.length === 0 && (shouldApply || legacyGrants.length === 0);
-    const output = {
-      ok,
-      mode: shouldApply ? 'apply' : 'dry-run',
-      legacy_case_backed_grants: legacyGrants.length,
-      backfillable_grants: backfillable.length,
-      updated_grants: updatedGrantIds,
-      blockers,
-      message:
-        legacyGrants.length === 0
-          ? 'No active legacy case-backed ExternalAccessGrant rows require allowed_case_ids.'
-          : shouldApply
-            ? blockers.length > 0
-              ? 'Apply aborted because legacy grant blockers remain. Resolve blockers, then rerun --apply.'
-              : 'Backfilled single-active-case legacy grants.'
-            : 'Dry run only. Re-run with --apply to backfill single-active-case grants, then resolve blockers manually.',
-    };
+  const ok = blockers.length === 0 && (options.mode === 'apply' || legacyGrants.length === 0);
 
-    const serialized = JSON.stringify(output, null, ok ? 0 : 2);
-    if (ok) {
+  return {
+    ok,
+    mode: options.mode,
+    legacy_case_backed_grants: legacyGrants.length,
+    backfillable_grants: backfillable.length,
+    updated_grants: updatedGrantIds,
+    blockers,
+    message:
+      legacyGrants.length === 0
+        ? 'No active legacy case-backed ExternalAccessGrant rows require allowed_case_ids.'
+        : options.mode === 'apply'
+          ? 'Backfilled single-active-case legacy grants.'
+          : 'Dry run only. Re-run with --apply --max-rows N to backfill single-active-case grants, then resolve blockers manually.',
+  };
+}
+
+async function main() {
+  if (process.argv.includes('--help')) {
+    console.log(USAGE);
+    return;
+  }
+
+  const options = parseExternalAccessCaseBoundaryArgs(process.argv.slice(2));
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required');
+  }
+
+  const client = new Client({
+    connectionString,
+    statement_timeout: 120_000,
+    query_timeout: 120_000,
+  });
+  await client.connect();
+
+  try {
+    const output = await runExternalAccessCaseBoundaryAudit(client, options);
+    const serialized = JSON.stringify(output, null, output.ok ? 0 : 2);
+    if (output.ok) {
       console.log(serialized);
     } else {
       console.error(serialized);
@@ -182,15 +297,17 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(
-    JSON.stringify({
-      ok: false,
-      message:
-        error instanceof Error && error.message.length > 0
-          ? error.message
-          : inspect(error, { depth: 2 }),
-    }),
-  );
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(
+      JSON.stringify({
+        ok: false,
+        message:
+          error instanceof Error && error.message.length > 0
+            ? error.message
+            : inspect(error, { depth: 2 }),
+      }),
+    );
+    process.exit(1);
+  });
+}
