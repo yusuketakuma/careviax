@@ -107,6 +107,7 @@ import {
   type SingleProposalConfirmAction,
   type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
+  buildProposalFlowSteps,
 } from '../day-view.shared';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
@@ -2428,6 +2429,38 @@ export function ScheduleProposalsContent({
                     <Badge variant="outline">{PRIORITY_LABELS[detail.priority]}</Badge>
                   </div>
                   <ProposalDecisionBadges proposal={detail} />
+                  {/* p0_17: 正式決定までの流れ(5ステップの現在地) */}
+                  <ol
+                    className="space-y-1.5"
+                    aria-label="正式決定までの流れ"
+                    data-testid="proposal-flow-steps"
+                  >
+                    {buildProposalFlowSteps(detail).map((step, index) => (
+                      <li
+                        key={step.label}
+                        data-state={step.state}
+                        className={cn(
+                          'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
+                          step.state === 'current'
+                            ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
+                            : step.state === 'done'
+                              ? 'border-emerald-200 bg-emerald-50/60 text-foreground'
+                              : 'border-border bg-muted/30 text-muted-foreground',
+                        )}
+                      >
+                        <span>
+                          {index + 1} {step.label}
+                        </span>
+                        <span className="shrink-0 text-xs">
+                          {step.state === 'done'
+                            ? '完了'
+                            : step.state === 'current'
+                              ? 'いまここ'
+                              : '未'}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
                   <div className="flex flex-wrap gap-2">
                     {detail.proposal_status !== 'patient_contact_pending' &&
                     ['proposed', 'reschedule_pending'].includes(detail.proposal_status) ? (

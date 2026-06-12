@@ -789,3 +789,47 @@ export function formatVehicleResourceLabel(
   ].filter((constraint): constraint is string => constraint !== null);
   return constraints.length > 0 ? `${vehicle.label} (${constraints.join(' / ')})` : vehicle.label;
 }
+
+export type ProposalFlowStepState = 'done' | 'current' | 'pending';
+
+export type ProposalFlowStep = {
+  label: string;
+  state: ProposalFlowStepState;
+};
+
+const PROPOSAL_FLOW_STEP_LABELS = [
+  'システムが候補を出す',
+  '事務員が患者さんへ確認',
+  '患者さん・家族が了承',
+  '正式決定にする',
+  'スタッフ予定に反映',
+] as const;
+
+/**
+ * デザイン p0_17「正式決定までの流れ」: 提案がどこまで進んだかを 5 ステップで示す。
+ * 確定(confirmed)はスタッフ予定への反映まで完了扱い(確定 API が訪問予定へ昇格させるため)。
+ */
+export function buildProposalFlowSteps(proposal: {
+  proposal_status: ProposalStatus;
+  patient_contact_status: PatientContactStatus;
+}): ProposalFlowStep[] {
+  const contactConfirmed = proposal.patient_contact_status === 'confirmed';
+  const contactStarted = proposal.patient_contact_status !== 'pending';
+  const isConfirmed = proposal.proposal_status === 'confirmed';
+
+  let currentIndex: number;
+  if (isConfirmed) {
+    currentIndex = PROPOSAL_FLOW_STEP_LABELS.length;
+  } else if (contactConfirmed) {
+    currentIndex = 3;
+  } else if (proposal.proposal_status === 'patient_contact_pending') {
+    currentIndex = contactStarted ? 2 : 1;
+  } else {
+    currentIndex = 1;
+  }
+
+  return PROPOSAL_FLOW_STEP_LABELS.map((label, index) => ({
+    label,
+    state: index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'pending',
+  }));
+}

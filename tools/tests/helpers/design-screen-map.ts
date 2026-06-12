@@ -248,6 +248,18 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p0_17_schedule_confirmation_flow',
     targetImage: 'images/P0/p0_17_schedule_confirmation_flow.png',
     route: '/schedules/proposals',
+    setup: async (page) => {
+      // 先頭候補の詳細シートを開き、「正式決定までの流れ」の描画まで待つ
+      await page
+        .getByRole('button', { name: /候補詳細を開く/ })
+        .first()
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="proposal-flow-steps"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_18_schedule_create_edit_drawer',
