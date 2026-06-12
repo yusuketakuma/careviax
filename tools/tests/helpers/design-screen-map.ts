@@ -308,7 +308,8 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_25_clerk_support_dashboard',
     targetImage: 'images/P0/p0_25_clerk_support_dashboard.png',
-    route: '/my-day',
+    // 事務サポート専用ページ(BFF: /api/dashboard/clerk-support)
+    route: '/clerk-support',
   },
   {
     screenId: 'p0_26_contact_delivery_target_edit',
