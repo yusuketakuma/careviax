@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
   success,
   validationError,
@@ -98,8 +100,8 @@ async function withSerializableVisitScheduleReorderTransaction<T>(
   throw new VisitScheduleReorderRetryLimitError();
 }
 
-export const PATCH = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const PATCH = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -119,12 +121,12 @@ export const PATCH = withAuth(
     let result: VisitScheduleReorderResult;
     try {
       result = await withSerializableVisitScheduleReorderTransaction<VisitScheduleReorderResult>(
-        req.orgId,
+        ctx.orgId,
         async (tx) => {
-          const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+          const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
           const schedules = await tx.visitSchedule.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { in: uniqueScheduleIds },
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
@@ -145,7 +147,7 @@ export const PATCH = withAuth(
           }
 
           const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
-          if (!canBypassVisitScheduleAssignmentAccess(req)) {
+          if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
             const pharmacistChange = dedupedUpdates.find((item) => {
               const schedule = scheduleById.get(item.schedule_id);
               return (
@@ -170,7 +172,7 @@ export const PATCH = withAuth(
           if (pharmacistIds.length > 0) {
             const memberships = await tx.membership.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 user_id: { in: pharmacistIds },
                 is_active: true,
                 role: {
@@ -226,7 +228,7 @@ export const PATCH = withAuth(
 
           const existingRouteOrderConflict = await tx.visitSchedule.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { notIn: uniqueScheduleIds },
               OR: routeCells.map((cell) => ({
                 pharmacist_id: cell.pharmacistId,
@@ -242,7 +244,7 @@ export const PATCH = withAuth(
 
           const existingProposalRouteOrderConflict = await tx.visitScheduleProposal.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               finalized_schedule_id: null,
               proposal_status: { in: OPEN_PROPOSAL_STATUSES },
               OR: routeCells.map((cell) => ({
@@ -291,7 +293,7 @@ export const PATCH = withAuth(
               ? []
               : await tx.pharmacistShift.findMany({
                   where: {
-                    org_id: req.orgId,
+                    org_id: ctx.orgId,
                     OR: targetShiftKeys.map((key) => {
                       const [userId, date] = key.split(':');
                       return {
@@ -355,7 +357,7 @@ export const PATCH = withAuth(
 
               const updateResult = await tx.visitSchedule.updateMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: item.schedule_id,
                   pharmacist_id: schedule.pharmacist_id,
                   scheduled_date: schedule.scheduled_date,
@@ -375,22 +377,18 @@ export const PATCH = withAuth(
             }),
           );
 
-          await tx.auditLog.create({
-            data: {
-              org_id: req.orgId,
-              actor_id: req.userId,
-              action: 'visit_schedules_reordered',
-              target_type: 'VisitScheduleBatch',
-              target_id: uniqueScheduleIds[0],
-              changes: {
-                updates: dedupedUpdates.map((item) => ({
-                  schedule_id: item.schedule_id,
-                  route_order: item.route_order,
-                  scheduled_date: item.scheduled_date ?? null,
-                  pharmacist_id: item.pharmacist_id ?? null,
-                })),
-                confirmation_context: parsed.data.confirmation_context ?? null,
-              },
+          await createAuditLogEntry(tx, ctx, {
+            action: 'visit_schedules_reordered',
+            targetType: 'VisitScheduleBatch',
+            targetId: uniqueScheduleIds[0],
+            changes: {
+              updates: dedupedUpdates.map((item) => ({
+                schedule_id: item.schedule_id,
+                route_order: item.route_order,
+                scheduled_date: item.scheduled_date ?? null,
+                pharmacist_id: item.pharmacist_id ?? null,
+              })),
+              confirmation_context: parsed.data.confirmation_context ?? null,
             },
           });
 
@@ -439,7 +437,7 @@ export const PATCH = withAuth(
     await Promise.all(
       successfulResult.case_ids.map((caseId) =>
         notifyWorkflowMutation({
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           payload: { source: 'visit_schedules_reorder', case_id: caseId },
         }),
       ),

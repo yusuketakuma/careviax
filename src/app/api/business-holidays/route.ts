@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -6,8 +7,8 @@ import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createBusinessHolidaySchema } from '@/lib/validations/business-holiday';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
@@ -15,7 +16,7 @@ export const GET = withAuth(
 
     const holidays = await prisma.businessHoliday.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(dateFrom || dateTo
           ? {
               date: {
@@ -45,8 +46,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -55,14 +56,14 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
     });
     if (!refResult.ok) return refResult.response;
 
     const existing = await prisma.businessHoliday.findFirst({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         date: new Date(parsed.data.date),
         site_id: parsed.data.site_id ?? null,
         holiday_type: parsed.data.holiday_type,
@@ -73,10 +74,10 @@ export const POST = withAuth(
       return validationError('同じ日の休日設定が既に存在します');
     }
 
-    const holiday = await withOrgContext(req.orgId, async (tx) => {
+    const holiday = await withOrgContext(ctx.orgId, async (tx) => {
       const created = await tx.businessHoliday.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           site_id: parsed.data.site_id ?? null,
           date: new Date(parsed.data.date),
           name: parsed.data.name,
@@ -85,21 +86,15 @@ export const POST = withAuth(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'business_holiday_created',
-          target_type: 'BusinessHoliday',
-          target_id: created.id,
-          changes: {
-            date: parsed.data.date,
-            site_id: parsed.data.site_id ?? null,
-            holiday_type: parsed.data.holiday_type,
-            is_closed: parsed.data.is_closed,
-          },
-          ip_address: req.ipAddress,
-          user_agent: req.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'business_holiday_created',
+        targetType: 'BusinessHoliday',
+        targetId: created.id,
+        changes: {
+          date: parsed.data.date,
+          site_id: parsed.data.site_id ?? null,
+          holiday_type: parsed.data.holiday_type,
+          is_closed: parsed.data.is_closed,
         },
       });
 

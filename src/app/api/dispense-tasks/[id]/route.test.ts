@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
+type TestAuthContext = {
   orgId: string;
   userId: string;
   role: 'pharmacist';
 };
 
+type TestRouteContext = { params: Promise<{ id: string }> };
+
 const {
-  withAuthMock,
+  withAuthContextMock,
   dispenseTaskFindFirstMock,
   membershipFindFirstMock,
   pharmacySiteFindFirstMock,
@@ -19,16 +21,26 @@ const {
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        }) as AuthenticatedTestRequest,
-      );
-  }),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: TestAuthContext,
+        routeContext: TestRouteContext,
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext: TestRouteContext) =>
+        handler(
+          req,
+          {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          },
+          routeContext,
+        );
+    },
+  ),
   dispenseTaskFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
@@ -40,8 +52,8 @@ const {
   notifyWorkflowMutationMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({

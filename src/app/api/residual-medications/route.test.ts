@@ -1,30 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'pharmacist';
-};
-
 const {
-  withAuthMock,
   visitRecordFindManyMock,
   visitRecordFindFirstMock,
   residualMedicationFindManyMock,
   residualMedicationCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist' as const,
-        }),
-      );
-  }),
   visitRecordFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   residualMedicationFindManyMock: vi.fn(),
@@ -32,8 +15,26 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+const emptyRouteContext = { params: Promise.resolve({}) };
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist',
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, authContext, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -95,6 +96,7 @@ describe('/api/residual-medications', () => {
       createRequest(
         'http://localhost/api/residual-medications?patient_id=patient_1&limit=%2020%20',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -134,6 +136,7 @@ describe('/api/residual-medications', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/residual-medications?patient_id=patient_1&limit=20abc'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -153,6 +156,7 @@ describe('/api/residual-medications', () => {
   it('rejects oversized residual medication limits before visit record lookup', async () => {
     const response = await GET(
       createRequest('http://localhost/api/residual-medications?patient_id=patient_1&limit=9999'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -165,7 +169,10 @@ describe('/api/residual-medications', () => {
   it('preserves unbounded residual medication reads when limit is omitted', async () => {
     visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
 
-    await GET(createRequest('http://localhost/api/residual-medications?patient_id=patient_1'));
+    await GET(
+      createRequest('http://localhost/api/residual-medications?patient_id=patient_1'),
+      emptyRouteContext,
+    );
 
     expect(residualMedicationFindManyMock).toHaveBeenCalledWith(
       expect.not.objectContaining({
@@ -179,6 +186,7 @@ describe('/api/residual-medications', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/residual-medications?patient_id=patient_404'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -194,6 +202,7 @@ describe('/api/residual-medications', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/residual-medications?visit_record_id=visit_2'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -218,6 +227,7 @@ describe('/api/residual-medications', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -253,7 +263,10 @@ describe('/api/residual-medications', () => {
   });
 
   it('rejects non-object create payloads before visit record lookup or writes', async () => {
-    const response = await POST(createRequest('http://localhost/api/residual-medications', []));
+    const response = await POST(
+      createRequest('http://localhost/api/residual-medications', []),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -265,6 +278,7 @@ describe('/api/residual-medications', () => {
   it('rejects malformed JSON before visit record lookup or writes', async () => {
     const response = await POST(
       createMalformedJsonRequest('http://localhost/api/residual-medications'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -291,6 +305,7 @@ describe('/api/residual-medications', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');

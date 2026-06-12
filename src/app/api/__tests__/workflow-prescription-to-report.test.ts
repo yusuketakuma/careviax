@@ -51,6 +51,7 @@ const completedVisitStructuredSoap = {
 
 const {
   withAuthMock,
+  withAuthContextMock,
   requireAuthContextMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
@@ -74,11 +75,28 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler(Object.assign(req, {
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }),
+        );
+    },
+  ),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) =>
+        handler(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        }));
+        });
     },
   ),
   requireAuthContextMock: vi.fn(),
@@ -111,6 +129,7 @@ vi.mock('@/lib/auth/config', () => ({
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -222,6 +241,8 @@ import { GET as getCareReports } from '../care-reports/route';
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/test', {
     method: 'POST',
@@ -329,6 +350,7 @@ describe('Workflow: prescription intake to care report', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     expect(response).toBeDefined();
@@ -405,6 +427,7 @@ describe('Workflow: prescription intake to care report', () => {
 
     const response = (await getDispenseQueue(
       createGetRequest('http://localhost/api/dispense-queue'),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);
@@ -542,6 +565,7 @@ describe('Workflow: prescription intake to care report', () => {
         task_id: IDS.dispenseTask,
         result: 'approved',
       }),
+      emptyRouteContext,
     );
 
     expect(response).toBeDefined();
@@ -598,6 +622,7 @@ describe('Workflow: prescription intake to care report', () => {
 
     const response = (await getVisitSchedules(
       createGetRequest(`http://localhost/api/visit-schedules?patient_id=${IDS.patient}`),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);
@@ -732,6 +757,7 @@ describe('Workflow: prescription intake to care report', () => {
         soap_plan: '現処方継続。次回訪問時に血液検査結果確認。',
         structured_soap: completedVisitStructuredSoap,
       }),
+      emptyRouteContext,
     );
 
     expect(response).toBeDefined();
@@ -755,7 +781,7 @@ describe('Workflow: prescription intake to care report', () => {
   /* ---------------------------------------------------------------------- */
 
   it('step 7: generates care report from visit record', async () => {
-    // The care-reports GET route uses withAuth pattern and reads from prisma directly
+    // The care-reports GET route reads from prisma directly.
     prismaCareReportFindManyMock.mockResolvedValue([
       {
         id: IDS.careReport,
@@ -781,13 +807,17 @@ describe('Workflow: prescription intake to care report', () => {
     ]);
     prismaCareCaseFindManyMock.mockResolvedValue([{ id: IDS.case, patient_id: IDS.patient }]);
 
-    const response = await getCareReports(Object.assign(createGetRequest(
-      `http://localhost/api/care-reports?patient_id=${IDS.patient}`,
-    ), {
-      orgId: IDS.org,
-      userId: IDS.user,
-      role: 'pharmacist',
-    }));
+    const response = await getCareReports(
+      Object.assign(
+        createGetRequest(`http://localhost/api/care-reports?patient_id=${IDS.patient}`),
+        {
+          orgId: IDS.org,
+          userId: IDS.user,
+          role: 'pharmacist',
+        },
+      ),
+      emptyRouteContext,
+    );
 
     expect(response).toBeDefined();
     expect(response!.status).toBe(200);

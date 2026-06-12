@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   careReportCreateMock,
   careReportFindManyMock,
@@ -12,7 +12,7 @@ const {
   patientFindManyMock,
   visitRecordFindFirstMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(),
+  withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careReportCreateMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
@@ -23,14 +23,33 @@ const {
   visitRecordFindFirstMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role?: string;
+};
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role?: string },
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
   ) => {
-    withAuthMock.mockImplementation(handler);
-    return handler;
+    withAuthContextMock.mockImplementation(handler);
+    return (req: AuthenticatedTestRequest, routeContext = emptyRouteContext) =>
+      handler(
+        req,
+        {
+          orgId: req.orgId,
+          userId: req.userId,
+          role: 'pharmacist',
+        },
+        routeContext,
+      );
   },
 }));
 
@@ -64,12 +83,6 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 
 import { GET, POST } from './route';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role?: string;
-};
-
 function createAuthenticatedRequest(
   url = 'http://localhost/api/care-reports',
   init?: ConstructorParameters<typeof NextRequest>[1],
@@ -80,6 +93,14 @@ function createAuthenticatedRequest(
   },
 ): AuthenticatedTestRequest {
   return Object.assign(new NextRequest(url, init), auth);
+}
+
+function getCareReports(req: AuthenticatedTestRequest) {
+  return GET(req, emptyRouteContext);
+}
+
+function createCareReport(req: AuthenticatedTestRequest) {
+  return POST(req, emptyRouteContext);
 }
 
 describe('/api/care-reports GET', () => {
@@ -170,7 +191,7 @@ describe('/api/care-reports GET', () => {
   });
 
   it('supports extended report search filters and enriches delivery summary', async () => {
-    const response = await GET(
+    const response = await getCareReports(
       createAuthenticatedRequest(
         'http://localhost/api/care-reports?q=山田&keyword=眠気&visit_record_id=visit_1&report_type=physician_report&delivery_status=response_waiting&recipient=主治医&date_from=2026-03-01&date_to=2026-03-31&sent_from=2026-03-28&sent_to=2026-03-29',
       ),
@@ -236,7 +257,7 @@ describe('/api/care-reports GET', () => {
   });
 
   it('trims patient and visit record filters before report lookup', async () => {
-    const response = await GET(
+    const response = await getCareReports(
       createAuthenticatedRequest(
         'http://localhost/api/care-reports?patient_id=%20patient_1%20&visit_record_id=%20visit_1%20',
       ),
@@ -277,7 +298,7 @@ describe('/api/care-reports GET', () => {
       },
     ]);
 
-    const response = await GET(createAuthenticatedRequest());
+    const response = await getCareReports(createAuthenticatedRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -299,7 +320,7 @@ describe('/api/care-reports GET', () => {
     careCaseFindManyMock.mockResolvedValueOnce([]);
     careReportFindManyMock.mockResolvedValueOnce([]);
 
-    const response = await GET(
+    const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports', undefined, {
         orgId: 'org_1',
         userId: 'unassigned_1',
@@ -324,7 +345,7 @@ describe('/api/care-reports GET', () => {
   });
 
   it('returns 400 for an invalid status filter', async () => {
-    const response = await GET(
+    const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports?status=unknown'),
     );
 
@@ -336,7 +357,7 @@ describe('/api/care-reports GET', () => {
   it.each(['2026-03-99', '2026-02-29'])(
     'returns 400 for an invalid date filter: %s',
     async (sentFrom) => {
-      const response = await GET(
+      const response = await getCareReports(
         createAuthenticatedRequest(`http://localhost/api/care-reports?sent_from=${sentFrom}`),
       );
 
@@ -407,7 +428,7 @@ describe('/api/care-reports POST', () => {
   }
 
   it('creates a report only when patient, case, and visit record belong together', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
@@ -448,7 +469,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('normalizes source IDs before validation and persistence', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: ' patient_1 ',
         case_id: ' case_1 ',
@@ -488,7 +509,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('stores the visit schedule case when creating from a visit record', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         visit_record_id: 'visit_1',
@@ -523,7 +544,7 @@ describe('/api/care-reports POST', () => {
       },
     });
 
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         visit_record_id: 'visit_1',
@@ -541,7 +562,7 @@ describe('/api/care-reports POST', () => {
   it('rejects reports for a case that does not belong to the patient', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce(null);
 
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_other',
@@ -562,7 +583,7 @@ describe('/api/care-reports POST', () => {
       schedule: { case_id: 'case_other' },
     });
 
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
@@ -579,7 +600,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('rejects blank patient IDs before source validation', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: '   ',
         report_type: 'care_manager_report',
@@ -595,7 +616,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('normalizes blank optional source fields before writing patient-only reports', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         case_id: '   ',
@@ -622,7 +643,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('rejects non-object request bodies before source validation', async () => {
-    const response = await POST(createPostRequest(['unexpected']));
+    const response = await createCareReport(createPostRequest(['unexpected']));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -632,7 +653,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('rejects malformed JSON before source validation', async () => {
-    const response = await POST(createMalformedPostRequest());
+    const response = await createCareReport(createMalformedPostRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -648,7 +669,7 @@ describe('/api/care-reports POST', () => {
   });
 
   it('rejects non-object report content before source validation', async () => {
-    const response = await POST(
+    const response = await createCareReport(
       createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import {
   getBackupDrillSummary,
   getIsmsReadinessSummary,
@@ -7,10 +7,10 @@ import {
 import { success } from '@/lib/api/response';
 import { getPilotLaunchDossier } from '@/server/services/pilot-launch-dossier';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const dossier = await getPilotLaunchDossier({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       externalReadiness: {
         pmda: getPmdaOnboardingSummary(),
         backup: getBackupDrillSummary(),
@@ -22,5 +22,5 @@ export const GET = withAuth(
   {
     permission: 'canAdmin',
     message: 'pilot launch dossier の閲覧権限がありません',
-  }
+  },
 );

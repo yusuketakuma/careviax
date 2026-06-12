@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -9,14 +10,7 @@ const templateQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です').optional(),
 });
 
-const TEMPLATE_HEADER = [
-  'YJコード',
-  '医薬品名',
-  '採用',
-  '発注点',
-  '優先後発品YJコード',
-  'メモ',
-];
+const TEMPLATE_HEADER = ['YJコード', '医薬品名', '採用', '発注点', '優先後発品YJコード', 'メモ'];
 
 function csvCell(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
@@ -38,19 +32,13 @@ export const GET = withAuthContext(
       if (!site) return notFound('対象の薬局拠点が見つかりません');
     }
 
-    await prisma.auditLog.create({
-      data: {
-        org_id: authCtx.orgId,
-        actor_id: authCtx.userId,
-        action: 'pharmacy_drug_stock_template_downloaded',
-        target_type: siteId ? 'PharmacySite' : 'PharmacyDrugStock',
-        target_id: siteId ?? 'template',
-        changes: {
-          site_id: siteId ?? null,
-          headers: TEMPLATE_HEADER,
-        },
-        ip_address: authCtx.ipAddress,
-        user_agent: authCtx.userAgent,
+    await createAuditLogEntry(prisma, authCtx, {
+      action: 'pharmacy_drug_stock_template_downloaded',
+      targetType: siteId ? 'PharmacySite' : 'PharmacyDrugStock',
+      targetId: siteId ?? 'template',
+      changes: {
+        site_id: siteId ?? null,
+        headers: TEMPLATE_HEADER,
       },
     });
 

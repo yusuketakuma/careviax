@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { hasPermission } from '@/lib/auth/permissions';
@@ -35,10 +36,9 @@ const policyValueSchema = z.object({
 
 export type OperationalPolicyValue = z.infer<typeof policyValueSchema>;
 
-const updatePolicySchema = policyValueSchema.partial().refine(
-  (value) => Object.keys(value).length > 0,
-  { message: '更新する項目がありません' },
-);
+const updatePolicySchema = policyValueSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, { message: '更新する項目がありません' });
 
 /** ロック項目(表示用メタ)。理由つきで常に明示する(隠さない)。 */
 const LOCKED_ITEMS = [
@@ -181,20 +181,14 @@ export const PATCH = withAuthContext(
         });
       }
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'operational_policy_updated',
-          target_type: 'Setting',
-          target_id: OPERATIONAL_POLICY_SETTING_KEY,
-          changes: {
-            before: context.policy,
-            after: nextPolicy,
-            changed_keys: Object.keys(parsed.data),
-          },
-          ip_address: ctx.ipAddress ?? null,
-          user_agent: ctx.userAgent ?? null,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'operational_policy_updated',
+        targetType: 'Setting',
+        targetId: OPERATIONAL_POLICY_SETTING_KEY,
+        changes: {
+          before: context.policy,
+          after: nextPolicy,
+          changed_keys: Object.keys(parsed.data),
         },
       });
     });

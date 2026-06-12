@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -177,22 +178,16 @@ export const POST = withAuthContext(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: 'pharmacy_drug_stock_change_requested',
-          target_type: 'FormularyChangeRequest',
-          target_id: created.id,
-          changes: {
-            site_id,
-            drug_master_id,
-            action_type: parsed.data.action_type,
-            requested_payload,
-            current_snapshot: currentStock,
-          },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
+      await createAuditLogEntry(tx, authCtx, {
+        action: 'pharmacy_drug_stock_change_requested',
+        targetType: 'FormularyChangeRequest',
+        targetId: created.id,
+        changes: {
+          site_id,
+          drug_master_id,
+          action_type: parsed.data.action_type,
+          requested_payload,
+          current_snapshot: currentStock,
         },
       });
 

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
 import {
@@ -239,19 +240,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'care_report_delivery_attempted',
-          target_type: 'care_report',
-          target_id: id,
-          changes: buildDeliveryAttemptAuditChanges({
-            deliveryRecordId: deliveryRecord.id,
-            report: existing,
-            request: parsed.data,
-          }),
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'care_report_delivery_attempted',
+        targetType: 'care_report',
+        targetId: id,
+        changes: buildDeliveryAttemptAuditChanges({
+          deliveryRecordId: deliveryRecord.id,
+          report: existing,
+          request: parsed.data,
+        }),
       });
 
       return deliveryRecord;

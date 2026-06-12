@@ -2,20 +2,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  withAuthContextMock,
   getPmdaOnboardingSummaryMock,
   getBackupDrillSummaryMock,
   getIsmsReadinessSummaryMock,
   getPilotLaunchDossierMock,
 } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+        routeContext: { params: Promise<Record<string, never>> },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext = emptyRouteContext) =>
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+    },
+  ),
   getPmdaOnboardingSummaryMock: vi.fn(),
   getBackupDrillSummaryMock: vi.fn(),
   getIsmsReadinessSummaryMock: vi.fn(),
   getPilotLaunchDossierMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/operations/external-readiness', () => ({
@@ -31,10 +45,7 @@ vi.mock('@/server/services/pilot-launch-dossier', () => ({
 import { GET } from './route';
 
 function createAuthRequest() {
-  return Object.assign(new NextRequest('http://localhost/api/admin/pilot-launch-dossier'), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return new NextRequest('http://localhost/api/admin/pilot-launch-dossier');
 }
 
 describe('/api/admin/pilot-launch-dossier GET', () => {
@@ -76,7 +87,7 @@ describe('/api/admin/pilot-launch-dossier GET', () => {
   });
 
   it('returns a combined dossier for the authenticated org', async () => {
-    const response = await GET(createAuthRequest());
+    const response = await GET(createAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

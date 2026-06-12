@@ -46,6 +46,8 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'POST',
@@ -110,6 +112,7 @@ describe('/api/cases', () => {
       createRequest(
         'http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85',
       ),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);
@@ -133,7 +136,10 @@ describe('/api/cases', () => {
   });
 
   it('rejects unsupported status filters before querying cases', async () => {
-    const response = (await GET(createRequest('http://localhost/api/cases?status=bad_status')))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/cases?status=bad_status'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(400);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
@@ -148,6 +154,7 @@ describe('/api/cases', () => {
         referral_date: '2026-03-28',
         notes: '初回相談',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(201);
@@ -162,7 +169,10 @@ describe('/api/cases', () => {
   });
 
   it('rejects non-object create payloads before loading the patient', async () => {
-    const response = (await POST(createRequest('http://localhost/api/cases', [])))!;
+    const response = (await POST(
+      createRequest('http://localhost/api/cases', []),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
@@ -171,7 +181,7 @@ describe('/api/cases', () => {
   });
 
   it('rejects malformed JSON before loading the patient', async () => {
-    const response = (await POST(createMalformedPostRequest()))!;
+    const response = (await POST(createMalformedPostRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -192,6 +202,7 @@ describe('/api/cases', () => {
         referral_date: '2026-03-28',
         notes: '初回相談',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(404);

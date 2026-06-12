@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject } from '@/lib/db/json';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
@@ -272,8 +272,8 @@ function readEnumArray<const T extends readonly string[]>(
   return values && values.length > 0 ? values : undefined;
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const POST = withAuthContext(
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');
@@ -304,12 +304,12 @@ export const POST = withAuth(
       return validationError('未来日の処方箋は登録できません');
     }
 
-    if (!(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
+    if (!(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
       return validationError('この患者のQRスキャン下書きを確定する権限がありません');
     }
 
     const targetPatient = await prisma.patient.findFirst({
-      where: { id: patient_id, org_id: req.orgId },
+      where: { id: patient_id, org_id: ctx.orgId },
       select: { id: true, name: true, name_kana: true, birth_date: true, gender: true },
     });
     if (!targetPatient) {
@@ -318,16 +318,16 @@ export const POST = withAuth(
       });
     }
 
-    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
-    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
+    const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+    const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
 
     let result: QrDraftConfirmResult;
     try {
-      result = await withOrgContext(req.orgId, async (tx) => {
+      result = await withOrgContext(ctx.orgId, async (tx) => {
         const draft = await tx.qrScanDraft.findFirst({
           where: {
             id,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
           select: {
@@ -373,7 +373,7 @@ export const POST = withAuth(
         const claimResult = await tx.qrScanDraft.updateMany({
           where: {
             id,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             status: 'pending',
             ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
           },
@@ -439,11 +439,11 @@ export const POST = withAuth(
         const intakeResult = await createPrescriptionIntakeInTx(
           tx,
           intakeInput,
-          req.orgId,
-          req.userId,
+          ctx.orgId,
+          ctx.userId,
           {
             skipStructuringCheck: true,
-            accessContext: { userId: req.userId, role: req.role },
+            accessContext: { userId: ctx.userId, role: ctx.role },
           },
         );
 
@@ -457,7 +457,7 @@ export const POST = withAuth(
         );
 
         await attachJahisSupplementalRecordsToIntake(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patient_id,
           qrDraftId: id,
           prescriptionIntakeId: intakeResult.intake.id,
@@ -465,7 +465,7 @@ export const POST = withAuth(
         });
 
         await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patient_id,
           qrDraftId: id,
           prescriptionIntakeId: intakeResult.intake.id,
@@ -473,20 +473,20 @@ export const POST = withAuth(
         });
 
         await createMedicationIssueCandidatesFromPrescriptionInsurance(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patient_id,
           caseId: case_id,
           prescriptionIntakeId: intakeResult.intake.id,
-          identifiedBy: req.userId,
+          identifiedBy: ctx.userId,
           prescriptionInsurance,
         });
 
         await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patient_id,
           caseId: case_id,
           prescriptionIntakeId: intakeResult.intake.id,
-          identifiedBy: req.userId,
+          identifiedBy: ctx.userId,
           records: supplementalRecords,
         });
 
@@ -565,14 +565,14 @@ export const POST = withAuth(
       cycleId: result.cycle.id,
       intakeId: result.intake.id,
       patientId: result.cycle.patient_id,
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       lines,
       prescriberName: prescriber_name ?? null,
       sourceType: 'qr_scan',
     });
 
     try {
-      await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
+      await notifyWebhookEventForOrg(ctx.orgId, 'prescription.created', {
         intakeId: result.intake.id,
         cycleId: result.cycle.id,
         patientId: result.cycle.patient_id,
@@ -584,17 +584,17 @@ export const POST = withAuth(
     }
 
     // Cross-user confirmation audit log (best-effort)
-    if (result.draft.scanned_by && result.draft.scanned_by !== req.userId) {
+    if (result.draft.scanned_by && result.draft.scanned_by !== ctx.userId) {
       try {
-        await withOrgContext(req.orgId, async (tx) => {
+        await withOrgContext(ctx.orgId, async (tx) => {
           return tx.cycleTransitionLog.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: result.cycle.id,
               from_status: 'qr_cross_user_confirm',
               to_status: 'qr_cross_user_confirm',
-              actor_id: req.userId,
-              note: `QR下書き確定: スキャン者=${result.draft.scanned_by}, 確定者=${req.userId}`,
+              actor_id: ctx.userId,
+              note: `QR下書き確定: スキャン者=${result.draft.scanned_by}, 確定者=${ctx.userId}`,
             },
           });
         });
@@ -605,7 +605,7 @@ export const POST = withAuth(
 
     // Broadcast realtime event (best-effort)
     await broadcastOrgRealtimeEvent({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       type: 'qr_draft_confirmed',
     });
 

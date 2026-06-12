@@ -11,8 +11,10 @@ type AuthenticatedTestRequest = NextRequest & {
   role: 'admin';
 };
 
+type TestRouteContext = { params: Promise<Record<string, string>> };
+
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   prescriptionIntakeFindManyMock,
   prescriptionIntakeCountMock,
@@ -23,16 +25,22 @@ const {
   broadcastOrgRealtimeEventMock,
   notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Omit<AuthenticatedTestRequest, keyof NextRequest>,
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) => {
+        return handler(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'admin' as const,
-        }),
-      );
-  }),
+        });
+      };
+    },
+  ),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
@@ -44,8 +52,8 @@ const {
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -92,7 +100,11 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext: TestRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/prescription-intakes', {

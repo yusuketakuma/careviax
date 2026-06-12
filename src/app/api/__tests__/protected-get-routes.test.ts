@@ -49,7 +49,7 @@ const {
           }
           return cache.get(prop);
         },
-      }
+      },
     );
   };
 
@@ -101,7 +101,6 @@ import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
-import { GET as dashboardTodayGet } from '../dashboard/today/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
 import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/route';
@@ -134,6 +133,7 @@ import { GET as visitSchedulesTodayGet } from '../visit-schedules/today/route';
 import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
 type Handler = () => Promise<Response | undefined>;
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
@@ -142,178 +142,355 @@ function createRequest(url: string, headers?: Record<string, string>) {
 const routes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'audit-logs GET',
-    handler: () => auditLogsGet(createRequest('http://localhost/api/audit-logs', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      auditLogsGet(
+        createRequest('http://localhost/api/audit-logs', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'audit-logs/export GET',
-    handler: () => auditLogsExportGet(createRequest('http://localhost/api/audit-logs/export', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      auditLogsExportGet(
+        createRequest('http://localhost/api/audit-logs/export', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'billing-candidates GET',
-    handler: () => billingCandidatesGet(createRequest('http://localhost/api/billing-candidates', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      billingCandidatesGet(
+        createRequest('http://localhost/api/billing-candidates', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'billing-candidates/export GET',
-    handler: () => billingCandidatesExportGet(createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      billingCandidatesExportGet(
+        createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'business-holidays GET',
-    handler: () => businessHolidaysGet(createRequest('http://localhost/api/business-holidays', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      businessHolidaysGet(
+        createRequest('http://localhost/api/business-holidays', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'care-reports GET',
-    handler: () => careReportsGet(createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      careReportsGet(
+        createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'care-reports/[id] GET',
-    handler: () => careReportGet(createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'report_1' }) }),
+    handler: () =>
+      careReportGet(
+        createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      ),
   },
   {
     name: 'cases GET',
-    handler: () => casesGet(createRequest('http://localhost/api/cases', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      casesGet(
+        createRequest('http://localhost/api/cases', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'communication-events GET',
-    handler: () => communicationEventsGet(createRequest('http://localhost/api/communication-events', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      communicationEventsGet(
+        createRequest('http://localhost/api/communication-events', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'communication-requests GET',
-    handler: () => communicationRequestsGet(createRequest('http://localhost/api/communication-requests', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      communicationRequestsGet(
+        createRequest('http://localhost/api/communication-requests', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'communication-requests/export GET',
     handler: () =>
       communicationRequestsExportGet(
-        createRequest('http://localhost/api/communication-requests/export', { 'x-org-id': 'org_1' }),
+        createRequest('http://localhost/api/communication-requests/export', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
       ),
   },
   {
     name: 'conference-notes GET',
-    handler: () => conferenceNotesGet(createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' })),
-  },
-  {
-    name: 'dashboard/today GET',
-    handler: () => dashboardTodayGet(createRequest('http://localhost/api/dashboard/today', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      conferenceNotesGet(
+        createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dashboard/workflow GET',
-    handler: () => dashboardWorkflowGet(createRequest('http://localhost/api/dashboard/workflow', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dashboardWorkflowGet(
+        createRequest('http://localhost/api/dashboard/workflow', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dashboard/overdue GET',
-    handler: () => dashboardOverdueGet(createRequest('http://localhost/api/dashboard/overdue', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dashboardOverdueGet(
+        createRequest('http://localhost/api/dashboard/overdue', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dashboard/monthly-stats GET',
-    handler: () => dashboardMonthlyStatsGet(createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dashboardMonthlyStatsGet(
+        createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dashboard/medication-deadlines GET',
-    handler: () => dashboardMedicationDeadlinesGet(createRequest('http://localhost/api/dashboard/medication-deadlines', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dashboardMedicationDeadlinesGet(
+        createRequest('http://localhost/api/dashboard/medication-deadlines', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dispense-audits GET',
-    handler: () => dispenseAuditsGet(createRequest('http://localhost/api/dispense-audits', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dispenseAuditsGet(
+        createRequest('http://localhost/api/dispense-audits', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'dispense-queue GET',
-    handler: () => dispenseQueueGet(createRequest('http://localhost/api/dispense-queue', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      dispenseQueueGet(
+        createRequest('http://localhost/api/dispense-queue', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'inquiry-records GET',
-    handler: () => inquiryRecordsGet(createRequest('http://localhost/api/inquiry-records', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      inquiryRecordsGet(
+        createRequest('http://localhost/api/inquiry-records', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'medication-issues GET',
-    handler: () => medicationIssuesGet(createRequest('http://localhost/api/medication-issues', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      medicationIssuesGet(
+        createRequest('http://localhost/api/medication-issues', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'medication-profiles GET',
-    handler: () => medicationProfilesGet(createRequest('http://localhost/api/medication-profiles', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      medicationProfilesGet(
+        createRequest('http://localhost/api/medication-profiles', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'patients GET',
-    handler: () => patientsGet(createRequest('http://localhost/api/patients', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      patientsGet(
+        createRequest('http://localhost/api/patients', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'patients/[id] GET',
-    handler: () => patientGet(createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
+    handler: () =>
+      patientGet(
+        createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
   },
   {
     name: 'patients/[id]/visit-brief GET',
-    handler: () => patientVisitBriefGet(createRequest('http://localhost/api/patients/patient_1/visit-brief', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
+    handler: () =>
+      patientVisitBriefGet(
+        createRequest('http://localhost/api/patients/patient_1/visit-brief', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
   },
   {
     name: 'patients/[id]/visit-records/pdf GET',
-    handler: () => patientVisitRecordsPdfGet(createRequest('http://localhost/api/patients/patient_1/visit-records/pdf', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
+    handler: () =>
+      patientVisitRecordsPdfGet(
+        createRequest('http://localhost/api/patients/patient_1/visit-records/pdf', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
   },
   {
     name: 'pharmacists GET',
-    handler: () => pharmacistsGet(createRequest('http://localhost/api/pharmacists', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      pharmacistsGet(
+        createRequest('http://localhost/api/pharmacists', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'pharmacist-shifts GET',
-    handler: () => pharmacistShiftsGet(createRequest('http://localhost/api/pharmacist-shifts', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      pharmacistShiftsGet(
+        createRequest('http://localhost/api/pharmacist-shifts', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'pharmacist-shifts/available GET',
-    handler: () => pharmacistShiftsAvailableGet(createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-03-26', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      pharmacistShiftsAvailableGet(
+        createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-03-26', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'pharmacy-sites GET',
-    handler: () => pharmacySitesGet(createRequest('http://localhost/api/pharmacy-sites', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      pharmacySitesGet(
+        createRequest('http://localhost/api/pharmacy-sites', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'prescription-intakes GET',
-    handler: () => prescriptionIntakesGet(createRequest('http://localhost/api/prescription-intakes', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      prescriptionIntakesGet(
+        createRequest('http://localhost/api/prescription-intakes', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'prescription-intakes/[id] GET',
-    handler: () => prescriptionIntakeGet(createRequest('http://localhost/api/prescription-intakes/intake_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'intake_1' }) }),
+    handler: () =>
+      prescriptionIntakeGet(
+        createRequest('http://localhost/api/prescription-intakes/intake_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'intake_1' }) },
+      ),
   },
   {
     name: 'residual-medications GET',
-    handler: () => residualMedicationsGet(createRequest('http://localhost/api/residual-medications', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      residualMedicationsGet(
+        createRequest('http://localhost/api/residual-medications', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'set-plans GET',
-    handler: () => setPlansGet(createRequest('http://localhost/api/set-plans', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      setPlansGet(
+        createRequest('http://localhost/api/set-plans', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'tracing-reports GET',
-    handler: () => tracingReportsGet(createRequest('http://localhost/api/tracing-reports', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      tracingReportsGet(
+        createRequest('http://localhost/api/tracing-reports', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'visit-records GET',
-    handler: () => visitRecordsGet(createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      visitRecordsGet(
+        createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'visit-records/[id] GET',
-    handler: () => visitRecordGet(createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'record_1' }) }),
+    handler: () =>
+      visitRecordGet(
+        createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'record_1' }) },
+      ),
   },
   {
     name: 'visit-records/[id]/pdf GET',
-    handler: () => visitRecordPdfGet(createRequest('http://localhost/api/visit-records/record_1/pdf', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'record_1' }) }),
+    handler: () =>
+      visitRecordPdfGet(
+        createRequest('http://localhost/api/visit-records/record_1/pdf', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'record_1' }) },
+      ),
   },
   {
     name: 'visit-schedule-proposals GET',
-    handler: () => visitScheduleProposalsGet(createRequest('http://localhost/api/visit-schedule-proposals', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      visitScheduleProposalsGet(
+        createRequest('http://localhost/api/visit-schedule-proposals', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'visit-schedules GET',
-    handler: () => visitSchedulesGet(createRequest('http://localhost/api/visit-schedules', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      visitSchedulesGet(
+        createRequest('http://localhost/api/visit-schedules', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'visit-schedules/[id] GET',
-    handler: () => visitScheduleGet(createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'schedule_1' }) }),
+    handler: () =>
+      visitScheduleGet(
+        createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'schedule_1' }) },
+      ),
   },
   {
     name: 'visit-schedules/today GET',
-    handler: () => visitSchedulesTodayGet(createRequest('http://localhost/api/visit-schedules/today', { 'x-org-id': 'org_1' })),
+    handler: () =>
+      visitSchedulesTodayGet(
+        createRequest('http://localhost/api/visit-schedules/today', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'visit-preparations/[scheduleId]/brief GET',
-    handler: () => visitPreparationBriefGet(createRequest('http://localhost/api/visit-preparations/schedule_1/brief', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ scheduleId: 'schedule_1' }) }),
+    handler: () =>
+      visitPreparationBriefGet(
+        createRequest('http://localhost/api/visit-preparations/schedule_1/brief', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ scheduleId: 'schedule_1' }) },
+      ),
   },
 ];
 
@@ -362,9 +539,7 @@ describe('protected GET routes auth matrix', () => {
         generated_at: '2026-03-27T00:00:00.000Z',
       },
     });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback(txMock)
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-patient-visits'),
       fileName: 'visit-records.pdf',

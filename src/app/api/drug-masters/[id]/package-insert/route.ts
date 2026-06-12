@@ -76,7 +76,7 @@ type DrugPackageInsertSections = NonNullable<
 >['sections'];
 
 export const GET = withAuthContext(
-  async (_req: NextRequest, _ctx, { params }: { params: Promise<{ id: string }> }) => {
+  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('医薬品IDが不正です');
@@ -158,7 +158,7 @@ export const GET = withAuthContext(
 
     // Fetch applicable alert rules
     const alertRules = await prisma.drugAlertRule.findMany({
-      where: { is_active: true },
+      where: { is_active: true, OR: [{ org_id: ctx.orgId }, { org_id: null }] },
     });
 
     const applicableRules = alertRules

@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
-
 const { validateOrgReferencesMock, withOrgContextMock, pharmacistShiftUpsertMock } = vi.hoisted(
   () => ({
     validateOrgReferencesMock: vi.fn(),
@@ -11,8 +9,19 @@ const { validateOrgReferencesMock, withOrgContextMock, pharmacistShiftUpsertMock
   }),
 );
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
+    return (req: NextRequest, routeContext?: unknown) =>
+      handler(
+        req,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+        routeContext,
+      );
+  },
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -23,17 +32,17 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
 
-function createRequest(body: unknown): AuthenticatedTestRequest {
-  return Object.assign(
-    new NextRequest('http://localhost/api/pharmacist-shifts/bulk', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-    { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
-  );
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/pharmacist-shifts/bulk', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/pharmacist-shifts/bulk POST', () => {

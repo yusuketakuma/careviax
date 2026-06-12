@@ -1,31 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'pharmacist';
-};
-
 const { withAuthMock, withOrgContextMock, inquiryRecordFindManyMock, upsertOperationalTaskMock } =
   vi.hoisted(() => ({
-    withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
+    withAuthMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest,
+          ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        ) => Promise<Response>,
+      ) => {
+        return (req: NextRequest) =>
+          handler(req, {
             orgId: 'org_1',
             userId: 'user_1',
             role: 'pharmacist',
-          }) as AuthenticatedTestRequest,
-        );
-    }),
+          });
+      },
+    ),
     withOrgContextMock: vi.fn(),
     inquiryRecordFindManyMock: vi.fn(),
     upsertOperationalTaskMock: vi.fn(),
   }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -44,7 +43,12 @@ vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
@@ -62,8 +62,8 @@ class FacilityBatchIntakeRollback extends Error {
   }
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -103,11 +103,11 @@ export const POST = withAuth(
 
     let result: FacilityBatchSuccessResult | FacilityBatchErrorResult;
     try {
-      result = await withOrgContext(req.orgId, async (tx) => {
-        const assignmentWhere = buildCareCaseAssignmentWhere(req);
+      result = await withOrgContext(ctx.orgId, async (tx) => {
+        const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
         const cases = await tx.careCase.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             id: {
               in: entries.map((entry) => entry.case_id),
             },
@@ -207,9 +207,9 @@ export const POST = withAuth(
               emergency_category,
               lines: entry.lines,
             },
-            req.orgId,
-            req.userId,
-            { accessContext: { userId: req.userId, role: req.role } },
+            ctx.orgId,
+            ctx.userId,
+            { accessContext: { userId: ctx.userId, role: ctx.role } },
           );
 
           if (intakeResult.kind === 'error') {
@@ -267,7 +267,7 @@ export const POST = withAuth(
             cycleId: intakeResult.cycle.id,
             intakeId: intakeResult.intake.id,
             patientId: careCase.patient.id,
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             lines: entry.lines,
             prescriberName: prescriber_name ?? null,
             sourceType: source_type,

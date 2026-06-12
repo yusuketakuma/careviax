@@ -5,9 +5,19 @@ const { getPilotOrgAuditSnapshotMock } = vi.hoisted(() => ({
   getPilotOrgAuditSnapshotMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'admin' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+  },
 }));
 
 vi.mock('@/server/services/pilot-org-audit', () => ({
@@ -17,10 +27,7 @@ vi.mock('@/server/services/pilot-org-audit', () => ({
 import { GET } from './route';
 
 function createAuthRequest() {
-  return Object.assign(new NextRequest('http://localhost/api/admin/pilot-org-audit'), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return new NextRequest('http://localhost/api/admin/pilot-org-audit');
 }
 
 describe('/api/admin/pilot-org-audit GET', () => {
@@ -49,12 +56,14 @@ describe('/api/admin/pilot-org-audit GET', () => {
         review_required_count: 1,
         flagged_patients: [],
       },
-      recommendations: ['service area 未設定の店舗があります。16km 圏確認前に訪問エリアを登録してください。'],
+      recommendations: [
+        'service area 未設定の店舗があります。16km 圏確認前に訪問エリアを登録してください。',
+      ],
     });
   });
 
   it('returns the org audit snapshot for the authenticated org', async () => {
-    const response = await GET(createAuthRequest());
+    const response = await GET(createAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

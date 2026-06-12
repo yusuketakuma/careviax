@@ -46,7 +46,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/dashboard/overdue', {

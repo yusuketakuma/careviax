@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -56,11 +56,11 @@ function toResponse(
   };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const [facilities, residenceCounts] = await Promise.all([
       prisma.facility.findMany({
-        where: { org_id: req.orgId },
+        where: { org_id: ctx.orgId },
         include: {
           contacts: {
             orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
@@ -71,7 +71,7 @@ export const GET = withAuth(
       prisma.residence.groupBy({
         by: ['facility_id'],
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           is_primary: true,
           facility_id: {
             not: null,
@@ -103,8 +103,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -113,10 +113,10 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const created = await withOrgContext(req.orgId, async (tx) =>
+    const created = await withOrgContext(ctx.orgId, async (tx) =>
       tx.facility.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           name: parsed.data.name,
           facility_type: parsed.data.facility_type,
           address: parsed.data.address || null,
@@ -129,7 +129,7 @@ export const POST = withAuth(
           contacts: parsed.data.contacts.length
             ? {
                 create: parsed.data.contacts.map((contact) => ({
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   name: contact.name,
                   role: contact.role || null,
                   phone: contact.phone || null,

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -15,11 +15,11 @@ const createUatFeedbackSchema = z.object({
   source: z.string().trim().optional(),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const feedback = await prisma.uatFeedback.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       orderBy: [{ created_at: 'desc' }],
       take: 100,
@@ -42,8 +42,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -54,8 +54,8 @@ export const POST = withAuth(
 
     const created = await prisma.uatFeedback.create({
       data: {
-        org_id: req.orgId,
-        submitted_by: req.userId,
+        org_id: ctx.orgId,
+        submitted_by: ctx.userId,
         priority: parsed.data.priority,
         status: uatStatusSchema.enum.open,
         owner_user_id: null,

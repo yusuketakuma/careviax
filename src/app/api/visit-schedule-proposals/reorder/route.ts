@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
@@ -91,8 +93,8 @@ async function withSerializableProposalRouteReorderTransaction<T>(
   throw new ProposalRouteReorderRetryLimitError();
 }
 
-export const PATCH = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const PATCH = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -125,12 +127,12 @@ export const PATCH = withAuth(
     let result: ProposalRouteReorderResult;
     try {
       result = await withSerializableProposalRouteReorderTransaction<ProposalRouteReorderResult>(
-        req.orgId,
+        ctx.orgId,
         async (tx) => {
-          const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+          const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
           const proposals = await tx.visitScheduleProposal.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { in: orderedIds },
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
@@ -203,7 +205,7 @@ export const PATCH = withAuth(
           const [scheduleConflict, proposalConflict] = await Promise.all([
             tx.visitSchedule.findFirst({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 pharmacist_id: first.proposed_pharmacist_id,
                 scheduled_date: new Date(firstDateKey),
                 route_order: { in: routeOrders },
@@ -212,7 +214,7 @@ export const PATCH = withAuth(
             }),
             tx.visitScheduleProposal.findFirst({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 proposed_pharmacist_id: first.proposed_pharmacist_id,
                 proposed_date: new Date(firstDateKey),
                 route_order: { in: routeOrders },
@@ -231,7 +233,7 @@ export const PATCH = withAuth(
             updates.map(async (item) => {
               const updateResult = await tx.visitScheduleProposal.updateMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: item.proposal_id,
                   proposed_pharmacist_id: first.proposed_pharmacist_id,
                   proposed_date: new Date(firstDateKey),
@@ -245,32 +247,26 @@ export const PATCH = withAuth(
             }),
           );
 
-          await tx.auditLog.create({
-            data: {
-              org_id: req.orgId,
-              actor_id: req.userId,
-              action: 'visit_schedule_proposals_reordered',
-              target_type:
-                mode === 'ordered'
-                  ? 'VisitScheduleProposalBatch'
-                  : 'VisitScheduleProposalRouteBatch',
-              target_id:
-                mode === 'ordered'
-                  ? first.case_id
-                  : `${first.proposed_pharmacist_id}:${first.proposed_date.toISOString()}`,
-              changes: {
-                ordered_proposal_ids: orderedIds,
-                route_order_updates:
-                  mode === 'explicit'
-                    ? updates.map((item) => ({
-                        proposal_id: item.proposal_id,
-                        route_order: item.route_order,
-                      }))
-                    : undefined,
-                proposed_date: first.proposed_date.toISOString(),
-                pharmacist_id: first.proposed_pharmacist_id,
-                confirmation_context: parsed.data.confirmation_context ?? null,
-              },
+          await createAuditLogEntry(tx, ctx, {
+            action: 'visit_schedule_proposals_reordered',
+            targetType:
+              mode === 'ordered' ? 'VisitScheduleProposalBatch' : 'VisitScheduleProposalRouteBatch',
+            targetId:
+              mode === 'ordered'
+                ? first.case_id
+                : `${first.proposed_pharmacist_id}:${first.proposed_date.toISOString()}`,
+            changes: {
+              ordered_proposal_ids: orderedIds,
+              route_order_updates:
+                mode === 'explicit'
+                  ? updates.map((item) => ({
+                      proposal_id: item.proposal_id,
+                      route_order: item.route_order,
+                    }))
+                  : undefined,
+              proposed_date: first.proposed_date.toISOString(),
+              pharmacist_id: first.proposed_pharmacist_id,
+              confirmation_context: parsed.data.confirmation_context ?? null,
             },
           });
 
@@ -317,7 +313,7 @@ export const PATCH = withAuth(
     await Promise.all(
       successfulResult.case_ids.map((caseId) =>
         notifyWorkflowMutation({
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           payload: { source: 'visit_schedule_proposals_reorder', case_id: caseId },
         }),
       ),

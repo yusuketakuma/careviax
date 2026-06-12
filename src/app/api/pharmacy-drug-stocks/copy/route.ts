@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -159,25 +160,19 @@ export const POST = withAuthContext(
         count += 1;
       }
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: 'pharmacy_drug_stock_site_copied',
-          target_type: 'PharmacySite',
-          target_id: targetSite.id,
-          changes: {
-            source_site_id: sourceSite.id,
-            target_site_id: targetSite.id,
-            source_count: sourceStocks.length,
-            existing_target_count: existingTargetStocks.length,
-            copied_count: count,
-            skipped_count: sourceStocks.length - count,
-            overwrite,
-            drug_master_ids: operations.map((stock) => stock.drug_master_id),
-          },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
+      await createAuditLogEntry(tx, authCtx, {
+        action: 'pharmacy_drug_stock_site_copied',
+        targetType: 'PharmacySite',
+        targetId: targetSite.id,
+        changes: {
+          source_site_id: sourceSite.id,
+          target_site_id: targetSite.id,
+          source_count: sourceStocks.length,
+          existing_target_count: existingTargetStocks.length,
+          copied_count: count,
+          skipped_count: sourceStocks.length - count,
+          overwrite,
+          drug_master_ids: operations.map((stock) => stock.drug_master_id),
         },
       });
 

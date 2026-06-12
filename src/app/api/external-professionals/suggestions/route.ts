@@ -1,11 +1,11 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { findExternalProfessionalSuggestions } from '@/lib/contact-profiles';
 import { canAccessCareCase, canAccessPatient } from '@/server/services/patient-access';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const patientId = req.nextUrl.searchParams.get('patient_id')?.trim() || null;
     const caseId = req.nextUrl.searchParams.get('case_id')?.trim() || null;
 
@@ -16,20 +16,20 @@ export const GET = withAuth(
     const canAccessScope = caseId
       ? await canAccessCareCase({
           db: prisma,
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           caseId,
           patientId: patientId ?? undefined,
-          accessContext: req,
+          accessContext: ctx,
         })
       : await canAccessPatient({
           db: prisma,
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patientId as string,
-          accessContext: req,
+          accessContext: ctx,
         });
     if (!canAccessScope) return success({ data: [] });
 
-    const data = await findExternalProfessionalSuggestions(prisma, req.orgId, {
+    const data = await findExternalProfessionalSuggestions(prisma, ctx.orgId, {
       patientId,
       caseId,
     });

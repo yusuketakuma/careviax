@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -16,6 +17,7 @@ import {
 } from '@/lib/db/cycle-transition';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 import { z } from 'zod';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 const dispenseResultLineSchema = z.object({
   line_id: z.string().min(1),
@@ -132,8 +134,8 @@ async function promoteCycleToDispensingIfNeeded(args: {
   }
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -144,13 +146,13 @@ export const POST = withAuth(
 
     const { task_id, lines, safety_checklist } = parsed.data;
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
       // Verify task belongs to this org
       const task = await tx.dispenseTask.findFirst({
         where: {
           id: task_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
         },
         include: {
@@ -307,7 +309,7 @@ export const POST = withAuth(
       let cdsAlertCounts: ReturnType<typeof countCdsAlertsBySeverity>;
       try {
         const cdsAlerts = await checkDispenseAlerts(
-          req.orgId,
+          ctx.orgId,
           task.cycle_id,
           task.cycle.patient_id,
         );
@@ -329,13 +331,13 @@ export const POST = withAuth(
                   discrepancy_reason: line.discrepancy_reason,
                   carry_type: line.carry_type,
                   special_notes: line.special_notes,
-                  dispensed_by: req.userId,
+                  dispensed_by: ctx.userId,
                   dispensed_at: now,
                 },
               })
             : tx.dispenseResult.create({
                 data: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   task_id,
                   line_id: line.line_id,
                   actual_drug_name: line.actual_drug_name,
@@ -345,7 +347,7 @@ export const POST = withAuth(
                   discrepancy_reason: line.discrepancy_reason,
                   carry_type: line.carry_type,
                   special_notes: line.special_notes,
-                  dispensed_by: req.userId,
+                  dispensed_by: ctx.userId,
                   dispensed_at: now,
                 },
               }),
@@ -357,22 +359,18 @@ export const POST = withAuth(
         data: { status: canComplete ? 'completed' : 'in_progress' },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'dispense_safety_checklist_acknowledged',
-          target_type: 'dispense_task',
-          target_id: task_id,
-          changes: {
-            task_id,
-            cycle_id: task.cycle_id,
-            checklist: safety_checklist,
-            cds_alert_counts: cdsAlertCounts,
-            line_count: results.length,
-            partial: !canComplete,
-            acknowledged_at: now.toISOString(),
-          },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'dispense_safety_checklist_acknowledged',
+        targetType: 'dispense_task',
+        targetId: task_id,
+        changes: {
+          task_id,
+          cycle_id: task.cycle_id,
+          checklist: safety_checklist,
+          cds_alert_counts: cdsAlertCounts,
+          line_count: results.length,
+          partial: !canComplete,
+          acknowledged_at: now.toISOString(),
         },
       });
 
@@ -382,8 +380,8 @@ export const POST = withAuth(
             await promoteCycleToDispensingIfNeeded({
               tx,
               cycleId: task.cycle_id,
-              orgId: req.orgId,
-              userId: req.userId,
+              orgId: ctx.orgId,
+              userId: ctx.userId,
               currentStatus: task.cycle.overall_status,
             });
           } catch (err) {
@@ -409,16 +407,21 @@ export const POST = withAuth(
           (lineId) => intakeLines.find((l) => l.id === lineId)?.drug_name ?? lineId,
         );
         const existingPartialException = await tx.workflowException.findFirst({
-          where: { cycle_id: task.cycle_id, exception_type: 'partial_dispense', status: 'open' },
+          where: {
+            cycle_id: task.cycle_id,
+            exception_type: 'partial_dispense',
+            status: 'open' satisfies ExceptionStatus,
+          },
         });
         if (!existingPartialException) {
           await tx.workflowException.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: task.cycle_id,
+              patient_id: task.cycle.patient_id,
               exception_type: 'partial_dispense',
-              severity: 'warning',
-              status: 'open',
+              severity: 'warning' satisfies ExceptionSeverity,
+              status: 'open' satisfies ExceptionStatus,
               description: `部分調剤: 未調剤の行があります (${missingLineNames.join(', ')})`,
             },
           });
@@ -428,7 +431,7 @@ export const POST = withAuth(
           const dueDate = new Date(now);
           dueDate.setDate(dueDate.getDate() + 3);
           await upsertOperationalTask(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             taskType: 'fax_original_followup',
             title: 'FAX処方せん原本の回収確認が必要です',
             description: '訪問時回収または後日郵送到着後に原本回収を記録してください',
@@ -450,19 +453,23 @@ export const POST = withAuth(
 
       // B3: Auto-resolve open partial_dispense exceptions when all lines are complete
       await tx.workflowException.updateMany({
-        where: { cycle_id: task.cycle_id, exception_type: 'partial_dispense', status: 'open' },
-        data: { status: 'resolved', resolved_at: new Date() },
+        where: {
+          cycle_id: task.cycle_id,
+          exception_type: 'partial_dispense',
+          status: 'open' satisfies ExceptionStatus,
+        },
+        data: { status: 'resolved' satisfies ExceptionStatus, resolved_at: new Date() },
       });
 
       try {
         await promoteCycleToDispensingIfNeeded({
           tx,
           cycleId: task.cycle_id,
-          orgId: req.orgId,
-          userId: req.userId,
+          orgId: ctx.orgId,
+          userId: ctx.userId,
           currentStatus: task.cycle.overall_status,
         });
-        await transitionCycleStatus(tx, task.cycle_id, req.orgId, 'audit_pending', req.userId);
+        await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, 'audit_pending', ctx.userId);
       } catch (err) {
         if (err instanceof InvalidTransitionError) {
           return {
@@ -478,7 +485,7 @@ export const POST = withAuth(
 
       const auditRecipients = await tx.membership.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           is_active: true,
           OR: [{ can_audit_dispense: true }, { role: { in: [...ADMIN_MEMBER_ROLES] } }],
           user: {
@@ -493,7 +500,7 @@ export const POST = withAuth(
       const explicitUserIds = Array.from(new Set(auditRecipients.map((member) => member.user_id)));
       if (explicitUserIds.length > 0) {
         await dispatchNotificationEvent(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           eventType: 'dispense_audit_pending',
           type: 'business',
           title: '調剤鑑査待ちの処方があります',
@@ -513,7 +520,7 @@ export const POST = withAuth(
       if (visitSchedules.length > 0) {
         const persistedResults = await tx.dispenseResult.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             task_id,
           },
           select: {
@@ -544,7 +551,7 @@ export const POST = withAuth(
         if (readyScheduleIdsToReopen.length > 0) {
           await tx.visitPreparation.updateMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               schedule_id: { in: readyScheduleIdsToReopen },
             },
             data: {
@@ -577,7 +584,7 @@ export const POST = withAuth(
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + 3);
         await upsertOperationalTask(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           taskType: 'fax_original_followup',
           title: 'FAX処方せん原本の回収確認が必要です',
           description: '訪問時回収または後日郵送到着後に原本回収を記録してください',
@@ -644,13 +651,13 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       eventType: 'cycle_transition',
       payload: { source: 'dispense_results', task_id },
     });
 
     if (!result.partial) {
-      await notifyWebhookEventForOrg(req.orgId, 'prescription.dispensed', {
+      await notifyWebhookEventForOrg(ctx.orgId, 'prescription.dispensed', {
         taskId: result.task_id,
         resultCount: result.results.length,
       });

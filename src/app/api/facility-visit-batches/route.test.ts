@@ -1,21 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-};
+type TestRouteContext = { params: Promise<Record<string, string>> };
 
-const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-        }) as AuthenticatedTestRequest,
-      );
-  }),
+const { withAuthContextMock, withOrgContextMock } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        routeContext: TestRouteContext,
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext: TestRouteContext = { params: Promise.resolve({}) }) =>
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    },
+  ),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -24,8 +24,8 @@ const { visitScheduleCountMock, notifyWorkflowMutationMock } = vi.hoisted(() => 
   notifyWorkflowMutationMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -36,7 +36,10 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 

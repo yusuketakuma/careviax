@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -39,8 +39,8 @@ function parseBillingDomainBodyValue(value: unknown) {
     : null;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -57,10 +57,10 @@ export const GET = withAuth(
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const candidates = await tx.billingCandidate.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
           billing_domain: billingDomain,
@@ -72,7 +72,7 @@ export const GET = withAuth(
       });
       const summary = parsedBillingMonth
         ? await getBillingCandidateWorkbenchSummary(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             billingMonth: parsedBillingMonth.start,
             patientId,
             billingDomain,
@@ -90,7 +90,7 @@ export const GET = withAuth(
         patientIds.length === 0
           ? []
           : await tx.patient.findMany({
-              where: { org_id: req.orgId, id: { in: patientIds } },
+              where: { org_id: ctx.orgId, id: { in: patientIds } },
               select: { id: true, name: true },
             });
       const patientNameMap = new Map(patients.map((p) => [p.id, p.name]));
@@ -130,8 +130,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -156,7 +156,7 @@ export const POST = withAuth(
     const visitRecords = billingMonthRange
       ? await prisma.visitRecord.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             visit_date: {
               gte: billingMonthRange.start,
               lt: billingMonthRange.nextStart,
@@ -168,11 +168,11 @@ export const POST = withAuth(
         })
       : [];
 
-    const created = await withOrgContext(req.orgId, async (tx) => {
+    const created = await withOrgContext(ctx.orgId, async (tx) => {
       if (generateHomeCare) {
         for (const visitRecord of visitRecords) {
           await upsertBillingEvidenceForVisit(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             visitRecordId: visitRecord.id,
           });
         }
@@ -180,13 +180,13 @@ export const POST = withAuth(
 
       const candidates = generateHomeCare
         ? await generateBillingCandidatesForMonth(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             billingMonth: billingMonth.start,
           })
         : [];
       const pcaRentalCandidates = generatePcaRental
         ? await generatePcaRentalBillingCandidatesForMonth(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             billingMonth: billingMonth.start,
           })
         : [];

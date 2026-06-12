@@ -141,6 +141,7 @@ const dispenseSafetyChecklist = {
 
 const {
   withAuthMock,
+  withAuthContextMock,
   requireAuthContextMock,
   withOrgContextMock,
   patientFindFirstMock,
@@ -180,6 +181,21 @@ const {
         );
     },
   ),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) =>
+        handler(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        });
+    },
+  ),
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -210,6 +226,7 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -290,6 +307,8 @@ import { POST as createDispenseAudit } from '../dispense-audits/route';
 import { POST as createVisitRecord } from '../visit-records/route';
 import { POST as generateCareReports } from '../care-reports/generate-from-visit/route';
 import { POST as sendCareReport } from '../care-reports/[id]/send/route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/test', {
@@ -1154,6 +1173,7 @@ describe('workflow full-cycle integration', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     expect(intakeResponse?.status).toBe(201);
@@ -1193,6 +1213,7 @@ describe('workflow full-cycle integration', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     expect(dispenseResponse?.status).toBe(201);
@@ -1205,6 +1226,7 @@ describe('workflow full-cycle integration', () => {
         task_id: 'task_1',
         result: 'approved',
       }),
+      emptyRouteContext,
     );
 
     expect(auditResponse?.status).toBe(201);
@@ -1222,6 +1244,7 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
+      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);
@@ -1234,6 +1257,7 @@ describe('workflow full-cycle integration', () => {
         visit_record_id: 'record_1',
         report_type: 'physician_report',
       }),
+      emptyRouteContext,
     );
 
     expect(generateResponse?.status).toBe(201);
@@ -1306,6 +1330,7 @@ describe('workflow full-cycle integration', () => {
         building_id: 'facility_alpha',
         unit_name: '201',
       }),
+      emptyRouteContext,
     );
 
     expect(patientResponse?.status).toBe(201);
@@ -1324,6 +1349,7 @@ describe('workflow full-cycle integration', () => {
         referral_source: '地域包括支援センター',
         referral_date: '2026-03-20',
       }),
+      emptyRouteContext,
     );
 
     expect(caseResponse?.status).toBe(201);
@@ -1344,6 +1370,7 @@ describe('workflow full-cycle integration', () => {
         time_window_start: '10:00',
         time_window_end: '11:00',
       }),
+      emptyRouteContext,
     );
 
     expect(scheduleResponse?.status).toBe(201);
@@ -1404,6 +1431,7 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
+      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);
@@ -1418,6 +1446,7 @@ describe('workflow full-cycle integration', () => {
         visit_record_id: 'record_1',
         report_type: 'care_manager_report',
       }),
+      emptyRouteContext,
     );
 
     expect(generateResponse?.status).toBe(201);

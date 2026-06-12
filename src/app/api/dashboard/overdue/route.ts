@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -30,15 +30,15 @@ function buildOverdueTaskAssignmentWhere(scope: DashboardAssignmentScope) {
   return relatedEntityScope.length > 0 ? { OR: relatedEntityScope } : { id: { in: [] } };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜
     const today = utcDateFromLocalKey(localDateKey());
     const now = new Date();
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
-      orgId: req.orgId,
-      accessContext: req,
+      orgId: ctx.orgId,
+      accessContext: ctx,
     });
     const caseScope =
       assignmentScope.caseIds === undefined ? {} : { case_id: { in: assignmentScope.caseIds } };
@@ -52,7 +52,7 @@ export const GET = withAuth(
     const [unrecordedVisits, unsentReports, overdueTasks] = await Promise.all([
       prisma.visitSchedule.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...caseScope,
           scheduled_date: { lt: today },
           schedule_status: {
@@ -80,7 +80,7 @@ export const GET = withAuth(
       }),
       prisma.careReport.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...patientScope,
           status: { in: ['draft', 'failed', 'response_waiting'] },
         },
@@ -97,7 +97,7 @@ export const GET = withAuth(
       }),
       prisma.task.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           status: { in: ['pending', 'in_progress'] },
           AND:
             Object.keys(taskAssignmentWhere).length === 0
@@ -123,7 +123,7 @@ export const GET = withAuth(
         ? []
         : await prisma.patient.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { in: reportPatientIds },
             },
             select: {

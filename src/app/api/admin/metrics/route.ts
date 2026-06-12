@@ -1,5 +1,5 @@
 import { format, getDay, startOfMonth, startOfYear } from 'date-fns';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
@@ -18,117 +18,123 @@ function countBusinessDays(from: Date, to: Date) {
   return Math.max(count, 1);
 }
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const yearStart = startOfYear(now);
+export const GET = withAuthContext(
+  async (_req, ctx) => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const yearStart = startOfYear(now);
 
-  const [
-    prescriptionIntakes,
-    totalPrescriptionLines,
-    genericPrescriptionLines,
-    activePharmacistCount,
-    homeVisitCountYtd,
-  ] = await Promise.all([
-    prisma.prescriptionIntake.findMany({
-      where: {
-        org_id: req.orgId,
-        prescribed_date: {
-          gte: monthStart,
-          lte: now,
-        },
-      },
-      select: {
-        prescriber_institution: true,
-      },
-    }),
-    prisma.prescriptionLine.count({
-      where: {
-        org_id: req.orgId,
-        intake: {
+    const [
+      prescriptionIntakes,
+      totalPrescriptionLines,
+      genericPrescriptionLines,
+      activePharmacistCount,
+      homeVisitCountYtd,
+    ] = await Promise.all([
+      prisma.prescriptionIntake.findMany({
+        where: {
+          org_id: ctx.orgId,
           prescribed_date: {
             gte: monthStart,
             lte: now,
           },
         },
-      },
-    }),
-    prisma.prescriptionLine.count({
-      where: {
-        org_id: req.orgId,
-        is_generic: true,
-        intake: {
-          prescribed_date: {
+        select: {
+          prescriber_institution: true,
+        },
+      }),
+      prisma.prescriptionLine.count({
+        where: {
+          org_id: ctx.orgId,
+          intake: {
+            prescribed_date: {
+              gte: monthStart,
+              lte: now,
+            },
+          },
+        },
+      }),
+      prisma.prescriptionLine.count({
+        where: {
+          org_id: ctx.orgId,
+          is_generic: true,
+          intake: {
+            prescribed_date: {
+              gte: monthStart,
+              lte: now,
+            },
+          },
+        },
+      }),
+      prisma.pharmacistShift.findMany({
+        where: {
+          org_id: ctx.orgId,
+          available: true,
+          date: {
             gte: monthStart,
             lte: now,
           },
         },
-      },
-    }),
-    prisma.pharmacistShift.findMany({
-      where: {
-        org_id: req.orgId,
-        available: true,
-        date: {
-          gte: monthStart,
-          lte: now,
+        select: {
+          user_id: true,
         },
-      },
-      select: {
-        user_id: true,
-      },
-      distinct: ['user_id'],
-    }),
-    prisma.visitRecord.count({
-      where: {
-        org_id: req.orgId,
-        visit_date: {
-          gte: yearStart,
-          lte: now,
+        distinct: ['user_id'],
+      }),
+      prisma.visitRecord.count({
+        where: {
+          org_id: ctx.orgId,
+          visit_date: {
+            gte: yearStart,
+            lte: now,
+          },
+          outcome_status: {
+            in: ['completed', 'completed_with_issue', 'revisit_needed', 'delivery_only'],
+          },
         },
-        outcome_status: {
-          in: ['completed', 'completed_with_issue', 'revisit_needed', 'delivery_only'],
-        },
-      },
-    }),
-  ]);
+      }),
+    ]);
 
-  const monthlyPrescriptionCount = prescriptionIntakes.length;
-  const topInstitutionCount = prescriptionIntakes.reduce<Record<string, number>>((acc, intake) => {
-    const institution = intake.prescriber_institution?.trim() || '不明';
-    acc[institution] = (acc[institution] ?? 0) + 1;
-    return acc;
-  }, {});
-  const highestInstitutionVolume =
-    Object.values(topInstitutionCount).sort((left, right) => right - left)[0] ?? 0;
-  const prescriptionConcentrationRate =
-    monthlyPrescriptionCount === 0
-      ? 0
-      : Math.round((highestInstitutionVolume / monthlyPrescriptionCount) * 100);
-  const genericDispensingRate =
-    totalPrescriptionLines === 0
-      ? 0
-      : Math.round((genericPrescriptionLines / totalPrescriptionLines) * 100);
-  const pharmacistCount = activePharmacistCount.length;
-  const businessDaysElapsed = countBusinessDays(monthStart, now);
-  const prescriptionsPerPharmacist =
-    pharmacistCount === 0
-      ? 0
-      : Number((monthlyPrescriptionCount / pharmacistCount / businessDaysElapsed).toFixed(1));
+    const monthlyPrescriptionCount = prescriptionIntakes.length;
+    const topInstitutionCount = prescriptionIntakes.reduce<Record<string, number>>(
+      (acc, intake) => {
+        const institution = intake.prescriber_institution?.trim() || '不明';
+        acc[institution] = (acc[institution] ?? 0) + 1;
+        return acc;
+      },
+      {},
+    );
+    const highestInstitutionVolume =
+      Object.values(topInstitutionCount).sort((left, right) => right - left)[0] ?? 0;
+    const prescriptionConcentrationRate =
+      monthlyPrescriptionCount === 0
+        ? 0
+        : Math.round((highestInstitutionVolume / monthlyPrescriptionCount) * 100);
+    const genericDispensingRate =
+      totalPrescriptionLines === 0
+        ? 0
+        : Math.round((genericPrescriptionLines / totalPrescriptionLines) * 100);
+    const pharmacistCount = activePharmacistCount.length;
+    const businessDaysElapsed = countBusinessDays(monthStart, now);
+    const prescriptionsPerPharmacist =
+      pharmacistCount === 0
+        ? 0
+        : Number((monthlyPrescriptionCount / pharmacistCount / businessDaysElapsed).toFixed(1));
 
-  return success({
-    data: {
-      prescription_concentration_rate: prescriptionConcentrationRate,
-      generic_dispensing_rate: genericDispensingRate,
-      prescriptions_per_pharmacist: prescriptionsPerPharmacist,
-      home_visit_count_ytd: homeVisitCountYtd,
-      monthly_prescription_count: monthlyPrescriptionCount,
-      reference_month: format(monthStart, 'yyyy-MM'),
-      active_pharmacist_count: pharmacistCount,
-      business_days_elapsed: businessDaysElapsed,
-    },
-  });
-}, {
-  permission: 'canAdmin',
-  message: '経営指標の閲覧権限がありません',
-});
+    return success({
+      data: {
+        prescription_concentration_rate: prescriptionConcentrationRate,
+        generic_dispensing_rate: genericDispensingRate,
+        prescriptions_per_pharmacist: prescriptionsPerPharmacist,
+        home_visit_count_ytd: homeVisitCountYtd,
+        monthly_prescription_count: monthlyPrescriptionCount,
+        reference_month: format(monthStart, 'yyyy-MM'),
+        active_pharmacist_count: pharmacistCount,
+        business_days_elapsed: businessDaysElapsed,
+      },
+    });
+  },
+  {
+    permission: 'canAdmin',
+    message: '経営指標の閲覧権限がありません',
+  },
+);

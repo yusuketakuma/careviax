@@ -47,7 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findFirst({
-      where: { id: ruleId },
+      where: { id: ruleId, org_id: ctx.orgId },
       select: { id: true },
     }),
   );
@@ -82,7 +82,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findFirst({
-      where: { id: ruleId },
+      where: { id: ruleId, org_id: ctx.orgId },
       select: { id: true },
     }),
   );

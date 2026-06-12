@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { success, notFound, validationError } from '@/lib/api/response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -433,31 +434,25 @@ export const POST = withAuthContext(
         select: stockSelect,
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: existingStock ? 'pharmacy_drug_stock_updated' : 'pharmacy_drug_stock_created',
-          target_type: 'PharmacyDrugStock',
-          target_id: saved.id,
-          changes: {
-            site_id,
-            drug_master_id,
-            before: existingStock,
-            after: {
-              is_stocked,
-              reorder_point: reorder_point ?? null,
-              preferred_generic_id: preferredGeneric?.id ?? null,
-              adoption_source,
-              adoption_note: adoption_note ?? null,
-              mark_reviewed,
-              follow_up_status: follow_up_status ?? null,
-              follow_up_reason: follow_up_reason ?? null,
-              follow_up_due_date: follow_up_due_date?.toISOString() ?? null,
-            },
+      await createAuditLogEntry(tx, authCtx, {
+        action: existingStock ? 'pharmacy_drug_stock_updated' : 'pharmacy_drug_stock_created',
+        targetType: 'PharmacyDrugStock',
+        targetId: saved.id,
+        changes: {
+          site_id,
+          drug_master_id,
+          before: existingStock,
+          after: {
+            is_stocked,
+            reorder_point: reorder_point ?? null,
+            preferred_generic_id: preferredGeneric?.id ?? null,
+            adoption_source,
+            adoption_note: adoption_note ?? null,
+            mark_reviewed,
+            follow_up_status: follow_up_status ?? null,
+            follow_up_reason: follow_up_reason ?? null,
+            follow_up_due_date: follow_up_due_date?.toISOString() ?? null,
           },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
         },
       });
 

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
@@ -52,8 +52,8 @@ async function buildFirstVisitDocumentAssignmentWhere(args: {
   return { case_id: { in: caseIds } };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -61,14 +61,14 @@ export const GET = withAuth(
     const caseId = searchParams.get('case_id') ?? undefined;
 
     const assignmentWhere = await buildFirstVisitDocumentAssignmentWhere({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       patientId,
       caseId,
-      accessContext: req,
+      accessContext: ctx,
     });
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(caseId ? { case_id: caseId } : {}),
       ...assignmentWhere,
@@ -105,8 +105,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -117,17 +117,17 @@ export const POST = withAuth(
 
     const canAccessScope = await canAccessCareCase({
       db: prisma,
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       caseId: parsed.data.case_id,
       patientId: parsed.data.patient_id,
-      accessContext: req,
+      accessContext: ctx,
     });
     if (!canAccessScope) return notFound('患者またはケースが見つかりません');
 
-    const doc = await withOrgContext(req.orgId, async (tx) => {
+    const doc = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.firstVisitDocument.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: parsed.data.patient_id,
           case_id: parsed.data.case_id,
           emergency_contacts: parsed.data.emergency_contacts,

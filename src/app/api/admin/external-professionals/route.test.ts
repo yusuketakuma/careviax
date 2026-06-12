@@ -13,12 +13,26 @@ const {
   assertFacilityReferenceMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+const emptyRouteContext = { params: Promise.resolve({}) };
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'admin',
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string },
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
-  ) => handler,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, authContext, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -41,11 +55,7 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 import { GET, POST } from './route';
 
 function createAuthRequest(url: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
-  return Object.assign(new NextRequest(url, init), {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'admin',
-  });
+  return new NextRequest(url, init);
 }
 
 function createJsonAuthRequest(body: unknown) {
@@ -130,6 +140,7 @@ describe('/api/admin/external-professionals', () => {
       createAuthRequest(
         'http://localhost/api/admin/external-professionals?q=訪看&profession_type=nurse&facility_id=facility_1',
       ),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);
@@ -179,6 +190,7 @@ describe('/api/admin/external-professionals', () => {
         phone: ' 03-1111-2222 ',
         fax: ' 03-1111-3333 ',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(201);
@@ -223,6 +235,7 @@ describe('/api/admin/external-professionals', () => {
         phone: '   ',
         fax: '\t',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(201);
@@ -260,6 +273,7 @@ describe('/api/admin/external-professionals', () => {
         phone: '03-ABCD-2222',
         fax: 'FAX-3333',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(400);
@@ -276,7 +290,7 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it('rejects non-object create payloads before facility validation', async () => {
-    const response = (await POST(createJsonAuthRequest([])))!;
+    const response = (await POST(createJsonAuthRequest([]), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -285,7 +299,7 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it('rejects malformed JSON create payloads before facility validation', async () => {
-    const response = (await POST(createMalformedJsonAuthRequest()))!;
+    const response = (await POST(createMalformedJsonAuthRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({

@@ -27,6 +27,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET, POST } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createRequest(method: 'GET' | 'POST', headers?: Record<string, string>, body?: unknown) {
   return new NextRequest('http://localhost/api/admin/escalation-rules', {
     method,
@@ -70,7 +72,7 @@ describe('/api/admin/escalation-rules', () => {
       },
     ]);
 
-    const response = await GET(createRequest('GET', { 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest('GET', { 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -113,6 +115,7 @@ describe('/api/admin/escalation-rules', () => {
           is_active: true,
         },
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -145,6 +148,7 @@ describe('/api/admin/escalation-rules', () => {
             notify_role: 'manager',
           },
         ),
+        emptyRouteContext,
       );
 
       if (!response) throw new Error('response is required');
@@ -160,7 +164,10 @@ describe('/api/admin/escalation-rules', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await POST(createRequest('POST', { 'x-org-id': 'org_1' }, []));
+    const response = await POST(
+      createRequest('POST', { 'x-org-id': 'org_1' }, []),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -171,7 +178,10 @@ describe('/api/admin/escalation-rules', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await POST(createMalformedJsonPostRequest({ 'x-org-id': 'org_1' }));
+    const response = await POST(
+      createMalformedJsonPostRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

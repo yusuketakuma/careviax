@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
-
 const { pcaPumpFindManyMock, pcaPumpCreateMock, auditLogCreateMock, withOrgContextMock } =
   vi.hoisted(() => ({
     pcaPumpFindManyMock: vi.fn(),
@@ -11,8 +9,20 @@ const { pcaPumpFindManyMock, pcaPumpCreateMock, auditLogCreateMock, withOrgConte
     withOrgContextMock: vi.fn(),
   }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+      ) => Promise<Response>,
+    ) =>
+    (req: NextRequest) =>
+      handler(req, {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,28 +37,23 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
-function withAuthContext(req: NextRequest): AuthenticatedTestRequest {
-  return Object.assign(req, {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'admin',
-  });
-}
+const emptyRouteContext = { params: Promise.resolve({}) };
 
-function createRequest(url: string): AuthenticatedTestRequest {
-  return withAuthContext(new NextRequest(url));
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+function createRequest(url: string) {
+  return new NextRequest(url);
 }
 
 function createJsonRequest(body: unknown) {
-  return withAuthContext(
-    new NextRequest('http://localhost/api/pca-pumps', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-  );
+  return new NextRequest('http://localhost/api/pca-pumps', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 const pumpRecord = {

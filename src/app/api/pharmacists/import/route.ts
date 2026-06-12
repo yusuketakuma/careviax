@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import type { ZodError } from 'zod';
 
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
@@ -296,20 +297,14 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
-            actor_id: ctx.userId,
-            action: 'pharmacist_imported',
-            target_type: 'User',
-            target_id: user.id,
-            changes: {
-              role: row.role,
-              site_id: siteId,
-              certification_type: row.certification_type,
-            },
-            ip_address: ctx.ipAddress,
-            user_agent: ctx.userAgent,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'pharmacist_imported',
+          targetType: 'User',
+          targetId: user.id,
+          changes: {
+            role: row.role,
+            site_id: siteId,
+            certification_type: row.certification_type,
           },
         });
       });

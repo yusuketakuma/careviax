@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
@@ -51,8 +51,8 @@ function round(value: number, digits = 1) {
   return Math.round(value * base) / base;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const range = parseMonthRange(searchParams.get('month'));
     if (!range) {
@@ -63,7 +63,7 @@ export const GET = withAuth(
 
     const memberships = await prisma.membership.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         is_active: true,
         role: {
           in: [...KPI_ROLES],
@@ -110,7 +110,7 @@ export const GET = withAuth(
     const [visitRecords, careReports, shifts] = await Promise.all([
       prisma.visitRecord.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           pharmacist_id: {
             in: userIds,
           },
@@ -132,7 +132,7 @@ export const GET = withAuth(
       }),
       prisma.careReport.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           created_by: {
             in: userIds,
           },
@@ -151,7 +151,7 @@ export const GET = withAuth(
       }),
       prisma.pharmacistShift.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           user_id: {
             in: userIds,
           },

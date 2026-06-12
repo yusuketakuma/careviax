@@ -1,18 +1,18 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const facilityId = searchParams.get('facility_id');
     if (!facilityId?.trim()) {
       return validationError('facility_id は必須です');
     }
 
-    const suggestions = await withOrgContext(req.orgId, async (tx) => {
+    const suggestions = await withOrgContext(ctx.orgId, async (tx) => {
       const facility = await tx.facility.findFirst({
-        where: { id: facilityId, org_id: req.orgId },
+        where: { id: facilityId, org_id: ctx.orgId },
         select: {
           id: true,
           name: true,
@@ -51,5 +51,5 @@ export const GET = withAuth(
   {
     permission: 'canReport',
     message: 'カンファレンス参加者候補の閲覧権限がありません',
-  }
+  },
 );

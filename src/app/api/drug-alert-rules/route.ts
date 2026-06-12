@@ -45,8 +45,9 @@ export async function GET(req: NextRequest) {
     tx.drugAlertRule.findMany({
       where: {
         ...(alertType ? { alert_type: alertType.data } : {}),
+        OR: [{ org_id: ctx.orgId }, { org_id: null }],
       },
-      orderBy: [{ alert_type: 'asc' }, { updated_at: 'desc' }],
+      orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
     }),
   );
 
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
   const rule = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.create({
       data: {
+        org_id: ctx.orgId,
         alert_type: parsed.data.alert_type,
         condition: toPrismaJsonInput(parsed.data.condition),
         severity: parsed.data.severity,

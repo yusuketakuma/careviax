@@ -22,7 +22,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, {
@@ -42,7 +45,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026/03', {
         'x-org-id': 'org_1',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -56,7 +59,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-13', {
         'x-org-id': 'org_1',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -137,7 +140,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', {
         'x-org-id': 'org_1',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

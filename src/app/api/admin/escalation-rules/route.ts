@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -10,10 +10,10 @@ function serializeCondition(value: Prisma.JsonValue) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const rules = await prisma.escalationRule.findMany({
-      where: { org_id: req.orgId },
+      where: { org_id: ctx.orgId },
       orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
     });
 
@@ -36,8 +36,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -48,7 +48,7 @@ export const POST = withAuth(
 
     const created = await prisma.escalationRule.create({
       data: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         trigger_type: parsed.data.trigger_type,
         condition: toPrismaJsonInput(parsed.data.condition),
         action: parsed.data.action,

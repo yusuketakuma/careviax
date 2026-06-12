@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { NextResponse } from 'next/server';
 import { withOrgContext } from '@/lib/db/rls';
@@ -16,11 +16,11 @@ function generateWebhookSecret(): string {
   return randomBytes(32).toString('hex');
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
-    const registrations = await withOrgContext(req.orgId, async (tx) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
+    const registrations = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.webhookRegistration.findMany({
-        where: { org_id: req.orgId },
+        where: { org_id: ctx.orgId },
         orderBy: { created_at: 'desc' },
         select: {
           id: true,
@@ -39,8 +39,8 @@ export const GET = withAuth(
   { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
       return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 });
@@ -74,10 +74,10 @@ export const POST = withAuth(
       );
     }
 
-    const registration = await withOrgContext(req.orgId, async (tx) => {
+    const registration = await withOrgContext(ctx.orgId, async (tx) => {
       const created = await tx.webhookRegistration.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           url,
           secret: null,
           ...encryptedSecret,

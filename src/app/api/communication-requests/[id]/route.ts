@@ -1,3 +1,4 @@
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
@@ -319,23 +320,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
 
       if (statusChanged) {
-        await tx.auditLog.create({
-          data: {
-            org_id: orgId,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'communication_request_status_changed',
+          targetType: 'communication_request',
+          targetId: id,
+          changes: {
+            from_status: existing.status,
+            to_status: nextStatus,
+            reason: statusChangeReason ?? 'communication_response_recorded',
+            status_change_reason: statusChangeReason ?? null,
+            response_id: responseId,
+            linked_tracing_report_id:
+              updated.related_entity_type === 'tracing_report' ? updated.related_entity_id : null,
             actor_id: ctx.userId,
-            action: 'communication_request_status_changed',
-            target_type: 'communication_request',
-            target_id: id,
-            changes: {
-              from_status: existing.status,
-              to_status: nextStatus,
-              reason: statusChangeReason ?? 'communication_response_recorded',
-              status_change_reason: statusChangeReason ?? null,
-              response_id: responseId,
-              linked_tracing_report_id:
-                updated.related_entity_type === 'tracing_report' ? updated.related_entity_id : null,
-              actor_id: ctx.userId,
-            },
           },
         });
       }
@@ -369,21 +366,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           });
 
           if (tracingStatus !== linkedTracingReport.status) {
-            await tx.auditLog.create({
-              data: {
-                org_id: orgId,
+            await createAuditLogEntry(tx, ctx, {
+              action: 'tracing_report_status_changed',
+              targetType: 'tracing_report',
+              targetId: linkedTracingReport.id,
+              changes: {
+                from_status: linkedTracingReport.status,
+                to_status: tracingStatus,
+                reason: statusChangeReason ?? 'communication_response_recorded',
+                status_change_reason: statusChangeReason ?? null,
+                linked_communication_request_id: updated.id,
                 actor_id: ctx.userId,
-                action: 'tracing_report_status_changed',
-                target_type: 'tracing_report',
-                target_id: linkedTracingReport.id,
-                changes: {
-                  from_status: linkedTracingReport.status,
-                  to_status: tracingStatus,
-                  reason: statusChangeReason ?? 'communication_response_recorded',
-                  status_change_reason: statusChangeReason ?? null,
-                  linked_communication_request_id: updated.id,
-                  actor_id: ctx.userId,
-                },
               },
             });
           }

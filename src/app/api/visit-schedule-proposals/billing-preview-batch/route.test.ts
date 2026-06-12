@@ -1,23 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBatchMock } =
+const { withAuthContextMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBatchMock } =
   vi.hoisted(() => ({
-    withAuthMock: vi.fn(
+    withAuthContextMock: vi.fn(
       (
         handler: (
-          req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+          req: NextRequest,
+          ctx: { orgId: string; userId: string; role: 'pharmacist' },
+          routeContext: { params: Promise<Record<string, string>> },
         ) => Promise<Response>,
         _options?: unknown,
       ) => {
         void _options;
-        return (req: NextRequest) =>
+        return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
           handler(
-            Object.assign(req, {
+            req,
+            {
               orgId: 'org_1',
               userId: 'user_1',
               role: 'pharmacist',
-            } as const),
+            },
+            routeContext,
           );
       },
     ),
@@ -25,8 +29,8 @@ const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBat
     buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
   }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -43,7 +47,8 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
 
 import { POST } from './route';
 
-const withAuthRegistrationCalls = [...withAuthMock.mock.calls];
+const emptyRouteContext = { params: Promise.resolve({}) };
+const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
 
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedule-proposals/billing-preview-batch', {
@@ -101,6 +106,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -159,7 +165,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   });
 
   it('rejects non-object batch preview payloads before case lookup', async () => {
-    const response = await POST(createPostRequest([]));
+    const response = await POST(createPostRequest([]), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -168,7 +174,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   });
 
   it('rejects malformed JSON batch preview payloads before case lookup', async () => {
-    const response = await POST(createMalformedJsonPostRequest());
+    const response = await POST(createMalformedJsonPostRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -185,6 +191,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       createPostRequest({
         items: [{ key: 'proposal_1', case_id: 'case_1', proposed_date: '2026-02-30' }],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -204,6 +211,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       createPostRequest({
         items: [{ key: 'proposal_1', case_id: 'case_unassigned', proposed_date: '2026-04-03' }],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');

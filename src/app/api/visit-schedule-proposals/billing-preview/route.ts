@@ -1,11 +1,12 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleBillingPreview } from '@/server/services/visit-schedule-billing-preview';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const caseId = searchParams.get('case_id');
     const proposedDate = searchParams.get('proposed_date');
@@ -17,11 +18,11 @@ export const GET = withAuth(
       return validationError('case_id と proposed_date が必要です');
     }
 
-    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(req, pharmacistId);
+    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, pharmacistId);
     const accessibleCase = await prisma.careCase.findFirst({
       where: {
         id: caseId,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
       },
       select: { id: true },
@@ -29,7 +30,7 @@ export const GET = withAuth(
     if (!accessibleCase) return notFound('ケースが見つかりません');
 
     const preview = await buildVisitScheduleBillingPreview({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       caseId,
       proposedDate,
       pharmacistId,

@@ -1,24 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-};
-
 const { withOrgContextMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-        }) as AuthenticatedTestRequest,
-      );
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+  ) => {
+    return (
+      req: NextRequest,
+      routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+    ) => {
+      return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    };
   },
 }));
 
@@ -26,12 +26,13 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createGetRequest(search = '') {
-  return new NextRequest(
-    `http://localhost/api/conference-notes/participant-suggestions${search}`,
-  );
+  return new NextRequest(`http://localhost/api/conference-notes/participant-suggestions${search}`);
 }
 
 describe('/api/conference-notes/participant-suggestions', () => {

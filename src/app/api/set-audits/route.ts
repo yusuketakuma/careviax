@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -15,6 +16,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import type { ScheduleStatus } from '@prisma/client';
 import { z } from 'zod';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 // B3: approved_scope keys must match pattern day_number-slot
 const approvedScopeSchema = z
@@ -97,8 +99,8 @@ function buildSetCarryItems(
     }));
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -109,23 +111,31 @@ export const POST = withAuth(
 
     const { plan_id, result, approved_scope, reject_reason, audited_at } = parsed.data;
 
-    const auditResult = await withOrgContext(req.orgId, async (tx) => {
-      const planAssignmentWhere = buildSetPlanAssignmentWhere(req);
-      const auditAssignmentWhere = buildSetAuditAssignmentWhere(req);
+    const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
+      const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
+      const auditAssignmentWhere = buildSetAuditAssignmentWhere(ctx);
       const plan = await tx.setPlan.findFirst({
         where: {
           id: plan_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
         },
-        select: { id: true, cycle_id: true },
+        select: {
+          id: true,
+          cycle_id: true,
+          cycle: {
+            select: {
+              patient_id: true,
+            },
+          },
+        },
       });
 
       if (!plan) return null;
 
       const now = audited_at ? new Date(audited_at) : new Date();
       const setBatches = await tx.setBatch.findMany({
-        where: { plan_id, org_id: req.orgId },
+        where: { plan_id, org_id: ctx.orgId },
         include: {
           line: {
             select: {
@@ -158,7 +168,7 @@ export const POST = withAuth(
           ? await tx.setAudit.findFirst({
               where: {
                 plan_id,
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
               },
               orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
@@ -182,14 +192,14 @@ export const POST = withAuth(
 
       const audit = await tx.setAudit.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           plan_id,
           result,
           approved_scope: effectiveApprovedScope
             ? toPrismaJsonInput(effectiveApprovedScope)
             : undefined,
           reject_reason: reject_reason ?? null,
-          audited_by: req.userId,
+          audited_by: ctx.userId,
           audited_at: now,
         },
       });
@@ -199,7 +209,7 @@ export const POST = withAuth(
         options?: { exceptionStatus?: string | null },
       ) => {
         try {
-          await transitionCycleStatus(tx, plan.cycle_id, req.orgId, toStatus, req.userId, options);
+          await transitionCycleStatus(tx, plan.cycle_id, ctx.orgId, toStatus, ctx.userId, options);
         } catch (err) {
           if (err instanceof InvalidTransitionError) {
             return {
@@ -222,7 +232,7 @@ export const POST = withAuth(
         if (transitionErr) return transitionErr;
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
               in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
@@ -235,9 +245,9 @@ export const POST = withAuth(
         });
         await tx.visitPreparation.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             schedule: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: plan.cycle_id,
               schedule_status: 'ready',
             },
@@ -249,7 +259,7 @@ export const POST = withAuth(
         });
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: 'ready',
           },
@@ -266,9 +276,13 @@ export const POST = withAuth(
           where: {
             cycle_id: plan.cycle_id,
             exception_type: 'set_audit_rejected',
-            status: 'open',
+            status: 'open' satisfies ExceptionStatus,
           },
-          data: { status: 'resolved', resolved_by: req.userId, resolved_at: new Date() },
+          data: {
+            status: 'resolved' satisfies ExceptionStatus,
+            resolved_by: ctx.userId,
+            resolved_at: new Date(),
+          },
         });
       } else if (result === 'partial_approved') {
         // Partial: carry_items_partial + re-work task
@@ -280,7 +294,7 @@ export const POST = withAuth(
         if (transitionErr) return transitionErr;
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
               in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
@@ -293,9 +307,9 @@ export const POST = withAuth(
         });
         await tx.visitPreparation.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             schedule: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: plan.cycle_id,
               schedule_status: 'ready',
             },
@@ -307,7 +321,7 @@ export const POST = withAuth(
         });
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: 'ready',
           },
@@ -321,7 +335,7 @@ export const POST = withAuth(
 
         await tx.task.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             title: 'セット再作業（部分承認）',
             description: `セット鑑査で部分承認となりました。承認範囲: ${
               effectiveApprovedScope ? JSON.stringify(effectiveApprovedScope) : '未指定'
@@ -338,7 +352,7 @@ export const POST = withAuth(
         if (transitionErr) return transitionErr;
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: {
               in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
@@ -351,9 +365,9 @@ export const POST = withAuth(
         });
         await tx.visitPreparation.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             schedule: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: plan.cycle_id,
               schedule_status: 'ready',
             },
@@ -365,7 +379,7 @@ export const POST = withAuth(
         });
         await tx.visitSchedule.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
             schedule_status: 'ready',
           },
@@ -379,12 +393,13 @@ export const POST = withAuth(
 
         await tx.workflowException.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: plan.cycle_id,
+            patient_id: plan.cycle?.patient_id ?? null,
             exception_type: 'set_audit_rejected',
             description: `セット鑑査差戻し: ${reject_reason ?? '理由未記入'}`,
-            severity: 'warning',
-            status: 'open',
+            severity: 'warning' satisfies ExceptionSeverity,
+            status: 'open' satisfies ExceptionStatus,
           },
         });
       }
@@ -410,7 +425,7 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       eventType: 'cycle_transition',
       payload: { source: 'set_audits', plan_id },
     });

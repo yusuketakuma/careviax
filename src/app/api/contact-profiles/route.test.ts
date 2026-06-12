@@ -5,12 +5,19 @@ const { listContactProfilesMock } = vi.hoisted(() => ({
   listContactProfilesMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }
-    ) => Promise<Response>
-  ) => handler,
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'admin' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -24,11 +31,7 @@ vi.mock('@/lib/contact-profiles', () => ({
 import { GET } from './route';
 
 function createAuthRequest(url: string) {
-  return Object.assign(new NextRequest(url), {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'admin',
-  });
+  return new NextRequest(url);
 }
 
 describe('/api/contact-profiles', () => {
@@ -59,6 +62,7 @@ describe('/api/contact-profiles', () => {
       createAuthRequest(
         'http://localhost/api/contact-profiles?kind=external_professional&q=%E5%B1%B1%E7%94%B0',
       ),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);

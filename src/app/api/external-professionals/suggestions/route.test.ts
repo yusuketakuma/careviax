@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: string;
-};
-
 const { careCaseFindFirstMock, patientFindFirstMock, findExternalProfessionalSuggestionsMock } =
   vi.hoisted(() => ({
     careCaseFindFirstMock: vi.fn(),
@@ -14,8 +8,26 @@ const { careCaseFindFirstMock, patientFindFirstMock, findExternalProfessionalSug
     findExternalProfessionalSuggestionsMock: vi.fn(),
   }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist',
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, authContext, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -36,12 +48,7 @@ vi.mock('@/lib/contact-profiles', () => ({
 import { GET } from './route';
 
 function createRequest(search = '') {
-  const req = new NextRequest(`http://localhost/api/external-professionals/suggestions${search}`);
-  return Object.assign(req, {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'pharmacist',
-  }) as AuthenticatedTestRequest;
+  return new NextRequest(`http://localhost/api/external-professionals/suggestions${search}`);
 }
 
 describe('/api/external-professionals/suggestions', () => {
@@ -70,7 +77,10 @@ describe('/api/external-professionals/suggestions', () => {
   });
 
   it('returns external professional suggestions for patient/case context', async () => {
-    const response = (await GET(createRequest('?patient_id=patient_1&case_id=case_1')))!;
+    const response = (await GET(
+      createRequest('?patient_id=patient_1&case_id=case_1'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(200);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
@@ -110,7 +120,7 @@ describe('/api/external-professionals/suggestions', () => {
   });
 
   it('rejects requests without patient or case context', async () => {
-    const response = (await GET(createRequest()))!;
+    const response = (await GET(createRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
   });
@@ -118,7 +128,10 @@ describe('/api/external-professionals/suggestions', () => {
   it('returns empty suggestions when the requested case is outside assignment scope', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET(createRequest('?patient_id=patient_1&case_id=case_other')))!;
+    const response = (await GET(
+      createRequest('?patient_id=patient_1&case_id=case_other'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(200);
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();

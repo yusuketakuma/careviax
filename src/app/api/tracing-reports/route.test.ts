@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'pharmacist';
-};
-
 const {
   tracingReportFindManyMock,
   tracingReportCreateMock,
@@ -27,15 +21,20 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => (req: NextRequest) =>
-    handler(
-      Object.assign(req, {
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      ) => Promise<Response>,
+    ) =>
+    (req: NextRequest) =>
+      handler(req, {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist' as const,
       }),
-    ),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -61,7 +60,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {

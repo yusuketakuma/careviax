@@ -1,37 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
+type TestAuthContext = {
   orgId: string;
   userId: string;
   role: 'pharmacist';
 };
 
+type TestRouteContext = { params: Promise<Record<string, string>> };
+
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   medicationCycleFindFirstMock,
   dispenseTaskFindManyMock,
   dispatchNotificationEventMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
+  withAuthContextMock: vi.fn(
+    (handler: (req: NextRequest, ctx: TestAuthContext) => Promise<Response>) => {
+      return (req: NextRequest) => {
+        return handler(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        }) as AuthenticatedTestRequest,
-      );
-  }),
+        });
+      };
+    },
+  ),
   withOrgContextMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -53,9 +56,12 @@ vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+const emptyRouteContext: TestRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/dispense-tasks', {

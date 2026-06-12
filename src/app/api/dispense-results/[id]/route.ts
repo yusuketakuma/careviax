@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -26,131 +26,129 @@ const updateDispenseResultSchema = z.object({
 });
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤実績IDが不正です');
+  const authResult = await requireAuthContext(req);
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤実績IDが不正です');
 
-    const result = await prisma.dispenseResult.findFirst({
-      where: {
-        id,
-        org_id: authReq.orgId,
-        ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
-      },
-      include: {
-        line: true,
-      },
-    });
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
-    if (!result) return notFound('指定された調剤実績が見つかりません');
+  const result = await prisma.dispenseResult.findFirst({
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
+    },
+    include: {
+      line: true,
+    },
+  });
 
-    return success(result);
-  })(req);
+  if (!result) return notFound('指定された調剤実績が見つかりません');
+
+  return success(result);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤実績IDが不正です');
+  const authResult = await requireAuthContext(req);
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤実績IDが不正です');
 
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
-    const parsed = updateDispenseResultSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateDispenseResultSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const updated = await withOrgContext(ctx.orgId, async (tx) => {
+    const existing = await tx.dispenseResult.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
+      },
+      select: {
+        id: true,
+        task_id: true,
+        version: true,
+      },
+    });
+    if (!existing) return null;
+
+    // B2: Version lock — reject if client version is stale
+    if (parsed.data.version !== undefined && existing.version !== parsed.data.version) {
+      return { error: '他のユーザーによって更新されています', conflict: true } as const;
     }
 
-    const updated = await withOrgContext(authReq.orgId, async (tx) => {
-      const existing = await tx.dispenseResult.findFirst({
-        where: {
-          id,
-          org_id: authReq.orgId,
-          ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
-        },
-        select: {
-          id: true,
-          task_id: true,
-          version: true,
-        },
-      });
-      if (!existing) return null;
-
-      // B2: Version lock — reject if client version is stale
-      if (parsed.data.version !== undefined && existing.version !== parsed.data.version) {
-        return { error: '他のユーザーによって更新されています', conflict: true } as const;
-      }
-
-      // B5: Precondition — the LATEST audit for this task must be 'rejected'
-      const latestAudit = await tx.dispenseAudit.findFirst({
-        where: { task_id: existing.task_id },
-        orderBy: { audited_at: 'desc' },
-        select: { result: true },
-      });
-      if (latestAudit?.result !== 'rejected') {
-        return { error: '差戻しされていないタスクの結果は修正できません' } as const;
-      }
-
-      const result = await tx.dispenseResult.update({
-        where: { id },
-        data: {
-          actual_drug_name: parsed.data.actual_drug_name,
-          actual_drug_code: parsed.data.actual_drug_code,
-          actual_quantity: parsed.data.actual_quantity,
-          actual_unit: parsed.data.actual_unit,
-          discrepancy_reason: parsed.data.discrepancy_reason,
-          carry_type: parsed.data.carry_type,
-          special_notes: parsed.data.special_notes,
-        },
-      });
-
-      // Re-set DispenseTask status to completed and cycle to audit_pending
-      const task = await tx.dispenseTask.update({
-        where: { id: existing.task_id },
-        data: { status: 'completed' },
-        select: { cycle_id: true },
-      });
-
-      try {
-        await transitionCycleStatus(
-          tx,
-          task.cycle_id,
-          authReq.orgId,
-          'audit_pending',
-          authReq.userId,
-        );
-      } catch (err) {
-        if (err instanceof InvalidTransitionError) {
-          return {
-            error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-          } as const;
-        }
-        if (err instanceof VersionConflictError) {
-          return { error: err.message, conflict: true } as const;
-        }
-        throw err;
-      }
-
-      return result;
+    // B5: Precondition — the LATEST audit for this task must be 'rejected'
+    const latestAudit = await tx.dispenseAudit.findFirst({
+      where: { task_id: existing.task_id },
+      orderBy: { audited_at: 'desc' },
+      select: { result: true },
     });
-
-    if (!updated) return notFound('指定された調剤実績が見つかりません');
-    if ('error' in updated) {
-      if ('conflict' in updated && updated.conflict) return conflict(updated.error);
-      return validationError(updated.error);
+    if (latestAudit?.result !== 'rejected') {
+      return { error: '差戻しされていないタスクの結果は修正できません' } as const;
     }
 
-    await notifyWorkflowMutation({
-      orgId: authReq.orgId,
-      eventType: 'cycle_transition',
-      payload: { source: 'dispense_results_rework', result_id: id },
+    const result = await tx.dispenseResult.update({
+      where: { id },
+      data: {
+        actual_drug_name: parsed.data.actual_drug_name,
+        actual_drug_code: parsed.data.actual_drug_code,
+        actual_quantity: parsed.data.actual_quantity,
+        actual_unit: parsed.data.actual_unit,
+        discrepancy_reason: parsed.data.discrepancy_reason,
+        carry_type: parsed.data.carry_type,
+        special_notes: parsed.data.special_notes,
+      },
     });
 
-    return success(updated);
-  })(req);
+    // Re-set DispenseTask status to completed and cycle to audit_pending
+    const task = await tx.dispenseTask.update({
+      where: { id: existing.task_id },
+      data: { status: 'completed' },
+      select: { cycle_id: true },
+    });
+
+    try {
+      await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, 'audit_pending', ctx.userId);
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        return {
+          error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+        } as const;
+      }
+      if (err instanceof VersionConflictError) {
+        return { error: err.message, conflict: true } as const;
+      }
+      throw err;
+    }
+
+    return result;
+  });
+
+  if (!updated) return notFound('指定された調剤実績が見つかりません');
+  if ('error' in updated) {
+    if ('conflict' in updated && updated.conflict) return conflict(updated.error);
+    return validationError(updated.error);
+  }
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    eventType: 'cycle_transition',
+    payload: { source: 'dispense_results_rework', result_id: id },
+  });
+
+  return success(updated);
 }

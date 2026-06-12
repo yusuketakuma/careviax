@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  facilityFindManyMock,
-  residenceGroupByMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  facilityFindManyMock: vi.fn(),
-  residenceGroupByMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, facilityFindManyMock, residenceGroupByMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    facilityFindManyMock: vi.fn(),
+    residenceGroupByMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -36,6 +32,8 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(url: string) {
   return new NextRequest(url, {
@@ -66,13 +64,14 @@ describe('/api/facilities', () => {
         updated_at: new Date('2026-01-01'),
       },
     ]);
-    residenceGroupByMock.mockResolvedValue([
-      { facility_id: 'fac_1', _count: { _all: 5 } },
-    ]);
+    residenceGroupByMock.mockResolvedValue([{ facility_id: 'fac_1', _count: { _all: 5 } }]);
   });
 
   it('returns 200 with facilities list', async () => {
-    const response = (await GET(createRequest('http://localhost/api/facilities')))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/facilities'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(200);
     const body = await response.json();

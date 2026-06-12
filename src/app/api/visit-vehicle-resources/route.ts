@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -8,8 +8,8 @@ import {
   visitVehicleResourceQuerySchema,
 } from '@/lib/validations/visit-vehicle-resource';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = visitVehicleResourceQuerySchema.safeParse({
       ...(searchParams.has('site_id') ? { site_id: searchParams.get('site_id') } : {}),
@@ -20,14 +20,14 @@ export const GET = withAuth(
     }
 
     if (parsed.data.site_id) {
-      const refResult = await validateOrgReferences(req.orgId, { site_id: parsed.data.site_id });
+      const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
       if (!refResult.ok) return refResult.response;
     }
 
-    const resources = await withOrgContext(req.orgId, (tx) =>
+    const resources = await withOrgContext(ctx.orgId, (tx) =>
       tx.visitVehicleResource.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
           ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
         },
@@ -51,8 +51,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -61,13 +61,13 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const refResult = await validateOrgReferences(req.orgId, { site_id: parsed.data.site_id });
+    const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
     if (!refResult.ok) return refResult.response;
 
-    const resource = await withOrgContext(req.orgId, (tx) =>
+    const resource = await withOrgContext(ctx.orgId, (tx) =>
       tx.visitVehicleResource.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           site_id: parsed.data.site_id,
           label: parsed.data.label,
           vehicle_code: parsed.data.vehicle_code ?? null,

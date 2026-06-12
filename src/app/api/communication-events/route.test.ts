@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'pharmacist';
-};
-
 const {
   communicationEventFindManyMock,
   communicationEventCreateMock,
@@ -25,16 +19,19 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+    ) => Promise<Response>,
+  ) => {
     return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        }) as AuthenticatedTestRequest,
-      );
+      handler(req, {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      });
   },
 }));
 
@@ -62,7 +59,12 @@ vi.mock('@/lib/contact-profiles', () => ({
   learnContactProfileFromCommunication: learnContactProfileFromCommunicationMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createGetRequest(query = 'patient_id=patient_1') {
   return new NextRequest(`http://localhost/api/communication-events?${query}`);

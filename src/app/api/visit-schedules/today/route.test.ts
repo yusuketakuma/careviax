@@ -5,19 +5,23 @@ const { visitScheduleFindManyMock } = vi.hoisted(() => ({
   visitScheduleFindManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: { params: Promise<Record<string, string>> },
     ) => Promise<Response>,
   ) => {
-    return (req: NextRequest) =>
+    return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
       handler(
-        Object.assign(req, {
+        req,
+        {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        } as const),
+        },
+        routeContext,
       );
   },
 }));
@@ -31,6 +35,9 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const routeGET = (req: NextRequest) => GET(req, emptyRouteContext);
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -57,7 +64,7 @@ describe('/api/visit-schedules/today', () => {
   });
 
   it('lists today visit schedules', async () => {
-    const response = (await GET(
+    const response = (await routeGET(
       new NextRequest('http://localhost/api/visit-schedules/today?pharmacist_id=pharm_1'),
     ))!;
 
@@ -90,7 +97,9 @@ describe('/api/visit-schedules/today', () => {
     // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
 
-    const response = (await GET(new NextRequest('http://localhost/api/visit-schedules/today')))!;
+    const response = (await routeGET(
+      new NextRequest('http://localhost/api/visit-schedules/today'),
+    ))!;
 
     expect(response.status).toBe(200);
     const where = visitScheduleFindManyMock.mock.calls[0][0].where;

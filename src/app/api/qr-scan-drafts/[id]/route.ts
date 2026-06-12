@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, validationError, conflict } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -35,20 +35,20 @@ function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
 
 // ── GET: fetch single draft by id ──
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const GET = withAuthContext(
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');
 
-    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
-    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
+    const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+    const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
 
-    const draft = await withOrgContext(req.orgId, async (tx) => {
+    const draft = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
         where: {
           id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         include: {
@@ -80,20 +80,20 @@ export const GET = withAuth(
 
 // ── DELETE: discard a draft (set status to 'discarded') ──
 
-export const DELETE = withAuth(
-  async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withAuthContext(
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');
 
-    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
-    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
+    const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+    const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
 
-    const existing = await withOrgContext(req.orgId, async (tx) => {
+    const existing = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
         where: {
           id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         select: { id: true, status: true },
@@ -107,11 +107,11 @@ export const DELETE = withAuth(
       return validationError('このQRスキャン下書きはすでに処理済みです');
     }
 
-    const draft = await withOrgContext(req.orgId, async (tx) => {
+    const draft = await withOrgContext(ctx.orgId, async (tx) => {
       const discardResult = await tx.qrScanDraft.updateMany({
         where: {
           id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           status: 'pending',
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
@@ -140,7 +140,7 @@ export const DELETE = withAuth(
 
       await tx.jahisSupplementalRecord.deleteMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           qr_draft_id: id,
           prescription_intake_id: null,
         },

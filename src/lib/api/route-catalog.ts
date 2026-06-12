@@ -176,13 +176,6 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'shifts',
   },
   {
-    path: '/api/dashboard/today',
-    methods: ['GET'],
-    permission: 'canViewDashboard',
-    description: '本日ダッシュボード集計',
-    area: 'dashboard',
-  },
-  {
     path: '/api/dashboard/overdue',
     methods: ['GET'],
     permission: 'canViewDashboard',

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import {
   RECENT_WINDOW_DAYS,
   UPCOMING_WINDOW_DAYS,
@@ -19,19 +19,19 @@ import { buildWorkflowDashboardData } from '@/server/services/workflow-dashboard
 import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
     const today = utcDateFromLocalKey(localDateKey());
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
-      orgId: req.orgId,
-      accessContext: req,
+      orgId: ctx.orgId,
+      accessContext: ctx,
     });
     const cacheKey = buildWorkflowCacheKey(
-      req.orgId,
-      req.role,
-      req.userId,
+      ctx.orgId,
+      ctx.role,
+      ctx.userId,
       today,
       buildWorkflowAssignmentScopeFingerprint(assignmentScope),
     );
@@ -46,7 +46,7 @@ export const GET = withAuth(
 
     const core = await fetchWorkflowCoreData(
       prisma,
-      req.orgId,
+      ctx.orgId,
       today,
       upcomingWindow,
       sevenDaysFromNow,
@@ -55,7 +55,7 @@ export const GET = withAuth(
     );
     const dependent = await fetchWorkflowDependentData(
       prisma,
-      req.orgId,
+      ctx.orgId,
       today,
       core,
       assignmentScope,
@@ -65,7 +65,7 @@ export const GET = withAuth(
       data: buildWorkflowDashboardData({
         core,
         dependent,
-        currentRole: req.role,
+        currentRole: ctx.role,
         sevenDaysFromNow,
         upcomingWindow,
       }),

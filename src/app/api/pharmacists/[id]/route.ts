@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -114,24 +115,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pharmacist_updated',
-          target_type: 'User',
-          target_id: pharmacistId,
-          changes: {
-            site_id: data.site_id,
-            role: data.role,
-            phone: data.phone ?? null,
-            can_dispense: data.can_dispense ?? roleFlags.can_dispense,
-            can_audit_dispense: data.can_audit_dispense ?? roleFlags.can_audit_dispense,
-            can_set: data.can_set ?? roleFlags.can_set,
-            can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
-          },
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pharmacist_updated',
+        targetType: 'User',
+        targetId: pharmacistId,
+        changes: {
+          site_id: data.site_id,
+          role: data.role,
+          phone: data.phone ?? null,
+          can_dispense: data.can_dispense ?? roleFlags.can_dispense,
+          can_audit_dispense: data.can_audit_dispense ?? roleFlags.can_audit_dispense,
+          can_set: data.can_set ?? roleFlags.can_set,
+          can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
         },
       });
 
@@ -161,16 +156,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pharmacist_invite_resent',
-          target_type: 'User',
-          target_id: pharmacistId,
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pharmacist_invite_resent',
+        targetType: 'User',
+        targetId: pharmacistId,
       });
 
       return user;
@@ -211,16 +200,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pharmacist_reactivated',
-          target_type: 'User',
-          target_id: pharmacistId,
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pharmacist_reactivated',
+        targetType: 'User',
+        targetId: pharmacistId,
       });
 
       return user;
@@ -263,18 +246,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: parsed.data.action === 'retire' ? 'pharmacist_retired' : 'pharmacist_suspended',
-        target_type: 'User',
-        target_id: pharmacistId,
-        changes: {
-          reason,
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: parsed.data.action === 'retire' ? 'pharmacist_retired' : 'pharmacist_suspended',
+      targetType: 'User',
+      targetId: pharmacistId,
+      changes: {
+        reason,
       },
     });
 

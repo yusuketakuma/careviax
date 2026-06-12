@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import {
   buildCareCaseAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
@@ -28,16 +29,16 @@ const createTracingReportSchema = z.object({
 });
 
 async function buildTracingReportAccessWhere(
-  req: AuthenticatedRequest,
+  ctx: VisitScheduleAccessContext & { orgId: string },
 ): Promise<Prisma.TracingReportWhereInput | null> {
-  if (canBypassVisitScheduleAssignmentAccess(req)) return null;
+  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
 
-  const caseAssignmentWhere = buildCareCaseAssignmentWhere(req);
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   if (!caseAssignmentWhere) return null;
 
   const accessibleCases = await prisma.careCase.findMany({
     where: {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       AND: [caseAssignmentWhere],
     },
     select: {
@@ -77,8 +78,8 @@ async function canAttachMedicationIssue(args: {
   return issue !== null;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -91,10 +92,10 @@ export const GET = withAuth(
       });
     }
     const status = parsedStatus.data;
-    const accessWhere = await buildTracingReportAccessWhere(req);
+    const accessWhere = await buildTracingReportAccessWhere(ctx);
 
     const where: Prisma.TracingReportWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(accessWhere ?? {}),
       ...(patientId ? { patient_id: patientId } : {}),
       ...(status ? { status } : {}),
@@ -127,7 +128,7 @@ export const GET = withAuth(
 
     const patientIds = [...new Set(rawData.map((r) => r.patient_id))];
     const patients = await prisma.patient.findMany({
-      where: { org_id: req.orgId, id: { in: patientIds } },
+      where: { org_id: ctx.orgId, id: { in: patientIds } },
       select: { id: true, name: true },
     });
     const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
@@ -146,8 +147,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -160,10 +161,10 @@ export const POST = withAuth(
     if (
       !(await canAccessCaseScopedPatientResource({
         db: prisma,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: patient_id,
         caseId: case_id,
-        accessContext: { userId: req.userId, role: req.role },
+        accessContext: ctx,
       }))
     ) {
       return validationError('患者またはケースの指定が不正です');
@@ -171,7 +172,7 @@ export const POST = withAuth(
     if (
       issue_id &&
       !(await canAttachMedicationIssue({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: patient_id,
         caseId: case_id,
         issueId: issue_id,
@@ -180,10 +181,10 @@ export const POST = withAuth(
       return validationError('薬学的課題の指定が不正です');
     }
 
-    const report = await withOrgContext(req.orgId, async (tx) => {
+    const report = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.tracingReport.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id,
           case_id,
           issue_id,

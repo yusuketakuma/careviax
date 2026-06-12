@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -97,7 +97,7 @@ function optionalTrimmedSearchParam(value: string | null) {
 async function validateCareReportSource(args: {
   orgId: string;
   userId: string;
-  role: AuthenticatedRequest['role'];
+  role: AuthContext['role'];
   patientId: string;
   caseId?: string;
   visitRecordId?: string;
@@ -161,8 +161,8 @@ async function validateCareReportSource(args: {
   return { caseId: resolvedCaseId };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -202,7 +202,7 @@ export const GET = withAuth(
     const matchingPatients = query
       ? await prisma.patient.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             OR: [
               { name: { contains: query, mode: 'insensitive' } },
               { name_kana: { contains: query, mode: 'insensitive' } },
@@ -231,10 +231,10 @@ export const GET = withAuth(
       });
     }
 
-    const accessScope = await getCareReportAccessScope(prisma, req.orgId, req);
+    const accessScope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
     const accessWhere = buildCareReportAccessWhere(accessScope);
     const where: Prisma.CareReportWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
       ...(query ? { patient_id: { in: matchedPatientIds } } : {}),
@@ -282,7 +282,7 @@ export const GET = withAuth(
           ? []
           : await prisma.patient.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 id: { in: patientIds },
               },
               select: {
@@ -374,8 +374,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -385,9 +385,9 @@ export const POST = withAuth(
     }
 
     const sourceValidation = await validateCareReportSource({
-      orgId: req.orgId,
-      userId: req.userId,
-      role: req.role,
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      role: ctx.role,
       patientId: parsed.data.patient_id,
       caseId: parsed.data.case_id,
       visitRecordId: parsed.data.visit_record_id,
@@ -403,7 +403,7 @@ export const POST = withAuth(
 
     if (resolvedCaseId) {
       const careCase = await prisma.careCase.findFirst({
-        where: { id: resolvedCaseId, org_id: req.orgId },
+        where: { id: resolvedCaseId, org_id: ctx.orgId },
         select: { required_visit_support: true },
       });
 
@@ -431,7 +431,7 @@ export const POST = withAuth(
       parsed.data.report_type === 'physician_report' &&
       (!recipientPrefill?.recipient_name || !recipientPrefill?.recipient_organization)
     ) {
-      const suggestion = await findLatestPrescriberInstitutionSuggestion(prisma, req.orgId, {
+      const suggestion = await findLatestPrescriberInstitutionSuggestion(prisma, ctx.orgId, {
         caseId: resolvedCaseId,
         patientId: parsed.data.patient_id,
       });
@@ -454,11 +454,11 @@ export const POST = withAuth(
       }
     }
 
-    const report = await withOrgContext(req.orgId, async (tx) => {
+    const report = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.careReport.create({
         data: {
-          org_id: req.orgId,
-          created_by: req.userId,
+          org_id: ctx.orgId,
+          created_by: ctx.userId,
           ...reportInput,
           case_id: resolvedCaseId ?? null,
           content: toPrismaJsonInput(enrichedContent),

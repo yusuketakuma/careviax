@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
@@ -272,28 +273,22 @@ export const POST = withAuthContext(
         count += 1;
       }
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: 'formulary_template_applied',
-          target_type: 'PharmacySite',
-          target_id: targetSite.id,
-          changes: {
-            template_id: template.id,
-            template_name: template.name,
-            target_site_id: targetSite.id,
-            item_count: validItems.length,
-            source_item_count: sourceItemCount,
-            invalid_item_count: totalInvalidItemCount,
-            applied_count: count,
-            skipped_count: validItems.length - count,
-            overwrite: parsed.data.overwrite,
-            drug_master_ids: operations.map((item) => item.drug_master_id),
-            preview_summary: preview.summary,
-          },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
+      await createAuditLogEntry(tx, authCtx, {
+        action: 'formulary_template_applied',
+        targetType: 'PharmacySite',
+        targetId: targetSite.id,
+        changes: {
+          template_id: template.id,
+          template_name: template.name,
+          target_site_id: targetSite.id,
+          item_count: validItems.length,
+          source_item_count: sourceItemCount,
+          invalid_item_count: totalInvalidItemCount,
+          applied_count: count,
+          skipped_count: validItems.length - count,
+          overwrite: parsed.data.overwrite,
+          drug_master_ids: operations.map((item) => item.drug_master_id),
+          preview_summary: preview.summary,
         },
       });
 

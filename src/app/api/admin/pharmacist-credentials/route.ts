@@ -1,16 +1,17 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPharmacistCredentialSchema } from '@/lib/validations/pharmacist-credential';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const credentials = await prisma.pharmacistCredential.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       select: {
         id: true,
@@ -36,14 +37,14 @@ export const GET = withAuth(
         ? []
         : await prisma.visitSchedule.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               pharmacist_id: { in: pharmacistIds },
               schedule_status: { notIn: ['cancelled', 'rescheduled'] },
               case_: {
                 patient: {
                   consents: {
                     some: {
-                      org_id: req.orgId,
+                      org_id: ctx.orgId,
                       is_active: true,
                       revoked_date: null,
                     },
@@ -100,8 +101,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -110,15 +111,15 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       pharmacist_id: parsed.data.user_id,
     });
     if (!refResult.ok) return refResult.response;
 
-    const created = await withOrgContext(req.orgId, async (tx) => {
+    const created = await withOrgContext(ctx.orgId, async (tx) => {
       const credential = await tx.pharmacistCredential.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           user_id: parsed.data.user_id,
           certification_type: parsed.data.certification_type,
           certification_number: parsed.data.certification_number ?? null,
@@ -137,20 +138,14 @@ export const POST = withAuth(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'pharmacist_credential_created',
-          target_type: 'PharmacistCredential',
-          target_id: credential.id,
-          changes: {
-            user_id: parsed.data.user_id,
-            certification_type: parsed.data.certification_type,
-            expiry_date: parsed.data.expiry_date ?? null,
-          },
-          ip_address: req.ipAddress,
-          user_agent: req.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pharmacist_credential_created',
+        targetType: 'PharmacistCredential',
+        targetId: credential.id,
+        changes: {
+          user_id: parsed.data.user_id,
+          certification_type: parsed.data.certification_type,
+          expiry_date: parsed.data.expiry_date ?? null,
         },
       });
 

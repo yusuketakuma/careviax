@@ -1,5 +1,6 @@
 import { format, startOfWeek } from 'date-fns';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { forbiddenResponse, success, validationError } from '@/lib/api/response';
@@ -67,8 +68,8 @@ function buildDateKey(value: Date) {
   return format(value, 'yyyy-MM-dd');
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -100,7 +101,7 @@ export const POST = withAuth(
     const careCase = await prisma.careCase.findFirst({
       where: {
         id: case_id,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       select: {
         patient_id: true,
@@ -117,7 +118,7 @@ export const POST = withAuth(
       return validationError('対象ケースが見つかりません');
     }
     if (
-      !canAccessVisitScheduleAssignment(req, {
+      !canAccessVisitScheduleAssignment(ctx, {
         pharmacist_id,
         case_: careCase,
       })
@@ -133,7 +134,7 @@ export const POST = withAuth(
 
     for (const candidateDate of candidateDates) {
       const gate = await evaluateVisitWorkflowGate(prisma, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: careCase.patient_id,
         caseId: case_id,
         asOf: candidateDate,
@@ -173,7 +174,7 @@ export const POST = withAuth(
 
     const shifts = await prisma.pharmacistShift.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         user_id: pharmacist_id,
         date: { in: candidateDates },
       },
@@ -202,7 +203,7 @@ export const POST = withAuth(
       }
       if (vehicle_resource_id) {
         const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           vehicleResourceId: vehicle_resource_id,
           siteId: shift.site_id ?? null,
           pharmacistId: pharmacist_id,
@@ -241,10 +242,10 @@ export const POST = withAuth(
       }
     }
 
-    const schedules = await withOrgContext(req.orgId, async (tx) => {
+    const schedules = await withOrgContext(ctx.orgId, async (tx) => {
       const existingRouteOrders = await tx.visitSchedule.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           pharmacist_id,
           scheduled_date: { in: candidateDates },
           schedule_status: { notIn: ['cancelled', 'rescheduled'] },
@@ -257,7 +258,7 @@ export const POST = withAuth(
       });
       const existingProposalRouteOrders = await tx.visitScheduleProposal.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           finalized_schedule_id: null,
           proposal_status: { in: OPEN_PROPOSAL_STATUSES },
           proposed_pharmacist_id: pharmacist_id,
@@ -296,7 +297,7 @@ export const POST = withAuth(
 
           return tx.visitSchedule.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               case_id,
               visit_type,
               priority: 'normal',
@@ -317,7 +318,7 @@ export const POST = withAuth(
                 ? { time_window_end: new Date(`1970-01-01T${mergedTimeWindow.to}`) }
                 : {}),
               confirmed_at: new Date(),
-              confirmed_by: req.userId,
+              confirmed_by: ctx.userId,
             },
           });
         }),
@@ -326,7 +327,7 @@ export const POST = withAuth(
     });
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'visit_schedules_generate', case_id },
     });
 

@@ -55,7 +55,10 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/set-audits', {
@@ -298,7 +301,15 @@ describe('/api/set-audits POST', () => {
           },
         ],
       },
-      select: { id: true, cycle_id: true },
+      select: {
+        id: true,
+        cycle_id: true,
+        cycle: {
+          select: {
+            patient_id: true,
+          },
+        },
+      },
     });
     expect(setBatchFindManyMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();

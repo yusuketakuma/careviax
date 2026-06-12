@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -34,8 +35,8 @@ function parseReturnInspectionStatusParam(value: string | undefined) {
   return { ok: false as const };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parseRentalStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプレンタル状態の指定が不正です');
@@ -46,11 +47,11 @@ export const GET = withAuth(
     const institutionId = req.nextUrl.searchParams.get('institution_id')?.trim();
 
     const rentals = await withOrgContext(
-      req.orgId,
+      ctx.orgId,
       (tx) =>
         tx.pcaPumpRental.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             ...('statuses' in parsedStatus
               ? { status: { in: parsedStatus.statuses } }
               : parsedStatus.status
@@ -87,7 +88,7 @@ export const GET = withAuth(
           orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
           take: 100,
         }),
-      { requestContext: req },
+      { requestContext: ctx },
     );
 
     return success({ data: rentals.map(serializePcaPumpRental) });
@@ -98,8 +99,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -109,19 +110,19 @@ export const POST = withAuth(
     }
 
     const [pump, institution] = await withOrgContext(
-      req.orgId,
+      ctx.orgId,
       (tx) =>
         Promise.all([
           tx.pcaPump.findFirst({
-            where: { id: parsed.data.pump_id, org_id: req.orgId },
+            where: { id: parsed.data.pump_id, org_id: ctx.orgId },
             select: { id: true, status: true },
           }),
           tx.prescriberInstitution.findFirst({
-            where: { id: parsed.data.institution_id, org_id: req.orgId },
+            where: { id: parsed.data.institution_id, org_id: ctx.orgId },
             select: { id: true },
           }),
         ]),
-      { requestContext: req },
+      { requestContext: ctx },
     );
     if (!pump) return notFound('PCAポンプが見つかりません');
     if (!institution) return notFound('貸出先医療機関が見つかりません');
@@ -139,13 +140,13 @@ export const POST = withAuth(
     let created;
     try {
       created = await withOrgContext(
-        req.orgId,
+        ctx.orgId,
         async (tx) => {
           if (targetPumpStatus) {
             const claim = await tx.pcaPump.updateMany({
               where: {
                 id: parsed.data.pump_id,
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 status: 'available',
               },
               data: { status: targetPumpStatus },
@@ -157,7 +158,7 @@ export const POST = withAuth(
 
           const rental = await tx.pcaPumpRental.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               pump_id: parsed.data.pump_id,
               institution_id: parsed.data.institution_id,
               status,
@@ -176,34 +177,28 @@ export const POST = withAuth(
             },
           });
           await createDefaultPcaRentalAccessories(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             rentalId: rental.id,
           });
-          await tx.auditLog.create({
-            data: {
-              org_id: req.orgId,
-              actor_id: req.userId,
-              action: 'pca_pump_rental_created',
-              target_type: 'PcaPumpRental',
-              target_id: rental.id,
-              changes: {
-                pump_id: rental.pump_id,
-                institution_id: rental.institution_id,
-                status: rental.status,
-                rented_at: toDateKey(rental.rented_at),
-                due_at: toDateKey(rental.due_at),
-                returned_at: toDateKey(rental.returned_at),
-                return_inspection_status: rental.return_inspection_status,
-                rental_fee_yen: rental.rental_fee_yen,
-              },
-              ip_address: req.headers.get('x-forwarded-for') ?? null,
-              user_agent: req.headers.get('user-agent') ?? null,
+          await createAuditLogEntry(tx, ctx, {
+            action: 'pca_pump_rental_created',
+            targetType: 'PcaPumpRental',
+            targetId: rental.id,
+            changes: {
+              pump_id: rental.pump_id,
+              institution_id: rental.institution_id,
+              status: rental.status,
+              rented_at: toDateKey(rental.rented_at),
+              due_at: toDateKey(rental.due_at),
+              returned_at: toDateKey(rental.returned_at),
+              return_inspection_status: rental.return_inspection_status,
+              rental_fee_yen: rental.rental_fee_yen,
             },
           });
 
           return { kind: 'rental' as const, rental };
         },
-        { requestContext: req },
+        { requestContext: ctx },
       );
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {

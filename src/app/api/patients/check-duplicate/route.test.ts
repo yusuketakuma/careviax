@@ -1,19 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: string;
-};
-
 const { patientFindManyMock } = vi.hoisted(() => ({
   patientFindManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>) =>
-    handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,11 +31,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createGetRequest(search = '') {
-  return Object.assign(new NextRequest(`http://localhost/api/patients/check-duplicate${search}`), {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'pharmacist',
-  }) as AuthenticatedTestRequest;
+  return new NextRequest(`http://localhost/api/patients/check-duplicate${search}`);
 }
 
 describe('/api/patients/check-duplicate GET', () => {
@@ -49,7 +49,7 @@ describe('/api/patients/check-duplicate GET', () => {
   });
 
   it('returns validation error for missing required query params', async () => {
-    const response = (await GET(createGetRequest('?name=山田')))!;
+    const response = (await GET(createGetRequest('?name=山田'), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     expect(patientFindManyMock).not.toHaveBeenCalled();
@@ -58,6 +58,7 @@ describe('/api/patients/check-duplicate GET', () => {
   it('searches duplicates by name, birth date, and gender', async () => {
     const response = (await GET(
       createGetRequest('?name=山田&date_of_birth=1950-01-01&gender=male'),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(200);
@@ -85,6 +86,7 @@ describe('/api/patients/check-duplicate GET', () => {
   it('returns validation error for unsupported gender before querying patients', async () => {
     const response = (await GET(
       createGetRequest('?name=山田&date_of_birth=1950-01-01&gender=unknown'),
+      emptyRouteContext,
     ))!;
     const body = await response.json();
 

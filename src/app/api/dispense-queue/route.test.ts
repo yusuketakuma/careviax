@@ -24,6 +24,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createRequest() {
   return new NextRequest('http://localhost/api/dispense-queue', {
     headers: {
@@ -93,7 +95,7 @@ describe('/api/dispense-queue', () => {
       },
     ]);
 
-    const response = (await GET(createRequest()))!;
+    const response = (await GET(createRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

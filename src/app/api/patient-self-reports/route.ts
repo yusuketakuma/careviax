@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
@@ -143,20 +144,16 @@ export const POST = withAuthContext(
         select: patientSelfReportResponseSelect,
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'patient_self_report_created',
-          target_type: 'patient_self_report',
-          target_id: report.id,
-          changes: {
-            patient_id: report.patient_id,
-            status_after: report.status,
-            requested_callback: parsed.data.requested_callback,
-            relation_provided: parsed.data.relation !== undefined,
-            preferred_contact_time_provided: parsed.data.preferred_contact_time !== undefined,
-          },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'patient_self_report_created',
+        targetType: 'patient_self_report',
+        targetId: report.id,
+        changes: {
+          patient_id: report.patient_id,
+          status_after: report.status,
+          requested_callback: parsed.data.requested_callback,
+          relation_provided: parsed.data.relation !== undefined,
+          preferred_contact_time_provided: parsed.data.preferred_contact_time !== undefined,
         },
       });
 

@@ -39,7 +39,11 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(url: string) {
   return new NextRequest(url, {

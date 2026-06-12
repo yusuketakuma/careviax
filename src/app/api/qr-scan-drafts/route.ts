@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, conflict } from '@/lib/api/response';
@@ -190,18 +190,18 @@ function buildDraftParsedData(args: {
 
 // ── GET: list pending drafts (paginated) ──
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const unmatched = searchParams.get('unmatched') === 'true';
-    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
-    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
+    const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+    const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
 
-    const drafts = await withOrgContext(req.orgId, (tx) => {
+    const drafts = await withOrgContext(ctx.orgId, (tx) => {
       return tx.qrScanDraft.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           status: 'pending',
           ...(unmatched ? { patient_id: null } : {}),
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -226,8 +226,8 @@ export const GET = withAuth(
 
 // ── POST: create a new QR draft ──
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -259,11 +259,11 @@ export const POST = withAuth(
     } | null = null;
 
     if (patient_id) {
-      if (!(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
+      if (!(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
         return validationError('この患者のQRスキャン下書きを作成する権限がありません');
       }
       const patient = await prisma.patient.findFirst({
-        where: { id: patient_id, org_id: req.orgId },
+        where: { id: patient_id, org_id: ctx.orgId },
         select: { id: true, name: true, name_kana: true, birth_date: true, gender: true },
       });
       if (!patient) {
@@ -275,7 +275,7 @@ export const POST = withAuth(
     }
 
     const site = await prisma.pharmacySite.findFirst({
-      where: { id: site_id, org_id: req.orgId },
+      where: { id: site_id, org_id: ctx.orgId },
       select: { id: true },
     });
     if (!site) {
@@ -361,11 +361,11 @@ export const POST = withAuth(
     });
     try {
       const mapResult = await mapJahisToIntake(mergedData, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         siteId: site_id,
         patientId: patient_id ?? '',
         caseId: '',
-        scannedBy: req.userId,
+        scannedBy: ctx.userId,
       });
       autoCompleted = mapResult.autoCompletedFields;
       draftParsedData = buildDraftParsedData({
@@ -380,7 +380,7 @@ export const POST = withAuth(
     try {
       const existingDraft = await prisma.qrScanDraft.findFirst({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           status: { in: ['pending', 'confirmed'] },
           qr_payload_hash: qrPayloadHash,
         },
@@ -401,13 +401,13 @@ export const POST = withAuth(
     // Create QrScanDraft record
     let draft;
     try {
-      draft = await withOrgContext(req.orgId, async (tx) => {
+      draft = await withOrgContext(ctx.orgId, async (tx) => {
         const created = await tx.qrScanDraft.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             site_id,
             patient_id: patient_id ?? null,
-            scanned_by: req.userId,
+            scanned_by: ctx.userId,
             session_id,
             status: 'pending',
             schema_version: 1,
@@ -421,7 +421,7 @@ export const POST = withAuth(
         });
 
         await replaceJahisSupplementalRecords(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: patient_id ?? null,
           qrDraftId: created.id,
           records: mergedData.supplementalRecords,
@@ -438,7 +438,7 @@ export const POST = withAuth(
 
     // Emit SSE event (best-effort)
     await broadcastOrgRealtimeEvent({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       type: 'qr_draft_created',
     });
 

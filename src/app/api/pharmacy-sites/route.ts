@@ -1,18 +1,19 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const view = searchParams.get('view');
 
     if (view !== 'resource_map') {
       const sites = await prisma.pharmacySite.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
         },
         select: {
           id: true,
@@ -51,7 +52,7 @@ export const GET = withAuth(
     const todayUtc = utcDateFromLocalKey(localDateKey());
     const sites = await prisma.pharmacySite.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       select: {
         id: true,

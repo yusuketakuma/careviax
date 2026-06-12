@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { generateReportsFromVisit } from '@/server/services/report-generator';
@@ -9,8 +9,8 @@ const generateFromVisitSchema = z.object({
   report_type: z.enum(['physician_report', 'care_manager_report']).optional(),
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -23,9 +23,9 @@ export const POST = withAuth(
 
     let result: { reports: Array<{ id: string; report_type: string }> };
     try {
-      result = await generateReportsFromVisit(req.orgId, req.userId, visit_record_id, report_type, {
-        userId: req.userId,
-        role: req.role,
+      result = await generateReportsFromVisit(ctx.orgId, ctx.userId, visit_record_id, report_type, {
+        userId: ctx.userId,
+        role: ctx.role,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

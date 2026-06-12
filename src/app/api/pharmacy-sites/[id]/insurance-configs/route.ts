@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
@@ -131,20 +132,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'insurance_config_created',
-        target_type: 'PharmacySiteInsuranceConfig',
-        target_id: created.id,
-        changes: {
-          insurance_type: parsed.data.insurance_type,
-          revision_code: parsed.data.revision_code,
-          auto_closed_config_ids: overlapping.map((config) => config.id),
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: 'insurance_config_created',
+      targetType: 'PharmacySiteInsuranceConfig',
+      targetId: created.id,
+      changes: {
+        insurance_type: parsed.data.insurance_type,
+        revision_code: parsed.data.revision_code,
+        auto_closed_config_ids: overlapping.map((config) => config.id),
       },
     });
 

@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  externalProfessionalFindManyMock,
-} = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, externalProfessionalFindManyMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   externalProfessionalFindManyMock: vi.fn(),
@@ -35,6 +31,8 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(url: string) {
   return new NextRequest(url, {
@@ -76,7 +74,10 @@ describe('/api/external-professionals', () => {
   });
 
   it('returns 200 with external professionals list', async () => {
-    const response = (await GET(createRequest('http://localhost/api/external-professionals')))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/external-professionals'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(200);
     const body = await response.json();

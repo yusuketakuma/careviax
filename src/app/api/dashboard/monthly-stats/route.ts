@@ -1,5 +1,5 @@
 import { endOfMonth, startOfMonth } from 'date-fns';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
@@ -39,101 +39,106 @@ function parseMonthParam(value: string | null) {
   };
 }
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const parsedMonth = parseMonthParam(searchParams.get('month'));
-  if (!parsedMonth) {
-    return validationError('month の形式が不正です（YYYY-MM）');
-  }
+export const GET = withAuthContext(
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const parsedMonth = parseMonthParam(searchParams.get('month'));
+    if (!parsedMonth) {
+      return validationError('month の形式が不正です（YYYY-MM）');
+    }
 
-  const { monthStart, monthLabel } = parsedMonth;
-  const monthEnd = endOfMonth(monthStart);
-  const visitRecords = await prisma.visitRecord.findMany({
-    where: {
-      org_id: req.orgId,
-      visit_date: {
-        gte: monthStart,
-        lte: monthEnd,
+    const { monthStart, monthLabel } = parsedMonth;
+    const monthEnd = endOfMonth(monthStart);
+    const visitRecords = await prisma.visitRecord.findMany({
+      where: {
+        org_id: ctx.orgId,
+        visit_date: {
+          gte: monthStart,
+          lte: monthEnd,
+        },
+        outcome_status: {
+          in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],
+        },
       },
-      outcome_status: {
-        in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],
-      },
-    },
-    select: {
-      patient_id: true,
-      schedule: {
-        select: {
-          case_: {
-            select: {
-              patient: {
-                select: {
-                  id: true,
-                  name: true,
-                  medical_insurance_number: true,
-                  care_insurance_number: true,
+      select: {
+        patient_id: true,
+        schedule: {
+          select: {
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    medical_insurance_number: true,
+                    care_insurance_number: true,
+                  },
                 },
               },
             },
           },
         },
       },
-    },
-  });
-
-  const buckets = new Map<string, MonthlyBucket>();
-  for (const record of visitRecords) {
-    const patient = record.schedule?.case_?.patient;
-    if (!patient) continue;
-
-    const hasMedical = Boolean(patient.medical_insurance_number);
-    const hasCare = Boolean(patient.care_insurance_number);
-    const insuranceBasis = hasMedical && hasCare ? 'both' : hasCare ? 'care' : 'medical';
-    const monthlyLimit = insuranceBasis === 'care' ? 2 : 4;
-    const key = `${patient.id}:${insuranceBasis}`;
-    const existing = buckets.get(key) ?? {
-      patient_id: patient.id,
-      patient_name: patient.name,
-      insurance_basis: insuranceBasis,
-      visit_count: 0,
-      monthly_limit: monthlyLimit,
-    };
-    existing.visit_count += 1;
-    buckets.set(key, existing);
-  }
-
-  const patient_stats: MonthlyPatientStat[] = Array.from(buckets.values())
-    .map((item): MonthlyPatientStat => ({
-      ...item,
-      status:
-        item.visit_count > item.monthly_limit
-          ? 'over_limit'
-          : item.visit_count === item.monthly_limit
-            ? 'within_limit'
-            : 'under_limit',
-    }))
-    .sort((left, right) => {
-      if (left.status !== right.status) {
-        const rank: Record<MonthlyPatientStat['status'], number> = {
-          over_limit: 0,
-          within_limit: 1,
-          under_limit: 2,
-        };
-        return rank[left.status] - rank[right.status];
-      }
-      return right.visit_count - left.visit_count;
     });
 
-  return success({
-    month: monthLabel,
-    summary: {
-      total_patients: patient_stats.length,
-      over_limit_count: patient_stats.filter((item) => item.status === 'over_limit').length,
-      within_limit_count: patient_stats.filter((item) => item.status === 'within_limit').length,
-      under_limit_count: patient_stats.filter((item) => item.status === 'under_limit').length,
-    },
-    patient_stats,
-  });
-}, {
-  permission: 'canViewDashboard',
-  message: 'ダッシュボードの閲覧権限がありません',
-});
+    const buckets = new Map<string, MonthlyBucket>();
+    for (const record of visitRecords) {
+      const patient = record.schedule?.case_?.patient;
+      if (!patient) continue;
+
+      const hasMedical = Boolean(patient.medical_insurance_number);
+      const hasCare = Boolean(patient.care_insurance_number);
+      const insuranceBasis = hasMedical && hasCare ? 'both' : hasCare ? 'care' : 'medical';
+      const monthlyLimit = insuranceBasis === 'care' ? 2 : 4;
+      const key = `${patient.id}:${insuranceBasis}`;
+      const existing = buckets.get(key) ?? {
+        patient_id: patient.id,
+        patient_name: patient.name,
+        insurance_basis: insuranceBasis,
+        visit_count: 0,
+        monthly_limit: monthlyLimit,
+      };
+      existing.visit_count += 1;
+      buckets.set(key, existing);
+    }
+
+    const patient_stats: MonthlyPatientStat[] = Array.from(buckets.values())
+      .map(
+        (item): MonthlyPatientStat => ({
+          ...item,
+          status:
+            item.visit_count > item.monthly_limit
+              ? 'over_limit'
+              : item.visit_count === item.monthly_limit
+                ? 'within_limit'
+                : 'under_limit',
+        }),
+      )
+      .sort((left, right) => {
+        if (left.status !== right.status) {
+          const rank: Record<MonthlyPatientStat['status'], number> = {
+            over_limit: 0,
+            within_limit: 1,
+            under_limit: 2,
+          };
+          return rank[left.status] - rank[right.status];
+        }
+        return right.visit_count - left.visit_count;
+      });
+
+    return success({
+      month: monthLabel,
+      summary: {
+        total_patients: patient_stats.length,
+        over_limit_count: patient_stats.filter((item) => item.status === 'over_limit').length,
+        within_limit_count: patient_stats.filter((item) => item.status === 'within_limit').length,
+        under_limit_count: patient_stats.filter((item) => item.status === 'under_limit').length,
+      },
+      patient_stats,
+    });
+  },
+  {
+    permission: 'canViewDashboard',
+    message: 'ダッシュボードの閲覧権限がありません',
+  },
+);

@@ -109,6 +109,7 @@ import {
 
 type Handler = () => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(url: string, headers?: Record<string, string>, body?: unknown) {
   return new NextRequest(url, {
@@ -329,6 +330,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
 
     const response = await notificationsPatch(
       createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -341,6 +343,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
 
     const response = await notificationsPatch(
       createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');

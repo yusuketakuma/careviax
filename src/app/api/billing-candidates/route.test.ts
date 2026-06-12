@@ -31,18 +31,25 @@ const {
   }),
 }));
 
-type AuthenticatedRouteHandler = ((req: NextRequest & { orgId: string }) => Promise<Response>) & {
+type AuthenticatedRouteHandler = ((req: NextRequest) => Promise<Response>) & {
   authOptions?: {
     permission?: string;
     message?: string;
   };
 };
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+    ) => Promise<Response>,
     options?: AuthenticatedRouteHandler['authOptions'],
-  ) => Object.assign(handler, { authOptions: options }),
+  ) =>
+    Object.assign(
+      (req: NextRequest) => handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }),
+      { authOptions: options },
+    ),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -68,32 +75,34 @@ vi.mock('@/server/services/pca-rental-billing', () => ({
   generatePcaRentalBillingCandidatesForMonth: generatePcaRentalBillingCandidatesForMonthMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = Object.assign((req: NextRequest) => rawGET(req, emptyRouteContext), {
+  authOptions: (rawGET as unknown as AuthenticatedRouteHandler).authOptions,
+});
+const POST = Object.assign((req: NextRequest) => rawPOST(req, emptyRouteContext), {
+  authOptions: (rawPOST as unknown as AuthenticatedRouteHandler).authOptions,
+});
 
 function createRequest(body: unknown) {
-  return Object.assign(
-    new NextRequest('http://localhost/api/billing-candidates', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json' },
-    }),
-    { orgId: 'org_1' },
-  );
+  return new NextRequest('http://localhost/api/billing-candidates', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function createMalformedJsonRequest() {
-  return Object.assign(
-    new NextRequest('http://localhost/api/billing-candidates', {
-      method: 'POST',
-      body: '{"billing_month":',
-      headers: { 'content-type': 'application/json' },
-    }),
-    { orgId: 'org_1' },
-  );
+  return new NextRequest('http://localhost/api/billing-candidates', {
+    method: 'POST',
+    body: '{"billing_month":',
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function createGetRequest(url: string) {
-  return Object.assign(new NextRequest(url), { orgId: 'org_1' });
+  return new NextRequest(url);
 }
 
 describe('/api/billing-candidates', () => {

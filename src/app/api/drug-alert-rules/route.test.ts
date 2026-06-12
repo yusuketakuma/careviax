@@ -71,7 +71,12 @@ describe('/api/drug-alert-rules', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
-    expect(drugAlertRuleFindManyMock).toHaveBeenCalled();
+    expect(drugAlertRuleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        OR: [{ org_id: 'org_1' }, { org_id: null }],
+      },
+      orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
+    });
   });
 
   it('rejects unsupported alert_type filters before querying rules', async () => {
@@ -98,6 +103,7 @@ describe('/api/drug-alert-rules', () => {
     expect(response.status).toBe(201);
     expect(drugAlertRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        org_id: 'org_1',
         alert_type: 'interaction',
         condition: {
           severity_floor: 'warning',

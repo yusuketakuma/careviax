@@ -3,15 +3,11 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 type TestRole = 'owner' | 'admin' | 'pharmacist' | 'pharmacist_trainee' | 'clerk';
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: TestRole;
-};
 
 const {
   authRoleRef,
-  withAuthMock,
+  authMock,
+  membershipFindFirstMock,
   withOrgContextMock,
   scheduleFindManyMock,
   scheduleFindFirstMock,
@@ -26,16 +22,8 @@ const {
 
   return {
     authRoleRef,
-    withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: authRoleRef.current,
-          }),
-        );
-    }),
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
     scheduleFindFirstMock: vi.fn(),
@@ -48,8 +36,16 @@ const {
   };
 });
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -60,7 +56,10 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { PATCH } from './route';
+import { PATCH as rawPATCH } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
 
 function buildSerializableConflictError() {
   return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
@@ -73,7 +72,10 @@ function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/reorder', {
     method: 'PATCH',
     body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
   });
 }
 
@@ -81,7 +83,10 @@ function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/visit-schedules/reorder', {
     method: 'PATCH',
     body: '{"updates":',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
   });
 }
 
@@ -95,6 +100,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authRoleRef.current = 'pharmacist';
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockImplementation(() =>
+      Promise.resolve({ role: authRoleRef.current }),
+    );
     const schedules = [
       {
         id: 'schedule_1',

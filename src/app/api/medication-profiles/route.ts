@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -9,8 +9,8 @@ import { buildPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -19,12 +19,12 @@ export const GET = withAuth(
     const isCurrent =
       isCurrentParam === 'true' ? true : isCurrentParam === 'false' ? false : undefined;
 
-    const accessContext = { userId: req.userId, role: req.role };
+    const accessContext = { userId: ctx.userId, role: ctx.role };
     if (
       patientId &&
       !(await canAccessPatient({
         db: prisma,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId,
         accessContext,
       }))
@@ -34,7 +34,7 @@ export const GET = withAuth(
 
     const patientAssignmentWhere = buildPatientAssignmentWhere(accessContext);
     const where: Prisma.MedicationProfileWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(isCurrent !== undefined ? { is_current: isCurrent } : {}),
       ...(patientAssignmentWhere ? { patient: patientAssignmentWhere } : {}),
@@ -75,8 +75,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -90,18 +90,18 @@ export const POST = withAuth(
     if (
       !(await canAccessPatient({
         db: prisma,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: patient_id,
-        accessContext: { userId: req.userId, role: req.role },
+        accessContext: { userId: ctx.userId, role: ctx.role },
       }))
     ) {
       return notFound('患者が見つかりません');
     }
 
-    const profile = await withOrgContext(req.orgId, async (tx) => {
+    const profile = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.medicationProfile.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id,
           ...(start_date ? { start_date: new Date(start_date) } : {}),
           ...(end_date ? { end_date: new Date(end_date) } : {}),

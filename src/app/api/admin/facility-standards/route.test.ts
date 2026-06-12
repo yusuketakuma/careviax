@@ -22,6 +22,8 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -37,7 +39,7 @@ describe('/api/admin/facility-standards GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
@@ -81,7 +83,7 @@ describe('/api/admin/facility-standards GET', () => {
       },
     ]);
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

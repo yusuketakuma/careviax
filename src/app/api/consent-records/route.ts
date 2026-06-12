@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -26,8 +26,8 @@ const createConsentSchema = z.object({
   document_url: z.string().url().optional(),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const searchParams = req.nextUrl.searchParams;
     const patientId = searchParams.get('patient_id');
     if (!patientId) {
@@ -50,7 +50,7 @@ export const GET = withAuth(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       patient_id: patientId,
       is_active: isActive,
       ...(consentType ? { consent_type: consentType } : {}),
@@ -87,8 +87,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -109,7 +109,7 @@ export const POST = withAuth(
     } = parsed.data;
 
     // Validate patient and optional case belong to this org
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       patient_id,
       ...(case_id ? { case_id } : {}),
     });
@@ -118,7 +118,7 @@ export const POST = withAuth(
     // Check for active duplicate
     const duplicate = await prisma.consentRecord.findFirst({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         patient_id,
         consent_type,
         is_active: true,
@@ -136,7 +136,7 @@ export const POST = withAuth(
       ? await prisma.template.findFirst({
           where: {
             id: template_id,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             template_type: 'consent_form',
           },
           select: {
@@ -146,7 +146,7 @@ export const POST = withAuth(
         })
       : await prisma.template.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             template_type: 'consent_form',
             is_default: true,
             OR: [{ effective_from: null }, { effective_from: { lte: today } }],
@@ -165,10 +165,10 @@ export const POST = withAuth(
       });
     }
 
-    const record = await withOrgContext(req.orgId, async (tx) => {
+    const record = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.consentRecord.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id,
           case_id: case_id ?? null,
           template_id: template?.id ?? null,

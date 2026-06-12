@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -117,19 +118,13 @@ export const POST = withAuthContext(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: 'formulary_template_created',
-          target_type: 'FormularyTemplate',
-          target_id: created.id,
-          changes: {
-            source_site_id: site.id,
-            item_count: sourceStocks.length,
-          },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
+      await createAuditLogEntry(tx, authCtx, {
+        action: 'formulary_template_created',
+        targetType: 'FormularyTemplate',
+        targetId: created.id,
+        changes: {
+          source_site_id: site.id,
+          item_count: sourceStocks.length,
         },
       });
 

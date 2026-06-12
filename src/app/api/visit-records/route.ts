@@ -1,5 +1,5 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -33,6 +33,7 @@ import {
 import { processHandoffExtraction } from '@/server/services/visit-handoff';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 const scheduleStatusByOutcome: Record<
   CreateVisitRecordInput['outcome_status'],
@@ -603,8 +604,8 @@ async function buildVisitRecordPatientHistorySummaries(
   return summaries;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
@@ -615,10 +616,10 @@ export const GET = withAuth(
     const dateFrom = searchParams.get('date_from') ?? undefined;
     const dateTo = searchParams.get('date_to') ?? undefined;
     const includeHistorySummary = searchParams.get('include_history_summary') === 'true';
-    const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(req);
+    const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
 
     const where: Prisma.VisitRecordWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
       ...(keysetWhere ?? {}),
@@ -678,7 +679,7 @@ export const GET = withAuth(
     const hasMore = records.length > limit;
     const pageRecords = hasMore ? records.slice(0, limit) : records;
     const patientHistorySummaries = includeHistorySummary
-      ? await buildVisitRecordPatientHistorySummaries(req.orgId, pageRecords)
+      ? await buildVisitRecordPatientHistorySummaries(ctx.orgId, pageRecords)
       : null;
     const data = pageRecords.map((record) => ({
       ...record,
@@ -698,7 +699,7 @@ export const GET = withAuth(
   },
 );
 
-async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitRecordInput) {
+async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) {
   const {
     schedule_id,
     patient_id,
@@ -732,9 +733,9 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       ? soapTextOverrides.soap_plan
       : (rest.soap_plan ?? null);
 
-  return withOrgContext(req.orgId, async (tx) => {
+  return withOrgContext(ctx.orgId, async (tx) => {
     const schedule = await tx.visitSchedule.findFirst({
-      where: { id: schedule_id, org_id: req.orgId },
+      where: { id: schedule_id, org_id: ctx.orgId },
       select: {
         id: true,
         case_id: true,
@@ -760,7 +761,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (!schedule) {
       return { error: 'schedule_not_found' as const };
     }
-    if (!canAccessVisitScheduleAssignment(req, schedule)) {
+    if (!canAccessVisitScheduleAssignment(ctx, schedule)) {
       return { error: 'schedule_forbidden' as const };
     }
 
@@ -778,7 +779,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     const careCase = await tx.careCase.findFirst({
       where: {
         id: schedule.case_id,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       select: {
         patient_id: true,
@@ -836,7 +837,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       const [scopedVisitRecords, scopedMedicationCycles] = await Promise.all([
         tx.visitRecord.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             patient_id,
             schedule: {
               case_id: schedule.case_id,
@@ -846,7 +847,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         }),
         tx.medicationCycle.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             patient_id,
             case_id: schedule.case_id,
           },
@@ -854,7 +855,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         }),
       ]);
       const billingEvidence = await listBillingEvidenceBlockers(tx, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: patient_id,
         visitRecordIds: scopedVisitRecords.map((item) => item.id),
         cycleIds: scopedMedicationCycles.map((item) => item.id),
@@ -885,7 +886,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       };
     }
 
-    const existingRecord = await loadExistingVisitRecordConflict(tx, req.orgId, schedule_id);
+    const existingRecord = await loadExistingVisitRecordConflict(tx, ctx.orgId, schedule_id);
     if (existingRecord) {
       const canOverwrite =
         conflict_resolution === 'overwrite' &&
@@ -906,7 +907,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
             where: { id: existingRecord.id },
             data: {
               patient_id: careCase.patient_id,
-              pharmacist_id: req.userId,
+              pharmacist_id: ctx.userId,
               visit_date: visitRecordedAt,
               next_visit_suggestion_date: nextVisitSuggestionDateInput,
               receipt_at: receipt_at ? new Date(receipt_at) : null,
@@ -921,10 +922,10 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
           })
         : await tx.visitRecord.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               schedule_id,
               patient_id: careCase.patient_id,
-              pharmacist_id: req.userId,
+              pharmacist_id: ctx.userId,
               visit_date: visitRecordedAt,
               next_visit_suggestion_date: nextVisitSuggestionDateInput ?? undefined,
               receipt_at: receipt_at ? new Date(receipt_at) : undefined,
@@ -937,7 +938,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
             } as Prisma.VisitRecordUncheckedCreateInput,
           });
 
-    await replaceResidualMedications(tx, req.orgId, record.id, residual_medications);
+    await replaceResidualMedications(tx, ctx.orgId, record.id, residual_medications);
 
     // Sync structured lab values to PatientLabObservation
     const structuredSoapObject = readJsonObject(structured_soap);
@@ -946,7 +947,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (labValues) {
       await syncLabObservations(
         tx,
-        req.orgId,
+        ctx.orgId,
         careCase.patient_id,
         record.id,
         visitRecordedAt,
@@ -957,7 +958,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
       await upsertFirstVisitDocument({
         tx,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: careCase.patient_id,
         caseId: schedule.case_id,
         recordId: record.id,
@@ -977,7 +978,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       for (const candidate of allowedCandidates) {
         const existingIssue = await tx.medicationIssue.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             patient_id: careCase.patient_id,
             case_id: schedule.case_id,
             title: `${candidate.drug_name} の残薬調整`,
@@ -992,7 +993,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
           existingIssue ??
           (await tx.medicationIssue.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               patient_id: careCase.patient_id,
               case_id: schedule.case_id,
               title: `${candidate.drug_name} の残薬調整`,
@@ -1000,14 +1001,14 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               status: 'open',
               priority: candidate.excess_days >= 14 ? 'high' : 'medium',
               category: 'adherence',
-              identified_by: req.userId,
+              identified_by: ctx.userId,
             },
             select: { id: true },
           }));
 
         const existingTracingReport = await tx.tracingReport.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             patient_id: careCase.patient_id,
             issue_id: issue.id,
             status: {
@@ -1021,7 +1022,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
           existingTracingReport ??
           (await tx.tracingReport.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               patient_id: careCase.patient_id,
               case_id: schedule.case_id,
               issue_id: issue.id,
@@ -1043,7 +1044,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
 
         const existingTracingRequest = await tx.communicationRequest.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             related_entity_type: 'tracing_report',
             related_entity_id: tracingReport.id,
           },
@@ -1053,7 +1054,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         if (!existingTracingRequest) {
           await tx.communicationRequest.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               patient_id: careCase.patient_id,
               case_id: schedule.case_id,
               request_type: 'tracing_report',
@@ -1065,19 +1066,19 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               status: 'draft',
               subject: `${candidate.drug_name} の服薬情報提供書`,
               content: `${candidate.drug_name} の残薬調整について処方医へ共有します。`,
-              requested_by: req.userId,
+              requested_by: ctx.userId,
               due_date: null,
             },
           });
         }
 
         await upsertOperationalTask(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           taskType: 'tracing_report_followup',
           title: `${candidate.drug_name} の残薬調整を確認`,
           description: '残薬調整の処方医報告と tracing report 起票を確認してください。',
           priority: candidate.excess_days >= 14 ? 'high' : 'normal',
-          assignedTo: req.userId,
+          assignedTo: ctx.userId,
           dueDate: visitRecordedAt,
           slaDueAt: visitRecordedAt,
           relatedEntityType: 'visit_record',
@@ -1102,10 +1103,10 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
 
           const existingException = await tx.workflowException.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: schedule.cycle_id,
               exception_type: 'reduction_prohibited_drug',
-              status: 'open',
+              status: 'open' satisfies ExceptionStatus,
             },
             select: { id: true },
           });
@@ -1113,19 +1114,20 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
           if (!existingException) {
             await tx.workflowException.create({
               data: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 cycle_id: schedule.cycle_id,
+                patient_id: careCase.patient_id,
                 exception_type: 'reduction_prohibited_drug',
                 description,
-                severity: 'critical',
-                status: 'open',
+                severity: 'critical' satisfies ExceptionSeverity,
+                status: 'open' satisfies ExceptionStatus,
               },
             });
           }
         }
 
         await upsertOperationalTask(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           taskType: 'residual_reduction_review',
           title: '減数調剤禁止薬の残薬を確認',
           description: prohibitedCandidates
@@ -1135,7 +1137,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
             )
             .join(' / '),
           priority: 'high',
-          assignedTo: req.userId,
+          assignedTo: ctx.userId,
           dueDate: visitRecordedAt,
           slaDueAt: visitRecordedAt,
           relatedEntityType: 'visit_record',
@@ -1161,7 +1163,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     if (shouldAdvanceVisitWorkflow && schedule.cycle_id) {
       const activeVisitConsent = await tx.consentRecord.findFirst({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: careCase.patient_id,
           consent_type: 'visit_medication_management',
           is_active: true,
@@ -1172,7 +1174,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       });
 
       const cycle = await tx.medicationCycle.findFirst({
-        where: { id: schedule.cycle_id, org_id: req.orgId },
+        where: { id: schedule.cycle_id, org_id: ctx.orgId },
         select: { id: true, overall_status: true },
       });
 
@@ -1181,11 +1183,11 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         (cycle.overall_status === 'set_audited' || cycle.overall_status === 'visit_ready')
       ) {
         if (cycle.overall_status === 'set_audited') {
-          await transitionCycleStatus(tx, cycle.id, req.orgId, 'visit_ready', req.userId, {
+          await transitionCycleStatus(tx, cycle.id, ctx.orgId, 'visit_ready', ctx.userId, {
             note: '訪問記録作成に伴う訪問準備完了',
           });
         }
-        await transitionCycleStatus(tx, cycle.id, req.orgId, 'visit_completed', req.userId, {
+        await transitionCycleStatus(tx, cycle.id, ctx.orgId, 'visit_completed', ctx.userId, {
           note: '訪問記録作成に伴う訪問完了',
         });
       }
@@ -1193,10 +1195,10 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       if (!activeVisitConsent) {
         const existingException = await tx.workflowException.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: schedule.cycle_id,
             exception_type: 'missing_visit_consent',
-            status: 'open',
+            status: 'open' satisfies ExceptionStatus,
           },
           select: { id: true },
         });
@@ -1204,12 +1206,13 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         if (!existingException) {
           await tx.workflowException.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               cycle_id: schedule.cycle_id,
+              patient_id: careCase.patient_id,
               exception_type: 'missing_visit_consent',
               description: '訪問薬剤管理の有効な同意記録がない状態で訪問記録が登録されました',
-              severity: 'critical',
-              status: 'open',
+              severity: 'critical' satisfies ExceptionSeverity,
+              status: 'open' satisfies ExceptionStatus,
             },
           });
 
@@ -1232,12 +1235,12 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       };
 
       await upsertOperationalTask(tx, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         taskType: 'visit_followup',
         title: '次回訪問候補の調整が必要です',
         description: '訪問記録で次回訪問日の提案が入力されています。',
         priority: outcome_status === 'revisit_needed' ? 'urgent' : 'high',
-        assignedTo: req.userId,
+        assignedTo: ctx.userId,
         dueDate: nextVisitSuggestionDateInput,
         slaDueAt: nextVisitSuggestionDateInput,
         relatedEntityType: 'visit_record',
@@ -1254,12 +1257,12 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     }
 
     await upsertOperationalTask(tx, {
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       taskType: 'care_report_followup',
       title: '訪問後報告の送付確認が必要です',
       description: '医師・ケアマネ向け報告書の送付状況を確認してください。',
       priority: 'high',
-      assignedTo: req.userId,
+      assignedTo: ctx.userId,
       dueDate: visitRecordedAt,
       slaDueAt: visitRecordedAt,
       relatedEntityType: 'visit_record',
@@ -1272,7 +1275,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
     });
 
     await upsertBillingEvidenceForVisit(tx, {
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       visitRecordId: record.id,
     });
 
@@ -1281,7 +1284,7 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       const patient = await tx.patient.findFirst({
         where: {
           id: careCase.patient_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
         },
         select: {
           name: true,
@@ -1308,8 +1311,8 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
   });
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -1318,7 +1321,7 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const result = await saveVisitRecord(req, parsed.data);
+    const result = await saveVisitRecord(ctx, parsed.data);
 
     if ('error' in result) {
       if (result.error === 'schedule_not_found') {
@@ -1370,7 +1373,7 @@ export const POST = withAuth(
     const requestContext = getRequestAuthContext();
     if (result.handoffExtraction) {
       void processHandoffExtraction(prisma, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         visitRecordId: result.record.id,
         patientId: result.handoffExtraction.patientId,
         patientName: result.handoffExtraction.patientName,

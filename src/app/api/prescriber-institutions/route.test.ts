@@ -1,17 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
+type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' | 'admin' };
+type TestRouteContext = { params: Promise<Record<string, string>> };
 
-const { prescriberInstitutionFindManyMock, prescriberInstitutionCreateMock, withOrgContextMock } =
-  vi.hoisted(() => ({
-    prescriberInstitutionFindManyMock: vi.fn(),
-    prescriberInstitutionCreateMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-  }));
+const {
+  prescriberInstitutionFindManyMock,
+  prescriberInstitutionCreateMock,
+  withAuthContextMock,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
+  prescriberInstitutionFindManyMock: vi.fn(),
+  prescriberInstitutionCreateMock: vi.fn(),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: TestAuthContext,
+        routeContext: TestRouteContext,
+      ) => Promise<Response>,
+    ) => {
+      return (
+        req: NextRequest,
+        routeContext: TestRouteContext = { params: Promise.resolve({}) },
+      ) => {
+        const role = req.headers.get('x-test-role') === 'admin' ? 'admin' : 'pharmacist';
+        return handler(req, { orgId: 'org_1', userId: 'user_1', role }, routeContext);
+      };
+    },
+  ),
+  withOrgContextMock: vi.fn(),
+}));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -26,28 +48,29 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
-function createRequest(url: string, body?: unknown, role = 'pharmacist'): AuthenticatedTestRequest {
-  return Object.assign(
-    new NextRequest(url, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }),
-    { orgId: 'org_1', userId: 'user_1', role },
-  );
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+function createRequest(url: string, body?: unknown, role = 'pharmacist') {
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers:
+      body === undefined
+        ? { 'x-test-role': role }
+        : { 'content-type': 'application/json', 'x-test-role': role },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
-function createMalformedJsonRequest(role = 'admin'): AuthenticatedTestRequest {
-  return Object.assign(
-    new NextRequest('http://localhost/api/prescriber-institutions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{',
-    }),
-    { orgId: 'org_1', userId: 'user_1', role },
-  );
+function createMalformedJsonRequest(role = 'admin') {
+  return new NextRequest('http://localhost/api/prescriber-institutions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-test-role': role },
+    body: '{',
+  });
 }
 
 describe('/api/prescriber-institutions', () => {

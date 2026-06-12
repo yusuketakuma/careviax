@@ -6,10 +6,19 @@ const { feedbackFindManyMock, feedbackCreateMock } = vi.hoisted(() => ({
   feedbackCreateMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
-  ) => handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'admin' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -24,10 +33,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, POST } from './route';
 
 function createAuthRequest(init?: ConstructorParameters<typeof NextRequest>[1]) {
-  return Object.assign(new NextRequest('http://localhost/api/admin/uat-feedback', init), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return new NextRequest('http://localhost/api/admin/uat-feedback', init);
 }
 
 function createJsonAuthRequest(body: unknown) {
@@ -92,7 +98,7 @@ describe('/api/admin/uat-feedback', () => {
   });
 
   it('lists persisted UAT feedback', async () => {
-    const response = await GET(createAuthRequest());
+    const response = await GET(createAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -111,6 +117,7 @@ describe('/api/admin/uat-feedback', () => {
         checklist_progress: '5/7',
         checked_items: ['check_mobile'],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -134,7 +141,7 @@ describe('/api/admin/uat-feedback', () => {
   });
 
   it('rejects non-object POST payloads before feedback creation', async () => {
-    const response = await POST(createJsonAuthRequest([]));
+    const response = await POST(createJsonAuthRequest([]), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -146,7 +153,7 @@ describe('/api/admin/uat-feedback', () => {
   });
 
   it('rejects malformed JSON POST payloads before feedback creation', async () => {
-    const response = await POST(createMalformedJsonAuthRequest());
+    const response = await POST(createMalformedJsonAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

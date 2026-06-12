@@ -13,20 +13,25 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+const emptyRouteContext = { params: Promise.resolve({}) };
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist',
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
   ) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist' as const,
-        }),
-      );
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, authContext, routeContext);
   },
 }));
 
@@ -88,7 +93,10 @@ describe('/api/medication-profiles', () => {
   });
 
   it('lists medication profiles', async () => {
-    const response = (await GET(createGetRequest('?patient_id=patient_1&is_current=true')))!;
+    const response = (await GET(
+      createGetRequest('?patient_id=patient_1&is_current=true'),
+      emptyRouteContext,
+    ))!;
 
     expect(response.status).toBe(200);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
@@ -139,7 +147,7 @@ describe('/api/medication-profiles', () => {
   it('hides an inaccessible patient before reading medication profiles', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET(createGetRequest('?patient_id=patient_2')))!;
+    const response = (await GET(createGetRequest('?patient_id=patient_2'), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -158,6 +166,7 @@ describe('/api/medication-profiles', () => {
         drug_name: 'アムロジピン',
         start_date: '2026-03-29',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(201);
@@ -172,7 +181,7 @@ describe('/api/medication-profiles', () => {
   });
 
   it('rejects non-object create payloads before checking patient access', async () => {
-    const response = (await POST(createPostRequest(['patient_1'])))!;
+    const response = (await POST(createPostRequest(['patient_1']), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -186,7 +195,7 @@ describe('/api/medication-profiles', () => {
   });
 
   it('rejects malformed JSON create payloads before checking patient access', async () => {
-    const response = (await POST(createMalformedJsonPostRequest()))!;
+    const response = (await POST(createMalformedJsonPostRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -207,6 +216,7 @@ describe('/api/medication-profiles', () => {
         patient_id: 'patient_2',
         drug_name: 'アムロジピン',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(404);

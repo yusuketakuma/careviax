@@ -1,5 +1,6 @@
 import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -158,22 +159,18 @@ export const PATCH = withAuthContext<{ id: string }>(
         });
         if (!updatedReport) throw new PatientSelfReportConflictError();
 
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
-            actor_id: ctx.userId,
-            action: 'patient_self_report_updated',
-            target_type: 'patient_self_report',
-            target_id: id,
-            changes: {
-              patient_id: freshReport.patient_id,
-              changed_fields: Object.keys(patchData).sort(),
-              status_before: freshReport.status,
-              status_after: updatedReport.status,
-              requested_callback_before: freshReport.requested_callback,
-              requested_callback_after: updatedReport.requested_callback,
-              triage_stamped: shouldStampTriage,
-            },
+        await createAuditLogEntry(tx, ctx, {
+          action: 'patient_self_report_updated',
+          targetType: 'patient_self_report',
+          targetId: id,
+          changes: {
+            patient_id: freshReport.patient_id,
+            changed_fields: Object.keys(patchData).sort(),
+            status_before: freshReport.status,
+            status_after: updatedReport.status,
+            requested_callback_before: freshReport.requested_callback,
+            requested_callback_after: updatedReport.requested_callback,
+            triage_stamped: shouldStampTriage,
           },
         });
 

@@ -2,6 +2,7 @@ import { addDays, format, parseISO } from 'date-fns';
 import { NextRequest } from 'next/server';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { timeDateToString } from '@/lib/visits/time-of-day';
@@ -767,28 +768,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'visit_schedule_reschedule_requested',
-          target_type: 'VisitSchedule',
-          target_id: schedule.id,
-          changes: {
-            reason: parsed.data.reason,
-            reason_code: parsed.data.reason_code,
-            communication_channel: parsed.data.communication_channel,
-            communication_result: parsed.data.communication_result,
-            communication_target_count: communicationTargets.length,
-            priority: parsed.data.priority ?? schedule.priority,
-            proposals: createdProposals.map((proposal) => proposal.id),
-            preferred_pharmacist_id: preferredPharmacistId ?? null,
-            requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
-            current_vehicle_resource_id: schedule.vehicle_resource_id,
-            vehicle_reassignment_mode: vehicleReassignmentMode,
-          },
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_reschedule_requested',
+        targetType: 'VisitSchedule',
+        targetId: schedule.id,
+        changes: {
+          reason: parsed.data.reason,
+          reason_code: parsed.data.reason_code,
+          communication_channel: parsed.data.communication_channel,
+          communication_result: parsed.data.communication_result,
+          communication_target_count: communicationTargets.length,
+          priority: parsed.data.priority ?? schedule.priority,
+          proposals: createdProposals.map((proposal) => proposal.id),
+          preferred_pharmacist_id: preferredPharmacistId ?? null,
+          requested_vehicle_resource_id: requestedVehicleResourceId ?? null,
+          current_vehicle_resource_id: schedule.vehicle_resource_id,
+          vehicle_reassignment_mode: vehicleReassignmentMode,
         },
       });
 

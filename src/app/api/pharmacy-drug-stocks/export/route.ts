@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -92,20 +93,14 @@ export const GET = withAuthContext(
       },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        org_id: authCtx.orgId,
-        actor_id: authCtx.userId,
-        action: 'pharmacy_drug_stock_exported',
-        target_type: 'PharmacySite',
-        target_id: site.id,
-        changes: {
-          site_id: site.id,
-          purpose: parsed.data.purpose,
-          row_count: stocks.length,
-        },
-        ip_address: authCtx.ipAddress,
-        user_agent: authCtx.userAgent,
+    await createAuditLogEntry(prisma, authCtx, {
+      action: 'pharmacy_drug_stock_exported',
+      targetType: 'PharmacySite',
+      targetId: site.id,
+      changes: {
+        site_id: site.id,
+        purpose: parsed.data.purpose,
+        row_count: stocks.length,
       },
     });
 

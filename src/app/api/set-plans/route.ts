@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, conflict } from '@/lib/api/response';
@@ -39,14 +40,14 @@ const createSetPlanSchema = z
     }
   });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const cycleId = searchParams.get('cycle_id') ?? undefined;
-    const assignmentWhere = buildSetPlanAssignmentWhere(req);
+    const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(cycleId ? { cycle_id: cycleId } : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
@@ -107,8 +108,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -126,12 +127,12 @@ export const POST = withAuth(
       notes,
     } = parsed.data;
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
       const cycle = await tx.medicationCycle.findFirst({
         where: {
           id: cycle_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
         },
         select: {
@@ -178,7 +179,7 @@ export const POST = withAuth(
         ? await tx.packagingMethodMaster.findFirst({
             where: {
               id: packaging_method_id,
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               is_active: true,
             },
             select: {
@@ -204,7 +205,7 @@ export const POST = withAuth(
 
       const plan = await tx.setPlan.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           cycle_id,
           target_period_start: new Date(target_period_start),
           target_period_end: new Date(target_period_end),
@@ -218,7 +219,7 @@ export const POST = withAuth(
       // Advance cycle status to setting
       if (cycle.overall_status === 'audited') {
         try {
-          await transitionCycleStatus(tx, cycle_id, req.orgId, 'setting', req.userId);
+          await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'setting', ctx.userId);
         } catch (err) {
           if (err instanceof InvalidTransitionError) {
             return {
@@ -247,7 +248,7 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       eventType: 'cycle_transition',
       payload: { source: 'set_plans', cycle_id },
     });

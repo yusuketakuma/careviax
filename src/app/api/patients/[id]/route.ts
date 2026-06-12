@@ -40,6 +40,7 @@ import {
 } from '@/lib/constants/status-labels';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
@@ -112,25 +113,6 @@ const PRESCRIPTION_SOURCE_LABELS: Record<string, string> = {
   facility_batch: '施設一括',
   refill: 'リフィル',
   qr_scan: 'QR取込',
-};
-
-const CYCLE_STATUS_LABELS: Record<string, string> = {
-  intake_received: '受付済',
-  structuring: '構造化中',
-  inquiry_pending: '疑義照会中',
-  inquiry_resolved: '照会解決',
-  ready_to_dispense: '調剤待ち',
-  dispensing: '調剤中',
-  dispensed: '調剤済',
-  audit_pending: '鑑査待ち',
-  audited: '鑑査済',
-  setting: 'セット中',
-  set_audited: 'セット済',
-  visit_ready: '訪問準備完了',
-  visit_completed: '訪問完了',
-  reported: '報告済',
-  on_hold: '保留',
-  cancelled: '取消',
 };
 
 const MANAGEMENT_PLAN_STATUS_LABELS: Record<string, string> = {

@@ -7,7 +7,7 @@ const FUTURE_DATE = format(addDays(new Date(), 1), 'yyyy-MM-dd');
 const EXPIRED_DATE = format(subDays(new Date(), 5), 'yyyy-MM-dd');
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   prescriptionIntakeFindFirstMock,
   medicationProfileFindManyMock,
@@ -15,15 +15,19 @@ const {
   medicationProfileUpdateMock,
   medicationProfileUpdateManyMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+      ) => Promise<Response>,
+    ) => {
       return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-        );
+        handler(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'admin',
+        });
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -34,8 +38,8 @@ const {
   medicationProfileUpdateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -56,7 +60,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/prescription-intakes/facility-batch', {

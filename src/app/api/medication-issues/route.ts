@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -76,8 +76,8 @@ async function canAccessMedicationIssueScope(args: {
   return true;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -92,18 +92,18 @@ export const GET = withAuth(
     }
 
     if (patientId && caseId) {
-      const refResult = await validateOrgReferences(req.orgId, {
+      const refResult = await validateOrgReferences(ctx.orgId, {
         patient_id: patientId,
         case_id: caseId,
       });
       if (!refResult.ok) return refResult.response;
     }
 
-    const accessContext = { userId: req.userId, role: req.role };
+    const accessContext = { userId: ctx.userId, role: ctx.role };
     if (
       (patientId || caseId) &&
       !(await canAccessMedicationIssueScope({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId,
         caseId,
         accessContext,
@@ -113,11 +113,11 @@ export const GET = withAuth(
     }
 
     const assignmentWhere = await buildMedicationIssueAssignmentWhere({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       accessContext,
     });
     const where: Prisma.MedicationIssueWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(caseId ? { case_id: caseId } : {}),
       ...(status ? { status: status.data } : {}),
@@ -160,8 +160,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -171,7 +171,7 @@ export const POST = withAuth(
     }
 
     const { patient_id, case_id } = parsed.data;
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       patient_id,
       case_id,
     });
@@ -179,20 +179,20 @@ export const POST = withAuth(
 
     if (
       !(await canAccessMedicationIssueScope({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: patient_id,
         caseId: case_id,
-        accessContext: { userId: req.userId, role: req.role },
+        accessContext: { userId: ctx.userId, role: ctx.role },
       }))
     ) {
       return notFound('患者またはケースが見つかりません');
     }
 
-    const issue = await withOrgContext(req.orgId, async (tx) => {
+    const issue = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.medicationIssue.create({
         data: {
-          org_id: req.orgId,
-          identified_by: req.userId,
+          org_id: ctx.orgId,
+          identified_by: ctx.userId,
           ...parsed.data,
         },
       });

@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  dispenseTaskCountMock,
-  dispenseTaskFindManyMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  dispenseTaskCountMock: vi.fn(),
-  dispenseTaskFindManyMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, dispenseTaskCountMock, dispenseTaskFindManyMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    dispenseTaskCountMock: vi.fn(),
+    dispenseTaskFindManyMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -29,7 +25,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest() {
   return new NextRequest('http://localhost/api/dashboard/dispensing-stats', {

@@ -3,15 +3,11 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 type TestRole = 'owner' | 'admin' | 'pharmacist' | 'pharmacist_trainee' | 'clerk';
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: TestRole;
-};
 
 const {
   authRoleRef,
-  withAuthMock,
+  authMock,
+  membershipFindFirstMock,
   withOrgContextMock,
   scheduleFindManyMock,
   scheduleFindFirstMock,
@@ -26,19 +22,8 @@ const {
 
   return {
     authRoleRef,
-    withAuthMock: vi.fn(
-      (handler: (req: AuthenticatedTestRequest) => Promise<Response>, _options?: unknown) => {
-        void _options;
-        return (req: NextRequest) =>
-          handler(
-            Object.assign(req, {
-              orgId: 'org_1',
-              userId: 'user_1',
-              role: authRoleRef.current,
-            }),
-          );
-      },
-    ),
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
     scheduleFindFirstMock: vi.fn(),
@@ -51,8 +36,16 @@ const {
   };
 });
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -63,15 +56,19 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { PATCH } from './route';
+import { PATCH as rawPATCH } from './route';
 
-const withAuthRegistrationCalls = [...withAuthMock.mock.calls];
+const emptyRouteContext = { params: Promise.resolve({}) };
+const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-routes/reorder', {
     method: 'PATCH',
     body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
   });
 }
 
@@ -98,6 +95,10 @@ describe('/api/visit-routes/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authRoleRef.current = 'pharmacist';
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockImplementation(() =>
+      Promise.resolve({ role: authRoleRef.current }),
+    );
     scheduleFindManyMock.mockResolvedValue([
       {
         id: 'schedule_1',
@@ -141,11 +142,20 @@ describe('/api/visit-routes/reorder PATCH', () => {
     );
   });
 
-  it('requires visit permission before handling mixed route reorder mutations', () => {
-    expect(withAuthRegistrationCalls[0]?.[1]).toMatchObject({
-      permission: 'canVisit',
+  it('requires visit permission before handling mixed route reorder mutations', async () => {
+    authRoleRef.current = 'clerk';
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ item_type: 'schedule', id: 'schedule_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
       message: '混在ルート順の更新権限がありません',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('runs mixed reorder in a serializable org transaction', async () => {

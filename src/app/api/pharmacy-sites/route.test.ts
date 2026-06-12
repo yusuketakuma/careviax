@@ -5,9 +5,16 @@ const { pharmacySiteFindManyMock } = vi.hoisted(() => ({
   pharmacySiteFindManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string }) => Promise<Response>) => {
-    return (req: NextRequest) => handler(Object.assign(req, { orgId: 'org_1' }));
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
   },
 }));
 
@@ -20,6 +27,9 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const routeGET = (req: NextRequest) => GET(req, emptyRouteContext);
 
 describe('/api/pharmacy-sites', () => {
   beforeEach(() => {
@@ -43,7 +53,7 @@ describe('/api/pharmacy-sites', () => {
       },
     ]);
 
-    const response = (await GET(new NextRequest('http://localhost/api/pharmacy-sites')))!;
+    const response = (await routeGET(new NextRequest('http://localhost/api/pharmacy-sites')))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -86,7 +96,7 @@ describe('/api/pharmacy-sites', () => {
       },
     ]);
 
-    const response = (await GET(
+    const response = (await routeGET(
       new NextRequest('http://localhost/api/pharmacy-sites?view=resource_map'),
     ))!;
 
@@ -137,7 +147,7 @@ describe('/api/pharmacy-sites', () => {
       },
     ]);
 
-    const response = (await GET(
+    const response = (await routeGET(
       new NextRequest('http://localhost/api/pharmacy-sites?view=resource_map'),
     ))!;
 

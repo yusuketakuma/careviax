@@ -19,6 +19,8 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 import { GET } from './route';
 
 function createRequest(search = '?top=2', headers?: Record<string, string>) {
@@ -58,7 +60,10 @@ describe('/api/admin/performance-metrics GET', () => {
       durationMs: 510,
     });
 
-    const response = await GET(createRequest('?top=%202%20', { 'x-org-id': 'org_1' }));
+    const response = await GET(
+      createRequest('?top=%202%20', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -106,6 +111,7 @@ describe('/api/admin/performance-metrics GET', () => {
 
       const response = await GET(
         createRequest(`?top=${encodeURIComponent(top)}`, { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       );
 
       if (!response) throw new Error('response is required');

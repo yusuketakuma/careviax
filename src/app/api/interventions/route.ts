@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -58,8 +58,8 @@ async function canAttachMedicationIssue(args: {
   return issue !== null;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -67,13 +67,13 @@ export const GET = withAuth(
     const issueId = searchParams.get('issue_id') ?? undefined;
 
     const assignmentWhere = await buildInterventionAssignmentWhere({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       patientId,
-      accessContext: req,
+      accessContext: ctx,
     });
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(issueId ? { issue_id: issueId } : {}),
       ...assignmentWhere,
@@ -111,8 +111,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -123,15 +123,15 @@ export const POST = withAuth(
 
     const canAccessScope = await canAccessPatient({
       db: prisma,
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       patientId: parsed.data.patient_id,
-      accessContext: req,
+      accessContext: ctx,
     });
     if (!canAccessScope) return notFound('患者が見つかりません');
 
     if (
       !(await canAttachMedicationIssue({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: parsed.data.patient_id,
         issueId: parsed.data.issue_id,
       }))
@@ -139,11 +139,11 @@ export const POST = withAuth(
       return notFound('服薬課題が見つかりません');
     }
 
-    const intervention = await withOrgContext(req.orgId, async (tx) => {
+    const intervention = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.intervention.create({
         data: {
-          org_id: req.orgId,
-          performed_by: req.userId,
+          org_id: ctx.orgId,
+          performed_by: ctx.userId,
           ...parsed.data,
           performed_at: new Date(parsed.data.performed_at),
         },

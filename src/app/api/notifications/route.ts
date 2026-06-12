@@ -1,32 +1,28 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { getMembership, isAdmin } from '@/lib/auth/context';
+import { isAdmin, withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, forbidden } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(async (req, ctx) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 
-  const userId = searchParams.get('user_id') ?? req.userId;
-  if (userId !== req.userId) {
-    const membership = await getMembership(req.userId, req.orgId);
-    if (!membership || !isAdmin(membership.role)) {
-      return forbidden('他ユーザーの通知閲覧には管理者権限が必要です');
-    }
+  const userId = searchParams.get('user_id') ?? ctx.userId;
+  if (userId !== ctx.userId && !isAdmin(ctx.role)) {
+    return forbidden('他ユーザーの通知閲覧には管理者権限が必要です');
   }
 
   const isReadParam = searchParams.get('is_read');
   const isRead = isReadParam === 'true' ? true : isReadParam === 'false' ? false : undefined;
 
   const where = {
-    org_id: req.orgId,
+    org_id: ctx.orgId,
     user_id: userId,
     ...(isRead !== undefined ? { is_read: isRead } : {}),
   };
 
-  const notifications = await withOrgContext(req.orgId, (tx) =>
+  const notifications = await withOrgContext(ctx.orgId, (tx) =>
     tx.notification.findMany({
       where,
       take: limit + 1,
@@ -42,15 +38,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   return success({ data, hasMore, nextCursor });
 });
 
-export const PATCH = withAuth(async (req: AuthenticatedRequest) => {
+export const PATCH = withAuthContext(async (req, ctx) => {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
   if (payload.all === true) {
     // Mark all as read for the current user
-    await withOrgContext(req.orgId, (tx) =>
+    await withOrgContext(ctx.orgId, (tx) =>
       tx.notification.updateMany({
-        where: { org_id: req.orgId, user_id: req.userId, is_read: false },
+        where: { org_id: ctx.orgId, user_id: ctx.userId, is_read: false },
         data: { is_read: true, read_at: new Date() },
       }),
     );
@@ -76,12 +72,12 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('ids または all が必要です');
   }
 
-  await withOrgContext(req.orgId, (tx) =>
+  await withOrgContext(ctx.orgId, (tx) =>
     tx.notification.updateMany({
       where: {
         id: { in: ids },
-        org_id: req.orgId,
-        user_id: req.userId,
+        org_id: ctx.orgId,
+        user_id: ctx.userId,
       },
       data: { is_read: true, read_at: new Date() },
     }),

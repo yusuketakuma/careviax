@@ -1,28 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'admin';
-};
-
-const { withAuthMock, dispenseAuditFindManyMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'admin_1',
-          role: 'admin' as const,
-        }),
-      );
-  }),
+const { withAuthContextMock, dispenseAuditFindManyMock } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+        routeContext: { params: Promise<Record<string, never>> },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext = emptyRouteContext) =>
+        handler(req, { orgId: 'org_1', userId: 'admin_1', role: 'admin' }, routeContext);
+    },
+  ),
   dispenseAuditFindManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -74,7 +72,7 @@ describe('/api/admin/reject-reason-stats GET', () => {
   });
 
   it('returns reject reason counts for a validated period', async () => {
-    const response = (await GET(createRequest('?days=%2010%20')))!;
+    const response = (await GET(createRequest('?days=%2010%20'), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
     expect(getLastSinceDays()).toBe(10);
@@ -114,7 +112,7 @@ describe('/api/admin/reject-reason-stats GET', () => {
   });
 
   it('accepts zero-day period values without clamping', async () => {
-    const response = (await GET(createRequest('?days=0')))!;
+    const response = (await GET(createRequest('?days=0'), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
     expect(getLastSinceDays()).toBe(0);
@@ -128,7 +126,10 @@ describe('/api/admin/reject-reason-stats GET', () => {
   it.each(['', '20abc', '1e2', '10.0', '-5', '9999'])(
     'rejects malformed days=%s before querying audits',
     async (days) => {
-      const response = (await GET(createRequest(`?days=${encodeURIComponent(days)}`)))!;
+      const response = (await GET(
+        createRequest(`?days=${encodeURIComponent(days)}`),
+        emptyRouteContext,
+      ))!;
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({

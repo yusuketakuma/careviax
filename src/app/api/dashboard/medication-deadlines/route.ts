@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -17,8 +17,8 @@ const medicationDeadlineQuerySchema = z.object({
   ),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(medicationDeadlineQuerySchema, searchParams);
     if (!parsed.ok) {
@@ -33,7 +33,7 @@ export const GET = withAuth(
     // Find visit schedules with medication_end_date approaching
     const schedules = await prisma.visitSchedule.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         medication_end_date: {
           gte: today,
           lte: deadline,

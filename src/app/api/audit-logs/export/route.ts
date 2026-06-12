@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db';
 import { validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
@@ -20,8 +20,8 @@ function toCsvRow(values: unknown[]): string {
     .join(',');
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const searchParams = req.nextUrl.searchParams;
     const parsed = querySchema.safeParse({
       format: searchParams.get('format') ?? undefined,
@@ -41,7 +41,7 @@ export const GET = withAuth(
     const { format } = parsed.data;
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(filters.actor ? { actor_id: filters.actor } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
@@ -65,8 +65,8 @@ export const GET = withAuth(
     const exportLogs = redactAuditLogsForResponse(logs);
 
     await recordDataExportAudit(prisma, {
-      orgId: req.orgId,
-      actorId: req.userId,
+      orgId: ctx.orgId,
+      actorId: ctx.userId,
       targetType: 'audit_log',
       format,
       recordCount: logs.length,
@@ -77,8 +77,8 @@ export const GET = withAuth(
         from: filters.from?.toISOString() ?? null,
         to: filters.to?.toISOString() ?? null,
       },
-      ipAddress: req.ipAddress,
-      userAgent: req.userAgent,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
     });
 
     if (format === 'json') {

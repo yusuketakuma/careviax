@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -82,17 +83,11 @@ export const PATCH = withAuthContext(async (req, ctx) => {
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'user_preferences_updated',
-        target_type: 'Setting',
-        target_id: ctx.userId,
-        changes: updates,
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
-      },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'user_preferences_updated',
+      targetType: 'Setting',
+      targetId: ctx.userId,
+      changes: updates,
     });
   });
 

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -10,8 +10,8 @@ import {
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const month = searchParams.get('month');
     const dateFrom = searchParams.get('date_from');
@@ -44,7 +44,7 @@ export const GET = withAuth(
 
     const shifts = await prisma.pharmacistShift.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(resolvedDateFrom || resolvedDateTo
           ? {
               date: {
@@ -71,8 +71,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -85,17 +85,17 @@ export const POST = withAuth(
     const availableFromValue = toShiftTimeValue(available_from);
     const availableToValue = toShiftTimeValue(available_to);
 
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       site_id: rest.site_id,
       pharmacist_id: rest.user_id,
     });
     if (!refResult.ok) return refResult.response;
 
-    const shift = await withOrgContext(req.orgId, async (tx) => {
+    const shift = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.pharmacistShift.upsert({
         where: { user_id_date: { user_id: rest.user_id, date: new Date(date) } },
         create: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           date: new Date(date),
           ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
           ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),

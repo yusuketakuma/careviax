@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
@@ -73,17 +74,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'pharmacy_site_updated',
-        target_type: 'PharmacySite',
-        target_id: siteId,
-        changes: parsed.data,
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
-      },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'pharmacy_site_updated',
+      targetType: 'PharmacySite',
+      targetId: siteId,
+      changes: parsed.data,
     });
 
     return site;

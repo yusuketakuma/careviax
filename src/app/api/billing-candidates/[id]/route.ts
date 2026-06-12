@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
@@ -59,21 +60,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       actorId: ctx.userId,
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'billing_candidate_review_updated',
-        target_type: 'BillingCandidate',
-        target_id: candidateId,
-        changes: {
-          action,
-          note,
-          status_before: candidate.status,
-          status_after: next.status,
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: 'billing_candidate_review_updated',
+      targetType: 'BillingCandidate',
+      targetId: candidateId,
+      changes: {
+        action,
+        note,
+        status_before: candidate.status,
+        status_after: next.status,
       },
     });
 

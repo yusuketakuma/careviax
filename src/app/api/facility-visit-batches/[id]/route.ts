@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -14,35 +14,35 @@ const patchFacilityVisitBatchSchema = z.object({
   ordered_schedule_ids: z.array(z.string().trim().min(1)).min(1),
 });
 
-function buildBatchScheduleAccessWhere(req: AuthenticatedRequest, batchId: string) {
-  const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+function buildBatchScheduleAccessWhere(ctx: AuthContext, batchId: string) {
+  const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
   return {
-    org_id: req.orgId,
+    org_id: ctx.orgId,
     facility_batch_id: batchId,
     ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
   };
 }
 
-export const DELETE = withAuth(
-  async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withAuthContext(
+  async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
-        where: { id, org_id: req.orgId },
+        where: { id, org_id: ctx.orgId },
         select: { id: true, pharmacist_id: true },
       });
       if (!batch) return { error: 'not_found' as const };
 
-      if (!canBypassVisitScheduleAssignmentAccess(req)) {
+      if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
         const [totalSchedules, accessibleSchedules] = await Promise.all([
           tx.visitSchedule.count({
-            where: { org_id: req.orgId, facility_batch_id: id },
+            where: { org_id: ctx.orgId, facility_batch_id: id },
           }),
           tx.visitSchedule.count({
-            where: buildBatchScheduleAccessWhere(req, id),
+            where: buildBatchScheduleAccessWhere(ctx, id),
           }),
         ]);
         if (totalSchedules === 0 || totalSchedules !== accessibleSchedules) {
@@ -51,7 +51,7 @@ export const DELETE = withAuth(
       }
 
       await tx.visitSchedule.updateMany({
-        where: { org_id: req.orgId, facility_batch_id: id },
+        where: { org_id: ctx.orgId, facility_batch_id: id },
         data: { facility_batch_id: null, route_order: null },
       });
 
@@ -68,7 +68,7 @@ export const DELETE = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'facility_visit_batch_delete' },
     });
 
@@ -80,8 +80,8 @@ export const DELETE = withAuth(
   },
 );
 
-export const PATCH = withAuth(
-  async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const PATCH = withAuthContext(
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('バッチIDが指定されていません');
@@ -99,20 +99,20 @@ export const PATCH = withAuth(
       return validationError('同じ訪問予定IDを複数回指定できません');
     }
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const batch = await tx.facilityVisitBatch.findFirst({
-        where: { id, org_id: req.orgId },
+        where: { id, org_id: ctx.orgId },
         select: { id: true, pharmacist_id: true },
       });
       if (!batch) return { error: 'not_found' as const };
 
       const schedules = await tx.visitSchedule.findMany({
-        where: { org_id: req.orgId, facility_batch_id: id },
+        where: { org_id: ctx.orgId, facility_batch_id: id },
         select: { id: true },
       });
-      if (!canBypassVisitScheduleAssignmentAccess(req)) {
+      if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
         const accessibleSchedules = await tx.visitSchedule.count({
-          where: buildBatchScheduleAccessWhere(req, id),
+          where: buildBatchScheduleAccessWhere(ctx, id),
         });
         if (schedules.length === 0 || schedules.length !== accessibleSchedules) {
           return { error: 'forbidden' as const };
@@ -132,7 +132,7 @@ export const PATCH = withAuth(
         orderedIds.map((scheduleId, index) =>
           tx.visitSchedule.updateMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: scheduleId,
               facility_batch_id: id,
             },
@@ -169,7 +169,7 @@ export const PATCH = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'facility_visit_batch_reorder' },
     });
 

@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
+type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
+type TestRouteContext = { params: Promise<Record<string, string>> };
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   qrScanDraftFindFirstMock,
   qrScanDraftCreateMock,
@@ -21,15 +22,18 @@ const {
   detectMultiQRMock,
   mapJahisToIntakeMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-        }),
-      );
-  }),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: TestAuthContext,
+        routeContext: TestRouteContext,
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext: TestRouteContext = { params: Promise.resolve({}) }) =>
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+    },
+  ),
   withOrgContextMock: vi.fn(),
   qrScanDraftFindFirstMock: vi.fn().mockResolvedValue(null),
   qrScanDraftCreateMock: vi.fn(),
@@ -46,8 +50,8 @@ const {
   mapJahisToIntakeMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -88,7 +92,10 @@ vi.mock('@/lib/pharmacy/qr-intake-mapper', () => ({
   mapJahisToIntake: mapJahisToIntakeMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/qr-scan-drafts', {

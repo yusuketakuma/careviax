@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
@@ -67,8 +67,8 @@ const createCommunicationRequestSchema = z.object({
   due_date: optionalDateSchema,
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -91,12 +91,12 @@ export const GET = withAuth(
 
     const assignmentWhere = await buildCommunicationRequestAssignmentWhere({
       db: prisma,
-      orgId: req.orgId,
-      accessContext: req,
+      orgId: ctx.orgId,
+      accessContext: ctx,
     });
 
     const where: Prisma.CommunicationRequestWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(status ? { status } : {}),
       ...(patientId ? { patient_id: patientId } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
@@ -153,8 +153,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -187,7 +187,7 @@ export const POST = withAuth(
       const tracingReport = await prisma.tracingReport.findFirst({
         where: {
           id: related_entity_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
         },
         select: {
           id: true,
@@ -213,10 +213,10 @@ export const POST = withAuth(
       if (
         !(await canAccessCommunicationRequestRecord({
           db: prisma,
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           patientId: resolvedScope.patientId,
           caseId: resolvedScope.caseId,
-          accessContext: req,
+          accessContext: ctx,
         }))
       ) {
         return notFound('トレーシングレポートが見つかりません');
@@ -229,10 +229,10 @@ export const POST = withAuth(
     if (
       !(await canAccessCommunicationRequestRecord({
         db: prisma,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: effectivePatientId,
         caseId: effectiveCaseId,
-        accessContext: req,
+        accessContext: ctx,
       }))
     ) {
       return validationError('患者またはケースの割当権限がありません');
@@ -240,14 +240,14 @@ export const POST = withAuth(
 
     const suggestedInstitution =
       !recipient_name && (effectivePatientId || effectiveCaseId)
-        ? await findLatestPrescriberInstitutionSuggestion(prisma, req.orgId, {
+        ? await findLatestPrescriberInstitutionSuggestion(prisma, ctx.orgId, {
             caseId: effectiveCaseId ?? undefined,
             patientId: effectivePatientId ?? undefined,
           })
         : null;
     const suggestedProfessional =
       !recipient_name && !suggestedInstitution && (effectivePatientId || effectiveCaseId)
-        ? await pickCommunicationRecipientCandidate(prisma, req.orgId, {
+        ? await pickCommunicationRecipientCandidate(prisma, ctx.orgId, {
             caseId: effectiveCaseId ?? undefined,
             patientId: effectivePatientId ?? undefined,
             requestType: request_type,
@@ -286,10 +286,10 @@ export const POST = withAuth(
         : {}),
     });
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.communicationRequest.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: effectivePatientId,
           case_id: effectiveCaseId,
           request_type,
@@ -302,7 +302,7 @@ export const POST = withAuth(
           status: status ?? 'draft',
           subject,
           content,
-          requested_by: req.userId,
+          requested_by: ctx.userId,
           due_date: due_date ? new Date(due_date) : null,
         },
       });

@@ -1,25 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthMock, buildSnapshotMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
+const { withAuthContextMock, buildSnapshotMock } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
     (
-      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+        routeContext: { params: Promise<Record<string, never>> },
+      ) => Promise<Response>,
     ) => {
-      return (req: NextRequest) =>
+      return (req: NextRequest, routeContext = emptyRouteContext) =>
         handler(
-          Object.assign(req, {
+          req,
+          {
             orgId: 'org_1',
             userId: 'user_1',
-          }),
+            role: 'admin',
+          },
+          routeContext,
         );
     },
   ),
   buildSnapshotMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -47,7 +56,7 @@ describe('/api/admin/master-readiness GET', () => {
   });
 
   it('returns the admin master readiness snapshot', async () => {
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -60,7 +69,7 @@ describe('/api/admin/master-readiness GET', () => {
   });
 
   it('requires admin permission', () => {
-    expect(withAuthMock).toHaveBeenCalledWith(expect.any(Function), {
+    expect(withAuthContextMock).toHaveBeenCalledWith(expect.any(Function), {
       permission: 'canAdmin',
       message: '設定・マスター整備状況の閲覧権限がありません',
     });

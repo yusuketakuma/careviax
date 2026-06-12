@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -106,26 +107,20 @@ export const POST = withAuthContext(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: authCtx.orgId,
-          actor_id: authCtx.userId,
-          action: 'pharmacy_drug_stock_safety_follow_up_created',
-          target_type: 'PharmacySite',
-          target_id: site.id,
-          changes: {
-            site_id: site.id,
-            queue: parsed.data.queue,
-            due_in_days: parsed.data.due_in_days,
-            due_date: dueDate.toISOString(),
-            reason,
-            matched_count: targetStocks.length,
-            updated_count: updateResult.count,
-            skipped_unresolved_count: skippedUnresolvedCount,
-            drug_master_ids: targetStocks.map((stock) => stock.drug_master_id),
-          },
-          ip_address: authCtx.ipAddress,
-          user_agent: authCtx.userAgent,
+      await createAuditLogEntry(tx, authCtx, {
+        action: 'pharmacy_drug_stock_safety_follow_up_created',
+        targetType: 'PharmacySite',
+        targetId: site.id,
+        changes: {
+          site_id: site.id,
+          queue: parsed.data.queue,
+          due_in_days: parsed.data.due_in_days,
+          due_date: dueDate.toISOString(),
+          reason,
+          matched_count: targetStocks.length,
+          updated_count: updateResult.count,
+          skipped_unresolved_count: skippedUnresolvedCount,
+          drug_master_ids: targetStocks.map((stock) => stock.drug_master_id),
         },
       });
 

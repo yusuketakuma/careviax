@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -45,8 +45,8 @@ function toResponse(item: {
   };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const query = req.nextUrl.searchParams.get('q')?.trim();
     const facilityId = req.nextUrl.searchParams.get('facility_id')?.trim();
     const professionType = professionTypeSchema.safeParse(
@@ -58,7 +58,7 @@ export const GET = withAuth(
 
     const items = await prisma.externalProfessional.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(professionType ? { profession_type: professionType } : {}),
         ...(facilityId ? { facility_id: facilityId } : {}),
         ...(preferredContactMethod ? { preferred_contact_method: preferredContactMethod } : {}),
@@ -95,8 +95,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -105,12 +105,12 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const created = await withOrgContext(req.orgId, async (tx) => {
-      await assertFacilityReference(tx, req.orgId, parsed.data.facility_id || null);
+    const created = await withOrgContext(ctx.orgId, async (tx) => {
+      await assertFacilityReference(tx, ctx.orgId, parsed.data.facility_id || null);
 
       return tx.externalProfessional.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           profession_type: parsed.data.profession_type,
           name: parsed.data.name,
           facility_id: parsed.data.facility_id || null,

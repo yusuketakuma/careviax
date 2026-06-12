@@ -7,6 +7,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateBusinessHolidaySchema } from '@/lib/validations/business-holiday';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -65,21 +66,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'business_holiday_updated',
-        target_type: 'BusinessHoliday',
-        target_id: holidayId,
-        changes: {
-          date: parsed.data.date,
-          site_id: parsed.data.site_id ?? null,
-          holiday_type: parsed.data.holiday_type,
-          is_closed: parsed.data.is_closed,
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: 'business_holiday_updated',
+      targetType: 'BusinessHoliday',
+      targetId: holidayId,
+      changes: {
+        date: parsed.data.date,
+        site_id: parsed.data.site_id ?? null,
+        holiday_type: parsed.data.holiday_type,
+        is_closed: parsed.data.is_closed,
       },
     });
 
@@ -112,18 +107,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       where: { id: holidayId },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'business_holiday_deleted',
-        target_type: 'BusinessHoliday',
-        target_id: holidayId,
-        changes: {
-          name: existing.name,
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: 'business_holiday_deleted',
+      targetType: 'BusinessHoliday',
+      targetId: holidayId,
+      changes: {
+        name: existing.name,
       },
     });
   });

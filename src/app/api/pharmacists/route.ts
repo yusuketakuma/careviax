@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -25,12 +26,12 @@ function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
   return Array.from(uniqueItems.values());
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const siteId = searchParams.get('site_id');
     const includeCollaborators = searchParams.get('include_collaborators') === 'true';
-    if (includeCollaborators && req.role !== 'owner' && req.role !== 'admin') {
+    if (includeCollaborators && ctx.role !== 'owner' && ctx.role !== 'admin') {
       return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
     }
     // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
@@ -42,7 +43,7 @@ export const GET = withAuth(
 
     const pharmacists = await prisma.membership.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(includeCollaborators ? {} : { is_active: true }),
         role: {
           in: includeCollaborators
@@ -98,7 +99,7 @@ export const GET = withAuth(
         : await prisma.visitSchedule.groupBy({
             by: ['pharmacist_id'],
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               pharmacist_id: { in: pharmacistIds },
               scheduled_date: {
                 gte: monthStart,
@@ -166,8 +167,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -176,7 +177,7 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       site_id: parsed.data.site_id,
     });
     if (!refResult.ok) return refResult.response;
@@ -199,7 +200,7 @@ export const POST = withAuth(
         email: parsed.data.email,
         name: parsed.data.name,
         phone: parsed.data.phone,
-        phosTenantId: req.orgId,
+        phosTenantId: ctx.orgId,
         phosRole: phosRoleFromMemberRole(parsed.data.role),
       });
     } catch (error) {
@@ -215,10 +216,10 @@ export const POST = withAuth(
     const isOperational = isOperationalMemberRole(parsed.data.role);
 
     try {
-      const pharmacist = await withOrgContext(req.orgId, async (tx) => {
+      const pharmacist = await withOrgContext(ctx.orgId, async (tx) => {
         const user = await tx.user.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cognito_sub: identity.sub,
             cognito_username: identity.username,
             email: parsed.data.email.toLowerCase(),
@@ -235,14 +236,14 @@ export const POST = withAuth(
             coverage_area: toPrismaJsonInput(isOperational ? parsed.data.coverage_area : []),
             account_status: 'invited',
             invited_at: invitedAt,
-            invited_by: req.userId,
+            invited_by: ctx.userId,
             last_invited_at: invitedAt,
           },
         });
 
         await tx.membership.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             user_id: user.id,
             site_id: parsed.data.site_id ?? null,
             role: parsed.data.role,
@@ -250,20 +251,14 @@ export const POST = withAuth(
           },
         });
 
-        await tx.auditLog.create({
-          data: {
-            org_id: req.orgId,
-            actor_id: req.userId,
-            action: 'pharmacist_invited',
-            target_type: 'User',
-            target_id: user.id,
-            changes: {
-              site_id: parsed.data.site_id,
-              role: parsed.data.role,
-              email: user.email,
-            },
-            ip_address: req.ipAddress,
-            user_agent: req.userAgent,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'pharmacist_invited',
+          targetType: 'User',
+          targetId: user.id,
+          changes: {
+            site_id: parsed.data.site_id,
+            role: parsed.data.role,
+            email: user.email,
           },
         });
 

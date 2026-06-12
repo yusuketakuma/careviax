@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   patientFindManyMock,
   patientCreateMock,
   careCaseFindManyMock,
@@ -22,7 +22,7 @@ const {
   careCaseCreateMock,
   careTeamLinkCreateManyMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(),
+  withAuthContextMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   patientCreateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -43,14 +43,28 @@ const {
   careTeamLinkCreateManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string },
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
     ) => Promise<Response>,
   ) => {
-    withAuthMock.mockImplementation(handler);
-    return handler;
+    withAuthContextMock.mockImplementation(handler);
+    return (
+      req: NextRequest & { orgId?: string; userId?: string; role?: string },
+      routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+    ) =>
+      handler(
+        req,
+        {
+          orgId: req.orgId ?? 'org_1',
+          userId: req.userId ?? 'user_1',
+          role: req.role ?? 'pharmacist',
+        },
+        routeContext,
+      );
   },
 }));
 
@@ -92,7 +106,11 @@ vi.mock('@/lib/patient/facility-reference', () => ({
   getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type AuthenticatedTestRequest = NextRequest & {
   orgId: string;

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -149,25 +150,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         });
       }
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pca_pump_updated',
-          target_type: 'PcaPump',
-          target_id: id,
-          changes: {
-            ...pumpAuditChanges,
-            ...(shouldCreateMaintenanceEvent
-              ? {
-                  maintenance_event_type: maintenanceEvent?.event_type,
-                  maintenance_result: maintenanceEvent?.result,
-                }
-              : {}),
-            ...(maintenance_notes !== undefined ? { maintenance_notes } : {}),
-          },
-          ip_address: req.headers.get('x-forwarded-for') ?? null,
-          user_agent: req.headers.get('user-agent') ?? null,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pca_pump_updated',
+        targetType: 'PcaPump',
+        targetId: id,
+        changes: {
+          ...pumpAuditChanges,
+          ...(shouldCreateMaintenanceEvent
+            ? {
+                maintenance_event_type: maintenanceEvent?.event_type,
+                maintenance_result: maintenanceEvent?.result,
+              }
+            : {}),
+          ...(maintenance_notes !== undefined ? { maintenance_notes } : {}),
         },
       });
       return { kind: 'pump' as const, pump };
@@ -215,17 +210,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     ctx.orgId,
     async (tx) => {
       await tx.pcaPump.delete({ where: { id } });
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'pca_pump_deleted',
-          target_type: 'PcaPump',
-          target_id: id,
-          changes: { id },
-          ip_address: req.headers.get('x-forwarded-for') ?? null,
-          user_agent: req.headers.get('user-agent') ?? null,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'pca_pump_deleted',
+        targetType: 'PcaPump',
+        targetId: id,
+        changes: { id },
       });
     },
     {

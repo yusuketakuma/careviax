@@ -1,25 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  role: 'pharmacist';
-};
-
 const { generateReportsFromVisitMock } = vi.hoisted(() => ({
   generateReportsFromVisitMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
       handler(
-        Object.assign(req, {
+        req,
+        {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        }) as AuthenticatedTestRequest,
+        },
+        routeContext,
       );
   },
 }));
@@ -60,6 +64,7 @@ describe('/api/care-reports/generate-from-visit', () => {
       createGenerateFromVisitRequest({
         visit_record_id: 'visit_1',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(201);
@@ -82,6 +87,7 @@ describe('/api/care-reports/generate-from-visit', () => {
       createGenerateFromVisitRequest({
         visit_record_id: 'visit_missing',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(404);
@@ -96,20 +102,21 @@ describe('/api/care-reports/generate-from-visit', () => {
       createGenerateFromVisitRequest({
         visit_record_id: 'visit_1',
       }),
+      emptyRouteContext,
     ))!;
 
     expect(response.status).toBe(403);
   });
 
   it('rejects non-object generation payloads before calling the generator', async () => {
-    const response = (await POST(createGenerateFromVisitRequest([])))!;
+    const response = (await POST(createGenerateFromVisitRequest([]), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON before calling the generator', async () => {
-    const response = (await POST(createMalformedGenerateFromVisitRequest()))!;
+    const response = (await POST(createMalformedGenerateFromVisitRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({

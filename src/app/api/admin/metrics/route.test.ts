@@ -41,6 +41,8 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -73,16 +75,14 @@ describe('/api/admin/metrics GET', () => {
       { prescriber_institution: 'B医院' },
       { prescriber_institution: 'B医院' },
     ]);
-    prescriptionLineCountMock
-      .mockResolvedValueOnce(20)
-      .mockResolvedValueOnce(15);
+    prescriptionLineCountMock.mockResolvedValueOnce(20).mockResolvedValueOnce(15);
     pharmacistShiftFindManyMock.mockResolvedValue([
       { pharmacist_id: 'user_1' },
       { pharmacist_id: 'user_2' },
     ]);
     visitRecordCountMock.mockResolvedValue(30);
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

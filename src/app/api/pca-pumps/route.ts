@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -16,19 +17,19 @@ function parsePumpStatusParam(value: string | undefined) {
   return { ok: false as const };
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const query = req.nextUrl.searchParams.get('q')?.trim();
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parsePumpStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプ状態の指定が不正です');
 
     const pumps = await withOrgContext(
-      req.orgId,
+      ctx.orgId,
       (tx) =>
         tx.pcaPump.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             ...(parsedStatus.status ? { status: parsedStatus.status } : {}),
             ...(query
               ? {
@@ -66,7 +67,7 @@ export const GET = withAuth(
           },
           orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
         }),
-      { requestContext: req },
+      { requestContext: ctx },
     );
 
     return success({ data: pumps.map(serializePcaPump) });
@@ -77,8 +78,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -88,11 +89,11 @@ export const POST = withAuth(
     }
 
     const created = await withOrgContext(
-      req.orgId,
+      ctx.orgId,
       async (tx) => {
         const pump = await tx.pcaPump.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             asset_code: parsed.data.asset_code,
             serial_number: parsed.data.serial_number || null,
             model_name: parsed.data.model_name,
@@ -104,27 +105,21 @@ export const POST = withAuth(
             notes: parsed.data.notes || null,
           },
         });
-        await tx.auditLog.create({
-          data: {
-            org_id: req.orgId,
-            actor_id: req.userId,
-            action: 'pca_pump_created',
-            target_type: 'PcaPump',
-            target_id: pump.id,
-            changes: {
-              asset_code: pump.asset_code,
-              serial_number: pump.serial_number,
-              model_name: pump.model_name,
-              status: pump.status,
-              maintenance_due_at: toPcaPumpDateKey(pump.maintenance_due_at),
-            },
-            ip_address: req.headers.get('x-forwarded-for') ?? null,
-            user_agent: req.headers.get('user-agent') ?? null,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'pca_pump_created',
+          targetType: 'PcaPump',
+          targetId: pump.id,
+          changes: {
+            asset_code: pump.asset_code,
+            serial_number: pump.serial_number,
+            model_name: pump.model_name,
+            status: pump.status,
+            maintenance_due_at: toPcaPumpDateKey(pump.maintenance_due_at),
           },
         });
         return pump;
       },
-      { requestContext: req },
+      { requestContext: ctx },
     );
 
     return success({ data: serializePcaPump(created) }, 201);

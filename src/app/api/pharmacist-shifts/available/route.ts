@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
@@ -8,8 +8,8 @@ import {
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date');
 
@@ -48,7 +48,7 @@ export const GET = withAuth(
 
     const shifts = await prisma.pharmacistShift.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         date: targetDate,
         available: true,
         ...(timeWindowFilters.length > 0 ? { AND: timeWindowFilters } : {}),
@@ -61,7 +61,7 @@ export const GET = withAuth(
 
     const holidays = await prisma.businessHoliday.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         date: targetDate,
         is_closed: true,
         OR: [

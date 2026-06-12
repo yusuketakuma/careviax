@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
-
 const {
   pcaPumpFindFirstMock,
   prescriberInstitutionFindFirstMock,
@@ -23,8 +21,20 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+      ) => Promise<Response>,
+    ) =>
+    (req: NextRequest) =>
+      handler(req, {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -45,17 +55,19 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
-function createRequest(url: string, body?: unknown): AuthenticatedTestRequest {
-  return Object.assign(
-    new NextRequest(url, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }),
-    { orgId: 'org_1', userId: 'user_1', role: 'admin' },
-  );
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+function createRequest(url: string, body?: unknown) {
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 const rentalRecord = {

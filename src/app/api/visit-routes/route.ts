@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
   buildVisitScheduleAssignmentWhere,
   buildVisitScheduleProposalAssignmentWhere,
@@ -91,8 +92,8 @@ function hasRoutePlanLookupError(value: unknown): value is RoutePlanLookupError 
   );
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
       return validationError('リクエストボディが不正です');
@@ -104,16 +105,16 @@ export const POST = withAuth(
     }
 
     const routePlan = await withOrgContext(
-      req.orgId,
+      ctx.orgId,
       async (tx) => {
-        const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(req);
-        const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+        const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
+        const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
         const [schedules, proposals, persistedVehicleResource] = await Promise.all([
           parsed.data.schedule_ids.length > 0
             ? tx.visitSchedule.findMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: { in: parsed.data.schedule_ids },
                   ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
                 },
@@ -152,7 +153,7 @@ export const POST = withAuth(
           parsed.data.proposal_ids.length > 0
             ? tx.visitScheduleProposal.findMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: { in: parsed.data.proposal_ids },
                   ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
                 },
@@ -191,7 +192,7 @@ export const POST = withAuth(
           parsed.data.vehicle_resource_id
             ? tx.visitVehicleResource.findFirst({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: parsed.data.vehicle_resource_id,
                   available: true,
                 },
@@ -408,7 +409,7 @@ export const POST = withAuth(
 
         return planWithVehicleResource;
       },
-      { requestContext: req },
+      { requestContext: ctx },
     );
 
     if (hasRoutePlanLookupError(routePlan)) {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestAssignmentWhere } from '@/server/services/communication-request-access';
@@ -11,8 +11,8 @@ function csvCell(value: string | number | null | undefined) {
   return `"${String(value).replace(/"/g, '""')}"`;
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status') ?? undefined;
     const status = statusParam ? communicationRequestStatusSchema.safeParse(statusParam) : null;
@@ -24,14 +24,14 @@ export const GET = withAuth(
     const requestType = searchParams.get('request_type') ?? undefined;
     const assignmentWhere = await buildCommunicationRequestAssignmentWhere({
       db: prisma,
-      orgId: req.orgId,
-      accessContext: req,
+      orgId: ctx.orgId,
+      accessContext: ctx,
     });
 
-    const rows = await withOrgContext(req.orgId, async (tx) => {
+    const rows = await withOrgContext(ctx.orgId, async (tx) => {
       const requests = await tx.communicationRequest.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(status ? { status: status.data } : {}),
           ...(requestType ? { request_type: requestType } : {}),
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -75,7 +75,7 @@ export const GET = withAuth(
           ? []
           : await tx.patient.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 id: { in: patientIds },
               },
               select: {

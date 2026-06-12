@@ -2,10 +2,11 @@ import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { toPrismaJsonInput } from '@/lib/db/json';
+import { normalizeJsonInput, toPrismaJsonInput } from '@/lib/db/json';
 import {
   pharmacySiteInsuranceConfigUpdateSchema,
   rangesOverlap,
@@ -76,17 +77,11 @@ export async function PATCH(
       },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'insurance_config_updated',
-        target_type: 'PharmacySiteInsuranceConfig',
-        target_id: insuranceConfigId,
-        changes: toPrismaJsonInput(parsed.data),
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
-      },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'insurance_config_updated',
+      targetType: 'PharmacySiteInsuranceConfig',
+      targetId: insuranceConfigId,
+      changes: normalizeJsonInput(parsed.data) ?? undefined,
     });
 
     return config;
@@ -123,16 +118,10 @@ export async function DELETE(
       where: { id: insuranceConfigId },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'insurance_config_deleted',
-        target_type: 'PharmacySiteInsuranceConfig',
-        target_id: insuranceConfigId,
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
-      },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'insurance_config_deleted',
+      targetType: 'PharmacySiteInsuranceConfig',
+      targetId: insuranceConfigId,
     });
   });
 

@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { addDays, format } from 'date-fns';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
+type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
+type DraftRouteContext = { params: Promise<{ id: string }> };
 const VALID_PRESCRIBED_DATE = format(new Date(), 'yyyy-MM-dd');
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   createPrescriptionIntakeInTxMock,
   runPostCreateHooksMock,
@@ -23,21 +24,16 @@ const {
   careCaseFindFirstMock,
   careCaseFindManyMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
+  withAuthContextMock: vi.fn(
     (
       handler: (
-        req: AuthenticatedTestRequest,
-        ctx: { params: Promise<{ id: string }> },
+        req: NextRequest,
+        authContext: TestAuthContext,
+        ctx: DraftRouteContext,
       ) => Promise<Response>,
     ) => {
-      return (req: NextRequest, ctx: { params: Promise<{ id: string }> }) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-          ctx,
-        );
+      return (req: NextRequest, ctx: DraftRouteContext) =>
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, ctx);
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -57,8 +53,8 @@ const {
   careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -342,7 +338,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       'user_1',
       {
         skipStructuringCheck: true,
-        accessContext: { userId: 'user_1', role: undefined },
+        accessContext: { userId: 'user_1', role: 'pharmacist' },
       },
     );
     expect(qrScanDraftUpdateMock).toHaveBeenCalledWith({
@@ -928,7 +924,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       'user_1',
       {
         skipStructuringCheck: true,
-        accessContext: { userId: 'user_1', role: undefined },
+        accessContext: { userId: 'user_1', role: 'pharmacist' },
       },
     );
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
@@ -975,7 +971,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       'user_1',
       {
         skipStructuringCheck: true,
-        accessContext: { userId: 'user_1', role: undefined },
+        accessContext: { userId: 'user_1', role: 'pharmacist' },
       },
     );
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);

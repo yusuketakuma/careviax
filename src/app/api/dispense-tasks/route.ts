@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
@@ -46,17 +46,17 @@ const cycleInclude = {
   },
 } as const;
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(async (req, ctx) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 
   const status = searchParams.get('status') ?? undefined;
   const cycle_id = searchParams.get('cycle_id') ?? undefined;
   const assigned_to = searchParams.get('assigned_to') ?? undefined;
-  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
   const where = {
-    org_id: req.orgId,
+    org_id: ctx.orgId,
     ...(status ? { status } : {}),
     ...(cycle_id ? { cycle_id } : {}),
     ...(assigned_to ? { assigned_to } : {}),
@@ -78,8 +78,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   return success({ data, nextCursor, hasMore });
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -89,12 +89,12 @@ export const POST = withAuth(
     }
 
     const { cycle_id, priority, due_date, assigned_to } = parsed.data;
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
     const cycle = await prisma.medicationCycle.findFirst({
       where: {
         id: cycle_id,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
       },
       select: {
@@ -121,10 +121,10 @@ export const POST = withAuth(
     });
     if (!cycle) return notFound('サイクルが見つかりません');
 
-    const created = await withOrgContext(req.orgId, async (tx) => {
+    const created = await withOrgContext(ctx.orgId, async (tx) => {
       const task = await tx.dispenseTask.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           cycle_id,
           priority,
           due_date: due_date ? new Date(due_date) : undefined,
@@ -137,7 +137,7 @@ export const POST = withAuth(
       // Update cycle status to 'dispensing' if currently ready_to_dispense or dispensing
       if (cycle.overall_status === 'ready_to_dispense' || cycle.overall_status === 'dispensing') {
         try {
-          await transitionCycleStatus(tx, cycle_id, req.orgId, 'dispensing', req.userId);
+          await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'dispensing', ctx.userId);
         } catch (err) {
           if (err instanceof InvalidTransitionError) {
             return validationError(`ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`);
@@ -152,7 +152,7 @@ export const POST = withAuth(
       if (priority === 'emergency') {
         const bypassRecipients = await tx.membership.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             is_active: true,
             role: { in: [...ADMIN_MEMBER_ROLES] },
             user: {
@@ -184,7 +184,7 @@ export const POST = withAuth(
         );
 
         await dispatchNotificationEvent(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           eventType: 'dispense_task_emergency_created',
           type: 'urgent',
           title: '緊急の調剤対応が追加されました',

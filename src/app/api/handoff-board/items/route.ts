@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
@@ -83,9 +84,7 @@ export const POST = withAuthContext(
       if (!recipient) return validationError('宛先ユーザーが見つかりません');
     }
 
-    const isTransfer = Boolean(
-      parsed.data.recipient_label || parsed.data.recipient_user_id,
-    );
+    const isTransfer = Boolean(parsed.data.recipient_label || parsed.data.recipient_user_id);
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const item = await tx.handoffItem.create({
@@ -112,20 +111,16 @@ export const POST = withAuthContext(
 
       if (isTransfer) {
         // 責任の移転は「受領確認と根拠が必ず記録されます」(12_handoff)。
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
-            actor_id: ctx.userId,
-            action: 'handoff_transfer_created',
-            target_type: 'handoff_item',
-            target_id: item.id,
-            changes: {
-              recipient_user_id: item.recipient_user_id,
-              recipient_label: item.recipient_label,
-              scope: item.scope,
-              rationale: item.rationale,
-              deadline: item.deadline?.toISOString() ?? null,
-            },
+        await createAuditLogEntry(tx, ctx, {
+          action: 'handoff_transfer_created',
+          targetType: 'handoff_item',
+          targetId: item.id,
+          changes: {
+            recipient_user_id: item.recipient_user_id,
+            recipient_label: item.recipient_label,
+            scope: item.scope,
+            rationale: item.rationale,
+            deadline: item.deadline?.toISOString() ?? null,
           },
         });
       }

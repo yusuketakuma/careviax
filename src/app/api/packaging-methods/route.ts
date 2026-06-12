@@ -1,15 +1,16 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { createPackagingMethodSchema } from '@/lib/validations/packaging-method';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const methods = await prisma.packagingMethodMaster.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
       },
       orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
       select: {
@@ -32,8 +33,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -42,10 +43,10 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const method = await withOrgContext(req.orgId, async (tx) => {
+    const method = await withOrgContext(ctx.orgId, async (tx) => {
       const created = await tx.packagingMethodMaster.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           name: parsed.data.name,
           description: parsed.data.description ?? null,
           icon_key: parsed.data.icon_key ?? null,
@@ -54,20 +55,14 @@ export const POST = withAuth(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'packaging_method_created',
-          target_type: 'PackagingMethodMaster',
-          target_id: created.id,
-          changes: {
-            name: parsed.data.name,
-            sort_order: parsed.data.sort_order,
-            is_active: parsed.data.is_active,
-          },
-          ip_address: req.ipAddress,
-          user_agent: req.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'packaging_method_created',
+        targetType: 'PackagingMethodMaster',
+        targetId: created.id,
+        changes: {
+          name: parsed.data.name,
+          sort_order: parsed.data.sort_order,
+          is_active: parsed.data.is_active,
         },
       });
 

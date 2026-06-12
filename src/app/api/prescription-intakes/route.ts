@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, conflict } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -293,8 +293,8 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult, cycleId: strin
   return validationError('処方受付の作成に失敗しました');
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -315,10 +315,10 @@ export const GET = withAuth(
       });
     }
     const includeTotal = searchParams.get('include_total') === '1';
-    const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(req);
+    const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx);
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(sourceType ? { source_type: sourceType.data } : {}),
       ...(status
         ? {
@@ -383,8 +383,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -432,13 +432,13 @@ export const POST = withAuth(
     }
 
     if (!cycle_id) {
-      const refResult = await validateOrgReferences(req.orgId, {
+      const refResult = await validateOrgReferences(ctx.orgId, {
         case_id,
         patient_id,
       });
       if (!refResult.ok) return refResult.response;
     }
-    if (patient_id && !(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
+    if (patient_id && !(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
       return validationError('この患者の処方受付を作成する権限がありません');
     }
 
@@ -448,7 +448,7 @@ export const POST = withAuth(
       }
 
       const targetPatient = await prisma.patient.findFirst({
-        where: { id: patient_id, org_id: req.orgId },
+        where: { id: patient_id, org_id: ctx.orgId },
         select: { id: true, name: true, name_kana: true, birth_date: true, gender: true },
       });
       if (!targetPatient) {
@@ -457,8 +457,8 @@ export const POST = withAuth(
         });
       }
 
-      const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
-      const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
+      const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+      const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
       let intakeInput = { ...parsed.data };
       delete intakeInput.qr_draft_id;
 
@@ -477,11 +477,11 @@ export const POST = withAuth(
           };
 
       try {
-        qrResult = await withOrgContext(req.orgId, async (tx) => {
+        qrResult = await withOrgContext(ctx.orgId, async (tx) => {
           const qrDraft = await tx.qrScanDraft.findFirst({
             where: {
               id: qr_draft_id,
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
             select: {
@@ -532,7 +532,7 @@ export const POST = withAuth(
           const claimResult = await tx.qrScanDraft.updateMany({
             where: {
               id: qrDraft.id,
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               status: 'pending',
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
@@ -549,11 +549,11 @@ export const POST = withAuth(
           const intakeResult = await createPrescriptionIntakeInTx(
             tx,
             intakeInput,
-            req.orgId,
-            req.userId,
+            ctx.orgId,
+            ctx.userId,
             {
               skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
-              accessContext: { userId: req.userId, role: req.role },
+              accessContext: { userId: ctx.userId, role: ctx.role },
             },
           );
 
@@ -566,7 +566,7 @@ export const POST = withAuth(
             parsedData?.prescriptionInsurance,
           );
           await attachJahisSupplementalRecordsToIntake(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             patientId: patient_id,
             qrDraftId: qrDraft.id,
             prescriptionIntakeId: intakeResult.intake.id,
@@ -574,7 +574,7 @@ export const POST = withAuth(
           });
 
           await attachJahisPrescriptionInsuranceSidecarToIntake(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             patientId: patient_id,
             qrDraftId: qrDraft.id,
             prescriptionIntakeId: intakeResult.intake.id,
@@ -582,20 +582,20 @@ export const POST = withAuth(
           });
 
           await createMedicationIssueCandidatesFromPrescriptionInsurance(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             patientId: patient_id,
             caseId: intakeInput.case_id,
             prescriptionIntakeId: intakeResult.intake.id,
-            identifiedBy: req.userId,
+            identifiedBy: ctx.userId,
             prescriptionInsurance,
           });
 
           await createMedicationIssueCandidatesFromJahisSupplementalRecords(tx, {
-            orgId: req.orgId,
+            orgId: ctx.orgId,
             patientId: patient_id,
             caseId: intakeInput.case_id,
             prescriptionIntakeId: intakeResult.intake.id,
-            identifiedBy: req.userId,
+            identifiedBy: ctx.userId,
             records: supplementalRecords,
           });
 
@@ -678,14 +678,14 @@ export const POST = withAuth(
         cycleId: qrResult.cycle.id,
         intakeId: qrResult.intake.id,
         patientId: qrResult.cycle.patient_id,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         lines: intakeInput.lines,
         prescriberName: intakeInput.prescriber_name ?? null,
         sourceType: source_type,
       });
 
       try {
-        await notifyWebhookEventForOrg(req.orgId, 'prescription.created', {
+        await notifyWebhookEventForOrg(ctx.orgId, 'prescription.created', {
           intakeId: qrResult.intake.id,
           cycleId: qrResult.cycle.id,
           patientId: qrResult.cycle.patient_id,
@@ -697,16 +697,16 @@ export const POST = withAuth(
       }
 
       await broadcastOrgRealtimeEvent({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         type: 'qr_draft_confirmed',
       });
 
       return success(qrResult.intake, 201);
     }
 
-    const result = await createPrescriptionIntake(parsed.data, req.orgId, req.userId, {
+    const result = await createPrescriptionIntake(parsed.data, ctx.orgId, ctx.userId, {
       skipStructuringCheck: source_type === 'qr_scan' && Boolean(qr_draft_id),
-      accessContext: { userId: req.userId, role: req.role },
+      accessContext: { userId: ctx.userId, role: ctx.role },
     });
 
     if (!result.ok) {

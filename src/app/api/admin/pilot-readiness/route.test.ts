@@ -5,9 +5,19 @@ const { getPilotReadinessSnapshotMock } = vi.hoisted(() => ({
   getPilotReadinessSnapshotMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'admin' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+  },
 }));
 
 vi.mock('@/server/services/pilot-readiness', () => ({
@@ -17,10 +27,7 @@ vi.mock('@/server/services/pilot-readiness', () => ({
 import { GET } from './route';
 
 function createAuthRequest() {
-  return Object.assign(new NextRequest('http://localhost/api/admin/pilot-readiness'), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return new NextRequest('http://localhost/api/admin/pilot-readiness');
 }
 
 describe('/api/admin/pilot-readiness GET', () => {
@@ -50,12 +57,14 @@ describe('/api/admin/pilot-readiness GET', () => {
         medication_set_workflow: 'ready',
         phase2_entry: 'blocked',
       },
-      recommendations: ['UAT に critical/high が 2 件あります。Phase 2 開始前に優先修正を完了してください。'],
+      recommendations: [
+        'UAT に critical/high が 2 件あります。Phase 2 開始前に優先修正を完了してください。',
+      ],
     });
   });
 
   it('returns the pilot readiness snapshot for the authenticated org', async () => {
-    const response = await GET(createAuthRequest());
+    const response = await GET(createAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

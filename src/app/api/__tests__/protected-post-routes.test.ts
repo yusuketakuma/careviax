@@ -65,6 +65,7 @@ import { POST as collaborationRoomTokenPost } from '../collaboration/room-token/
 
 type Handler = (req: NextRequest) => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(headers?: Record<string, string>, body: unknown = {}) {
   return new NextRequest('http://localhost/api/test', {
@@ -78,36 +79,69 @@ function createRequest(headers?: Record<string, string>, body: unknown = {}) {
 }
 
 const routes: RouteEntry[] = [
-  { name: 'cases POST', handler: casesPost },
-  { name: 'patients POST', handler: patientsPost },
-  { name: 'medication-profiles POST', handler: medicationProfilesPost },
-  { name: 'medication-issues POST', handler: medicationIssuesPost },
-  { name: 'communication-events POST', handler: communicationEventsPost },
-  { name: 'communication-requests POST', handler: communicationRequestsPost },
-  { name: 'conference-notes POST', handler: conferenceNotesPost },
-  { name: 'care-reports POST', handler: careReportsPost },
-  { name: 'tracing-reports POST', handler: tracingReportsPost },
-  { name: 'visit-schedules POST', handler: visitSchedulesPost },
-  { name: 'visit-schedules/generate POST', handler: visitSchedulesGeneratePost },
-  { name: 'visit-records POST', handler: visitRecordsPost },
-  { name: 'prescription-intakes POST', handler: prescriptionIntakesPost },
-  { name: 'pharmacist-shifts POST', handler: pharmacistShiftsPost },
-  { name: 'set-plans POST', handler: setPlansPost },
-  { name: 'set-audits POST', handler: setAuditsPost },
-  { name: 'dispense-audits POST', handler: dispenseAuditsPost },
-  { name: 'dispense-results POST', handler: dispenseResultsPost },
-  { name: 'inquiry-records POST', handler: inquiryRecordsPost },
-  { name: 'residual-medications POST', handler: residualMedicationsPost },
-  { name: 'billing-candidates POST', handler: billingCandidatesPost },
+  { name: 'cases POST', handler: (req) => casesPost(req, emptyRouteContext) },
+  { name: 'patients POST', handler: (req) => patientsPost(req, emptyRouteContext) },
+  {
+    name: 'medication-profiles POST',
+    handler: (req) => medicationProfilesPost(req, emptyRouteContext),
+  },
+  {
+    name: 'medication-issues POST',
+    handler: (req) => medicationIssuesPost(req, emptyRouteContext),
+  },
+  {
+    name: 'communication-events POST',
+    handler: (req) => communicationEventsPost(req, emptyRouteContext),
+  },
+  {
+    name: 'communication-requests POST',
+    handler: (req) => communicationRequestsPost(req, emptyRouteContext),
+  },
+  { name: 'conference-notes POST', handler: (req) => conferenceNotesPost(req, emptyRouteContext) },
+  { name: 'care-reports POST', handler: (req) => careReportsPost(req, emptyRouteContext) },
+  { name: 'tracing-reports POST', handler: (req) => tracingReportsPost(req, emptyRouteContext) },
+  { name: 'visit-schedules POST', handler: (req) => visitSchedulesPost(req, emptyRouteContext) },
+  {
+    name: 'visit-schedules/generate POST',
+    handler: (req) => visitSchedulesGeneratePost(req, emptyRouteContext),
+  },
+  { name: 'visit-records POST', handler: (req) => visitRecordsPost(req, emptyRouteContext) },
+  {
+    name: 'prescription-intakes POST',
+    handler: (req) => prescriptionIntakesPost(req, emptyRouteContext),
+  },
+  {
+    name: 'pharmacist-shifts POST',
+    handler: (req) => pharmacistShiftsPost(req, emptyRouteContext),
+  },
+  { name: 'set-plans POST', handler: (req) => setPlansPost(req, emptyRouteContext) },
+  { name: 'set-audits POST', handler: (req) => setAuditsPost(req, emptyRouteContext) },
+  { name: 'dispense-audits POST', handler: (req) => dispenseAuditsPost(req, emptyRouteContext) },
+  { name: 'dispense-results POST', handler: (req) => dispenseResultsPost(req, emptyRouteContext) },
+  { name: 'inquiry-records POST', handler: (req) => inquiryRecordsPost(req, emptyRouteContext) },
+  {
+    name: 'residual-medications POST',
+    handler: (req) => residualMedicationsPost(req, emptyRouteContext),
+  },
+  {
+    name: 'billing-candidates POST',
+    handler: (req) => billingCandidatesPost(req, emptyRouteContext),
+  },
   {
     name: 'billing-candidates/close POST',
     handler: (req) => billingCandidatesClosePost(req),
     successBody: { billing_month: '2026-03-01' },
   },
-  { name: 'business-holidays POST', handler: businessHolidaysPost },
-  { name: 'cds/check POST', handler: cdsCheckPost },
-  { name: 'pharmacists POST', handler: pharmacistsPost },
-  { name: 'visit-schedule-proposals POST', handler: visitScheduleProposalsPost },
+  {
+    name: 'business-holidays POST',
+    handler: (req) => businessHolidaysPost(req, emptyRouteContext),
+  },
+  { name: 'cds/check POST', handler: (req) => cdsCheckPost(req, emptyRouteContext) },
+  { name: 'pharmacists POST', handler: (req) => pharmacistsPost(req, emptyRouteContext) },
+  {
+    name: 'visit-schedule-proposals POST',
+    handler: (req) => visitScheduleProposalsPost(req, emptyRouteContext),
+  },
   { name: 'visit-preparations/brief-batch POST', handler: visitPreparationBriefBatchPost },
   { name: 'collaboration/room-token POST', handler: collaborationRoomTokenPost },
   {

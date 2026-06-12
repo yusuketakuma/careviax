@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -221,21 +222,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             linkedRequestIds.push(linkedRequest.id);
 
             if (status !== existing.status && linkedRequest.status !== linkedRequestStatus) {
-              await tx.auditLog.create({
-                data: {
-                  org_id: ctx.orgId,
+              await createAuditLogEntry(tx, ctx, {
+                action: 'communication_request_status_changed',
+                targetType: 'communication_request',
+                targetId: linkedRequest.id,
+                changes: {
+                  from_status: linkedRequest.status,
+                  to_status: linkedRequestStatus,
+                  reason: statusChangeReason,
+                  status_change_reason: statusChangeReason,
+                  linked_tracing_report_id: id,
                   actor_id: ctx.userId,
-                  action: 'communication_request_status_changed',
-                  target_type: 'communication_request',
-                  target_id: linkedRequest.id,
-                  changes: {
-                    from_status: linkedRequest.status,
-                    to_status: linkedRequestStatus,
-                    reason: statusChangeReason,
-                    status_change_reason: statusChangeReason,
-                    linked_tracing_report_id: id,
-                    actor_id: ctx.userId,
-                  },
                 },
               });
             }
@@ -264,21 +261,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           linkedRequestIds.push(createdRequest.id);
 
           if (status !== existing.status) {
-            await tx.auditLog.create({
-              data: {
-                org_id: ctx.orgId,
+            await createAuditLogEntry(tx, ctx, {
+              action: 'communication_request_status_changed',
+              targetType: 'communication_request',
+              targetId: createdRequest.id,
+              changes: {
+                from_status: null,
+                to_status: linkedRequestStatus,
+                reason: statusChangeReason,
+                status_change_reason: statusChangeReason,
+                linked_tracing_report_id: id,
                 actor_id: ctx.userId,
-                action: 'communication_request_status_changed',
-                target_type: 'communication_request',
-                target_id: createdRequest.id,
-                changes: {
-                  from_status: null,
-                  to_status: linkedRequestStatus,
-                  reason: statusChangeReason,
-                  status_change_reason: statusChangeReason,
-                  linked_tracing_report_id: id,
-                  actor_id: ctx.userId,
-                },
               },
             });
           }
@@ -305,23 +298,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       if (status !== existing.status) {
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'tracing_report_status_changed',
+          targetType: 'tracing_report',
+          targetId: id,
+          changes: {
+            from_status: existing.status,
+            to_status: status,
+            reason: statusChangeReason,
+            status_change_reason: statusChangeReason,
+            sent_to_physician: physicianName,
+            linked_request_id: linkedRequestIds[0] ?? null,
+            linked_communication_request_ids: linkedRequestIds,
             actor_id: ctx.userId,
-            action: 'tracing_report_status_changed',
-            target_type: 'tracing_report',
-            target_id: id,
-            changes: {
-              from_status: existing.status,
-              to_status: status,
-              reason: statusChangeReason,
-              status_change_reason: statusChangeReason,
-              sent_to_physician: physicianName,
-              linked_request_id: linkedRequestIds[0] ?? null,
-              linked_communication_request_ids: linkedRequestIds,
-              actor_id: ctx.userId,
-            },
           },
         });
       }

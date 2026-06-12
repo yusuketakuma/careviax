@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -25,8 +25,8 @@ const createCommunicationEventSchema = z.object({
   occurred_at: z.string().datetime().optional(),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -35,12 +35,12 @@ export const GET = withAuth(
 
     const assignmentWhere = await buildCommunicationEventAssignmentWhere({
       db: prisma,
-      orgId: req.orgId,
-      accessContext: req,
+      orgId: ctx.orgId,
+      accessContext: ctx,
     });
 
     const where: Prisma.CommunicationEventWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(eventType ? { event_type: eventType } : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
@@ -81,8 +81,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -96,26 +96,26 @@ export const POST = withAuth(
     if (
       !(await canAccessCommunicationRequestRecord({
         db: prisma,
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         patientId: rest.patient_id,
         caseId: rest.case_id,
-        accessContext: req,
+        accessContext: ctx,
       }))
     ) {
       return validationError('患者またはケースの割当権限がありません');
     }
 
-    const event = await withOrgContext(req.orgId, async (tx) => {
+    const event = await withOrgContext(ctx.orgId, async (tx) => {
       const created = await tx.communicationEvent.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(occurred_at ? { occurred_at: new Date(occurred_at) } : {}),
           ...rest,
         },
       });
 
       await learnContactProfileFromCommunication(tx, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         counterpartName: created.counterpart_name,
         counterpartContact: created.counterpart_contact,
         channel: created.channel,

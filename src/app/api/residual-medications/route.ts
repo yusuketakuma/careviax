@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -14,8 +14,8 @@ const residualMedicationQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
     const patientId = searchParams.get('patient_id') ?? undefined;
@@ -25,16 +25,13 @@ export const GET = withAuth(
     }
     const take = parsed.data.limit;
 
-    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere({
-      userId: req.userId,
-      role: req.role,
-    });
+    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
 
     let patientVisitRecordIds: string[] | null = null;
     if (visitRecordId) {
       const visitRecordWhere: Prisma.VisitRecordWhereInput = {
         id: visitRecordId,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(patientId ? { patient_id: patientId } : {}),
         ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
       };
@@ -50,7 +47,7 @@ export const GET = withAuth(
     if (!visitRecordId && patientId) {
       const visitRecords = await prisma.visitRecord.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: patientId,
           ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
         },
@@ -64,7 +61,7 @@ export const GET = withAuth(
     } else if (!visitRecordId && visitRecordAssignmentWhere) {
       const visitRecords = await prisma.visitRecord.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           AND: [visitRecordAssignmentWhere],
         },
         select: { id: true },
@@ -78,7 +75,7 @@ export const GET = withAuth(
 
     const records = await prisma.residualMedication.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(visitRecordId
           ? { visit_record_id: visitRecordId }
           : patientVisitRecordIds
@@ -113,8 +110,8 @@ const createResidualMedicationSchema = z.object({
     .min(1, '薬剤情報は1件以上必要です'),
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -125,21 +122,18 @@ export const POST = withAuth(
 
     const { visit_record_id, medications } = parsed.data;
 
-    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere({
-      userId: req.userId,
-      role: req.role,
-    });
+    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
     const visitRecord = await prisma.visitRecord.findFirst({
       where: {
         id: visit_record_id,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
       },
       select: { id: true },
     });
     if (!visitRecord) return notFound('指定された訪問記録が見つかりません');
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const created = await Promise.all(
         medications.map((med) => {
           // Calculate excess days: remaining_quantity / prescribed_daily_dose
@@ -154,7 +148,7 @@ export const POST = withAuth(
 
           return tx.residualMedication.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               visit_record_id,
               drug_name: med.drug_name,
               drug_code: med.drug_code,

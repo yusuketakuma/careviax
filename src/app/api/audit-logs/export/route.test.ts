@@ -42,6 +42,8 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createRequest(headers?: Record<string, string>, search = 'format=csv') {
   return new NextRequest(`http://localhost/api/audit-logs/export?${search}`, {
     headers,
@@ -77,6 +79,7 @@ describe('/api/audit-logs/export GET', () => {
         { 'x-org-id': 'org_1' },
         'format=csv&actor=user_1&target_type=visit_record&date_from=2026-03-01&date_to=2026-03-31',
       ),
+      emptyRouteContext,
     )) as Response;
 
     expect(response.status).toBe(200);
@@ -111,7 +114,10 @@ describe('/api/audit-logs/export GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }, 'format=json'))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('application/json');
@@ -143,7 +149,10 @@ describe('/api/audit-logs/export GET', () => {
       },
     ]);
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }, 'format=json'))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
     const body = await response.json();
     const bodyText = JSON.stringify(body);
 
@@ -178,7 +187,10 @@ describe('/api/audit-logs/export GET', () => {
       },
     ]);
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }, 'format=csv'))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=csv'),
+      emptyRouteContext,
+    )) as Response;
     const body = await response.text();
 
     expect(response.status).toBe(200);

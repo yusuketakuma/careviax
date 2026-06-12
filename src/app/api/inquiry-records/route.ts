@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -9,13 +10,13 @@ import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const cycleId = searchParams.get('cycle_id') ?? undefined;
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
     const cycleFilters: Prisma.MedicationCycleWhereInput[] = [
       ...(patientId ? [{ patient_id: patientId }] : []),
       ...(cycleAssignmentWhere ? [cycleAssignmentWhere] : []),
@@ -28,7 +29,7 @@ export const GET = withAuth(
           : { AND: cycleFilters };
 
     const where: Prisma.InquiryRecordWhereInput = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(cycleId ? { cycle_id: cycleId } : {}),
       ...(cycleWhere ? { cycle: cycleWhere } : {}),
       ...(status === 'unresolved' ? { OR: [{ result: null }, { result: 'pending' }] } : {}),
@@ -71,8 +72,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -91,12 +92,12 @@ export const POST = withAuth(
       ...rest
     } = parsed.data;
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
       const cycle = await tx.medicationCycle.findFirst({
         where: {
           id: cycle_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
         },
         select: {
@@ -112,7 +113,7 @@ export const POST = withAuth(
         const line = await tx.prescriptionLine.findFirst({
           where: {
             id: rest.line_id,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             intake: {
               cycle_id,
             },
@@ -126,7 +127,7 @@ export const POST = withAuth(
         const issue = await tx.medicationIssue.findFirst({
           where: {
             id: issue_id,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             patient_id: cycle.patient_id,
             OR: [{ case_id: cycle.case_id }, { case_id: null }],
           },
@@ -138,7 +139,7 @@ export const POST = withAuth(
       // Create inquiry record
       const inquiry = await tx.inquiryRecord.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           cycle_id,
           issue_id: issue_id ?? null,
           inquired_at: new Date(inquired_at),
@@ -154,7 +155,7 @@ export const POST = withAuth(
 
       const communicationRequest = await tx.communicationRequest.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: cycle.patient_id,
           case_id: cycle.case_id,
           request_type: 'physician_inquiry',
@@ -174,14 +175,14 @@ export const POST = withAuth(
           status: 'sent',
           subject: `疑義照会: ${rest.reason}`,
           content: rest.inquiry_content,
-          requested_by: req.userId,
+          requested_by: ctx.userId,
           due_date: dueDate,
         },
       });
 
       await tx.communicationEvent.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id: cycle.patient_id,
           case_id: cycle.case_id,
           event_type: 'inquiry_created',
@@ -195,12 +196,12 @@ export const POST = withAuth(
       });
 
       await upsertOperationalTask(tx, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         taskType: 'inquiry_workbench',
         title: '疑義照会の回答確認が必要です',
         description: `${rest.reason} / ${rest.inquiry_to_physician}`,
         priority: 'high',
-        assignedTo: req.userId,
+        assignedTo: ctx.userId,
         dueDate,
         slaDueAt: dueDate,
         dedupeKey: `inquiry-workbench:${inquiry.id}`,
@@ -233,36 +234,32 @@ export const POST = withAuth(
 
       await tx.cycleTransitionLog.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           cycle_id,
           from_status: cycle.overall_status,
           to_status: 'inquiry_pending',
-          actor_id: req.userId,
+          actor_id: ctx.userId,
           note: `inquiry_record_created:${inquiry.id}`,
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: req.orgId,
-          actor_id: req.userId,
-          action: 'inquiry_record_created',
-          target_type: 'inquiry_record',
-          target_id: inquiry.id,
-          changes: {
-            cycle_id,
-            patient_id: cycle.patient_id,
-            case_id: cycle.case_id,
-            issue_id: issue_id ?? null,
-            line_id: rest.line_id ?? null,
-            reason: rest.reason,
-            inquiry_to_physician: rest.inquiry_to_physician,
-            proposal_origin: proposal_origin ?? 'post_inquiry',
-            residual_adjustment: residual_adjustment ?? false,
-            communication_request_id: communicationRequest.id,
-            cycle_status_before: cycle.overall_status,
-            cycle_status_after: 'inquiry_pending',
-          },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'inquiry_record_created',
+        targetType: 'inquiry_record',
+        targetId: inquiry.id,
+        changes: {
+          cycle_id,
+          patient_id: cycle.patient_id,
+          case_id: cycle.case_id,
+          issue_id: issue_id ?? null,
+          line_id: rest.line_id ?? null,
+          reason: rest.reason,
+          inquiry_to_physician: rest.inquiry_to_physician,
+          proposal_origin: proposal_origin ?? 'post_inquiry',
+          residual_adjustment: residual_adjustment ?? false,
+          communication_request_id: communicationRequest.id,
+          cycle_status_before: cycle.overall_status,
+          cycle_status_after: 'inquiry_pending',
         },
       });
 

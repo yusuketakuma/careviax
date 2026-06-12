@@ -1,5 +1,4 @@
-import { NextRequest } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
@@ -247,55 +246,258 @@ async function buildLineStockGuidance(input: {
   });
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤タスクIDが不正です');
+export const GET = withAuthContext(async (_req, ctx, { params }) => {
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤タスクIDが不正です');
 
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
-    const task = await prisma.dispenseTask.findFirst({
-      where: {
-        id,
-        org_id: authReq.orgId,
-        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+  const task = await prisma.dispenseTask.findFirst({
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+    },
+    include: {
+      results: {
+        select: {
+          id: true,
+          line_id: true,
+          actual_drug_name: true,
+          actual_drug_code: true,
+          actual_quantity: true,
+          actual_unit: true,
+          discrepancy_reason: true,
+          carry_type: true,
+          special_notes: true,
+          dispensed_at: true,
+          line: {
+            select: {
+              id: true,
+              line_number: true,
+              drug_name: true,
+              drug_code: true,
+              dosage_form: true,
+              dose: true,
+              frequency: true,
+              days: true,
+              quantity: true,
+              unit: true,
+              is_generic: true,
+              is_generic_name_prescription: true,
+              packaging_instructions: true,
+              notes: true,
+              start_date: true,
+              end_date: true,
+            },
+          },
+        },
       },
-      include: {
-        results: {
-          select: {
-            id: true,
-            line_id: true,
-            actual_drug_name: true,
-            actual_drug_code: true,
-            actual_quantity: true,
-            actual_unit: true,
-            discrepancy_reason: true,
-            carry_type: true,
-            special_notes: true,
-            dispensed_at: true,
-            line: {
-              select: {
-                id: true,
-                line_number: true,
-                drug_name: true,
-                drug_code: true,
-                dosage_form: true,
-                dose: true,
-                frequency: true,
-                days: true,
-                quantity: true,
-                unit: true,
-                is_generic: true,
-                is_generic_name_prescription: true,
-                packaging_instructions: true,
-                notes: true,
-                start_date: true,
-                end_date: true,
+      audits: true,
+      cycle: {
+        select: {
+          id: true,
+          patient_id: true,
+          overall_status: true,
+          case_: {
+            select: {
+              id: true,
+              primary_pharmacist_id: true,
+              patient: {
+                select: {
+                  id: true,
+                  name: true,
+                  name_kana: true,
+                  residences: {
+                    where: { is_primary: true },
+                    take: 1,
+                    select: {
+                      building_id: true,
+                      address: true,
+                      unit_name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          inquiries: {
+            where: {
+              OR: [{ result: null }, { result: 'pending' }],
+            },
+            orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
+            select: {
+              id: true,
+              line_id: true,
+              reason: true,
+              inquiry_to_physician: true,
+              inquiry_content: true,
+              result: true,
+              proposal_origin: true,
+              residual_adjustment: true,
+              change_detail: true,
+              line: {
+                select: {
+                  id: true,
+                  line_number: true,
+                  drug_name: true,
+                },
+              },
+            },
+          },
+          prescription_intakes: {
+            orderBy: { created_at: 'desc' },
+            take: 2,
+            select: {
+              id: true,
+              source_type: true,
+              prescribed_date: true,
+              prescriber_name: true,
+              prescriber_institution: true,
+              original_document_url: true,
+              original_collected_at: true,
+              jahis_supplemental_records: {
+                orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
+                select: {
+                  id: true,
+                  record_type: true,
+                  record_label: true,
+                  line_number: true,
+                  summary: true,
+                  payload: true,
+                  raw_line: true,
+                },
+              },
+              lines: {
+                orderBy: { line_number: 'asc' },
+                select: {
+                  id: true,
+                  line_number: true,
+                  drug_name: true,
+                  drug_code: true,
+                  dosage_form: true,
+                  dose: true,
+                  frequency: true,
+                  days: true,
+                  quantity: true,
+                  unit: true,
+                  is_generic: true,
+                  is_generic_name_prescription: true,
+                  packaging_instructions: true,
+                  notes: true,
+                  start_date: true,
+                  end_date: true,
+                },
               },
             },
           },
         },
+      },
+    },
+  });
+
+  if (!task) return notFound('タスクが見つかりません');
+
+  const site = await resolveDispenseSite(ctx.orgId, ctx.userId);
+  const intake = task.cycle.prescription_intakes[0] ?? null;
+  const stockGuidance = await buildLineStockGuidance({
+    orgId: ctx.orgId,
+    siteId: site?.id ?? null,
+    lines:
+      intake?.lines.map((line) => ({
+        id: line.id,
+        drug_name: line.drug_name,
+        drug_code: line.drug_code,
+        is_generic_name_prescription: line.is_generic_name_prescription,
+      })) ?? [],
+  });
+  const primaryResidence = task.cycle.case_.patient.residences[0] ?? null;
+  const facilityLabel = deriveFacilityLabel(primaryResidence ?? null);
+
+  // Keep packaging groups/date warnings available for downstream audit/detail views
+  // even after results exist, while the form still decides whether to use prefill data.
+  const prefill = await generateDispensePrefill(task.cycle_id, ctx.orgId, site?.id ?? null).catch(
+    () => null,
+  );
+
+  return success({
+    ...task,
+    facility_label: facilityLabel,
+    site,
+    stock_guidance: stockGuidance,
+    prefill,
+    original_collection_check: intake
+      ? {
+          required: intake.source_type === 'fax',
+          collected: intake.original_collected_at != null,
+          collected_at: intake.original_collected_at,
+        }
+      : {
+          required: false,
+          collected: false,
+          collected_at: null,
+        },
+  });
+});
+
+export const PATCH = withAuthContext(async (req, ctx, { params }) => {
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤タスクIDが不正です');
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = updateDispenseTaskSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const { assigned_to, priority, due_date, status } = parsed.data;
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+
+  const existing = await prisma.dispenseTask.findFirst({
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+    },
+    select: { id: true, status: true, assigned_to: true },
+  });
+  if (!existing) return notFound('タスクが見つかりません');
+
+  // Validate status transition: no reversal allowed
+  if (status !== undefined) {
+    const currentOrder = STATUS_ORDER[existing.status] ?? 0;
+    const nextOrder = STATUS_ORDER[status] ?? 0;
+    if (nextOrder < currentOrder) {
+      return validationError(
+        `ステータス "${existing.status}" から "${status}" への遷移は許可されていません`,
+        { current: existing.status, requested: status },
+      );
+    }
+  }
+
+  // Auto-assign current user when transitioning to in_progress without assignee
+  let resolvedAssignedTo = assigned_to;
+  if (status === 'in_progress' && resolvedAssignedTo === undefined) {
+    if (!existing.assigned_to) {
+      resolvedAssignedTo = ctx.userId;
+    }
+  }
+
+  const updated = await withOrgContext(ctx.orgId, async (tx) => {
+    return tx.dispenseTask.update({
+      where: { id },
+      data: {
+        ...(resolvedAssignedTo !== undefined ? { assigned_to: resolvedAssignedTo } : {}),
+        ...(priority !== undefined ? { priority } : {}),
+        ...(due_date !== undefined ? { due_date: due_date ? new Date(due_date) : null } : {}),
+        ...(status !== undefined ? { status } : {}),
+      },
+      include: {
+        results: true,
         audits: true,
         cycle: {
           select: {
@@ -305,91 +507,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             case_: {
               select: {
                 id: true,
-                primary_pharmacist_id: true,
                 patient: {
                   select: {
                     id: true,
                     name: true,
                     name_kana: true,
-                    residences: {
-                      where: { is_primary: true },
-                      take: 1,
-                      select: {
-                        building_id: true,
-                        address: true,
-                        unit_name: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            inquiries: {
-              where: {
-                OR: [{ result: null }, { result: 'pending' }],
-              },
-              orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
-              select: {
-                id: true,
-                line_id: true,
-                reason: true,
-                inquiry_to_physician: true,
-                inquiry_content: true,
-                result: true,
-                proposal_origin: true,
-                residual_adjustment: true,
-                change_detail: true,
-                line: {
-                  select: {
-                    id: true,
-                    line_number: true,
-                    drug_name: true,
-                  },
-                },
-              },
-            },
-            prescription_intakes: {
-              orderBy: { created_at: 'desc' },
-              take: 2,
-              select: {
-                id: true,
-                source_type: true,
-                prescribed_date: true,
-                prescriber_name: true,
-                prescriber_institution: true,
-                original_document_url: true,
-                original_collected_at: true,
-                jahis_supplemental_records: {
-                  orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
-                  select: {
-                    id: true,
-                    record_type: true,
-                    record_label: true,
-                    line_number: true,
-                    summary: true,
-                    payload: true,
-                    raw_line: true,
-                  },
-                },
-                lines: {
-                  orderBy: { line_number: 'asc' },
-                  select: {
-                    id: true,
-                    line_number: true,
-                    drug_name: true,
-                    drug_code: true,
-                    dosage_form: true,
-                    dose: true,
-                    frequency: true,
-                    days: true,
-                    quantity: true,
-                    unit: true,
-                    is_generic: true,
-                    is_generic_name_prescription: true,
-                    packaging_instructions: true,
-                    notes: true,
-                    start_date: true,
-                    end_date: true,
                   },
                 },
               },
@@ -398,145 +520,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         },
       },
     });
+  });
 
-    if (!task) return notFound('タスクが見つかりません');
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: {
+      source: 'dispense_tasks_update',
+      task_id: id,
+      ...(status !== undefined ? { status } : {}),
+    },
+  });
 
-    const site = await resolveDispenseSite(authReq.orgId, authReq.userId);
-    const intake = task.cycle.prescription_intakes[0] ?? null;
-    const stockGuidance = await buildLineStockGuidance({
-      orgId: authReq.orgId,
-      siteId: site?.id ?? null,
-      lines:
-        intake?.lines.map((line) => ({
-          id: line.id,
-          drug_name: line.drug_name,
-          drug_code: line.drug_code,
-          is_generic_name_prescription: line.is_generic_name_prescription,
-        })) ?? [],
-    });
-    const primaryResidence = task.cycle.case_.patient.residences[0] ?? null;
-    const facilityLabel = deriveFacilityLabel(primaryResidence ?? null);
-
-    // Keep packaging groups/date warnings available for downstream audit/detail views
-    // even after results exist, while the form still decides whether to use prefill data.
-    const prefill = await generateDispensePrefill(
-      task.cycle_id,
-      authReq.orgId,
-      site?.id ?? null,
-    ).catch(() => null);
-
-    return success({
-      ...task,
-      facility_label: facilityLabel,
-      site,
-      stock_guidance: stockGuidance,
-      prefill,
-      original_collection_check: intake
-        ? {
-            required: intake.source_type === 'fax',
-            collected: intake.original_collected_at != null,
-            collected_at: intake.original_collected_at,
-          }
-        : {
-            required: false,
-            collected: false,
-            collected_at: null,
-          },
-    });
-  })(req);
-}
-
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤タスクIDが不正です');
-
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = updateDispenseTaskSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
-
-    const { assigned_to, priority, due_date, status } = parsed.data;
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
-
-    const existing = await prisma.dispenseTask.findFirst({
-      where: {
-        id,
-        org_id: authReq.orgId,
-        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
-      },
-      select: { id: true, status: true, assigned_to: true },
-    });
-    if (!existing) return notFound('タスクが見つかりません');
-
-    // Validate status transition: no reversal allowed
-    if (status !== undefined) {
-      const currentOrder = STATUS_ORDER[existing.status] ?? 0;
-      const nextOrder = STATUS_ORDER[status] ?? 0;
-      if (nextOrder < currentOrder) {
-        return validationError(
-          `ステータス "${existing.status}" から "${status}" への遷移は許可されていません`,
-          { current: existing.status, requested: status },
-        );
-      }
-    }
-
-    // Auto-assign current user when transitioning to in_progress without assignee
-    let resolvedAssignedTo = assigned_to;
-    if (status === 'in_progress' && resolvedAssignedTo === undefined) {
-      if (!existing.assigned_to) {
-        resolvedAssignedTo = authReq.userId;
-      }
-    }
-
-    const updated = await withOrgContext(authReq.orgId, async (tx) => {
-      return tx.dispenseTask.update({
-        where: { id },
-        data: {
-          ...(resolvedAssignedTo !== undefined ? { assigned_to: resolvedAssignedTo } : {}),
-          ...(priority !== undefined ? { priority } : {}),
-          ...(due_date !== undefined ? { due_date: due_date ? new Date(due_date) : null } : {}),
-          ...(status !== undefined ? { status } : {}),
-        },
-        include: {
-          results: true,
-          audits: true,
-          cycle: {
-            select: {
-              id: true,
-              patient_id: true,
-              overall_status: true,
-              case_: {
-                select: {
-                  id: true,
-                  patient: {
-                    select: {
-                      id: true,
-                      name: true,
-                      name_kana: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-    });
-
-    await notifyWorkflowMutation({
-      orgId: authReq.orgId,
-      payload: {
-        source: 'dispense_tasks_update',
-        task_id: id,
-        ...(status !== undefined ? { status } : {}),
-      },
-    });
-
-    return success(updated);
-  })(req);
-}
+  return success(updated);
+});

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
@@ -9,8 +9,8 @@ const createReminderSchema = z.object({
   overdue_days: z.number().int().min(1).max(90).optional(),
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -19,8 +19,8 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const result = await withOrgContext(req.orgId, (tx) =>
-      queueOverdueReportResponseReminders(tx, req.orgId, {
+    const result = await withOrgContext(ctx.orgId, (tx) =>
+      queueOverdueReportResponseReminders(tx, ctx.orgId, {
         overdueDays: parsed.data.overdue_days,
       }),
     );

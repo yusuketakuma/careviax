@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
@@ -62,17 +62,17 @@ const patientListQuerySchema = z.object({
     .optional(),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(patientListQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const result = await listPatients(prisma, req.orgId, req.role, parsed.data, {
-      userId: req.userId,
-      role: req.role,
+    const result = await listPatients(prisma, ctx.orgId, ctx.role, parsed.data, {
+      userId: ctx.userId,
+      role: ctx.role,
     });
     return success(result);
   },
@@ -82,8 +82,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const raw = await readJsonObjectRequestBody(req);
     if (!raw) {
       return validationError('リクエストボディが不正です');
@@ -111,7 +111,7 @@ export const POST = withAuth(
     }
 
     try {
-      const patient = await createPatientWithIntake(req.orgId, parsed.data);
+      const patient = await createPatientWithIntake(ctx.orgId, parsed.data);
       return success(patient, 201);
     } catch (error) {
       if (

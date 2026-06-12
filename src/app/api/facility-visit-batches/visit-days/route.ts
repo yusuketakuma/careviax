@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
@@ -11,8 +11,8 @@ function toTimeValue(value?: string | null) {
   return value ? new Date(`1970-01-01T${value}`) : null;
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -22,12 +22,12 @@ export const POST = withAuth(
     }
 
     const scheduleIds = Array.from(new Set(parsed.data.schedule_ids));
-    const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+    const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const schedules = await tx.visitSchedule.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           id: {
             in: scheduleIds,
           },
@@ -100,7 +100,7 @@ export const POST = withAuth(
               patient_id: patient.id,
             },
             create: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               patient_id: patient.id,
               preferred_weekdays: parsed.data.preferred_weekdays,
               preferred_time_from: toTimeValue(parsed.data.preferred_time_from),
@@ -149,7 +149,7 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'facility_visit_days_upsert' },
     });
 

@@ -6,6 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { resolveWorkflowExceptionSchema } from '@/lib/validations/medication';
 import { prisma } from '@/lib/db/client';
+import type { ExceptionStatus } from '@/types/domain-literals';
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
@@ -46,7 +47,7 @@ export const PATCH = withAuthContext(
     });
     if (!existing) return notFound('ワークフロー例外が見つかりません');
 
-    if (existing.status !== 'open') {
+    if (existing.status !== ('open' satisfies ExceptionStatus)) {
       return validationError('この例外は既に解決済みまたは却下済みです');
     }
 
@@ -77,7 +78,7 @@ export const PATCH = withAuthContext(
           where: {
             cycle_id: existing.cycle_id,
             org_id: ctx.orgId,
-            status: 'open',
+            status: 'open' satisfies ExceptionStatus,
             id: { not: id },
           },
         });

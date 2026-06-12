@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES, DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -16,14 +17,15 @@ import {
 } from '@/lib/db/cycle-transition';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (_req, ctx) => {
     const now = new Date();
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
     const tasks = await prisma.dispenseTask.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         status: 'completed',
         ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
       },
@@ -215,8 +217,8 @@ type DispenseAuditMutationError =
   | { error: 'already_audited' }
   | { error: string; conflict?: true };
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -234,7 +236,7 @@ export const POST = withAuth(
       external_audit,
       double_count,
     } = parsed.data;
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
     if (result === 'rejected' && !reject_reason) {
       return validationError('差戻し時は理由コードが必須です');
@@ -243,11 +245,11 @@ export const POST = withAuth(
       return validationError('緊急例外承認時は理由の記録が必須です');
     }
 
-    const auditResult = await withOrgContext(req.orgId, async (tx) => {
+    const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
       const task = await tx.dispenseTask.findFirst({
         where: {
           id: task_id,
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
         },
         select: {
@@ -283,12 +285,12 @@ export const POST = withAuth(
 
       // S2: Self-audit prevention — dispenser cannot audit their own work
       const dispensedByUsers = await tx.dispenseResult.findMany({
-        where: { task_id, org_id: req.orgId },
+        where: { task_id, org_id: ctx.orgId },
         select: { dispensed_by: true },
         distinct: ['dispensed_by'],
       });
       const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
-      if (dispenserIds.has(req.userId)) {
+      if (dispenserIds.has(ctx.userId)) {
         return { error: 'self_audit' as const };
       }
 
@@ -304,8 +306,8 @@ export const POST = withAuth(
       if (result === 'emergency_approved') {
         const adminMembership = await tx.membership.findFirst({
           where: {
-            org_id: req.orgId,
-            user_id: req.userId,
+            org_id: ctx.orgId,
+            user_id: ctx.userId,
             is_active: true,
             role: { in: [...ADMIN_MEMBER_ROLES] },
           },
@@ -326,7 +328,7 @@ export const POST = withAuth(
         try {
           return await tx.dispenseAudit.create({
             data: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               task_id,
               result,
               reject_reason: reject_reason ?? null,
@@ -335,7 +337,7 @@ export const POST = withAuth(
                 rejectDetail: reject_detail,
                 externalAudit: external_audit,
               }),
-              audited_by: req.userId,
+              audited_by: ctx.userId,
               audited_at: now,
             },
           });
@@ -350,23 +352,17 @@ export const POST = withAuth(
 
       // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
       if (double_count && double_count.length > 0) {
-        await tx.auditLog.create({
-          data: {
-            org_id: req.orgId,
-            actor_id: req.userId,
-            action: 'dispense_audit_double_count',
-            target_type: 'DispenseAudit',
-            target_id: audit.id,
-            changes: { task_id, result, counts: double_count },
-            ip_address: req.ipAddress,
-            user_agent: req.userAgent,
-          },
+        await createAuditLogEntry(tx, ctx, {
+          action: 'dispense_audit_double_count',
+          targetType: 'DispenseAudit',
+          targetId: audit.id,
+          changes: { task_id, result, counts: double_count },
         });
       }
 
       const transitionHelper = async (toStatus: string) => {
         try {
-          await transitionCycleStatus(tx, task.cycle_id, req.orgId, toStatus, req.userId);
+          await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, toStatus, ctx.userId);
         } catch (err) {
           if (err instanceof InvalidTransitionError) {
             return {
@@ -398,9 +394,13 @@ export const POST = withAuth(
           where: {
             cycle_id: task.cycle_id,
             exception_type: 'dispense_audit_rejected',
-            status: 'open',
+            status: 'open' satisfies ExceptionStatus,
           },
-          data: { status: 'resolved', resolved_by: req.userId, resolved_at: new Date() },
+          data: {
+            status: 'resolved' satisfies ExceptionStatus,
+            resolved_by: ctx.userId,
+            resolved_at: new Date(),
+          },
         });
       } else if (result === 'hold') {
         const transitionErr = await transitionHelper('on_hold');
@@ -417,18 +417,19 @@ export const POST = withAuth(
         // Auto-create WorkflowException
         await tx.workflowException.create({
           data: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             cycle_id: task.cycle_id,
+            patient_id: task.cycle.patient_id,
             exception_type: 'dispense_audit_rejected',
             description: `調剤鑑査差戻し: ${reject_reason ?? '理由未記入'}${reject_detail ? ` — ${reject_detail}` : ''}`,
-            severity: 'warning',
-            status: 'open',
+            severity: 'warning' satisfies ExceptionSeverity,
+            status: 'open' satisfies ExceptionStatus,
           },
         });
 
         const fallbackRecipients = await tx.membership.findMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             is_active: true,
             role: { in: [...DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES] },
             user: {
@@ -451,7 +452,7 @@ export const POST = withAuth(
         );
 
         await dispatchNotificationEvent(tx, {
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           eventType: 'dispense_audit_rejected',
           type: 'urgent',
           title: '調剤鑑査で差戻しが発生しました',
@@ -488,7 +489,7 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       eventType: 'cycle_transition',
       payload: { source: 'dispense_audits', task_id },
     });

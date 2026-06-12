@@ -1,4 +1,5 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
@@ -25,8 +26,8 @@ const batchPreviewSchema = z.object({
     .max(100),
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -49,11 +50,11 @@ export const POST = withAuth(
 
     const accessibleCases = await Promise.all(
       accessChecks.map((item) => {
-        const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(req, item.pharmacistId);
+        const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, item.pharmacistId);
         return prisma.careCase.findFirst({
           where: {
             id: item.caseId,
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
           },
           select: { id: true },
@@ -74,7 +75,7 @@ export const POST = withAuth(
           siteId: item.site_id,
           visitType: item.visit_type,
         })),
-        req.orgId,
+        ctx.orgId,
       ),
     });
   },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
@@ -81,8 +81,8 @@ function hasDuplicateValue(values: string[]) {
   return new Set(values).size !== values.length;
 }
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -106,10 +106,10 @@ export const POST = withAuth(
       return validationError('順序指定に対象外の訪問予定が含まれています');
     }
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
       const scheduleLookupWhere = {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(requestedIds.length > 0
           ? {
               id: {
@@ -253,11 +253,11 @@ export const POST = withAuth(
       if (assignmentWhere && existingBatchIds.length === 1) {
         const [totalBatchSchedules, accessibleBatchSchedules] = await Promise.all([
           tx.visitSchedule.count({
-            where: { org_id: req.orgId, facility_batch_id: existingBatchIds[0] },
+            where: { org_id: ctx.orgId, facility_batch_id: existingBatchIds[0] },
           }),
           tx.visitSchedule.count({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               facility_batch_id: existingBatchIds[0],
               AND: [assignmentWhere],
             },
@@ -305,7 +305,7 @@ export const POST = withAuth(
         await Promise.all([
           tx.visitSchedule.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { notIn: targetScheduleIdsForRoute },
               pharmacist_id: targetPharmacistId,
               scheduled_date: new Date(targetDateKey),
@@ -315,7 +315,7 @@ export const POST = withAuth(
           }),
           tx.visitScheduleProposal.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               proposed_pharmacist_id: targetPharmacistId,
               proposed_date: new Date(targetDateKey),
               route_order: { in: routeOrders },
@@ -343,7 +343,7 @@ export const POST = withAuth(
             })
           : await tx.facilityVisitBatch.create({
               data: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 facility_id: Array.from(facilityLabels)[0],
                 facility_unit_id: facilityUnitId,
                 scheduled_date: schedules[0].scheduled_date,
@@ -356,7 +356,7 @@ export const POST = withAuth(
         orderedSchedules.map((schedule, index) =>
           tx.visitSchedule.updateMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: schedule.id,
               facility_batch_id: schedule.facility_batch_id,
               version: schedule.version,
@@ -387,7 +387,7 @@ export const POST = withAuth(
             return tx.visitPreparation.upsert({
               where: { schedule_id: schedule.id },
               create: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 schedule_id: schedule.id,
                 checklist: currentPreparation?.checklist ?? {},
                 medication_changes_reviewed:
@@ -396,7 +396,7 @@ export const POST = withAuth(
                 previous_issues_reviewed: currentPreparation?.previous_issues_reviewed ?? false,
                 route_confirmed: currentPreparation?.route_confirmed ?? false,
                 offline_synced: currentPreparation?.offline_synced ?? false,
-                prepared_by: req.userId,
+                prepared_by: ctx.userId,
                 prepared_at: allChecklistComplete ? new Date() : null,
               },
               update: {
@@ -407,7 +407,7 @@ export const POST = withAuth(
                 previous_issues_reviewed: currentPreparation?.previous_issues_reviewed ?? false,
                 route_confirmed: currentPreparation?.route_confirmed ?? false,
                 offline_synced: currentPreparation?.offline_synced ?? false,
-                prepared_by: req.userId,
+                prepared_by: ctx.userId,
                 prepared_at: allChecklistComplete
                   ? (currentPreparation?.prepared_at ?? new Date())
                   : null,
@@ -477,7 +477,7 @@ export const POST = withAuth(
     }
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'facility_visit_batches_upsert' },
     });
 

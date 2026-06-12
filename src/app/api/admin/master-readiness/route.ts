@@ -1,11 +1,11 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success } from '@/lib/api/response';
 import { buildAdminMasterReadinessSnapshot } from '@/server/services/admin-master-readiness';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
-    const snapshot = await buildAdminMasterReadinessSnapshot(prisma, req.orgId);
+export const GET = withAuthContext(
+  async (_req, ctx) => {
+    const snapshot = await buildAdminMasterReadinessSnapshot(prisma, ctx.orgId);
     return success({ data: snapshot });
   },
   {

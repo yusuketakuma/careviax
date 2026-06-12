@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -269,22 +270,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             },
           });
         }
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
-            actor_id: ctx.userId,
-            action: 'pca_pump_rental_updated',
-            target_type: 'PcaPumpRental',
-            target_id: id,
-            changes: {
-              previous_status: existing.status,
-              ...(returningNow && parsed.data.return_inspection_status === undefined
-                ? { return_inspection_status: 'pending' }
-                : {}),
-              ...parsed.data,
-            },
-            ip_address: req.headers.get('x-forwarded-for') ?? null,
-            user_agent: req.headers.get('user-agent') ?? null,
+        await createAuditLogEntry(tx, ctx, {
+          action: 'pca_pump_rental_updated',
+          targetType: 'PcaPumpRental',
+          targetId: id,
+          changes: {
+            previous_status: existing.status,
+            ...(returningNow && parsed.data.return_inspection_status === undefined
+              ? { return_inspection_status: 'pending' }
+              : {}),
+            ...parsed.data,
           },
         });
 

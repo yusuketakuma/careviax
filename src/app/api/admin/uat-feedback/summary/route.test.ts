@@ -5,9 +5,19 @@ const { getUatFeedbackSummaryMock } = vi.hoisted(() => ({
   getUatFeedbackSummaryMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) =>
-    handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'admin' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' }, routeContext);
+  },
 }));
 
 vi.mock('@/server/services/uat-feedback-summary', () => ({
@@ -17,10 +27,7 @@ vi.mock('@/server/services/uat-feedback-summary', () => ({
 import { GET } from './route';
 
 function createAuthRequest() {
-  return Object.assign(new NextRequest('http://localhost/api/admin/uat-feedback/summary'), {
-    orgId: 'org_1',
-    userId: 'user_1',
-  });
+  return new NextRequest('http://localhost/api/admin/uat-feedback/summary');
 }
 
 describe('/api/admin/uat-feedback/summary GET', () => {
@@ -48,12 +55,14 @@ describe('/api/admin/uat-feedback/summary GET', () => {
         },
       ],
       checklist_coverage: [],
-      recommendations: ['critical/high の blocker が 2 件あります。Phase 2 開始前に action_items の解消を優先してください。'],
+      recommendations: [
+        'critical/high の blocker が 2 件あります。Phase 2 開始前に action_items の解消を優先してください。',
+      ],
     });
   });
 
   it('returns the UAT feedback summary for the authenticated org', async () => {
-    const response = await GET(createAuthRequest());
+    const response = await GET(createAuthRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

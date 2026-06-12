@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 type RouteContext = { params: Promise<{ id: string }> };
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: 'pharmacist' };
+type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type WithAuthOptions = { permission?: string; message?: string };
 type WrappedRouteHandler = ((req: NextRequest, routeContext: RouteContext) => Promise<Response>) & {
   authOptions?: WithAuthOptions;
@@ -18,7 +18,7 @@ const {
   visitScheduleUpdateManyMock,
   visitScheduleUpdateMock,
   withAuthRegistrations,
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authState: { allow: true },
@@ -30,9 +30,13 @@ const {
   visitScheduleUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   withAuthRegistrations: [] as Array<WithAuthOptions | undefined>,
-  withAuthMock: vi.fn(
+  withAuthContextMock: vi.fn(
     (
-      handler: (req: AuthenticatedTestRequest, routeContext: RouteContext) => Promise<Response>,
+      handler: (
+        req: NextRequest,
+        ctx: TestAuthContext,
+        routeContext: RouteContext,
+      ) => Promise<Response>,
       options?: WithAuthOptions,
     ) => {
       withAuthRegistrations.push(options);
@@ -50,14 +54,7 @@ const {
           );
         }
 
-        return handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist' as const,
-          }),
-          routeContext,
-        );
+        return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
       }) as WrappedRouteHandler;
       wrappedHandler.authOptions = options;
       return wrappedHandler;
@@ -66,8 +63,8 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({

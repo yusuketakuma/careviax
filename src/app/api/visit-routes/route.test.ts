@@ -1,26 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
-
 const {
-  withAuthMock,
+  authMock,
+  membershipFindFirstMock,
   withOrgContextMock,
   computeOptimizedVisitRouteMock,
   scheduleFindManyMock,
   proposalFindManyMock,
   vehicleResourceFindFirstMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        }),
-      );
-  }),
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   computeOptimizedVisitRouteMock: vi.fn(),
   scheduleFindManyMock: vi.fn(),
@@ -28,8 +19,16 @@ const {
   vehicleResourceFindFirstMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -40,12 +39,18 @@ vi.mock('@/server/services/visit-route-engine', () => ({
   computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-routes', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
     body: JSON.stringify(body),
   });
 }
@@ -53,7 +58,10 @@ function createRequest(body: unknown) {
 function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/visit-routes', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
     body: '{',
   });
 }
@@ -77,6 +85,8 @@ function mockRouteContext() {
 describe('/api/visit-routes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     scheduleFindManyMock.mockResolvedValue([]);
     proposalFindManyMock.mockResolvedValue([]);
     vehicleResourceFindFirstMock.mockResolvedValue(null);

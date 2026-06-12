@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -15,8 +15,8 @@ import {
   resolveConferenceNoteType,
 } from '@/lib/validations/conference';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const caseId = searchParams.get('case_id') ?? undefined;
@@ -30,12 +30,12 @@ export const GET = withAuth(
 
     const requestedType = parsedFilters.data.conference_type ?? parsedFilters.data.note_type;
 
-    const notes = await withOrgContext(req.orgId, async (tx) => {
+    const notes = await withOrgContext(ctx.orgId, async (tx) => {
       const [patientScopedCases, facilityScopedCases] = await Promise.all([
         parsedFilters.data.patient_id
           ? tx.careCase.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 patient_id: parsedFilters.data.patient_id,
               },
               select: {
@@ -46,7 +46,7 @@ export const GET = withAuth(
         parsedFilters.data.facility_id
           ? tx.careCase.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 patient: {
                   residences: {
                     some: {
@@ -66,7 +66,7 @@ export const GET = withAuth(
 
       const records = await tx.conferenceNote.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(caseId ? { case_id: caseId } : {}),
           ...(requestedType ? { note_type: requestedType } : {}),
           ...(parsedFilters.data.patient_id
@@ -131,7 +131,7 @@ export const GET = withAuth(
           ? []
           : await tx.careCase.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 id: {
                   in: caseIds,
                 },
@@ -218,8 +218,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -249,12 +249,12 @@ export const POST = withAuth(
       structured_content,
     );
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const careCase = case_id
         ? await tx.careCase.findFirst({
             where: {
               id: case_id,
-              org_id: req.orgId,
+              org_id: ctx.orgId,
             },
             select: {
               patient_id: true,
@@ -281,7 +281,7 @@ export const POST = withAuth(
       const primaryResidence = resolvedPatientId
         ? await tx.residence.findFirst({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               patient_id: resolvedPatientId,
               is_primary: true,
             },
@@ -303,7 +303,7 @@ export const POST = withAuth(
         parsed.data.billing_code?.trim() || metadataBilling?.code?.trim() || null;
       const created = await tx.conferenceNote.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           case_id: case_id ?? null,
           patient_id: resolvedPatientId,
           facility_id: parsed.data.facility_id ?? primaryResidence?.facility_id ?? null,
@@ -324,7 +324,7 @@ export const POST = withAuth(
         },
       });
 
-      return ConferenceDataSyncService.syncSavedNote(tx, req.orgId, req.userId, created, {
+      return ConferenceDataSyncService.syncSavedNote(tx, ctx.orgId, ctx.userId, created, {
         mode: 'create',
       });
     });

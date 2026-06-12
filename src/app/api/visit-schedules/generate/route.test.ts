@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  withAuthMock,
+  authMock,
+  membershipFindFirstMock,
   withOrgContextMock,
   careCaseFindFirstMock,
   pharmacistShiftFindManyMock,
@@ -14,23 +15,10 @@ const {
   visitScheduleProposalFindManyMock,
   evaluateVisitWorkflowGateMock,
   notifyWorkflowMutationMock,
+  authRoleRef,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role: string },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          }),
-        );
-    },
-  ),
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
@@ -41,10 +29,11 @@ const {
   visitScheduleProposalFindManyMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  authRoleRef: { current: 'pharmacist' },
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -65,6 +54,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       count: visitScheduleCountMock,
     },
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
   },
 }));
 
@@ -77,13 +69,19 @@ vi.mock('@/server/services/management-plans', () => ({
   formatVisitWorkflowGateIssues: (issues: string[]) => issues.join(' / '),
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/generate', {
     method: 'POST',
     body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
   });
 }
 
@@ -91,7 +89,10 @@ function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/visit-schedules/generate', {
     method: 'POST',
     body: '{"case_id":',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
   });
 }
 
@@ -135,6 +136,11 @@ function buildShift(
 describe('/api/visit-schedules/generate POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authRoleRef.current = 'pharmacist';
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockImplementation(() =>
+      Promise.resolve({ role: authRoleRef.current }),
+    );
 
     careCaseFindFirstMock.mockResolvedValue(buildCareCase());
     evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });

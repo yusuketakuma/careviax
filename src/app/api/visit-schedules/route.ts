@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
@@ -26,14 +27,14 @@ const visitScheduleQuerySchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
 });
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(visitScheduleQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
-    const result = await listSchedules(prisma, req.orgId, parsed.data, req);
+    const result = await listSchedules(prisma, ctx.orgId, parsed.data, ctx);
     return success(result);
   },
   {
@@ -42,8 +43,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -55,14 +56,14 @@ export const POST = withAuth(
       return validationError('訪問予定メモはまだ保存できません');
     }
 
-    const result = await createSchedule(prisma, req.orgId, req.userId, parsed.data, {
-      userId: req.userId,
-      role: req.role,
+    const result = await createSchedule(prisma, ctx.orgId, ctx.userId, parsed.data, {
+      userId: ctx.userId,
+      role: ctx.role,
     });
     if (result instanceof Response) return result;
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'visit_schedules_create', case_id: parsed.data.case_id },
     });
 

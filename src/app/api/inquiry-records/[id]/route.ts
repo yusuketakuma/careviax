@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
@@ -308,26 +309,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'inquiry_record_updated',
-        target_type: 'inquiry_record',
-        target_id: id,
-        changes: {
-          cycle_id: existing.cycle_id,
-          line_id: existing.line_id,
-          issue_id: existing.issue_id,
-          result_before: existing.result,
-          result_after: result ?? existing.result,
-          change_detail: change_detail ?? null,
-          proposal_origin: proposal_origin ?? null,
-          residual_adjustment: residual_adjustment ?? null,
-          line_update: lineUpdateAudit,
-          cycle_status_before: existing.cycle.overall_status,
-          cycle_status_after: cycleStatusAfter,
-        },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'inquiry_record_updated',
+      targetType: 'inquiry_record',
+      targetId: id,
+      changes: {
+        cycle_id: existing.cycle_id,
+        line_id: existing.line_id,
+        issue_id: existing.issue_id,
+        result_before: existing.result,
+        result_after: result ?? existing.result,
+        change_detail: change_detail ?? null,
+        proposal_origin: proposal_origin ?? null,
+        residual_adjustment: residual_adjustment ?? null,
+        line_update: lineUpdateAudit,
+        cycle_status_before: existing.cycle.overall_status,
+        cycle_status_after: cycleStatusAfter,
       },
     });
 

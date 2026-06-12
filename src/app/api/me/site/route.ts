@@ -3,6 +3,7 @@ import { validationError, notFound, forbiddenResponse, success } from '@/lib/api
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { z } from 'zod';
 
 const putSiteSchema = z.object({
@@ -58,17 +59,11 @@ export const PUT = withAuthContext(async (req, ctx) => {
       data: { default_site_id: site_id },
     });
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'user_site_switched',
-        target_type: 'PharmacySite',
-        target_id: site_id,
-        changes: { from_site_id: fromSiteId, to_site_id: site_id },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
-      },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'user_site_switched',
+      targetType: 'PharmacySite',
+      targetId: site_id,
+      changes: { from_site_id: fromSiteId, to_site_id: site_id },
     });
   });
 

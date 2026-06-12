@@ -1,10 +1,10 @@
-import { NextRequest } from 'next/server';
 import { format } from 'date-fns';
 import { z } from 'zod';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -17,6 +17,7 @@ import {
 } from '@/lib/dispensing/workbench-projection';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 /**
  * 調剤/監査ワークベンチ(design/images/new 07_dispense / 08_audit)用の BFF。
@@ -48,326 +49,324 @@ function doseFrequencyLabel(line: { dose: string; frequency: string }): string {
 
 // ── GET: ワークベンチ projection ──
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    if (
-      !hasPermission(authReq.role, 'canDispense') &&
-      !hasPermission(authReq.role, 'canAuditDispense')
-    ) {
-      return forbidden('調剤ワークベンチの閲覧権限がありません');
-    }
+export const GET = withAuthContext(async (_req, ctx, { params }) => {
+  if (!hasPermission(ctx.role, 'canDispense') && !hasPermission(ctx.role, 'canAuditDispense')) {
+    return forbidden('調剤ワークベンチの閲覧権限がありません');
+  }
 
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤タスクIDが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤タスクIDが不正です');
 
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
-    const task = await prisma.dispenseTask.findFirst({
-      where: {
-        id,
-        org_id: authReq.orgId,
-        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
-      },
-      select: {
-        id: true,
-        status: true,
-        priority: true,
-        due_date: true,
-        results: {
-          orderBy: { dispensed_at: 'asc' },
-          select: {
-            id: true,
-            line_id: true,
-            actual_drug_name: true,
-            actual_quantity: true,
-            actual_unit: true,
-            dispensed_by: true,
-            dispensed_at: true,
-          },
+  const task = await prisma.dispenseTask.findFirst({
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+    },
+    select: {
+      id: true,
+      status: true,
+      priority: true,
+      due_date: true,
+      results: {
+        orderBy: { dispensed_at: 'asc' },
+        select: {
+          id: true,
+          line_id: true,
+          actual_drug_name: true,
+          actual_quantity: true,
+          actual_unit: true,
+          dispensed_by: true,
+          dispensed_at: true,
         },
-        cycle: {
-          select: {
-            id: true,
-            overall_status: true,
-            case_id: true,
-            case_: {
-              select: {
-                id: true,
-                patient: {
-                  select: {
-                    id: true,
-                    name: true,
-                    allergy_info: true,
-                    scheduling_preference: { select: { swallowing_route: true } },
-                    conditions: {
-                      where: { condition_type: 'problem', is_active: true },
-                      select: { name: true, noted_at: true, notes: true },
-                    },
+      },
+      cycle: {
+        select: {
+          id: true,
+          overall_status: true,
+          case_id: true,
+          case_: {
+            select: {
+              id: true,
+              patient: {
+                select: {
+                  id: true,
+                  name: true,
+                  allergy_info: true,
+                  scheduling_preference: { select: { swallowing_route: true } },
+                  conditions: {
+                    where: { condition_type: 'problem', is_active: true },
+                    select: { name: true, noted_at: true, notes: true },
                   },
                 },
               },
             },
-            inquiries: {
-              orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
-              take: 5,
-              select: {
-                id: true,
-                line_id: true,
-                result: true,
-                proposal_origin: true,
-                change_detail: true,
-                inquiry_to_physician: true,
-                inquired_at: true,
-                resolved_at: true,
-              },
+          },
+          inquiries: {
+            orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
+            take: 5,
+            select: {
+              id: true,
+              line_id: true,
+              result: true,
+              proposal_origin: true,
+              change_detail: true,
+              inquiry_to_physician: true,
+              inquired_at: true,
+              resolved_at: true,
             },
-            prescription_intakes: {
-              orderBy: { created_at: 'desc' },
-              take: 2,
-              select: {
-                id: true,
-                prescribed_date: true,
-                prescriber_institution: true,
-                lines: {
-                  orderBy: { line_number: 'asc' },
-                  select: {
-                    id: true,
-                    line_number: true,
-                    drug_name: true,
-                    drug_code: true,
-                    dose: true,
-                    frequency: true,
-                    days: true,
-                    quantity: true,
-                    unit: true,
-                    packaging_instruction_tags: true,
-                  },
+          },
+          prescription_intakes: {
+            orderBy: { created_at: 'desc' },
+            take: 2,
+            select: {
+              id: true,
+              prescribed_date: true,
+              prescriber_institution: true,
+              lines: {
+                orderBy: { line_number: 'asc' },
+                select: {
+                  id: true,
+                  line_number: true,
+                  drug_name: true,
+                  drug_code: true,
+                  dose: true,
+                  frequency: true,
+                  days: true,
+                  quantity: true,
+                  unit: true,
+                  packaging_instruction_tags: true,
                 },
               },
             },
           },
         },
       },
-    });
-    if (!task) return notFound('タスクが見つかりません');
+    },
+  });
+  if (!task) return notFound('タスクが見つかりません');
 
-    const patient = task.cycle.case_.patient;
-    const [currentIntake, previousIntake] = task.cycle.prescription_intakes;
-    const currentLines = currentIntake?.lines ?? [];
-    const previousLines = previousIntake?.lines ?? [];
+  const patient = task.cycle.case_.patient;
+  const [currentIntake, previousIntake] = task.cycle.prescription_intakes;
+  const currentLines = currentIntake?.lines ?? [];
+  const previousLines = previousIntake?.lines ?? [];
 
-    const yjCodes = Array.from(
-      new Set(
-        currentLines
-          .map((line) => line.drug_code)
-          .filter((code): code is string => Boolean(code?.trim())),
-      ),
-    );
+  const yjCodes = Array.from(
+    new Set(
+      currentLines
+        .map((line) => line.drug_code)
+        .filter((code): code is string => Boolean(code?.trim())),
+    ),
+  );
 
-    const dispenserIds = Array.from(new Set(task.results.map((result) => result.dispensed_by)));
-    const now = new Date();
+  const dispenserIds = Array.from(new Set(task.results.map((result) => result.dispensed_by)));
+  const now = new Date();
 
-    const [egfrObservation, todayVisit, narcoticMasters, nameMap, teamAuditTotal, latestStock] =
-      await Promise.all([
-        prisma.patientLabObservation.findFirst({
-          where: { org_id: authReq.orgId, patient_id: patient.id, analyte_code: 'egfr' },
-          orderBy: { measured_at: 'desc' },
-          select: { value_numeric: true, value_text: true, measured_at: true },
-        }),
-        prisma.visitSchedule.findFirst({
-          where: {
-            org_id: authReq.orgId,
-            case_id: task.cycle.case_id,
-            scheduled_date: {
-              gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-              lte: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
-            },
-            schedule_status: {
-              in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
-            },
-          },
-          orderBy: [{ time_window_start: 'asc' }],
-          select: { time_window_start: true },
-        }),
-        yjCodes.length > 0
-          ? prisma.drugMaster.findMany({
-              where: { yj_code: { in: yjCodes }, is_narcotic: true },
-              select: { yj_code: true },
-            })
-          : Promise.resolve([]),
-        batchResolveNames(prisma, authReq.orgId, [...dispenserIds, authReq.userId]),
-        prisma.dispenseTask.count({
-          where: {
-            org_id: authReq.orgId,
-            status: 'completed',
-            audits: { none: { result: { notIn: ['hold'] } } },
-          },
-        }),
-        prisma.pharmacyDrugStock.findFirst({
-          where: { org_id: authReq.orgId },
-          orderBy: { updated_at: 'desc' },
-          select: { updated_at: true },
-        }),
-      ]);
-
-    const narcoticYjCodes = new Set(narcoticMasters.map((master) => master.yj_code));
-    const isNarcoticLine = (line: { drug_code: string | null; packaging_instruction_tags: string[] }) =>
-      line.packaging_instruction_tags.includes('narcotic') ||
-      (line.drug_code != null && narcoticYjCodes.has(line.drug_code));
-
-    // ── セーフティボード ──
-    const handlingTags = Array.from(
-      new Set(
-        currentLines.flatMap((line) => {
-          const tags = [...line.packaging_instruction_tags] as string[];
-          if (isNarcoticLine(line) && !tags.includes('narcotic')) tags.unshift('narcotic');
-          return tags;
-        }),
-      ),
-    );
-    const safety = {
-      allergy: buildWorkbenchAllergyLabel(patient.allergy_info),
-      renal: buildWorkbenchRenalLabel(egfrObservation),
-      handling_tags: handlingTags,
-      swallowing: patient.scheduling_preference?.swallowing_route?.trim() || null,
-      cautions: patient.conditions.map((condition) => {
-        const dateLabel = condition.noted_at ? format(condition.noted_at, 'M/d') : null;
-        const notes = condition.notes?.trim() || null;
-        if (dateLabel) return `${condition.name}(${dateLabel}〜${notes ?? ''})`;
-        if (notes) return `${condition.name}(${notes})`;
-        return condition.name;
+  const [egfrObservation, todayVisit, narcoticMasters, nameMap, teamAuditTotal, latestStock] =
+    await Promise.all([
+      prisma.patientLabObservation.findFirst({
+        where: { org_id: ctx.orgId, patient_id: patient.id, analyte_code: 'egfr' },
+        orderBy: { measured_at: 'desc' },
+        select: { value_numeric: true, value_text: true, measured_at: true },
       }),
-    };
-
-    // ── 処方比較(前回 / 今回 / 差)──
-    const changes = detectMedicationChanges(currentLines, previousLines);
-    const changeByName = new Map(changes.map((change) => [change.drug_name, change]));
-    const previousByName = new Map(previousLines.map((line) => [line.drug_name, line]));
-    const resolvedChangeInquiries = task.cycle.inquiries.filter(
-      (inquiry) => inquiry.result === 'changed',
-    );
-    const changedLineIds = new Set(
-      resolvedChangeInquiries
-        .map((inquiry) => inquiry.line_id)
-        .filter((lineId): lineId is string => lineId != null),
-    );
-    const hasCycleLevelChangeInquiry = resolvedChangeInquiries.some(
-      (inquiry) => inquiry.line_id == null,
-    );
-
-    const comparison = [
-      ...currentLines.map((line) => {
-        const change = changeByName.get(line.drug_name) ?? null;
-        const previousLine = previousByName.get(line.drug_name) ?? null;
-        const previousLabel = previousLine ? doseFrequencyLabel(previousLine) : null;
-        const currentLabel = doseFrequencyLabel(line);
-        const changeType = change?.change_type ?? null;
-        return {
-          key: line.id,
-          drug_name: line.drug_name,
-          previous_label: previousLabel,
-          current_label: currentLabel,
-          change_type: changeType,
-          direction:
-            changeType === 'dose_changed'
-              ? detectDoseDirection(previousLine?.dose ?? null, line.dose)
-              : null,
-          inquiry_origin:
-            changeType != null && (changedLineIds.has(line.id) || hasCycleLevelChangeInquiry),
-        };
+      prisma.visitSchedule.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          case_id: task.cycle.case_id,
+          scheduled_date: {
+            gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+            lte: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
+          },
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+          },
+        },
+        orderBy: [{ time_window_start: 'asc' }],
+        select: { time_window_start: true },
       }),
-      ...previousLines
-        .filter((line) => !currentLines.some((current) => current.drug_name === line.drug_name))
-        .map((line) => ({
-          key: `removed-${line.id}`,
-          drug_name: line.drug_name,
-          previous_label: doseFrequencyLabel(line),
-          current_label: null,
-          change_type: 'removed' as const,
-          direction: null,
-          inquiry_origin: changedLineIds.has(line.id) || hasCycleLevelChangeInquiry,
-        })),
-    ];
+      yjCodes.length > 0
+        ? prisma.drugMaster.findMany({
+            where: { yj_code: { in: yjCodes }, is_narcotic: true },
+            select: { yj_code: true },
+          })
+        : Promise.resolve([]),
+      batchResolveNames(prisma, ctx.orgId, [...dispenserIds, ctx.userId]),
+      prisma.dispenseTask.count({
+        where: {
+          org_id: ctx.orgId,
+          status: 'completed',
+          audits: { none: { result: { notIn: ['hold'] } } },
+        },
+      }),
+      prisma.pharmacyDrugStock.findFirst({
+        where: { org_id: ctx.orgId },
+        orderBy: { updated_at: 'desc' },
+        select: { updated_at: true },
+      }),
+    ]);
 
-    // ── 計数テーブル(監査ワークベンチ)。麻薬行を先頭に(最優先で計数する)──
-    const resultByLineId = new Map(task.results.map((result) => [result.line_id, result]));
-    const countRows = currentLines.map((line) => {
-      const result = resultByLineId.get(line.id) ?? null;
+  const narcoticYjCodes = new Set(narcoticMasters.map((master) => master.yj_code));
+  const isNarcoticLine = (line: {
+    drug_code: string | null;
+    packaging_instruction_tags: string[];
+  }) =>
+    line.packaging_instruction_tags.includes('narcotic') ||
+    (line.drug_code != null && narcoticYjCodes.has(line.drug_code));
+
+  // ── セーフティボード ──
+  const handlingTags = Array.from(
+    new Set(
+      currentLines.flatMap((line) => {
+        const tags = [...line.packaging_instruction_tags] as string[];
+        if (isNarcoticLine(line) && !tags.includes('narcotic')) tags.unshift('narcotic');
+        return tags;
+      }),
+    ),
+  );
+  const safety = {
+    allergy: buildWorkbenchAllergyLabel(patient.allergy_info),
+    renal: buildWorkbenchRenalLabel(egfrObservation),
+    handling_tags: handlingTags,
+    swallowing: patient.scheduling_preference?.swallowing_route?.trim() || null,
+    cautions: patient.conditions.map((condition) => {
+      const dateLabel = condition.noted_at ? format(condition.noted_at, 'M/d') : null;
+      const notes = condition.notes?.trim() || null;
+      if (dateLabel) return `${condition.name}(${dateLabel}〜${notes ?? ''})`;
+      if (notes) return `${condition.name}(${notes})`;
+      return condition.name;
+    }),
+  };
+
+  // ── 処方比較(前回 / 今回 / 差)──
+  const changes = detectMedicationChanges(currentLines, previousLines);
+  const changeByName = new Map(changes.map((change) => [change.drug_name, change]));
+  const previousByName = new Map(previousLines.map((line) => [line.drug_name, line]));
+  const resolvedChangeInquiries = task.cycle.inquiries.filter(
+    (inquiry) => inquiry.result === 'changed',
+  );
+  const changedLineIds = new Set(
+    resolvedChangeInquiries
+      .map((inquiry) => inquiry.line_id)
+      .filter((lineId): lineId is string => lineId != null),
+  );
+  const hasCycleLevelChangeInquiry = resolvedChangeInquiries.some(
+    (inquiry) => inquiry.line_id == null,
+  );
+
+  const comparison = [
+    ...currentLines.map((line) => {
+      const change = changeByName.get(line.drug_name) ?? null;
+      const previousLine = previousByName.get(line.drug_name) ?? null;
+      const previousLabel = previousLine ? doseFrequencyLabel(previousLine) : null;
+      const currentLabel = doseFrequencyLabel(line);
+      const changeType = change?.change_type ?? null;
       return {
-        line_id: line.id,
-        result_id: result?.id ?? null,
-        drug_name: result?.actual_drug_name ?? line.drug_name,
-        tags: line.packaging_instruction_tags as string[],
-        is_narcotic: isNarcoticLine(line),
-        prescribed_label: formatQuantityLabel(line),
-        prescribed_quantity: line.quantity,
-        dispensed_label: result
-          ? `${result.actual_quantity}${result.actual_unit ?? line.unit ?? ''}`
-          : null,
-        dispensed_quantity: result?.actual_quantity ?? null,
-        unit: result?.actual_unit ?? line.unit ?? '',
+        key: line.id,
+        drug_name: line.drug_name,
+        previous_label: previousLabel,
+        current_label: currentLabel,
+        change_type: changeType,
+        direction:
+          changeType === 'dose_changed'
+            ? detectDoseDirection(previousLine?.dose ?? null, line.dose)
+            : null,
+        inquiry_origin:
+          changeType != null && (changedLineIds.has(line.id) || hasCycleLevelChangeInquiry),
       };
-    });
-    countRows.sort((left, right) => Number(right.is_narcotic) - Number(left.is_narcotic));
+    }),
+    ...previousLines
+      .filter((line) => !currentLines.some((current) => current.drug_name === line.drug_name))
+      .map((line) => ({
+        key: `removed-${line.id}`,
+        drug_name: line.drug_name,
+        previous_label: doseFrequencyLabel(line),
+        current_label: null,
+        change_type: 'removed' as const,
+        direction: null,
+        inquiry_origin: changedLineIds.has(line.id) || hasCycleLevelChangeInquiry,
+      })),
+  ];
 
-    // ── 二人制(調剤者 → 監査者)──
-    const lastDispensedAt =
-      task.results.length > 0 ? task.results[task.results.length - 1].dispensed_at : null;
-    const dispenserId = dispenserIds[0] ?? null;
-    const dispenser =
-      dispenserId != null
-        ? {
-            id: dispenserId,
-            name: nameMap.get(dispenserId) ?? '担当者',
-            time_label: lastDispensedAt ? format(lastDispensedAt, 'HH:mm') : null,
-          }
-        : null;
+  // ── 計数テーブル(監査ワークベンチ)。麻薬行を先頭に(最優先で計数する)──
+  const resultByLineId = new Map(task.results.map((result) => [result.line_id, result]));
+  const countRows = currentLines.map((line) => {
+    const result = resultByLineId.get(line.id) ?? null;
+    return {
+      line_id: line.id,
+      result_id: result?.id ?? null,
+      drug_name: result?.actual_drug_name ?? line.drug_name,
+      tags: line.packaging_instruction_tags as string[],
+      is_narcotic: isNarcoticLine(line),
+      prescribed_label: formatQuantityLabel(line),
+      prescribed_quantity: line.quantity,
+      dispensed_label: result
+        ? `${result.actual_quantity}${result.actual_unit ?? line.unit ?? ''}`
+        : null,
+      dispensed_quantity: result?.actual_quantity ?? null,
+      unit: result?.actual_unit ?? line.unit ?? '',
+    };
+  });
+  countRows.sort((left, right) => Number(right.is_narcotic) - Number(left.is_narcotic));
 
-    const latestResolvedInquiry =
-      task.cycle.inquiries.find((inquiry) => inquiry.resolved_at != null) ?? null;
+  // ── 二人制(調剤者 → 監査者)──
+  const lastDispensedAt =
+    task.results.length > 0 ? task.results[task.results.length - 1].dispensed_at : null;
+  const dispenserId = dispenserIds[0] ?? null;
+  const dispenser =
+    dispenserId != null
+      ? {
+          id: dispenserId,
+          name: nameMap.get(dispenserId) ?? '担当者',
+          time_label: lastDispensedAt ? format(lastDispensedAt, 'HH:mm') : null,
+        }
+      : null;
 
-    return success({
-      task: {
-        id: task.id,
-        status: task.status,
-        priority: task.priority,
-        due_date: task.due_date?.toISOString() ?? null,
-      },
-      cycle: { id: task.cycle.id, overall_status: task.cycle.overall_status },
-      patient: { id: patient.id, name: patient.name },
-      intake: currentIntake
-        ? {
-            id: currentIntake.id,
-            prescribed_date: format(currentIntake.prescribed_date, 'yyyy-MM-dd'),
-          }
-        : null,
-      previous_intake: previousIntake
-        ? { prescribed_date: format(previousIntake.prescribed_date, 'yyyy-MM-dd') }
-        : null,
-      safety,
-      comparison,
-      count_rows: countRows,
-      dispenser,
-      auditor: { id: authReq.userId, name: nameMap.get(authReq.userId) ?? '担当者' },
-      is_self_audit: dispenserIds.includes(authReq.userId),
-      has_narcotic: countRows.some((row) => row.is_narcotic),
-      visit_time_label: todayVisit?.time_window_start
-        ? format(todayVisit.time_window_start, 'HH:mm')
-        : null,
-      resolved_inquiry: latestResolvedInquiry
-        ? {
-            inquired_at: latestResolvedInquiry.inquired_at.toISOString(),
-            resolved_at: latestResolvedInquiry.resolved_at?.toISOString() ?? null,
-            institution: latestResolvedInquiry.inquiry_to_physician.split(/\s+/)[0] ?? null,
-            change_detail: latestResolvedInquiry.change_detail,
-          }
-        : null,
-      team_audit_total: teamAuditTotal,
-      stock_check_date_label: latestStock ? format(latestStock.updated_at, 'M/d') : null,
-    });
-  })(req);
-}
+  const latestResolvedInquiry =
+    task.cycle.inquiries.find((inquiry) => inquiry.resolved_at != null) ?? null;
+
+  return success({
+    task: {
+      id: task.id,
+      status: task.status,
+      priority: task.priority,
+      due_date: task.due_date?.toISOString() ?? null,
+    },
+    cycle: { id: task.cycle.id, overall_status: task.cycle.overall_status },
+    patient: { id: patient.id, name: patient.name },
+    intake: currentIntake
+      ? {
+          id: currentIntake.id,
+          prescribed_date: format(currentIntake.prescribed_date, 'yyyy-MM-dd'),
+        }
+      : null,
+    previous_intake: previousIntake
+      ? { prescribed_date: format(previousIntake.prescribed_date, 'yyyy-MM-dd') }
+      : null,
+    safety,
+    comparison,
+    count_rows: countRows,
+    dispenser,
+    auditor: { id: ctx.userId, name: nameMap.get(ctx.userId) ?? '担当者' },
+    is_self_audit: dispenserIds.includes(ctx.userId),
+    has_narcotic: countRows.some((row) => row.is_narcotic),
+    visit_time_label: todayVisit?.time_window_start
+      ? format(todayVisit.time_window_start, 'HH:mm')
+      : null,
+    resolved_inquiry: latestResolvedInquiry
+      ? {
+          inquired_at: latestResolvedInquiry.inquired_at.toISOString(),
+          resolved_at: latestResolvedInquiry.resolved_at?.toISOString() ?? null,
+          institution: latestResolvedInquiry.inquiry_to_physician.split(/\s+/)[0] ?? null,
+          change_detail: latestResolvedInquiry.change_detail,
+        }
+      : null,
+    team_audit_total: teamAuditTotal,
+    stock_check_date_label: latestStock ? format(latestStock.updated_at, 'M/d') : null,
+  });
+});
 
 // ── POST: 中断(理由必須)──
 
@@ -376,67 +375,68 @@ const interruptSchema = z.object({
   reason: z.string().min(1, '中断理由は必須です'),
 });
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
-    if (!hasPermission(authReq.role, 'canDispense')) {
-      return forbidden('調剤の中断権限がありません');
-    }
+export const POST = withAuthContext(async (req, ctx, { params }) => {
+  if (!hasPermission(ctx.role, 'canDispense')) {
+    return forbidden('調剤の中断権限がありません');
+  }
 
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('調剤タスクIDが不正です');
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('調剤タスクIDが不正です');
 
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-    const parsed = interruptSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = interruptSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
-    const task = await prisma.dispenseTask.findFirst({
-      where: {
-        id,
-        org_id: authReq.orgId,
-        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+  const task = await prisma.dispenseTask.findFirst({
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+    },
+    select: {
+      id: true,
+      cycle_id: true,
+      cycle: {
+        select: {
+          patient_id: true,
+        },
       },
-      select: { id: true, cycle_id: true },
-    });
-    if (!task) return notFound('タスクが見つかりません');
+    },
+  });
+  if (!task) return notFound('タスクが見つかりません');
 
-    const exception = await withOrgContext(authReq.orgId, async (tx) => {
-      const created = await tx.workflowException.create({
-        data: {
-          org_id: authReq.orgId,
-          cycle_id: task.cycle_id,
-          exception_type: 'dispense_interrupted',
-          description: `調剤の中断: ${parsed.data.reason}`,
-          severity: 'warning',
-          status: 'open',
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          org_id: authReq.orgId,
-          actor_id: authReq.userId,
-          action: 'dispense_task_interrupted',
-          target_type: 'DispenseTask',
-          target_id: task.id,
-          changes: { reason: parsed.data.reason, exception_id: created.id },
-          ip_address: authReq.ipAddress,
-          user_agent: authReq.userAgent,
-        },
-      });
-
-      return created;
+  const exception = await withOrgContext(ctx.orgId, async (tx) => {
+    const created = await tx.workflowException.create({
+      data: {
+        org_id: ctx.orgId,
+        cycle_id: task.cycle_id,
+        patient_id: task.cycle.patient_id,
+        exception_type: 'dispense_interrupted',
+        description: `調剤の中断: ${parsed.data.reason}`,
+        severity: 'warning' satisfies ExceptionSeverity,
+        status: 'open' satisfies ExceptionStatus,
+      },
     });
 
-    await notifyWorkflowMutation({
-      orgId: authReq.orgId,
-      payload: { source: 'dispense_tasks_update', task_id: task.id, interrupted: true },
+    await createAuditLogEntry(tx, ctx, {
+      action: 'dispense_task_interrupted',
+      targetType: 'DispenseTask',
+      targetId: task.id,
+      changes: { reason: parsed.data.reason, exception_id: created.id },
     });
 
-    return success(exception, 201);
-  })(req);
-}
+    return created;
+  });
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'dispense_tasks_update', task_id: task.id, interrupted: true },
+  });
+
+  return success(exception, 201);
+});

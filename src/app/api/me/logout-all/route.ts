@@ -1,7 +1,9 @@
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { externalError, success, unauthorized } from '@/lib/api/response';
+import { getClientIp } from '@/lib/api/request-ip';
 import { globalSignOutWithAccessToken } from '@/server/services/cognito-auth';
 import type { NextRequest } from 'next/server';
 
@@ -27,18 +29,23 @@ export async function POST(request: NextRequest) {
       },
     });
     await withOrgContext(updatedUser.org_id, async (tx) => {
-      await tx.auditLog.create({
-        data: {
-          org_id: updatedUser.org_id,
-          actor_id: updatedUser.id,
+      await createAuditLogEntry(
+        tx,
+        {
+          orgId: updatedUser.org_id,
+          userId: updatedUser.id,
+          ipAddress: getClientIp(request),
+          userAgent: request.headers.get('user-agent') ?? undefined,
+        },
+        {
           action: 'logout_all',
-          target_type: 'session',
-          target_id: updatedUser.id,
+          targetType: 'session',
+          targetId: updatedUser.id,
           changes: {
             scope: 'all_devices',
           },
         },
-      });
+      );
     });
 
     try {
@@ -49,11 +56,7 @@ export async function POST(request: NextRequest) {
       }
     }
   } catch {
-    return externalError(
-      'EXTERNAL_GLOBAL_SIGNOUT_FAILED',
-      '全端末ログアウトに失敗しました',
-      502
-    );
+    return externalError('EXTERNAL_GLOBAL_SIGNOUT_FAILED', '全端末ログアウトに失敗しました', 502);
   }
 
   return success({ ok: true });

@@ -3,20 +3,40 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  withAuthContextMock,
   withOrgContextMock,
   webhookRegistrationFindManyMock,
   webhookRegistrationCreateMock,
   isAllowedWebhookUrlMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+        routeContext: { params: Promise<Record<string, never>> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) => {
+      return async (req: NextRequest, routeContext = emptyRouteContext) => {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return authResult.response;
+        return handler(req, authResult.ctx, routeContext);
+      };
+    },
+  ),
   withOrgContextMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
   webhookRegistrationCreateMock: vi.fn(),
   isAllowedWebhookUrlMock: vi.fn(),
 }));
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -115,7 +135,7 @@ describe('/api/admin/webhooks', () => {
   });
 
   it('returns webhook registrations without exposing secrets', async () => {
-    const response = await GET(createRequest('GET'));
+    const response = await GET(createRequest('GET'), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -142,6 +162,7 @@ describe('/api/admin/webhooks', () => {
         url: 'https://partner.example.com/hooks/careviax',
         events: ['patient.created'],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -185,6 +206,7 @@ describe('/api/admin/webhooks', () => {
         url: 'https://partner.example.com/hooks/careviax',
         events: ['patient.created'],
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -196,7 +218,7 @@ describe('/api/admin/webhooks', () => {
   });
 
   it('rejects non-object create payloads before URL checks or writes', async () => {
-    const response = await POST(createRequest('POST', []));
+    const response = await POST(createRequest('POST', []), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -208,7 +230,7 @@ describe('/api/admin/webhooks', () => {
   });
 
   it('rejects malformed JSON create payloads before URL checks or writes', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await POST(createMalformedJsonRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -10,8 +10,8 @@ const cdsCheckSchema = z.object({
   patientId: z.string().min(1).optional(),
 });
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -24,14 +24,14 @@ export const POST = withAuth(
 
     // Verify the cycle belongs to this org
     const cycle = await prisma.medicationCycle.findFirst({
-      where: { id: cycleId, org_id: req.orgId },
+      where: { id: cycleId, org_id: ctx.orgId },
       select: { id: true, patient_id: true },
     });
 
     if (!cycle) return notFound('指定されたサイクルが見つかりません');
 
     // Use the patientId from the cycle for security (prevent cross-patient access)
-    const alerts = await checkDispenseAlerts(req.orgId, cycleId, cycle.patient_id);
+    const alerts = await checkDispenseAlerts(ctx.orgId, cycleId, cycle.patient_id);
 
     return success({ alerts });
   },

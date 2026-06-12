@@ -1,24 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthMock, medicationCycleFindFirstMock, checkDispenseAlertsMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
-      return (req: NextRequest) =>
+const { withAuthContextMock, medicationCycleFindFirstMock, checkDispenseAlertsMock } = vi.hoisted(
+  () => ({
+    withAuthContextMock: vi.fn((handler) => {
+      return (req: NextRequest, routeContext = { params: Promise.resolve({}) }) =>
         handler(
-          Object.assign(req, {
+          req,
+          {
             orgId: 'org_1',
             userId: 'user_1',
-          }),
+            role: 'pharmacist',
+            ipAddress: '127.0.0.1',
+            userAgent: 'vitest',
+          },
+          routeContext,
         );
-    },
-  ),
-  medicationCycleFindFirstMock: vi.fn(),
-  checkDispenseAlertsMock: vi.fn(),
-}));
+    }),
+    medicationCycleFindFirstMock: vi.fn(),
+    checkDispenseAlertsMock: vi.fn(),
+  }),
+);
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -34,6 +39,8 @@ vi.mock('@/server/cds/checker', () => ({
 }));
 
 import { POST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/cds/check', {
@@ -76,6 +83,7 @@ describe('/api/cds/check POST', () => {
       createRequest({
         cycleId: 'cycle_1',
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -95,7 +103,7 @@ describe('/api/cds/check POST', () => {
   });
 
   it('rejects non-object CDS payloads before loading the cycle', async () => {
-    const response = await POST(createRequest([]));
+    const response = await POST(createRequest([]), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -104,7 +112,7 @@ describe('/api/cds/check POST', () => {
   });
 
   it('rejects malformed JSON before loading the cycle', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await POST(createMalformedJsonRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

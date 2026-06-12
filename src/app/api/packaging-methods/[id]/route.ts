@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -32,17 +33,11 @@ export const PATCH = withAuthContext<{ id: string }>(
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'packaging_method_updated',
-          target_type: 'PackagingMethodMaster',
-          target_id: id,
-          changes: parsed.data,
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'packaging_method_updated',
+        targetType: 'PackagingMethodMaster',
+        targetId: id,
+        changes: parsed.data,
       });
 
       return result;

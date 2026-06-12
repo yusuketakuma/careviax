@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { withAuth } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
 
 /**
@@ -9,10 +9,10 @@ import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
  * Call this from a scheduled job every 5 minutes.
  * Requires admin/owner role.
  */
-export const POST = withAuth(
+export const POST = withAuthContext(
   async () => {
     await flushPerformanceMetricsToCloudWatch();
     return NextResponse.json({ ok: true, flushed_at: new Date().toISOString() });
   },
-  { permission: 'canAdmin', message: 'メトリクスのフラッシュ権限がありません' }
+  { permission: 'canAdmin', message: 'メトリクスのフラッシュ権限がありません' },
 );

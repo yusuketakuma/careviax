@@ -22,7 +22,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(search = '?within_days=7') {
   return new NextRequest(`http://localhost/api/dashboard/medication-deadlines${search}`, {

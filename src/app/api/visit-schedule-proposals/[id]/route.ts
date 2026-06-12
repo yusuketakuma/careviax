@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
 import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-schedule-proposal';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -64,6 +66,7 @@ type RoutePreviewPoint = {
 
 type ProposalRoutePreviewRecord = {
   id: string;
+  org_id: string;
   finalized_schedule_id: string | null;
   priority: 'normal' | 'urgent' | 'emergency';
   time_window_start: Date | null;
@@ -288,7 +291,16 @@ async function buildRoutePreview(args: {
       waypoints,
     });
   } catch (routeError) {
-    console.error('[route-preview]', routeError);
+    logger.error(
+      {
+        event: 'visit_route.preview_failed',
+        orgId: proposal.org_id,
+        entityType: 'visit_schedule_proposal',
+        entityId: proposal.id,
+        code: 'ROUTE_PREVIEW_FAILED',
+      },
+      routeError,
+    );
     plan = {
       status: 'unavailable',
       note: 'ルートプレビューの計算に失敗しました',
@@ -751,16 +763,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'visit_schedule_proposal_approved',
-          target_type: 'VisitScheduleProposal',
-          target_id: id,
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_proposal_approved',
+        targetType: 'VisitScheduleProposal',
+        targetId: id,
       });
 
       return updated;
@@ -804,22 +810,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'visit_schedule_proposal_rejected',
-          target_type: 'VisitScheduleProposal',
-          target_id: id,
-          changes: buildProposalRejectAuditChanges({
-            rejectReason,
-            proposalStatusFrom: existing.proposal_status,
-            patientContactStatusFrom: existing.patient_contact_status,
-            patientContactStatusTo,
-          }),
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
-        },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_proposal_rejected',
+        targetType: 'VisitScheduleProposal',
+        targetId: id,
+        changes: buildProposalRejectAuditChanges({
+          rejectReason,
+          proposalStatusFrom: existing.proposal_status,
+          patientContactStatusFrom: existing.patient_contact_status,
+          patientContactStatusTo,
+        }),
       });
 
       return updated;
@@ -892,20 +892,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'visit_schedule_contact_logged',
-          target_type: 'VisitScheduleProposal',
-          target_id: id,
-          changes: {
-            outcome,
-            contact_method: data.contact_method,
-            callback_due_at: data.callback_due_at ?? null,
-          },
-          ip_address: ctx.ipAddress,
-          user_agent: ctx.userAgent,
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_contact_logged',
+        targetType: 'VisitScheduleProposal',
+        targetId: id,
+        changes: {
+          outcome,
+          contact_method: data.contact_method,
+          callback_due_at: data.callback_due_at ?? null,
         },
       });
 
@@ -1308,20 +1302,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
-    await tx.auditLog.create({
-      data: {
-        org_id: ctx.orgId,
-        actor_id: ctx.userId,
-        action: 'visit_schedule_confirmed',
-        target_type: 'VisitSchedule',
-        target_id: schedule.id,
-        changes: {
-          proposal_id: id,
-          reschedule_source_schedule_id: existing.reschedule_source_schedule_id,
-          vehicle_resource_id: existing.vehicle_resource_id ?? null,
-        },
-        ip_address: ctx.ipAddress,
-        user_agent: ctx.userAgent,
+    await createAuditLogEntry(tx, ctx, {
+      action: 'visit_schedule_confirmed',
+      targetType: 'VisitSchedule',
+      targetId: schedule.id,
+      changes: {
+        proposal_id: id,
+        reschedule_source_schedule_id: existing.reschedule_source_schedule_id,
+        vehicle_resource_id: existing.vehicle_resource_id ?? null,
       },
     });
 

@@ -6,10 +6,27 @@ const { withOrgContextMock, queueOverdueReportResponseRemindersMock } = vi.hoist
   queueOverdueReportResponseRemindersMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
-  ) => handler,
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
+  ) => {
+    return (req: NextRequest, routeContext = emptyRouteContext) =>
+      handler(
+        req,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+        routeContext,
+      );
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -23,31 +40,19 @@ vi.mock('@/server/services/report-reminders', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return Object.assign(
-    new NextRequest('http://localhost/api/care-reports/reminders', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-    {
-      orgId: 'org_1',
-      userId: 'user_1',
-    },
-  );
+  return new NextRequest('http://localhost/api/care-reports/reminders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 function createMalformedRequest() {
-  return Object.assign(
-    new NextRequest('http://localhost/api/care-reports/reminders', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{"overdue_days":',
-    }),
-    {
-      orgId: 'org_1',
-      userId: 'user_1',
-    },
-  );
+  return new NextRequest('http://localhost/api/care-reports/reminders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"overdue_days":',
+  });
 }
 
 describe('/api/care-reports/reminders POST', () => {
@@ -61,7 +66,7 @@ describe('/api/care-reports/reminders POST', () => {
   });
 
   it('creates overdue response follow-up tasks', async () => {
-    const response = await POST(createRequest({ overdue_days: 5 }));
+    const response = await POST(createRequest({ overdue_days: 5 }), emptyRouteContext);
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
@@ -77,7 +82,7 @@ describe('/api/care-reports/reminders POST', () => {
   });
 
   it('rejects non-object JSON payloads before reminder queueing', async () => {
-    const response = await POST(createRequest([]));
+    const response = await POST(createRequest([]), emptyRouteContext);
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
@@ -91,7 +96,7 @@ describe('/api/care-reports/reminders POST', () => {
   });
 
   it('rejects malformed JSON before reminder queueing', async () => {
-    const response = await POST(createMalformedRequest());
+    const response = await POST(createMalformedRequest(), emptyRouteContext);
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');

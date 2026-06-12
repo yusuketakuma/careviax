@@ -6,24 +6,30 @@ const {
   visitRecordFindManyMock,
   careReportFindManyMock,
   pharmacistShiftFindManyMock,
+  withAuthContextMock,
 } = vi.hoisted(() => ({
   membershipFindManyMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'admin' },
+        routeContext: { params: Promise<Record<string, never>> },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest, routeContext = emptyRouteContext) =>
+        handler(req, { userId: 'admin_1', orgId: 'org_1', role: 'admin' }, routeContext);
+    },
+  ),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler(
-        Object.assign(req, {
-          userId: 'admin_1',
-          orgId: 'org_1',
-          role: 'admin',
-        }),
-      );
-  },
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -151,6 +157,7 @@ describe('/api/admin/staff-metrics GET', () => {
   it('returns staff KPI rows and summary balances', async () => {
     const response = await GET(
       createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -186,6 +193,7 @@ describe('/api/admin/staff-metrics GET', () => {
   it('trims a valid month query before building the date range', async () => {
     const response = await GET(
       createRequest('http://localhost/api/admin/staff-metrics?month=%202026-03%20'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -227,6 +235,7 @@ describe('/api/admin/staff-metrics GET', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -254,6 +263,7 @@ describe('/api/admin/staff-metrics GET', () => {
     async (month) => {
       const response = await GET(
         createRequest(`http://localhost/api/admin/staff-metrics?month=${month}`),
+        emptyRouteContext,
       );
 
       if (!response) throw new Error('response is required');
@@ -269,7 +279,10 @@ describe('/api/admin/staff-metrics GET', () => {
   );
 
   it('defaults to the current month when the month query is omitted', async () => {
-    const response = await GET(createRequest('http://localhost/api/admin/staff-metrics'));
+    const response = await GET(
+      createRequest('http://localhost/api/admin/staff-metrics'),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

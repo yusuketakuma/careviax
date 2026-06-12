@@ -1,13 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & {
-  orgId: string;
-  userId: string;
-  ipAddress?: string;
-  userAgent?: string;
-};
-
 const {
   businessHolidayFindManyMock,
   businessHolidayFindFirstMock,
@@ -24,16 +17,19 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
+    return (req: NextRequest, routeContext?: unknown) =>
       handler(
-        Object.assign(req, {
+        req,
+        {
           orgId: 'org_1',
           userId: 'user_1',
+          role: 'admin',
           ipAddress: '127.0.0.1',
           userAgent: 'vitest',
-        }) as AuthenticatedTestRequest,
+        },
+        routeContext,
       );
   },
 }));
@@ -55,9 +51,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/business-holidays${search}`);

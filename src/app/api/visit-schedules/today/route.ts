@@ -1,19 +1,20 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const pharmacistId = searchParams.get('pharmacist_id');
-    const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+    const assignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
 
     const schedules = await prisma.visitSchedule.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         // scheduled_date(@db.Date)は UTC 深夜で保存されるため UTC レンジで比較する
         scheduled_date: todayUtcRange(),
         schedule_status: {

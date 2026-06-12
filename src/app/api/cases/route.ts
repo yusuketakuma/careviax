@@ -1,4 +1,4 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
@@ -14,8 +14,8 @@ import { z } from 'zod';
 
 const caseStatusSchema = z.enum(CASE_STATUSES);
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const patientId = searchParams.get('patient_id') ?? undefined;
@@ -28,11 +28,11 @@ export const GET = withAuth(
     }
     const query = searchParams.get('q')?.trim() ?? '';
 
-    const caseAssignmentWhere = buildCareCaseAssignmentWhere(req);
+    const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
     const cases = await prisma.careCase.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(patientId ? { patient_id: patientId } : {}),
         ...(status ? { status: status.data } : {}),
         ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
@@ -79,7 +79,7 @@ export const GET = withAuth(
         ? []
         : await prisma.user.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { in: pharmacistIds },
             },
             select: {
@@ -108,8 +108,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -122,14 +122,14 @@ export const POST = withAuth(
 
     // Verify patient belongs to org
     const patient = await prisma.patient.findFirst({
-      where: applyPatientAssignmentWhere({ id: patient_id, org_id: req.orgId }, req),
+      where: applyPatientAssignmentWhere({ id: patient_id, org_id: ctx.orgId }, ctx),
     });
     if (!patient) return notFound('患者が見つかりません');
 
-    const careCase = await withOrgContext(req.orgId, async (tx) => {
+    const careCase = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.careCase.create({
         data: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           patient_id,
           ...(referral_date ? { referral_date: new Date(referral_date) } : {}),
           ...rest,

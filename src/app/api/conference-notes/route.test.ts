@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  withAuthMock,
+  withAuthContextMock,
   withOrgContextMock,
   conferenceNoteFindManyMock,
   conferenceNoteCreateMock,
@@ -32,7 +32,7 @@ const {
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(),
+  withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
   conferenceNoteCreateMock: vi.fn(),
@@ -62,12 +62,19 @@ const {
   resolveOperationalTasksMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: 'pharmacist' },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
   ) => {
-    withAuthMock.mockImplementation(handler);
-    return handler;
+    withAuthContextMock.mockImplementation(handler);
+    return (
+      req: NextRequest,
+      routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+    ) => handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
   },
 }));
 
@@ -80,7 +87,11 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest({
   method = 'GET',

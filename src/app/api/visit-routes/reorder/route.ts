@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { formatDateKey } from '@/lib/date-key';
@@ -90,8 +92,8 @@ async function withSerializableMixedRouteReorderTransaction<T>(
   throw new MixedRouteReorderRetryLimitError();
 }
 
-export const PATCH = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const PATCH = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -113,15 +115,15 @@ export const PATCH = withAuth(
     let result: MixedRouteReorderResult;
     try {
       result = await withSerializableMixedRouteReorderTransaction<MixedRouteReorderResult>(
-        req.orgId,
+        ctx.orgId,
         async (tx) => {
-          const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(req);
-          const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+          const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
+          const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
           const [schedules, proposals] = await Promise.all([
             scheduleIds.length > 0
               ? tx.visitSchedule.findMany({
                   where: {
-                    org_id: req.orgId,
+                    org_id: ctx.orgId,
                     id: { in: scheduleIds },
                     ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
                   },
@@ -136,7 +138,7 @@ export const PATCH = withAuth(
             proposalIds.length > 0
               ? tx.visitScheduleProposal.findMany({
                   where: {
-                    org_id: req.orgId,
+                    org_id: ctx.orgId,
                     id: { in: proposalIds },
                     ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
                   },
@@ -213,7 +215,7 @@ export const PATCH = withAuth(
           const [scheduleConflict, proposalConflict] = await Promise.all([
             tx.visitSchedule.findFirst({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 pharmacist_id: firstCell.pharmacistId,
                 scheduled_date: new Date(firstCell.dateKey),
                 route_order: { in: routeOrders },
@@ -223,7 +225,7 @@ export const PATCH = withAuth(
             }),
             tx.visitScheduleProposal.findFirst({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 proposed_pharmacist_id: firstCell.pharmacistId,
                 proposed_date: new Date(firstCell.dateKey),
                 route_order: { in: routeOrders },
@@ -242,7 +244,7 @@ export const PATCH = withAuth(
             scheduleUpdates.map(async (item) => {
               const updateResult = await tx.visitSchedule.updateMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: item.id,
                   pharmacist_id: firstCell.pharmacistId,
                   scheduled_date: new Date(firstCell.dateKey),
@@ -261,7 +263,7 @@ export const PATCH = withAuth(
             proposalUpdates.map(async (item) => {
               const updateResult = await tx.visitScheduleProposal.updateMany({
                 where: {
-                  org_id: req.orgId,
+                  org_id: ctx.orgId,
                   id: item.id,
                   proposed_pharmacist_id: firstCell.pharmacistId,
                   proposed_date: new Date(firstCell.dateKey),
@@ -275,26 +277,22 @@ export const PATCH = withAuth(
             }),
           );
 
-          await tx.auditLog.create({
-            data: {
-              org_id: req.orgId,
-              actor_id: req.userId,
-              action: 'visit_routes_mixed_reordered',
-              target_type: 'VisitRouteMixedCell',
-              target_id: `${firstCell.pharmacistId}:${firstCell.dateKey}`,
-              changes: {
-                date: firstCell.dateKey,
-                pharmacist_id: firstCell.pharmacistId,
-                schedule_updates: scheduleUpdates.map((item) => ({
-                  schedule_id: item.id,
-                  route_order: item.route_order,
-                })),
-                proposal_updates: proposalUpdates.map((item) => ({
-                  proposal_id: item.id,
-                  route_order: item.route_order,
-                })),
-                confirmation_context: parsed.data.confirmation_context ?? null,
-              },
+          await createAuditLogEntry(tx, ctx, {
+            action: 'visit_routes_mixed_reordered',
+            targetType: 'VisitRouteMixedCell',
+            targetId: `${firstCell.pharmacistId}:${firstCell.dateKey}`,
+            changes: {
+              date: firstCell.dateKey,
+              pharmacist_id: firstCell.pharmacistId,
+              schedule_updates: scheduleUpdates.map((item) => ({
+                schedule_id: item.id,
+                route_order: item.route_order,
+              })),
+              proposal_updates: proposalUpdates.map((item) => ({
+                proposal_id: item.id,
+                route_order: item.route_order,
+              })),
+              confirmation_context: parsed.data.confirmation_context ?? null,
             },
           });
 
@@ -335,7 +333,7 @@ export const PATCH = withAuth(
     await Promise.all(
       successfulResult.case_ids.map((caseId) =>
         notifyWorkflowMutation({
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           payload: { source: 'visit_routes_mixed_reorder', case_id: caseId },
         }),
       ),

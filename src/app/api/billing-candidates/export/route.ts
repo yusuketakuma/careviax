@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { validationError } from '@/lib/api/response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -38,8 +38,8 @@ function readAmountYen(source: unknown, calculationBreakdown: unknown) {
   return typeof sourceRental?.amount_yen === 'number' ? sourceRental.amount_yen : '';
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
@@ -57,10 +57,10 @@ export const GET = withAuth(
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
-    const candidates = await withOrgContext(req.orgId, async (tx) => {
+    const candidates = await withOrgContext(ctx.orgId, async (tx) => {
       const records = await tx.billingCandidate.findMany({
         where: {
-          org_id: req.orgId,
+          org_id: ctx.orgId,
           ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
           billing_domain: billingDomain,
@@ -105,7 +105,7 @@ export const GET = withAuth(
           ? []
           : tx.patient.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 id: { in: patientIds },
               },
               select: {
@@ -117,7 +117,7 @@ export const GET = withAuth(
           ? []
           : tx.residence.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 patient_id: { in: patientIds },
                 is_primary: true,
               },
@@ -131,7 +131,7 @@ export const GET = withAuth(
           ? []
           : tx.prescriptionIntake.findMany({
               where: {
-                org_id: req.orgId,
+                org_id: ctx.orgId,
                 cycle_id: { in: cycleIds },
               },
               orderBy: [{ cycle_id: 'asc' }, { prescribed_date: 'desc' }, { created_at: 'desc' }],
@@ -189,8 +189,8 @@ export const GET = withAuth(
       });
 
       await recordDataExportAudit(tx, {
-        orgId: req.orgId,
-        actorId: req.userId,
+        orgId: ctx.orgId,
+        actorId: ctx.userId,
         targetType: 'billing_candidate',
         format: 'csv',
         recordCount: candidates.length,
@@ -200,8 +200,8 @@ export const GET = withAuth(
           billing_domain: billingDomain,
           statuses: ['confirmed', 'exported'],
         },
-        ipAddress: req.ipAddress,
-        userAgent: req.userAgent,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
       });
 
       return candidates;

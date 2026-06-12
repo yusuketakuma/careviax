@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -11,6 +12,7 @@ import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { ConsentRecord, Prisma } from '@prisma/client';
+import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 const EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY = 'allowed_case_ids';
 
@@ -173,10 +175,11 @@ export const POST = withAuthContext<{ id: string }>(
           data: {
             org_id: ctx.orgId,
             cycle_id: cycle.id,
+            patient_id: existing.patient_id,
             exception_type: 'consent_revoked',
             description: `患者の同意が撤回されました（種別: ${existing.consent_type}）。ケース継続判断が必要です。`,
-            severity: 'warning',
-            status: 'open',
+            severity: 'warning' satisfies ExceptionSeverity,
+            status: 'open' satisfies ExceptionStatus,
           },
         });
       }
@@ -220,31 +223,27 @@ export const POST = withAuthContext<{ id: string }>(
         fallbackReviewTask = true;
       }
 
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'consent_record_revoked',
-          target_type: 'consent_record',
-          target_id: id,
-          changes: {
-            patient_id: existing.patient_id,
-            case_id: existing.case_id ?? null,
-            consent_type: existing.consent_type,
-            reason_provided: reasonProvided,
-            external_access_grants_revoked: revokedExternalGrants.count,
-            workflow_exception_cycle_ids: workflowExceptionCycleIds,
-            fallback_operational_task_created: fallbackReviewTask,
-            before: {
-              is_active: existing.is_active,
-              access_restricted: existing.access_restricted,
-              revoked_date: toAuditDate(existing.revoked_date),
-            },
-            after: {
-              is_active: false,
-              access_restricted: true,
-              revoked_date: now.toISOString(),
-            },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'consent_record_revoked',
+        targetType: 'consent_record',
+        targetId: id,
+        changes: {
+          patient_id: existing.patient_id,
+          case_id: existing.case_id ?? null,
+          consent_type: existing.consent_type,
+          reason_provided: reasonProvided,
+          external_access_grants_revoked: revokedExternalGrants.count,
+          workflow_exception_cycle_ids: workflowExceptionCycleIds,
+          fallback_operational_task_created: fallbackReviewTask,
+          before: {
+            is_active: existing.is_active,
+            access_restricted: existing.access_restricted,
+            revoked_date: toAuditDate(existing.revoked_date),
+          },
+          after: {
+            is_active: false,
+            access_restricted: true,
+            revoked_date: now.toISOString(),
           },
         },
       });

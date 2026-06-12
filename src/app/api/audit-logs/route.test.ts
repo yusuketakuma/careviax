@@ -26,6 +26,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createRequest(headers?: Record<string, string>, search = 'limit=10') {
   return new NextRequest(`http://localhost/api/audit-logs?${search}`, {
     headers,
@@ -42,7 +44,7 @@ describe('/api/audit-logs GET', () => {
   it('returns 401 when unauthenticated', async () => {
     authMock.mockResolvedValue(null);
 
-    const response = (await GET(createRequest())) as Response;
+    const response = (await GET(createRequest(), emptyRouteContext)) as Response;
 
     expect(response.status).toBe(401);
   });
@@ -51,7 +53,10 @@ describe('/api/audit-logs GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    )) as Response;
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
@@ -63,7 +68,10 @@ describe('/api/audit-logs GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    )) as Response;
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
@@ -76,6 +84,7 @@ describe('/api/audit-logs GET', () => {
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' }, 'page=2abc&limit=10abc'),
+      emptyRouteContext,
     )) as Response;
 
     expect(response.status).toBe(200);
@@ -100,6 +109,7 @@ describe('/api/audit-logs GET', () => {
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' }, 'page=999999999&limit=500'),
+      emptyRouteContext,
     )) as Response;
 
     expect(response.status).toBe(200);
@@ -127,6 +137,7 @@ describe('/api/audit-logs GET', () => {
         { 'x-org-id': 'org_1' },
         'actor=user_99&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31',
       ),
+      emptyRouteContext,
     )) as Response;
 
     expect(response.status).toBe(200);
@@ -167,7 +178,10 @@ describe('/api/audit-logs GET', () => {
     ]);
     countMock.mockResolvedValue(1);
 
-    const response = (await GET(createRequest({ 'x-org-id': 'org_1' }))) as Response;
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    )) as Response;
     const body = await response.json();
     const bodyText = JSON.stringify(body);
 

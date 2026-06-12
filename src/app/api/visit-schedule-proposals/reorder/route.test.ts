@@ -44,7 +44,10 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { PATCH } from './route';
+import { PATCH as rawPATCH } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
 
 function buildSerializableConflictError() {
   return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {

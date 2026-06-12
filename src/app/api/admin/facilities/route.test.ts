@@ -41,6 +41,8 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
 function createRequest(headers?: Record<string, string>, body?: unknown) {
@@ -100,7 +102,7 @@ describe('/api/admin/facilities GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
@@ -148,7 +150,7 @@ describe('/api/admin/facilities GET', () => {
       },
     ]);
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -189,6 +191,7 @@ describe('/api/admin/facilities GET', () => {
           ],
         },
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -231,6 +234,7 @@ describe('/api/admin/facilities GET', () => {
           fax: 'FAX-0001',
         },
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -250,7 +254,7 @@ describe('/api/admin/facilities GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await POST(createRequest({ 'x-org-id': 'org_1' }, []));
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }, []), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -262,7 +266,10 @@ describe('/api/admin/facilities GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+    const response = await POST(
+      createMalformedJsonRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

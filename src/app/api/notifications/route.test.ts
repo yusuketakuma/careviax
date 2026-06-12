@@ -1,33 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  getMembershipMock,
-  membershipFindFirstMock,
-  findManyMock,
-  updateManyMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  getMembershipMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  findManyMock: vi.fn(),
-  updateManyMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, findManyMock, updateManyMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    findManyMock: vi.fn(),
+    updateManyMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
 }));
-
-vi.mock('@/lib/auth/context', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/auth/context')>('@/lib/auth/context');
-  return {
-    ...actual,
-    getMembership: getMembershipMock,
-  };
-});
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
@@ -41,7 +26,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, PATCH } from './route';
+import { GET as rawGET, PATCH as rawPATCH } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
 
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
@@ -91,8 +81,7 @@ describe('/api/notifications GET', () => {
 
   it('returns 403 when a non-admin requests another user notifications', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
-    getMembershipMock.mockResolvedValue({ role: 'pharmacist' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
     const response = await GET(
       createRequest('http://localhost/api/notifications?user_id=user_2', {
@@ -110,7 +99,6 @@ describe('/api/notifications GET', () => {
   it('returns 200 when an admin requests another user notifications', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
-    getMembershipMock.mockResolvedValue({ role: 'admin' });
 
     const response = await GET(
       createRequest('http://localhost/api/notifications?user_id=user_2', {

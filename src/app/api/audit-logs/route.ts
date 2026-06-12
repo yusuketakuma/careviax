@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/client';
 import { success, validationError } from '@/lib/api/response';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { buildPagination } from '@/lib/api/search';
 import { parseBoundedInteger } from '@/lib/api/pagination';
@@ -11,8 +11,8 @@ const DEFAULT_AUDIT_LOG_LIMIT = 20;
 const MAX_AUDIT_LOG_PAGE = 10_000;
 const MAX_AUDIT_LOG_LIMIT = 100;
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     const url = 'nextUrl' in req && req.nextUrl ? req.nextUrl : new URL(req.url);
     const filters = parseAuditLogFilters(url.searchParams);
     if ('error' in filters) {
@@ -34,7 +34,7 @@ export const GET = withAuth(
     const { skip, take } = buildPagination(page, limit, MAX_AUDIT_LOG_PAGE);
 
     const where = {
-      org_id: req.orgId,
+      org_id: ctx.orgId,
       ...(filters.actor ? { actor_id: filters.actor } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),

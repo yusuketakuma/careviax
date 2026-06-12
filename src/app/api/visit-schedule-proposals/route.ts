@@ -1,4 +1,6 @@
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { NextRequest } from 'next/server';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
@@ -193,15 +195,15 @@ function dedupeBillingAlerts(alerts: BillingRequirementAlert[]) {
   });
 }
 
-export const GET = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const caseId = searchParams.get('case_id');
     const patientId = searchParams.get('patient_id');
     const status = searchParams.get('status');
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
-    const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
+    const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
     const parsedStatus = status ? proposalStatusSchema.safeParse(status) : null;
     if (parsedStatus && !parsedStatus.success) {
@@ -215,7 +217,7 @@ export const GET = withAuth(
 
     const proposals = await prisma.visitScheduleProposal.findMany({
       where: {
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(caseId ? { case_id: caseId } : {}),
         ...(patientId
           ? {
@@ -304,7 +306,7 @@ export const GET = withAuth(
         ? []
         : await prisma.user.findMany({
             where: {
-              org_id: req.orgId,
+              org_id: ctx.orgId,
               id: { in: pharmacistIds },
             },
             select: {
@@ -328,8 +330,8 @@ export const GET = withAuth(
   },
 );
 
-export const POST = withAuth(
-  async (req: AuthenticatedRequest) => {
+export const POST = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -339,20 +341,20 @@ export const POST = withAuth(
     }
 
     const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(
-      req,
+      ctx,
       parsed.data.preferred_pharmacist_id,
     );
     const accessibleCase = await prisma.careCase.findFirst({
       where: {
         id: parsed.data.case_id,
-        org_id: req.orgId,
+        org_id: ctx.orgId,
         ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
       },
       select: { id: true },
     });
     if (!accessibleCase) return notFound('ケースが見つかりません');
 
-    const refResult = await validateOrgReferences(req.orgId, {
+    const refResult = await validateOrgReferences(ctx.orgId, {
       case_id: parsed.data.case_id,
       ...(parsed.data.preferred_pharmacist_id
         ? { pharmacist_id: parsed.data.preferred_pharmacist_id }
@@ -370,7 +372,7 @@ export const POST = withAuth(
       resolvedVisitType = parsed.data.visit_type;
     } else {
       const activeIntake = await findLatestPrescriptionIntakeClassification(prisma, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         caseId: parsed.data.case_id,
       });
       resolvedVisitType =
@@ -383,7 +385,7 @@ export const POST = withAuth(
         : parsed.data.priority;
 
     const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       caseId: parsed.data.case_id,
       visitType: resolvedVisitType,
       targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
@@ -397,7 +399,7 @@ export const POST = withAuth(
     const vehicleResource = parsed.data.vehicle_resource_id
       ? await prisma.visitVehicleResource.findFirst({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             id: parsed.data.vehicle_resource_id,
             available: true,
           },
@@ -442,7 +444,7 @@ export const POST = withAuth(
       | undefined;
     try {
       const plannerResult = await generateVisitScheduleProposalDrafts({
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         caseId: parsed.data.case_id,
         visitType: resolvedVisitType,
         priority: resolvedPriority,
@@ -496,7 +498,7 @@ export const POST = withAuth(
         perDraftValidationKeys.add(validationKey);
 
         const validation = await validateProposalBillingExclusions({
-          orgId: req.orgId,
+          orgId: ctx.orgId,
           caseId: parsed.data.case_id,
           visitType: resolvedVisitType,
           targetDate: draft.proposed_date,
@@ -579,11 +581,11 @@ export const POST = withAuth(
         ),
       ) ?? [];
 
-    const proposals = await withOrgContext(req.orgId, async (tx) => {
+    const proposals = await withOrgContext(ctx.orgId, async (tx) => {
       if (!parsed.data.reschedule_source_schedule_id) {
         await tx.visitScheduleProposal.updateMany({
           where: {
-            org_id: req.orgId,
+            org_id: ctx.orgId,
             case_id: parsed.data.case_id,
             proposal_status: {
               in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
@@ -596,7 +598,7 @@ export const POST = withAuth(
       }
 
       const allocatedDrafts = await allocateProposalRouteOrders(tx, {
-        orgId: req.orgId,
+        orgId: ctx.orgId,
         drafts: validDrafts,
       });
 
@@ -617,18 +619,14 @@ export const POST = withAuth(
                 item.proposed_date === formatDateKey(proposal.proposed_date),
             ) ?? null;
 
-          return tx.auditLog.create({
-            data: {
-              org_id: req.orgId,
-              actor_id: req.userId,
-              action: 'visit_schedule_proposals_created',
-              target_type: 'VisitScheduleProposal',
-              target_id: proposal.id,
-              changes: {
-                diagnostics: {
-                  accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
-                  rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
-                },
+          return createAuditLogEntry(tx, ctx, {
+            action: 'visit_schedule_proposals_created',
+            targetType: 'VisitScheduleProposal',
+            targetId: proposal.id,
+            changes: {
+              diagnostics: {
+                accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
+                rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
               },
             },
           });
@@ -639,7 +637,7 @@ export const POST = withAuth(
     });
 
     await notifyWorkflowMutation({
-      orgId: req.orgId,
+      orgId: ctx.orgId,
       payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
     });
 

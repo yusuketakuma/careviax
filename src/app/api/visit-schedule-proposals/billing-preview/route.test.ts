@@ -1,31 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewMock } = vi.hoisted(
-  () => ({
-    withAuthMock: vi.fn(
+const { withAuthContextMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewMock } =
+  vi.hoisted(() => ({
+    withAuthContextMock: vi.fn(
       (
         handler: (
-          req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+          req: NextRequest,
+          ctx: { orgId: string; userId: string; role: 'pharmacist' },
+          routeContext: { params: Promise<Record<string, string>> },
         ) => Promise<Response>,
         _options?: unknown,
       ) => {
         void _options;
-        return (req: NextRequest) =>
-          handler(Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          } as const));
+        return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+          handler(
+            req,
+            {
+              orgId: 'org_1',
+              userId: 'user_1',
+              role: 'pharmacist',
+            },
+            routeContext,
+          );
       },
     ),
     careCaseFindFirstMock: vi.fn(),
     buildVisitScheduleBillingPreviewMock: vi.fn(),
-  }),
-);
+  }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -42,7 +47,8 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
 
 import { GET } from './route';
 
-const withAuthRegistrationCalls = [...withAuthMock.mock.calls];
+const emptyRouteContext = { params: Promise.resolve({}) };
+const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
 
 describe('/api/visit-schedule-proposals/billing-preview GET', () => {
   beforeEach(() => {
@@ -73,6 +79,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
       new NextRequest(
         'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -122,6 +129,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
       new NextRequest(
         'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_unassigned&proposed_date=2026-04-03',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');

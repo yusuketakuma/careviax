@@ -1,32 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
+type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
+type DraftRouteContext = { params: Promise<{ id: string }> };
 
-const { withAuthMock, withOrgContextMock, careCaseFindManyMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
+const { withAuthContextMock, withOrgContextMock, careCaseFindManyMock } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
     (
       handler: (
-        req: AuthenticatedTestRequest,
-        ctx: { params: Promise<{ id: string }> },
+        req: NextRequest,
+        authContext: TestAuthContext,
+        ctx: DraftRouteContext,
       ) => Promise<Response>,
     ) => {
-      return (req: NextRequest, ctx: { params: Promise<{ id: string }> }) =>
-        handler(
-          Object.assign(req, {
-            orgId: 'org_1',
-            userId: 'user_1',
-          }),
-          ctx,
-        );
+      return (req: NextRequest, ctx: DraftRouteContext) =>
+        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, ctx);
     },
   ),
   withOrgContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: withAuthMock,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({

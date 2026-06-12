@@ -20,18 +20,39 @@ const { withOrgContextMock, recordDataExportAuditMock, txMock } = vi.hoisted(() 
   },
 }));
 
-type AuthenticatedRouteHandler = ((req: NextRequest & { orgId: string }) => Promise<Response>) & {
+const emptyRouteContext = { params: Promise.resolve({}) };
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'admin',
+  ipAddress: '127.0.0.1',
+  userAgent: 'vitest',
+};
+
+type AuthenticatedRouteHandler = ((
+  req: NextRequest,
+  routeContext?: typeof emptyRouteContext,
+) => Promise<Response>) & {
   authOptions?: {
     permission?: string;
     message?: string;
   };
 };
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: typeof emptyRouteContext,
+    ) => Promise<Response>,
     options?: AuthenticatedRouteHandler['authOptions'],
-  ) => Object.assign(handler, { authOptions: options }),
+  ) =>
+    Object.assign(
+      (req: NextRequest, routeContext = emptyRouteContext) =>
+        handler(req, authContext, routeContext),
+      { authOptions: options },
+    ),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -45,7 +66,7 @@ vi.mock('@/server/services/export-audit', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return Object.assign(new NextRequest(url), { orgId: 'org_1' });
+  return new NextRequest(url);
 }
 
 describe('/api/billing-candidates/export GET', () => {
@@ -100,6 +121,7 @@ describe('/api/billing-candidates/export GET', () => {
   it('exports billing candidates with patient hierarchy and YJ codes', async () => {
     const response = await GET(
       createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -156,6 +178,7 @@ describe('/api/billing-candidates/export GET', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -205,6 +228,7 @@ describe('/api/billing-candidates/export GET', () => {
       createRequest(
         'http://localhost/api/billing-candidates/export?billing_month=2026-06-01&billing_domain=pca_rental',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -227,6 +251,7 @@ describe('/api/billing-candidates/export GET', () => {
       createRequest(
         'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&patient_id=patient_1',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -259,6 +284,7 @@ describe('/api/billing-candidates/export GET', () => {
       createRequest(
         'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&billing_domain=unknown',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -270,6 +296,7 @@ describe('/api/billing-candidates/export GET', () => {
   it('rejects malformed billing months before entering org context', async () => {
     const response = await GET(
       createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -283,6 +310,7 @@ describe('/api/billing-candidates/export GET', () => {
       createRequest(
         'http://localhost/api/billing-candidates/export?patient_id=patient_1%0D%0AContent-Length:%200',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -294,6 +322,7 @@ describe('/api/billing-candidates/export GET', () => {
   it('rejects out-of-range billing months before entering org context', async () => {
     const response = await GET(
       createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-13-01'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -314,6 +343,7 @@ describe('/api/billing-candidates/export GET', () => {
           billingMonth,
         )}`,
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -332,6 +362,7 @@ describe('/api/billing-candidates/export GET', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
