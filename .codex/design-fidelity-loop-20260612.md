@@ -283,3 +283,14 @@ E の設計指針(次ループ):
 ### 次: p1_06(在宅業務の動きを見る)
 - /admin/analytics に新ビュー or 新ページ。月ごとの訪問件数+時間がかかっている工程(CSS バーグラフ、依存追加なし)+改善のヒント4件
 - データ源: visit-records 月次集計+workflow 系。実データ集計 API が無ければ第一版は既存 API(dashboard/cockpit 等)から導出可能な範囲で
+
+## p1_06 完了(2026-06-12 22:58)— 5f9e0792
+
+- **p1_06 合格**: /admin/operations-insights 新設(+/api/admin/operations-insights BFF、canAdmin)。月ごとの訪問件数(直近5ヶ月、buildMonthlyBuckets/tallyMonthlyVisits)+時間がかかっている工程(入力/監査/セット/訪問/報告の created→updated 平均分・直近30日・注記付き)+改善のヒント(最長工程/前月比/実績なし工程から導出、テスト3件)
+- 教訓: **CSS バーの height% は直近親が auto 高だと効かない** — フレックスカラムに h-full + justify-end を付けて外側 h-56 を基準にする / rate-limit カタログはファイル同期テストがあるので route 新設時に必ず追加(F-2 の reopen が漏れていたのを今回検出・追補)
+- 値はデモ seed 由来のデータ差(入力7638分は intake の滞留)。撮影 setup は operations-insights-page 待ち
+- design-screen-map が外部要因で再フォーマットされている点に注意(機能変更なし)
+
+### 次: p1_10(報告テンプレート3カラムエディタ)
+- /admin/document-templates の編集 UI を「テンプレート一覧(種別5)/文面を編集/差し込み項目チップ+保存」の3カラム化
+- 既存: 登録フォーム+登録済み一覧(care_report テンプレ3件 seed 済)。編集ダイアログ or インライン編集の現構造を確認してから差し込み
