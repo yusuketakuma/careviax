@@ -28,7 +28,8 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
-import { fetchActions, PRIORITY_STYLES } from '@/app/(dashboard)/dashboard/actions-section';
+import { fetchDashboardCockpit } from '@/app/(dashboard)/dashboard/dashboard-cockpit';
+import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import {
   SCHEDULE_STATUS_LABELS,
@@ -37,7 +38,13 @@ import {
   type VisitSchedule,
   VISIT_TYPE_LABELS,
 } from '@/app/(dashboard)/schedules/day-view.shared';
-import type { PatientStatusIcon } from '@/types/dashboard-home';
+import type {
+  ActionItem,
+  PatientStatusIcon,
+  PipelineStep,
+  QueuePriority,
+} from '@/types/dashboard-home';
+import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import { PageSection } from '@/components/layout/page-section';
 import type {
   MyDayFocus,
@@ -66,6 +73,49 @@ type Task = {
   related_entity_type: string | null;
   related_entity_id: string | null;
 };
+
+const PRIORITY_STYLES: Record<string, string> = {
+  urgent: 'bg-red-100 text-red-800',
+  high: 'bg-orange-100 text-orange-800',
+  normal: 'bg-blue-100 text-blue-800',
+  low: 'bg-gray-100 text-gray-600',
+};
+
+function toQueuePriority(priority: string): QueuePriority {
+  if (priority === 'emergency' || priority === 'urgent') return 'urgent';
+  if (priority === 'high') return 'high';
+  if (priority === 'low') return 'low';
+  return 'normal';
+}
+
+function buildCockpitPipeline(data: DashboardCockpitResponse): PipelineStep[] {
+  const statusCounts = data.cycle_status_counts ?? {};
+  return PROCESS_STEPS_9.map((step) => ({
+    key: step.key,
+    label: step.label,
+    count: step.statuses.reduce((sum, status) => sum + (statusCounts[status] ?? 0), 0),
+  }));
+}
+
+function buildCockpitActions(data: DashboardCockpitResponse): ActionItem[] {
+  return (data.audit_queue ?? []).map((item) => ({
+    id: item.task_id,
+    item_type: 'task',
+    task_type: 'dispense_audit',
+    queue_label: item.has_narcotic ? '麻薬監査' : '調剤監査',
+    title: `${item.patient_name}さんの監査待ち`,
+    summary: item.has_narcotic
+      ? '麻薬を含む調剤監査を先に確認します'
+      : '調剤監査を完了して次工程に進めます',
+    priority: toQueuePriority(item.priority),
+    due_at: item.due_at,
+    action_href: '/auditing',
+    action_label: '監査を開く',
+    owner_name: null,
+    patient_name: item.patient_name,
+    badges: item.handling_tags,
+  }));
+}
 
 const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
   stable: UserCheck,
@@ -131,10 +181,10 @@ export function MyDayContent({
     enabled: !!orgId && !!userId,
   });
 
-  // Pipeline actions (from dashboard)
+  // Pipeline and urgent audit actions from the cockpit BFF.
   const actionsQuery = useQuery({
-    queryKey: ['dashboard', 'actions', orgId],
-    queryFn: () => fetchActions(orgId),
+    queryKey: ['dashboard', 'cockpit', orgId],
+    queryFn: () => fetchDashboardCockpit(orgId),
     staleTime: 30_000,
     enabled: !!orgId,
   });
@@ -171,8 +221,8 @@ export function MyDayContent({
   const pendingTasks = (tasksQuery.data?.data ?? []).filter(
     (t) => t.status === 'pending' || t.status === 'in_progress',
   );
-  const pipeline = actionsQuery.data?.pipeline ?? [];
-  const urgentActions = (actionsQuery.data?.actions ?? []).filter(
+  const pipeline = actionsQuery.data ? buildCockpitPipeline(actionsQuery.data) : [];
+  const urgentActions = (actionsQuery.data ? buildCockpitActions(actionsQuery.data) : []).filter(
     (a) => a.priority === 'urgent' || a.priority === 'high',
   );
   const unpreparedVisits = todayVisits.filter((v) => !v.preparation?.prepared_at);

@@ -11,7 +11,10 @@ import { SessionTimeoutModal } from '@/components/auth/session-timeout-modal';
 import { MobileOrientationGuard } from '@/components/features/mobile/mobile-orientation-guard';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useUIStore } from '@/lib/stores/ui-store';
-import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import {
+  useKeyboardShortcuts,
+  type ShortcutDefinition,
+} from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { ShortcutHelpModal } from '@/components/features/keyboard/shortcut-help-modal';
 import { GLOBAL_SHORTCUTS } from '@/components/features/keyboard/global-shortcuts';
 import { usePathname, useRouter } from 'next/navigation';
@@ -63,9 +66,7 @@ export function shouldUseMinimalShell(pathname: string) {
 
 export function deriveShellViewport(target: Pick<Window, 'matchMedia'>): ShellViewportState {
   const isDesktopLayout = target.matchMedia('(min-width: 1280px)').matches;
-  const isTabletLayout = target.matchMedia(
-    '(min-width: 768px) and (max-width: 1279px)'
-  ).matches;
+  const isTabletLayout = target.matchMedia('(min-width: 768px) and (max-width: 1279px)').matches;
 
   return {
     isReady: true,
@@ -203,10 +204,32 @@ export function AppShell({ children }: AppShellProps) {
 
   const globalShortcuts: ShortcutDefinition[] = useMemo(
     () => [
-      { key: 'k', metaKey: true, handler: handleCommandK, description: '全体検索', scope: 'global' as const },
-      { key: 'n', metaKey: true, handler: handleCommandN, description: '新規作成', scope: 'global' as const },
-      { key: '?', handler: toggleShortcutHelp, description: 'ショートカット一覧', scope: 'global' as const },
-      { key: 'Escape', handler: handleEscape, description: 'モーダルを閉じる', scope: 'global' as const },
+      {
+        key: 'k',
+        metaKey: true,
+        handler: handleCommandK,
+        description: '全体検索',
+        scope: 'global' as const,
+      },
+      {
+        key: 'n',
+        metaKey: true,
+        handler: handleCommandN,
+        description: '新規作成',
+        scope: 'global' as const,
+      },
+      {
+        key: '?',
+        handler: toggleShortcutHelp,
+        description: 'ショートカット一覧',
+        scope: 'global' as const,
+      },
+      {
+        key: 'Escape',
+        handler: handleEscape,
+        description: 'モーダルを閉じる',
+        scope: 'global' as const,
+      },
     ],
     [handleCommandK, handleCommandN, toggleShortcutHelp, handleEscape],
   );
@@ -224,7 +247,10 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible" data-print-container="true">
+    <div
+      className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible"
+      data-print-container="true"
+    >
       {chromeHidden ? null : (
         <Suspense fallback={null}>
           <RouteProgress />
@@ -232,7 +258,11 @@ export function AppShell({ children }: AppShellProps) {
       )}
       {/* Desktop sidebar — always visible on xl+ */}
       {chromeHidden ? null : (
-        <div className="hidden xl:flex xl:shrink-0" data-print-skip="true" data-testid="app-sidebar">
+        <div
+          className="hidden xl:flex xl:shrink-0"
+          data-print-skip="true"
+          data-testid="app-sidebar"
+        >
           <Sidebar />
         </div>
       )}
@@ -240,10 +270,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Tablet/mobile sidebar — Sheet overlay */}
       {!chromeHidden && shouldRenderCompactSidebarSheet(viewport) ? (
         <div className="xl:hidden" data-print-skip="true">
-          <Sheet
-            open={mobileSidebarOpen}
-            onOpenChange={setSidebarOpen}
-          >
+          <Sheet open={mobileSidebarOpen} onOpenChange={setSidebarOpen}>
             <SheetContent side="left" className="w-48 p-0">
               <Sidebar className="border-r-0" closeOnNavigate />
             </SheetContent>
@@ -319,8 +346,6 @@ export function AppShell({ children }: AppShellProps) {
           />
         </div>
       )}
-      {/* GlobalSearchModal は /search ページへ移行(p0_05)。Cmd+K → router.push('/search')。
-          ファイル削除は後続の掃除タスクで実施。 */}
     </div>
   );
 }

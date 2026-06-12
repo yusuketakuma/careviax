@@ -119,6 +119,53 @@ export function getCycleWorkspaceAction(status: string): CycleWorkspaceAction | 
 }
 
 // ---------------------------------------------------------------------------
+// MedicationCycle.overall_status 表示ラベル
+// ---------------------------------------------------------------------------
+
+/**
+ * MedicationCycle.overall_status の状態名。
+ * CYCLE_WORKSPACE_ACTIONS.statusLabel は「次に待っている作業」を表すため、状態名とは分ける。
+ */
+export const CYCLE_STATUS_LABELS: Record<string, string> = {
+  intake_received: '受付済',
+  structuring: '構造化中',
+  inquiry_pending: '疑義照会中',
+  inquiry_resolved: '照会解決',
+  ready_to_dispense: '調剤待ち',
+  dispensing: '調剤中',
+  dispensed: '調剤済',
+  audit_pending: '鑑査待ち',
+  audited: '鑑査済',
+  setting: 'セット中',
+  set_audited: 'セット済',
+  visit_ready: '訪問準備完了',
+  visit_completed: '訪問完了',
+  reported: '報告済',
+  on_hold: '保留',
+  cancelled: '取消',
+};
+
+/** フィルタチップなど狭い UI 用の短縮状態名。 */
+export const CYCLE_STATUS_SHORT_LABELS: Record<string, string> = {
+  intake_received: '受付',
+  structuring: '構造化',
+  inquiry_pending: '疑義',
+  inquiry_resolved: '解決',
+  ready_to_dispense: '調剤待',
+  dispensing: '調剤中',
+  dispensed: '済',
+  audit_pending: '鑑査',
+  audited: '鑑査済',
+  setting: 'セット',
+  set_audited: 'セット済',
+  visit_ready: '訪問準備',
+  visit_completed: '訪問済',
+  reported: '報告済',
+  on_hold: '保留',
+  cancelled: '取消',
+};
+
+// ---------------------------------------------------------------------------
 // 9 工程定義(design/images/new 共通パターン)
 // ---------------------------------------------------------------------------
 

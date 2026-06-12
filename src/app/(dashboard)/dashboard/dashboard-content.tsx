@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, FolderKanban, ListChecks, Receipt, Settings2, Users } from 'lucide-react';
+import { CalendarDays, FolderKanban, Receipt, Settings2, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { Separator } from '@/components/ui/separator';
@@ -8,21 +8,12 @@ import { AdminNavigation } from './admin-navigation';
 import { BillingKpiSection } from './billing-kpi-section';
 import { DashboardCockpit } from './dashboard-cockpit';
 import { DashboardSectionGroup } from './dashboard-section-group';
-import { DashboardSummaryBadges } from './dashboard-summary-badges';
-import { PatientGridSection } from './patient-grid-section';
 import { CoordinationNavigation } from './coordination-navigation';
 import { DashboardRoleGuide } from './dashboard-role-guide';
 import { type DashboardFocusRole } from './dashboard-role-focus';
 import { ScheduleSection } from './schedule-section';
-import { TodayTasksSection } from './today-tasks-section';
 import { WorkbenchNavigation } from './workbench-navigation';
 import { WorkflowNavigation } from './workflow-navigation';
-
-export {
-  DashboardOverview,
-  type DashboardToday,
-  type WorkflowDashboard,
-} from './dashboard-content-legacy';
 
 function SectionHeader({
   icon: Icon,
@@ -91,54 +82,22 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
       <DashboardCockpit />
 
       <DashboardSectionGroup
-        id="dashboard-daily-operations"
-        eyebrow="Daily Operations"
-        title="今日の運用"
-        description="今日の件数と患者カードを最初に置き、出勤直後に「誰の何を進めるか」をカードの主操作からそのまま始められる配置にしています。"
+        id="dashboard-schedule-group"
+        eyebrow="Schedule"
+        title="スケジュール"
+        description="今日の訪問実行と日程調整を見分けやすくするため、日次リストと全体カレンダーをまとめています。"
         tone="daily"
-        contentClassName="space-y-6"
       >
-        <DashboardSummaryBadges />
-
-        <section className="space-y-4" aria-labelledby="dashboard-patients-section">
+        <section className="space-y-4" aria-labelledby="dashboard-schedule-section">
           <SectionHeader
-            icon={Users}
-            title="患者カード"
-            description="リスク順に患者を並べ、カードの主操作から処方受付や個別確認へそのまま遷移します。"
+            icon={CalendarDays}
+            title="スケジュール"
+            description="訪問実行と日程調整を見分けやすくするため、日次リストと全体カレンダーを同じ場所にまとめています。"
           />
-          <div id="dashboard-patients-section">
-            <PatientGridSection />
+          <div id="dashboard-schedule-section">
+            <ScheduleSection focusRole={focusRole} />
           </div>
         </section>
-
-        <Separator />
-
-        <div
-          className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.95fr)]"
-          data-testid="dashboard-priority-actions"
-        >
-          <section className="space-y-4" aria-labelledby="dashboard-tasks-section">
-            <SectionHeader
-              icon={ListChecks}
-              title="今日のタスク"
-              description="緊急度、担当の起点、工程別の滞留を見ながら、上から順にそのまま処理画面へ進みます。"
-            />
-            <div id="dashboard-tasks-section">
-              <TodayTasksSection focusRole={focusRole} />
-            </div>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="dashboard-schedule-section">
-            <SectionHeader
-              icon={CalendarDays}
-              title="スケジュール"
-              description="今日の訪問実行と日程調整を見分けやすくするため、日次リストと全体カレンダーを同じ場所にまとめています。"
-            />
-            <div id="dashboard-schedule-section">
-              <ScheduleSection focusRole={focusRole} />
-            </div>
-          </section>
-        </div>
       </DashboardSectionGroup>
 
       <DashboardSectionGroup

@@ -15,8 +15,7 @@ async function openFirstPatientDetail(
   options: { view?: 'card' | 'profile'; tab?: string } = {},
 ) {
   // 遷移の起点は /patients 最上部の patients-board カード(氏名リンク)。
-  // 旧テーブル(patients-classic)は md 未満で hidden になるため、tbody 行リンク前提だと
-  // mobile-chromium で要素不可視になる。board カードは全ビューポートで表示される。
+  // board カードは全ビューポートで表示される。
   const firstPatientLink = page.getByTestId('patient-board-card-link').first();
   await expect(firstPatientLink).toBeVisible({ timeout: 30_000 });
   const href = await firstPatientLink.getAttribute('href');
@@ -49,28 +48,13 @@ test.describe('patient list and navigation flow', () => {
     await attachLocalSession(context);
   });
 
-  test('patient list loads with data and table columns', async ({ context, isMobile }) => {
+  test('patient list loads with board cards', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    if (isMobile) {
-      // 旧テーブル(patients-classic)は md 未満で hidden になるため、
-      // モバイルは最上部の patients-board カードで患者データの表示を検証する。
-      const cards = page.getByTestId('patient-board-card');
-      await expect(cards.first()).toBeVisible({ timeout: 30_000 });
-      expect(await cards.count()).toBeGreaterThan(0);
-    } else {
-      // Table should render with expected column headers
-      await expect(page.getByRole('columnheader', { name: '氏名' })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: '年齢' })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: 'ケース状態' })).toBeVisible();
-
-      // At least one patient row should be visible (demo data)
-      const rows = page.locator('table tbody tr');
-      await expect(rows.first()).toBeVisible();
-      const rowCount = await rows.count();
-      expect(rowCount).toBeGreaterThan(0);
-    }
+    const cards = page.getByTestId('patient-board-card');
+    await expect(cards.first()).toBeVisible({ timeout: 30_000 });
+    expect(await cards.count()).toBeGreaterThan(0);
 
     // Page header should show title
     await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
@@ -82,56 +66,19 @@ test.describe('patient list and navigation flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('search filters patient list by name', async ({ context, isMobile }) => {
+  test('search filters patient list by name', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    if (isMobile) {
-      // テーブル(と氏名検索の結果リンク)は md 未満で hidden のため、
-      // モバイルは patients-board の検索ボックスで氏名絞り込みを検証する。
-      const firstCardLink = page.getByTestId('patient-board-card-link').first();
-      await expect(firstCardLink).toBeVisible({ timeout: 30_000 });
-      const cardPatientName = (await firstCardLink.textContent())?.trim();
-      expect(cardPatientName).toBeTruthy();
+    const firstCardLink = page.getByTestId('patient-board-card-link').first();
+    await expect(firstCardLink).toBeVisible({ timeout: 30_000 });
+    const cardPatientName = (await firstCardLink.textContent())?.trim();
+    expect(cardPatientName).toBeTruthy();
 
-      await page.getByLabel('氏名・住所で検索').fill(cardPatientName!);
-      await expect(
-        page.getByTestId('patient-board-card-link').filter({ hasText: cardPatientName! }).first(),
-      ).toBeVisible();
-
-      expect(errors).toEqual([]);
-      return;
-    }
-
-    // Get the first patient name from the table for searching
-    const firstPatientName = await page
-      .locator('table tbody tr')
-      .first()
-      .locator('a')
-      .first()
-      .textContent();
-    expect(firstPatientName).toBeTruthy();
-
-    // Search for the patient
-    // NOTE: placeholder の「氏名」は board 検索(氏名・住所で検索)とテーブル検索
-    // (氏名・ふりがなを検索)の両方に部分一致して strict mode violation になるため、
-    // テーブル側のフィルタ入力を aria-label で特定する。
-    const searchInput = page.getByLabel('患者検索');
-    if (await searchInput.isVisible()) {
-      await searchInput.fill(firstPatientName!.trim());
-      // Wait for the query to refetch
-      await page.waitForResponse((res) => res.url().includes('/api/patients'));
-      await waitForStableUi(page);
-
-      // The searched patient should still be visible in the table
-      // (board カードにも同名リンクがあり得るため tbody にスコープする)
-      await expect(
-        page
-          .locator('table tbody')
-          .getByRole('link', { name: firstPatientName!.trim() })
-          .first(),
-      ).toBeVisible();
-    }
+    await page.getByLabel('氏名・住所で検索').fill(cardPatientName!);
+    await expect(
+      page.getByTestId('patient-board-card-link').filter({ hasText: cardPatientName! }).first(),
+    ).toBeVisible();
 
     expect(errors).toEqual([]);
   });

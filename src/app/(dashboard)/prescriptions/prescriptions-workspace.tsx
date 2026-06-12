@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { CYCLE_STATUS_SHORT_LABELS } from '@/lib/prescription/cycle-workspace';
 import {
   useKeyboardShortcuts,
   type ShortcutDefinition,
@@ -34,13 +35,13 @@ const REALTIME_INVALIDATE_EVENTS = new Set([
 
 const STATUS_FILTER_OPTIONS: FilterOption[] = [
   { value: 'all', label: '全' },
-  { value: 'intake_received', label: '受付' },
-  { value: 'structuring', label: '構造化' },
-  { value: 'inquiry_pending', label: '疑義' },
-  { value: 'ready_to_dispense', label: '調剤待' },
-  { value: 'dispensing', label: '調剤中' },
-  { value: 'dispensed', label: '済' },
-  { value: 'on_hold', label: '保留' },
+  { value: 'intake_received', label: CYCLE_STATUS_SHORT_LABELS.intake_received },
+  { value: 'structuring', label: CYCLE_STATUS_SHORT_LABELS.structuring },
+  { value: 'inquiry_pending', label: CYCLE_STATUS_SHORT_LABELS.inquiry_pending },
+  { value: 'ready_to_dispense', label: CYCLE_STATUS_SHORT_LABELS.ready_to_dispense },
+  { value: 'dispensing', label: CYCLE_STATUS_SHORT_LABELS.dispensing },
+  { value: 'dispensed', label: CYCLE_STATUS_SHORT_LABELS.dispensed },
+  { value: 'on_hold', label: CYCLE_STATUS_SHORT_LABELS.on_hold },
 ];
 
 const SOURCE_FILTER_OPTIONS: FilterOption[] = [

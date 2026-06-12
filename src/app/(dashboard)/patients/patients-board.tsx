@@ -167,7 +167,9 @@ function SafetyTagBadge({ tag }: { tag: string }) {
   const className = patientTag?.className ?? getHandlingTagBadgeClass(tag);
   const label = patientTag?.label ?? getHandlingTagLabel(tag);
   return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs', className)}>
+    <span
+      className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs', className)}
+    >
       {label}
     </span>
   );
@@ -201,7 +203,10 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       data-testid="patient-board-card"
       data-attention={card.attention}
     >
-      <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', presentation.accentClass)} />
+      <span
+        aria-hidden="true"
+        className={cn('absolute inset-y-0 left-0 w-1', presentation.accentClass)}
+      />
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 text-sm leading-6">
           <Link
@@ -237,8 +242,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       </div>
 
       <p className="text-sm leading-5 text-muted-foreground">
-        次回:{' '}
-        <span className="font-bold text-foreground">{formatNextVisitLabel(card, now)}</span>
+        次回: <span className="font-bold text-foreground">{formatNextVisitLabel(card, now)}</span>
       </p>
 
       {card.current_step ? <ProcessProgressDots currentStep={card.current_step} /> : <PausedDots />}
@@ -248,10 +252,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       </p>
 
       <div className="mt-auto pt-1">
-        <Link
-          href={card.link_href}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        >
+        <Link href={card.link_href} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
           → {card.link_label}
         </Link>
       </div>
@@ -377,7 +378,7 @@ export function PatientsBoard() {
           id: 'assigned-patients',
           label: '担当患者',
           meta: `${data.assigned_total}名`,
-          href: '#patients-classic',
+          href: '/patients',
         },
         {
           id: 'today-visits',
@@ -392,7 +393,7 @@ export function PatientsBoard() {
           id: 'safety-tagged',
           label: '安全タグあり',
           meta: `${data.safety_tagged_count}名`,
-          href: '#patients-classic',
+          href: '/patients',
         },
       ]
     : [];

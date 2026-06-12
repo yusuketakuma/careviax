@@ -31,6 +31,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { Loading } from '@/components/ui/loading';
 import { toast } from 'sonner';
 
@@ -153,20 +154,20 @@ const STATUS_LABELS: Record<
   string,
   { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
 > = {
-  intake_received: { label: '受付済', variant: 'outline' },
-  structuring: { label: '構造化中', variant: 'outline' },
-  inquiry_pending: { label: '疑義照会中', variant: 'secondary' },
-  ready_to_dispense: { label: '調剤可', variant: 'default' },
-  dispensing: { label: '調剤中', variant: 'default' },
-  audit_pending: { label: '鑑査待ち', variant: 'secondary' },
-  audited: { label: '鑑査済', variant: 'default' },
-  setting: { label: 'セット中', variant: 'default' },
-  set_audited: { label: 'セット済', variant: 'default' },
-  visit_ready: { label: '訪問準備完了', variant: 'default' },
-  visit_completed: { label: '訪問完了', variant: 'default' },
-  reported: { label: '報告済', variant: 'outline' },
-  on_hold: { label: '保留', variant: 'destructive' },
-  cancelled: { label: '中止', variant: 'destructive' },
+  intake_received: { label: CYCLE_STATUS_LABELS.intake_received, variant: 'outline' },
+  structuring: { label: CYCLE_STATUS_LABELS.structuring, variant: 'outline' },
+  inquiry_pending: { label: CYCLE_STATUS_LABELS.inquiry_pending, variant: 'secondary' },
+  ready_to_dispense: { label: CYCLE_STATUS_LABELS.ready_to_dispense, variant: 'default' },
+  dispensing: { label: CYCLE_STATUS_LABELS.dispensing, variant: 'default' },
+  audit_pending: { label: CYCLE_STATUS_LABELS.audit_pending, variant: 'secondary' },
+  audited: { label: CYCLE_STATUS_LABELS.audited, variant: 'default' },
+  setting: { label: CYCLE_STATUS_LABELS.setting, variant: 'default' },
+  set_audited: { label: CYCLE_STATUS_LABELS.set_audited, variant: 'default' },
+  visit_ready: { label: CYCLE_STATUS_LABELS.visit_ready, variant: 'default' },
+  visit_completed: { label: CYCLE_STATUS_LABELS.visit_completed, variant: 'default' },
+  reported: { label: CYCLE_STATUS_LABELS.reported, variant: 'outline' },
+  on_hold: { label: CYCLE_STATUS_LABELS.on_hold, variant: 'destructive' },
+  cancelled: { label: CYCLE_STATUS_LABELS.cancelled, variant: 'destructive' },
 };
 
 // 一包化不適応キーワード（OD錠, 徐放製剤, 貼付剤, 坐剤, 点眼, 吸入等）

@@ -39,6 +39,7 @@ import { JahisSupplementalRecordsCard } from '@/components/features/prescription
 import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { ClipboardPlus, FileQuestion, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PatientOverview } from './patient-detail.types';
@@ -50,7 +51,7 @@ interface PatientDetailTabsProps {
 /** design/ v1.9 p0_08 のタブ構成(タブバーに表示する 7 つ) */
 const PATIENT_DETAIL_TABS = [
   { value: 'memo', label: '薬剤師メモ', description: '今日の見どころ、処方の変化、セットの注意' },
-  { value: 'process', label: '工程', description: '8 工程の進行と次にやること' },
+  { value: 'process', label: '工程', description: '9 工程の進行と次にやること' },
   { value: 'prescriptions', label: '処方・監査', description: '前回比較と薬剤ライン差分' },
   { value: 'medications', label: 'セット', description: '服薬一覧、残薬、セット方法' },
   { value: 'visits', label: '訪問', description: '予定、記録、月次実績' },
@@ -225,8 +226,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
     : `/prescriptions/new?patient_id=${patient.id}`;
 
   // 左ミニカード: 直近の「予定」と、その次の「次回訪問」
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = todayUtcRange().gte;
   const upcomingVisits = patient.visit_schedules
     .filter(
       (visit) =>

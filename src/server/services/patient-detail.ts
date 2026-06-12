@@ -20,6 +20,13 @@ import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-op
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
+  buildAllergyLabel,
+  buildCautionLabels,
+  compactPreviewValues,
+  sortHandlingTags,
+  type WorkspaceConditionInput,
+} from '@/server/services/patient-detail-helpers';
+import {
   buildVisitScheduleCommunicationTargets,
   resolveVisitScheduleCommunicationChannel,
   type VisitScheduleSchedulingPreferenceContext,
@@ -274,10 +281,6 @@ function pickPrimaryCareTeamLink<
   );
 }
 
-function compactPreviewValues(values: Array<string | null | undefined | false>) {
-  return values.filter((value): value is string => Boolean(value && value.trim()));
-}
-
 /**
  * 06_card「直近の動き」: 工程遷移(to_status)→ 出来事ラベル。
  * 例: dispensed への遷移 =「調剤 完了」(設計画像の『調剤 完了 — 佐藤』)。
@@ -300,79 +303,6 @@ const CYCLE_TRANSITION_EVENT_LABELS: Record<string, string> = {
   on_hold: '保留',
   cancelled: '中止',
 };
-
-/** セーフティボード取扱タグの表示優先順(危険度の高い順)。未知タグは末尾。 */
-const HANDLING_TAG_PRIORITY = [
-  'narcotic',
-  'cold_storage',
-  'unit_dose',
-  'half_tablet',
-  'crush_prohibited',
-  'separate_pack',
-  'staple_required',
-  'label_required',
-];
-
-function sortHandlingTags(tags: Iterable<string>): string[] {
-  return [...new Set(tags)].sort((left, right) => {
-    const leftIndex = HANDLING_TAG_PRIORITY.indexOf(left);
-    const rightIndex = HANDLING_TAG_PRIORITY.indexOf(right);
-    return (
-      (leftIndex === -1 ? HANDLING_TAG_PRIORITY.length : leftIndex) -
-      (rightIndex === -1 ? HANDLING_TAG_PRIORITY.length : rightIndex)
-    );
-  });
-}
-
-/** allergy_info(Json)から表示ラベルを合成。例: セフェム系(2019)。 */
-function buildAllergyLabel(allergyInfo: unknown): string | null {
-  if (!Array.isArray(allergyInfo)) return null;
-  const labels = allergyInfo
-    .filter(
-      (entry): entry is { drug_name: string; confirmed_at?: string } =>
-        typeof entry === 'object' &&
-        entry !== null &&
-        typeof (entry as { drug_name?: unknown }).drug_name === 'string' &&
-        (entry as { drug_name: string }).drug_name.trim().length > 0,
-    )
-    .map((entry) => {
-      const withReaction = entry as { reaction?: unknown; noted_year?: unknown };
-      const reaction =
-        typeof withReaction.reaction === 'string' && withReaction.reaction.trim().length > 0
-          ? withReaction.reaction
-          : null;
-      const year =
-        typeof withReaction.noted_year === 'number'
-          ? String(withReaction.noted_year)
-          : typeof entry.confirmed_at === 'string' && entry.confirmed_at.length >= 4
-            ? entry.confirmed_at.slice(0, 4)
-            : null;
-      const detail = [reaction, year].filter(Boolean).join(' ');
-      return detail ? `${entry.drug_name}(${detail})` : entry.drug_name;
-    });
-  return labels.length > 0 ? labels.join('、') : null;
-}
-
-type WorkspaceConditionInput = {
-  condition_type: string;
-  name: string;
-  is_active: boolean;
-  noted_at: Date | null;
-  notes: string | null;
-};
-
-/** PatientCondition(problem)→ 注意ラベル。例: ふらつき(6/5〜経過観察)。 */
-function buildCautionLabels(conditions: WorkspaceConditionInput[]): string[] {
-  return conditions
-    .filter((condition) => condition.condition_type === 'problem' && condition.is_active)
-    .map((condition) => {
-      const dateLabel = condition.noted_at ? format(condition.noted_at, 'M/d') : null;
-      const notes = condition.notes?.trim() || null;
-      if (dateLabel) return `${condition.name}(${dateLabel}〜${notes ?? ''})`;
-      if (notes) return `${condition.name}(${notes})`;
-      return condition.name;
-    });
-}
 
 /**
  * p0_08 カード詳細ワークスペース用の工程集約。
@@ -519,11 +449,9 @@ async function buildPatientWorkspace(
         time_window_start: true,
       },
     }),
-    batchResolveNames(
-      db as typeof prisma,
-      args.orgId,
-      [...new Set(cycle.transition_logs.map((log) => log.actor_id))],
-    ),
+    batchResolveNames(db as typeof prisma, args.orgId, [
+      ...new Set(cycle.transition_logs.map((log) => log.actor_id)),
+    ]),
   ]);
 
   const [currentIntake, previousIntake] = cycle.prescription_intakes;

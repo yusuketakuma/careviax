@@ -33,6 +33,17 @@ import { MyDayContent } from './my-day-content';
 
 setupDomTestEnv();
 
+const emptyCockpit = {
+  generated_at: '2026-04-10T00:00:00.000Z',
+  cycle_status_counts: {},
+  audit_pending_count: 0,
+  narcotic_audit_count: 0,
+  audit_queue: [],
+  today_visits: [],
+  blocked_reasons: [],
+  carryover_count: 0,
+};
+
 describe('MyDayContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,10 +104,7 @@ describe('MyDayContent', () => {
           };
         case 'dashboard':
           return {
-            data: {
-              actions: [],
-              pipeline: [],
-            },
+            data: emptyCockpit,
             isLoading: false,
           };
         case 'my-day-status-changes':
@@ -201,7 +209,7 @@ describe('MyDayContent', () => {
         return { data: { data: [] }, isLoading: false, isError: false };
       }
       if (queryKey[0] === 'dashboard') {
-        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+        return { data: emptyCockpit, isLoading: false, isError: false };
       }
       if (queryKey[0] === 'my-day-status-changes') {
         return { data: [], isLoading: false, isError: false };
@@ -228,7 +236,7 @@ describe('MyDayContent', () => {
         return { data: undefined, isLoading: false, isError: true };
       }
       if (queryKey[0] === 'dashboard') {
-        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+        return { data: emptyCockpit, isLoading: false, isError: false };
       }
       if (queryKey[0] === 'my-day-status-changes') {
         return { data: [], isLoading: false, isError: false };
@@ -282,7 +290,7 @@ describe('MyDayContent', () => {
         return { data: { data: [] }, isLoading: false, isError: false };
       }
       if (queryKey[0] === 'dashboard') {
-        return { data: { actions: [], pipeline: [] }, isLoading: false, isError: false };
+        return { data: emptyCockpit, isLoading: false, isError: false };
       }
       if (queryKey[0] === 'my-day-status-changes') {
         return { data: undefined, isLoading: false, isError: true };
