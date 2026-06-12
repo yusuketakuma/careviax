@@ -25,6 +25,27 @@ export const createVisitVehicleResourceSchema = z.object({
   notes: optionalTrimmedStringSchema,
 });
 
+/** PATCH /api/visit-vehicle-resources/:id 用。指定されたフィールドのみ更新する。 */
+export const updateVisitVehicleResourceSchema = z
+  .object({
+    label: z.string().trim().min(1, '車両名は必須です').optional(),
+    vehicle_code: optionalTrimmedStringSchema,
+    travel_mode: travelModeSchema.optional(),
+    max_stops: z.number().int().min(1).max(50).optional(),
+    max_route_duration_minutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 60)
+      .nullable()
+      .optional(),
+    available: z.boolean().optional(),
+    notes: optionalTrimmedStringSchema,
+  })
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+    message: '更新する項目を指定してください',
+  });
+
 export const visitVehicleResourceQuerySchema = z.object({
   site_id: z.string().trim().min(1).optional(),
   available: z

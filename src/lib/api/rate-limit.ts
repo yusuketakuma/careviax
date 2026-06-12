@@ -734,6 +734,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-routes',
   '/api/visit-routes/reorder',
   '/api/visit-vehicle-resources',
+  '/api/visit-vehicle-resources/:id',
   '/api/visit-schedule-proposals',
   '/api/visit-schedule-proposals/:id',
   '/api/visit-schedule-proposals/billing-preview',

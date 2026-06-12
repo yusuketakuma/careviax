@@ -1456,6 +1456,91 @@ export async function seedDesignFidelityDemo(
     },
   });
 
+  // ── 車両: p0_43 車両マスター 一覧 8 台(軽バン1号 + 追加 7 台、vehicle_code で冪等)──
+  // 点検期限は 14 日超に設定し、13_master の鮮度警告(軽バン1号 8 日後)を変えない。
+  const additionalVehicles: Array<{
+    vehicleCode: string;
+    label: string;
+    travelMode: 'DRIVE' | 'BICYCLE' | 'TWO_WHEELER';
+    maxStops: number;
+    notes: string | null;
+  }> = [
+    {
+      vehicleCode: 'VEH-DEMO-002',
+      label: '軽バン2号',
+      travelMode: 'DRIVE',
+      maxStops: 8,
+      notes: `点検期限 ${formatMonthDay(addDays(today, 45))}`,
+    },
+    {
+      vehicleCode: 'VEH-DEMO-003',
+      label: '軽バン3号',
+      travelMode: 'DRIVE',
+      maxStops: 8,
+      notes: null,
+    },
+    {
+      vehicleCode: 'VEH-DEMO-004',
+      label: '軽自動車1号',
+      travelMode: 'DRIVE',
+      maxStops: 6,
+      notes: '冬タイヤ保管中',
+    },
+    {
+      vehicleCode: 'VEH-DEMO-005',
+      label: '軽自動車2号',
+      travelMode: 'DRIVE',
+      maxStops: 6,
+      notes: `点検期限 ${formatMonthDay(addDays(today, 90))}`,
+    },
+    {
+      vehicleCode: 'VEH-DEMO-006',
+      label: 'ハイブリッド1号',
+      travelMode: 'DRIVE',
+      maxStops: 10,
+      notes: null,
+    },
+    {
+      vehicleCode: 'VEH-DEMO-007',
+      label: '電動自転車1号',
+      travelMode: 'BICYCLE',
+      maxStops: 4,
+      notes: '雨天時は利用不可',
+    },
+    {
+      vehicleCode: 'VEH-DEMO-008',
+      label: '原付バイク1号',
+      travelMode: 'TWO_WHEELER',
+      maxStops: 5,
+      notes: null,
+    },
+  ];
+  for (const vehicle of additionalVehicles) {
+    await prisma.visitVehicleResource.upsert({
+      where: {
+        org_id_vehicle_code: { org_id: ctx.orgId, vehicle_code: vehicle.vehicleCode },
+      },
+      create: {
+        org_id: ctx.orgId,
+        site_id: ctx.siteId,
+        label: vehicle.label,
+        vehicle_code: vehicle.vehicleCode,
+        travel_mode: vehicle.travelMode,
+        max_stops: vehicle.maxStops,
+        available: true,
+        notes: vehicle.notes,
+      },
+      update: {
+        site_id: ctx.siteId,
+        label: vehicle.label,
+        travel_mode: vehicle.travelMode,
+        max_stops: vehicle.maxStops,
+        available: true,
+        notes: vehicle.notes,
+      },
+    });
+  }
+
   // ── 訪問予定: 当日 14:00(持参薬として携行)+ 次回訪問 ────────────────
   // 01_dashboard「14:00 訪問」/ 06_card「14:00 訪問(持参薬として携行)」に整合。
   const timeWindowStart = atLocalTimeToday(14, 0);
