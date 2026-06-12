@@ -21,10 +21,12 @@ type WithAuthOptions = {
 /**
  * Wraps a Route Handler with authentication and org context validation.
  * Reads org_id from the `x-org-id` request header for multi-tenant routing.
+ *
+ * @deprecated Prefer `withAuthContext` for new and modified Route Handlers.
  */
 export function withAuth<TArgs extends unknown[] = []>(
   handler: (req: AuthenticatedRequest, ...args: TArgs) => Promise<NextResponse>,
-  options?: WithAuthOptions
+  options?: WithAuthOptions,
 ) {
   return async (req: NextRequest, ...args: TArgs) => {
     return withRoutePerformance(req, async () => {

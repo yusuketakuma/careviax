@@ -44,9 +44,7 @@ function resolveRequestPath(request: NextRequest): string {
   }
 
   const requestUrl =
-    typeof request.url === 'string' && request.url.length > 0
-      ? request.url
-      : 'http://localhost/';
+    typeof request.url === 'string' && request.url.length > 0 ? request.url : 'http://localhost/';
 
   try {
     return new URL(requestUrl).pathname;
@@ -93,7 +91,7 @@ export function isAdmin(role: MemberRole): boolean {
 
 export async function requireAuthContext(
   request: NextRequest,
-  options?: RequireAuthContextOptions
+  options?: RequireAuthContextOptions,
 ): Promise<{ ctx: AuthContext } | { response: NextResponse }> {
   clearRequestAuthContext();
 
@@ -147,7 +145,11 @@ export async function requireAuthContext(
   }
 
   const sessionOrgId = session?.user?.orgId;
-  const orgId = requestedOrgId || resolvedUser?.org_id || sessionOrgId || (await resolveOrgIdFromUserId(userId));
+  const orgId =
+    requestedOrgId ||
+    resolvedUser?.org_id ||
+    sessionOrgId ||
+    (await resolveOrgIdFromUserId(userId));
   if (!orgId) {
     logSecurityEvent({
       event_type: 'auth_failure',
@@ -208,7 +210,11 @@ export async function requireAuthContext(
         org_id: orgId,
         path,
         method,
-        details: { reason: 'insufficient_permission', required: options.permission, role: ctx.role },
+        details: {
+          reason: 'insufficient_permission',
+          required: options.permission,
+          role: ctx.role,
+        },
       });
       return {
         response: await forbiddenResponse(options.message ?? '権限がありません'),
@@ -219,13 +225,19 @@ export async function requireAuthContext(
   return { ctx };
 }
 
+/**
+ * @preferred Standard wrapper for new and modified Route Handlers.
+ *
+ * Keeps authenticated request metadata in an explicit `ctx` argument and
+ * preserves `routeContext` for App Router params.
+ */
 export function withAuthContext<TParams extends Record<string, string>>(
   handler: (
     req: NextRequest,
     ctx: AuthContext,
-    routeContext: AuthRouteContext<TParams>
+    routeContext: AuthRouteContext<TParams>,
   ) => Promise<NextResponse>,
-  options?: RequireAuthContextOptions
+  options?: RequireAuthContextOptions,
 ) {
   return async (req: NextRequest, routeContext: AuthRouteContext<TParams>) => {
     return withRoutePerformance(req, async () => {
@@ -233,7 +245,7 @@ export function withAuthContext<TParams extends Record<string, string>>(
       if ('response' in authResult) return authResult.response;
 
       return runWithRequestAuthContext(authResult.ctx, () =>
-        handler(req, authResult.ctx, routeContext)
+        handler(req, authResult.ctx, routeContext),
       );
     });
   };
@@ -241,7 +253,7 @@ export function withAuthContext<TParams extends Record<string, string>>(
 
 export async function requireApiKeyOrAuthContext(
   request: NextRequest,
-  options?: RequireApiKeyOrAuthContextOptions
+  options?: RequireApiKeyOrAuthContextOptions,
 ): Promise<
   | { authType: 'apiKey'; response?: never; ctx?: never }
   | { authType: 'auth'; ctx: AuthContext; response?: never }
