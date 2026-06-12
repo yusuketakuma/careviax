@@ -591,6 +591,8 @@ export const API_ROUTE_TEMPLATES = [
   '/api/handoff-board/items',
   '/api/handoff-board/items/:id/read',
   '/api/health',
+  '/api/incident-reports',
+  '/api/incident-reports/:id',
   '/api/inquiry-records',
   '/api/inquiry-records/:id',
   '/api/interventions',

@@ -393,3 +393,28 @@ model WebhookDelivery {
   @@index([status, next_attempt_at])
   @@index([webhook_registration_id])
 }
+
+/// ヒヤリハット記録(p1_09)。患者ケア上の服薬課題(MedicationIssue)とは別の
+/// 業務インシデント報告で、再発防止メモ(起きたこと/原因/すぐ行った対応/
+/// 次から変えること/関係する工程)を構造化して保持する。
+model IncidentReport {
+  id               String    @id @default(cuid())
+  org_id           String
+  site_id          String?
+  patient_id       String? // 任意: 患者に紐づくヒヤリハットのみ設定
+  title            String
+  what_happened    String? // 起きたこと
+  cause            String? // 原因
+  immediate_action String? // すぐ行った対応
+  prevention_plan  String? // 次から変えること
+  related_process  String? // 関係する工程: intake/entry/judgment/dispensing/audit/set/visit/report/billing
+  severity         String    @default("near_miss") // near_miss/level1/level2
+  status           String    @default("open") // open/reviewed/closed
+  occurred_at      DateTime?
+  reported_by      String // User ID
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  @@index([org_id, status])
+  @@index([org_id, created_at])
+}

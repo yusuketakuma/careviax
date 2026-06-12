@@ -341,6 +341,13 @@ CREATE POLICY tenant_isolation ON "AuditLog"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "IncidentReport" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "IncidentReport";
+CREATE POLICY tenant_isolation ON "IncidentReport"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "IncidentReport" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "Template" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "Template"
   USING (org_id = current_setting('app.current_org_id', true))

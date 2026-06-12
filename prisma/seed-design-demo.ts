@@ -436,6 +436,11 @@ export const DEMO_SEED_IDS = {
   visitCapacityDoneSuzuki: 'cmnhdemocapvis002amq9ph-os',
   visitCapacityOkada: 'cmnhdemocapvis003amq9ph-os',
   visitCapacityUchida: 'cmnhdemocapvis004amq9ph-os',
+  /** p1_09: ヒヤリハット記録一覧(デザインと同一表題の4件) */
+  incidentSetDateMistake: 'cmnhdemoinc001amq9ph-os',
+  incidentReportSendDelay: 'cmnhdemoinc002amq9ph-os',
+  incidentVisitTimeMissed: 'cmnhdemoinc003amq9ph-os',
+  incidentLeftoverPhotoLack: 'cmnhdemoinc004amq9ph-os',
 } as const;
 
 /**
@@ -4305,4 +4310,38 @@ export async function seedDesignFidelityDemo(
     completedTodayVisits: 2,
     satoAfternoonVisits: 2,
   });
+
+  // ── p1_09 ヒヤリハット管理: 記録一覧4件(デザインと同一の表題)─────────
+  // 再発防止メモ(5項目)は未記入で seed し、デザインの空フォーム状態を再現する。
+  // created_at の降順が一覧順になるため、デザインの並び順に daysAgo を割り当てる。
+  const incidentSeedSpecs = [
+    { id: DEMO_SEED_IDS.incidentSetDateMistake, title: 'セット日付間違い', daysAgo: 1 },
+    { id: DEMO_SEED_IDS.incidentReportSendDelay, title: '報告書送付遅れ', daysAgo: 2 },
+    { id: DEMO_SEED_IDS.incidentVisitTimeMissed, title: '訪問時間変更の伝達漏れ', daysAgo: 3 },
+    { id: DEMO_SEED_IDS.incidentLeftoverPhotoLack, title: '残薬写真不足', daysAgo: 4 },
+  ] as const;
+  for (const spec of incidentSeedSpecs) {
+    const incidentData = {
+      org_id: ctx.orgId,
+      site_id: ctx.siteId,
+      title: spec.title,
+      what_happened: null,
+      cause: null,
+      immediate_action: null,
+      prevention_plan: null,
+      related_process: null,
+      severity: 'near_miss',
+      status: 'open',
+      occurred_at: atTimeOn(addDays(today, -spec.daysAgo), 16, 0),
+      reported_by: ctx.userId,
+      created_at: atTimeOn(addDays(today, -spec.daysAgo), 17, 30),
+    };
+    await prisma.incidentReport.upsert({
+      where: { id: spec.id },
+      create: { id: spec.id, ...incidentData },
+      update: incidentData,
+    });
+  }
+
+  console.log('p1_09 incident seed created:', { incidents: incidentSeedSpecs.length });
 }

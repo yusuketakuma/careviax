@@ -115,6 +115,12 @@ export function OperationsInsightsContent() {
           >
             在庫と定期処方の予測 →
           </Link>
+          <Link
+            href="/admin/incidents"
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            ヒヤリハット →
+          </Link>
         </div>
       </div>
 
