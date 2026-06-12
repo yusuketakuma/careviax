@@ -53,6 +53,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'new_04_visit',
     targetImage: 'images/new/04_visit.png',
     route: '/visits',
+    setup: async (page) => {
+      // cold compile 直後はスケルトンのまま撮れてしまうため、準備カードの描画を待つ
+      await page
+        .waitForSelector('[data-testid="visit-prep-card"], [data-testid="visits-today-list"]', {
+          timeout: 20_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'new_05_import',

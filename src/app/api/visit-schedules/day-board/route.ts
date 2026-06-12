@@ -4,6 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import type {
   DayBoardPendingProposal,
   DayBoardStaff,
@@ -32,12 +33,7 @@ const dayBoardQuerySchema = z.object({
   date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
 });
 
-function toLocalDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+// 日付キー生成・@db.Date 比較は date-boundary ヘルパーに統一(JST 当日取りこぼし防止)
 
 function minutesOfTimeValue(value: Date | null): number | null {
   if (!value) return null;
@@ -62,10 +58,12 @@ export const GET = withAuthContext(
     }
 
     const now = new Date();
-    const dateKey = parsed.data.date ?? toLocalDateKey(now);
-    const dayStart = new Date(`${dateKey}T00:00:00`);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // scheduled_date(@db.Date)は UTC midnight 保存。ローカル解釈の Date を渡すと
+    // Prisma が UTC 日付へ切り捨てて前日扱いになる(JST で当日全件こぼれる)ため、
+    // ローカル日付キー → UTC midnight に正規化して比較する。
+    const dateKey = parsed.data.date ?? localDateKey(now);
+    const dayStart = utcDateFromLocalKey(dateKey);
+    const dayEnd = addUtcDays(dayStart, 1);
 
     const [memberships, schedules, auditTaskGroups, openTaskGroups, reportPendingCount, proposals] =
       await Promise.all([
@@ -232,9 +230,10 @@ export const GET = withAuthContext(
 
     // 未確定候補: 確定した場合の担当余白(分)の変化を試算
     const pharmacistNameById = new Map(staffAll.map((member) => [member.id, member.name]));
+    // proposed_date(@db.Date)は UTC midnight 保存なのでそのまま範囲端に使う
     const proposalImpactPairs = proposals.map((proposal) => ({
       pharmacistId: proposal.proposed_pharmacist_id,
-      dayStart: new Date(`${toLocalDateKey(proposal.proposed_date)}T00:00:00`),
+      dayStart: proposal.proposed_date,
     }));
     const impactSchedules =
       proposalImpactPairs.length === 0
@@ -243,14 +242,10 @@ export const GET = withAuthContext(
             where: {
               org_id: ctx.orgId,
               schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-              OR: proposalImpactPairs.map((pair) => {
-                const nextDay = new Date(pair.dayStart);
-                nextDay.setDate(nextDay.getDate() + 1);
-                return {
-                  pharmacist_id: pair.pharmacistId,
-                  scheduled_date: { gte: pair.dayStart, lt: nextDay },
-                };
-              }),
+              OR: proposalImpactPairs.map((pair) => ({
+                pharmacist_id: pair.pharmacistId,
+                scheduled_date: { gte: pair.dayStart, lt: addUtcDays(pair.dayStart, 1) },
+              })),
             },
             select: {
               pharmacist_id: true,
@@ -262,11 +257,13 @@ export const GET = withAuthContext(
 
     const pendingProposals: DayBoardPendingProposal[] = await Promise.all(
       proposals.map(async (proposal) => {
-        const proposedDateKey = toLocalDateKey(proposal.proposed_date);
+        const proposedDateTime = proposal.proposed_date.getTime();
+        // @db.Date は UTC midnight 保存なので表示キーも UTC 日付部分を使う
+        const proposedDateKey = proposal.proposed_date.toISOString().slice(0, 10);
         const sameDayVisits = impactSchedules.filter(
           (schedule) =>
             schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
-            toLocalDateKey(schedule.scheduled_date) === proposedDateKey,
+            schedule.scheduled_date.getTime() === proposedDateTime,
         );
         const occupied = sameDayVisits.reduce(
           (sum, schedule) =>
@@ -306,8 +303,7 @@ export const GET = withAuthContext(
       }),
     );
 
-    const auditPendingCount =
-      auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
+    const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
 
     const responseData: ScheduleDayBoardResponse = {
       generated_at: now.toISOString(),
