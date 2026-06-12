@@ -394,8 +394,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_32_adverse_event_prevention_flow',
     targetImage: 'images/P0/p0_32_adverse_event_prevention_flow.png',
-    route: null,
-    note: '/issues は空ディレクトリ(404)。D-6 でページ実装後にマッピング',
+    // prisma/seed-design-demo.ts の田中一郎(服薬課題 4 カテゴリ・用量確認のみ相談中)
+    route: '/patients/cmnhdemopt001amq9ph-os/safety-check',
+    setup: async (page) => {
+      // 気になる点カードと確認の流れ(API 取得完了)を待つ
+      await page
+        .waitForSelector('[data-testid="safety-concern-interaction"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_33_evidence_photo_management',

@@ -10,7 +10,7 @@ import { ja } from 'date-fns/locale';
 import { CheckCircle2, ClipboardPlus, Edit3, Plus, Printer, QrCode, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import {
@@ -1252,6 +1252,14 @@ export function MedicationsContent({
               <CardDescription>
                 残薬の推移、減数候補、減数禁止薬の注意を次回処方へつなげます。
               </CardDescription>
+              <CardAction>
+                <Link
+                  href={`/patients/${patientId}/residual-adjustment`}
+                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                >
+                  残薬調整を開く
+                </Link>
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
               <ResidualMedicationChart patientId={patientId} />
