@@ -27,9 +27,11 @@ type CheckResult = {
 const PACKAGE_JSON_PATH = 'package.json';
 const E2E_DUPLICATE_CHECK_SCRIPT = 'db:e2e:check-care-report-duplicates';
 const E2E_ROUTE_ORDER_CONFLICT_CHECK_SCRIPT = 'db:e2e:check-visit-route-order-conflicts';
+const E2E_MIGRATION_PRECONDITION_SCRIPT = 'db:e2e:verify-migration-preconditions';
 const REQUIRED_MEDICAL_UI_GATE_PRECHECKS = [
   E2E_DUPLICATE_CHECK_SCRIPT,
   E2E_ROUTE_ORDER_CONFLICT_CHECK_SCRIPT,
+  E2E_MIGRATION_PRECONDITION_SCRIPT,
 ] as const;
 
 const REQUIRED_RLS_TABLES = [
@@ -347,14 +349,18 @@ async function checkDatabaseRlsAndAudit(): Promise<CheckResult> {
   }
 }
 
-function checkScriptEntry(): CheckResult {
-  return {
-    name: 'script:db:check-care-report-duplicates',
-    status: fs.existsSync('tools/scripts/check-care-report-duplicates.ts') ? 'pass' : 'fail',
-    detail: fs.existsSync('tools/scripts/check-care-report-duplicates.ts')
-      ? 'found'
-      : 'tools/scripts/check-care-report-duplicates.ts is missing',
-  };
+function checkScriptEntries(): CheckResult[] {
+  const requiredScriptFiles = [
+    'tools/scripts/check-care-report-duplicates.ts',
+    'tools/scripts/check-visit-route-order-conflicts.ts',
+    'tools/scripts/verify-migration-preconditions.ts',
+  ];
+
+  return requiredScriptFiles.map((scriptPath) => ({
+    name: `script:${scriptPath}`,
+    status: fs.existsSync(scriptPath) ? 'pass' : 'fail',
+    detail: fs.existsSync(scriptPath) ? 'found' : `${scriptPath} is missing`,
+  }));
 }
 
 function printResults(results: CheckResult[]) {
@@ -374,7 +380,7 @@ async function main() {
     checkCommand('node'),
     ...checkPackageScripts(packageScripts),
     ...checkSpecFiles(),
-    checkScriptEntry(),
+    ...checkScriptEntries(),
     await checkTcpPort('port:app-3012', 3012),
     await checkTcpPort('port:db-5433', 5433),
     await checkDatabaseRlsAndAudit(),
@@ -392,7 +398,7 @@ async function main() {
         '1. Start local PostgreSQL for ph_os_e2e on localhost:5433.',
         '2. Run pnpm --config.verify-deps-before-run=false db:e2e:prepare.',
         '3. Start the app with pnpm dev:e2e:local or pnpm start:e2e:local on localhost:3012, or use pnpm medical-ui:e2e:gate:prod after preparing the database.',
-        '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates and db:e2e:check-visit-route-order-conflicts for local release evidence.',
+        '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates, db:e2e:check-visit-route-order-conflicts, and db:e2e:verify-migration-preconditions for local release evidence.',
         '5. Run targeted Playwright/axe specs listed above.',
       ].join('\n'),
     );

@@ -21,6 +21,7 @@
 - `pnpm db:e2e:prepare`
 - `pnpm db:e2e:check-care-report-duplicates`
 - `pnpm db:e2e:check-visit-route-order-conflicts`
+- `pnpm db:e2e:verify-migration-preconditions`
 - `pnpm medical-ui:e2e:preflight`
 - `pnpm medical-ui:e2e:targeted`
 - `pnpm medical-ui:e2e:gate`
@@ -32,12 +33,14 @@
 
 Run `pnpm medical-ui:e2e:preflight` before the medical UI/UX completion gate. It checks
 that the local `ph_os_e2e` database target, app port, DB port, required Playwright
-specs, CareReport duplicate precheck script, and visit route_order conflict precheck
-script are available before running the final authenticated Playwright/axe pass.
+specs, CareReport duplicate precheck script, visit route_order conflict precheck
+script, and migration precondition verifier are available before running the final
+authenticated Playwright/axe pass.
 
 After the app and local database are ready, use `pnpm medical-ui:e2e:gate` to run the
-preflight, CareReport duplicate precheck, visit route_order conflict precheck, and
-targeted authenticated Playwright/axe coverage in sequence. The gate pins
+preflight, CareReport duplicate precheck, visit route_order conflict precheck,
+read-only migration precondition verifier, and targeted authenticated Playwright/axe
+coverage in sequence. The gate pins
 `DATABASE_URL` and `DIRECT_URL` to the local
 `ph_os_e2e` database so it does not accidentally use the default development DB.
 
@@ -60,6 +63,11 @@ Use `pnpm db:e2e:check-visit-route-order-conflicts` for local E2E route-order
 evidence. The generic `pnpm db:check-visit-route-order-conflicts` command intentionally
 follows the active environment so it can be used against staging or production-like
 targets before applying route-order invariants.
+
+Use `pnpm db:e2e:verify-migration-preconditions` for local E2E migration precondition
+evidence. The generic `pnpm db:verify-migration-preconditions` command intentionally
+follows the active environment so it can be used against staging or production-like
+targets before applying pending hardening migrations.
 
 ## Browser Harness
 

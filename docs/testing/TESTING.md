@@ -123,6 +123,7 @@ pnpm test:e2e:audit:list
 pnpm db:e2e:prepare    # Sync and seed the dedicated local ph_os_e2e database
 pnpm db:e2e:check-care-report-duplicates
 pnpm db:e2e:check-visit-route-order-conflicts
+pnpm db:e2e:verify-migration-preconditions
 pnpm medical-ui:e2e:preflight
 pnpm medical-ui:e2e:targeted
 pnpm medical-ui:e2e:gate
@@ -135,13 +136,17 @@ db:e2e:prepare`, then prefer `pnpm --config.verify-deps-before-run=false
 medical-ui:e2e:gate:prod`. The production gate builds the E2E bundle, starts
 `next start` on `localhost:3012`, runs preflight, runs the local E2E CareReport
 duplicate precheck, runs the local E2E visit route_order conflict precheck,
+checks read-only migration preconditions against the local E2E database,
 executes the targeted Playwright/axe specs, and shuts the server down.
 
 Use `pnpm --config.verify-deps-before-run=false
 db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false
-db:e2e:check-visit-route-order-conflicts` for local E2E evidence. Use the generic
-`pnpm --config.verify-deps-before-run=false db:check-care-report-duplicates`
-or `pnpm --config.verify-deps-before-run=false db:check-visit-route-order-conflicts`
+db:e2e:check-visit-route-order-conflicts` for local E2E evidence. Use
+`pnpm --config.verify-deps-before-run=false db:e2e:verify-migration-preconditions`
+for local E2E migration precondition evidence. Use the generic
+`pnpm --config.verify-deps-before-run=false db:check-care-report-duplicates`,
+`pnpm --config.verify-deps-before-run=false db:check-visit-route-order-conflicts`,
+or `pnpm --config.verify-deps-before-run=false db:verify-migration-preconditions`
 only when intentionally following the active target database before applying
 the related database invariants.
 
