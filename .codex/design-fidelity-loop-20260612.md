@@ -199,3 +199,17 @@ E の設計指針(次ループ):
 - 共通モーダル化(reason-modal 共有部品)が必要か、既存実装の整え(文言・構成の統一)で足りるかを判定してから実装
 
 ### 残りの未消化(F-2 以降): p0_34/35 オフライン同期センター(D-6-1 中〜大)/ p0_10 期間入力ビュー(中)/ E 第二段 / p1 系(D-8)/ 撮影保留2枚(p0_45 PHOS_API スタブ، p1_04 setup)
+
+## F-2 完了(2026-06-12 21:15)— $(git log --format=%h -1)
+
+- **p0_36 合格**: ReasonDialog 共通部品(チップ2列単一選択+メモ任意+戻る/保存する、テスト6件)。監査ワークベンチ+セット監査の差戻しダイアログを置換(Select → チップ)。先頭チップ選択状態で撮影、補足文・フッター構成 target 一致
+- **p0_37 合格**: day-view 準備ダイアログ左下「この訪問を取り消す」→ 取消理由モーダル → DELETE(reason body+AuditLog visit_schedule_cancelled)。取消トーストの「再開する」→ 再開理由モーダル → POST [id]/reopen(cancelled→planned+AuditLog visit_schedule_reopened)。route テスト 8件追加(計65 green)
+- 意図的差分: warning 行(黄)は安全注記として追加 / 理由チップはドメイン語彙(調剤=薬剤間違い等、訪問=患者都合・体調変化等)。target の6種は両画面同一のプレースホルダと判断
+- 教訓: このリポジトリの DialogDescription は sr-only+HelpPopover(?)化される。常時表示の説明は素の <p> を使う / ScheduleStatus に 'scheduled' は無い(再開後は 'planned')/ notifyWorkflowMutation の source は org-realtime.ts の WORKFLOW_REALTIME_SOURCES に登録必須
+
+### 次: p0_34/35(オフライン同期センター+競合解消、D-6-1)の調査ポイント
+
+- p0_34/p0_35 target を読む
+- 基盤: src/lib/stores/sync-engine.ts(VisitRecordConflictSnapshot/overwriteVisitRecordConflict/discardSyncQueueItem)+ offline-store(syncConflicts)+ schedule-day-offline-panel.tsx の SyncConflictCard(二重確認パターン)
+- gap-analysis の指示: 新ルート /offline-sync(+詳細)、409 details.existing_record に最終更新者名+updated_at 追加検討、撮影は IndexedDB へ conflict 注入 seed ヘルパー
+- 中〜大なので: 第一段=同期センター画面(キュー/競合一覧)、第二段=競合解消ビュー の分割を検討
