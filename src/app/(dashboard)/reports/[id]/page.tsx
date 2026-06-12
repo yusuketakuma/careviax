@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, Send, FileText, Clock, Pencil, Printer } from 'lucide-react';
+import { AlertTriangle, Send, FileText, Clock, Pencil, Printer, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { getReportDetailShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
@@ -588,6 +588,13 @@ export default function ReportDetailPage() {
                 <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                   <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                   印刷ビュー
+                </Button>
+              </Link>
+              {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
+              <Link href={`/reports/${id}/share`}>
+                <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                  <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+                  他職種共有
                 </Button>
               </Link>
             </>

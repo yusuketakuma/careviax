@@ -380,8 +380,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_31_residual_adjustment_flow',
     targetImage: 'images/P0/p0_31_residual_adjustment_flow.png',
-    route: null,
-    note: '残薬調整フローの正ルート精査後にマッピング',
+    // prisma/seed-design-demo.ts の田中一郎(残薬3剤+回答済みの残薬調整照会)
+    route: '/patients/cmnhdemopt001amq9ph-os/residual-adjustment',
+    setup: async (page) => {
+      // 残薬カードと調整案テーブルの描画(API 取得完了)を待つ
+      await page
+        .waitForSelector('[data-testid="adjustment-proposal-row"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   // ── 安全・証跡・オフライン ──────────────────────────────────
   {
@@ -637,8 +644,17 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_05_interprofessional_portal',
     targetImage: 'images/P1/p1_05_interprofessional_portal.png',
-    route: null,
-    note: '外部共有ポータル(/shared/[token])はトークン seed 後にマッピング',
+    // 加藤ミサのケアマネ向け報告書(seed-design-demo 固定 ID)の共有プレビュー
+    route: '/reports/cmnhdemorep001amq9ph-os/share',
+    setup: async (page) => {
+      // care-team+返信の並列 fetch 完了 → 返信カードの描画まで待つ
+      await page
+        .waitForSelector('[data-testid="share-reply-card"], [data-testid="share-reply-empty"]', {
+          timeout: 30_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_06_management_analytics_detail',
