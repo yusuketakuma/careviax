@@ -273,3 +273,13 @@ E の設計指針(次ループ):
 - **精査要**: p1_03(visit-brief の正ルート)/ p1_05(/shared/[token] の seed トークン)/ p1_07(在庫予測)/ p0_45(PHOS_API スタブ)
 
 ### 次: p1_04 から実装(レビュー→実装→テスト→撮影→コミット)、続いて p1_06 → p1_10 → p1_14 → p1_08
+
+## p1_04 完了(2026-06-12 22:40)— a7f65189
+
+- **p1_04 合格**: /reports/[id] の draft 時に AI下書きレビュー(今日の要点/服薬状況/残薬/薬剤師の評価/お願いしたいこと = buildAiDraftSections が physician/care_manager content を射影、テスト2件)+宛先別プレビュー(report_type=active、他は「未作成」)+緑「薬剤師確認済みにする」(PATCH status: confirmed)
+- 教訓: report_type の実値は 'physician_report'/'care_manager_report'(接尾辞付き)。seed の draft は最小形式 content のためセクションは「未入力」表示(データ差、射影はテストで担保)
+- 撮影 setup: /reports →「→ 下書きへ」クリック → report-ai-draft-review へ scrollIntoView
+
+### 次: p1_06(在宅業務の動きを見る)
+- /admin/analytics に新ビュー or 新ページ。月ごとの訪問件数+時間がかかっている工程(CSS バーグラフ、依存追加なし)+改善のヒント4件
+- データ源: visit-records 月次集計+workflow 系。実データ集計 API が無ければ第一版は既存 API(dashboard/cockpit 等)から導出可能な範囲で
