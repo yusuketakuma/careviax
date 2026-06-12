@@ -178,6 +178,7 @@ export function getSettingsShortcutLinks(): PageShortcutLink[] {
 
 export function getReportsOverviewShortcutLinks(): PageShortcutLink[] {
   return [
+    { href: '/reports/print', label: '帳票・印刷' },
     { href: '/communications/requests', label: '依頼・照会' },
     { href: '/external', label: '外部連携' },
     { href: '/workflow', label: 'ワークフロー' },

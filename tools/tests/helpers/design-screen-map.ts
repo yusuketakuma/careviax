@@ -407,8 +407,28 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_33_evidence_photo_management',
     targetImage: 'images/P0/p0_33_evidence_photo_management.png',
-    route: null,
-    note: '証跡写真管理の正ルート精査後にマッピング',
+    route: '/visits/evidence',
+    setup: async (page) => {
+      // dev 限定の window フックで target と同じ 8 枚(未同期3/同期済み5)を注入
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedEvidenceDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (window as unknown as { __phosSeedEvidenceDemo?: () => void }).__phosSeedEvidenceDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="evidence-photo-card"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_34_offline_sync_center',
@@ -553,8 +573,17 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_43_vehicle_master',
     targetImage: 'images/P0/p0_43_vehicle_master.png',
-    route: null,
-    note: '車両マスタ管理画面の有無を精査後にマッピング',
+    // 車両マスター 3 カラム(一覧先頭がデフォルト選択済み)
+    route: '/admin/vehicles',
+    setup: async (page) => {
+      // 車両一覧+選択車両のフォーム描画まで待つ
+      await page
+        .waitForSelector('[data-testid="vehicle-list"], [data-testid="vehicle-master"]', {
+          timeout: 30_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_44_settings',
@@ -576,8 +605,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_47_print_preview',
     targetImage: 'images/P0/p0_47_print_preview.png',
-    route: null,
-    note: '印刷プレビューの正ルート精査後にマッピング',
+    // 帳票・印刷プレビューハブ(既定 ?type=set_instruction 相当)
+    route: '/reports/print',
+    setup: async (page) => {
+      // set-plans + prescriptions の取得完了 → A4 プレビューの描画まで待つ
+      await page
+        .waitForSelector('[data-testid="print-preview-sheet"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_48_mobile_evidence_capture',

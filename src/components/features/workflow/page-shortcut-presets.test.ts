@@ -162,6 +162,7 @@ describe('page shortcut presets', () => {
     ]);
 
     expect(getReportsOverviewShortcutLinks()).toEqual([
+      { href: '/reports/print', label: '帳票・印刷' },
       { href: '/communications/requests', label: '依頼・照会' },
       { href: '/external', label: '外部連携' },
       { href: '/workflow', label: 'ワークフロー' },

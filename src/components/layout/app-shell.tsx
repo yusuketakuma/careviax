@@ -60,7 +60,13 @@ export function resolveQuickCreateTarget(pathname: string): QuickCreateTarget {
   );
 }
 
+/**
+ * 末尾セグメント print の帳票印刷ビューは最小シェル(サイドバー・ヘッダーなし)。
+ * 例外: /reports/print は p0_47 の帳票・印刷ハブ(画面内に A4 プレビューを持つ
+ * 通常ワークフロー画面)のため、フルシェルのまま表示する。
+ */
 export function shouldUseMinimalShell(pathname: string) {
+  if (pathname === '/reports/print') return false;
   return pathname.split('/').filter(Boolean).at(-1) === 'print';
 }
 

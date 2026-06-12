@@ -53,6 +53,10 @@ describe('shouldUseMinimalShell', () => {
     expect(shouldUseMinimalShell('/reports/report_1')).toBe(false);
     expect(shouldUseMinimalShell('/patients/p1')).toBe(false);
   });
+
+  it('keeps the print hub (/reports/print) on the full shell', () => {
+    expect(shouldUseMinimalShell('/reports/print')).toBe(false);
+  });
 });
 
 describe('deriveShellViewport', () => {
