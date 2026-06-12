@@ -65,74 +65,89 @@ export const GET = withAuthContext(
     const dayStart = utcDateFromLocalKey(dateKey);
     const dayEnd = addUtcDays(dayStart, 1);
 
-    const [memberships, schedules, auditTaskGroups, openTaskGroups, reportPendingCount, proposals] =
-      await Promise.all([
-        prisma.membership.findMany({
-          where: {
-            org_id: ctx.orgId,
-            is_active: true,
-            role: { in: [...BOARD_MEMBER_ROLES] },
-          },
-          orderBy: [{ user: { name_kana: 'asc' } }],
-          select: {
-            role: true,
-            user: { select: { id: true, name: true } },
-          },
-        }),
-        prisma.visitSchedule.findMany({
-          where: {
-            org_id: ctx.orgId,
-            scheduled_date: { gte: dayStart, lt: dayEnd },
-            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-          },
-          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-          select: {
-            id: true,
-            pharmacist_id: true,
-            visit_type: true,
-            schedule_status: true,
-            priority: true,
-            time_window_start: true,
-            time_window_end: true,
-            confirmed_at: true,
-            facility_batch_id: true,
-            facility_batch: { select: { id: true, facility_id: true } },
-            case_: { select: { patient: { select: { name: true } } } },
-          },
-        }),
-        prisma.dispenseTask.groupBy({
-          by: ['assigned_to'],
-          where: { org_id: ctx.orgId, status: 'completed' },
-          _count: { id: true },
-        }),
-        prisma.task.groupBy({
-          by: ['assigned_to'],
-          where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
-          _count: { id: true },
-        }),
-        prisma.medicationCycle.count({
-          where: { org_id: ctx.orgId, overall_status: 'visit_completed' },
-        }),
-        prisma.visitScheduleProposal.findMany({
-          where: {
-            org_id: ctx.orgId,
-            proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
-            proposed_date: { gte: dayStart },
-          },
-          orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-          take: PENDING_PROPOSAL_LIMIT,
-          select: {
-            id: true,
-            visit_type: true,
-            proposal_status: true,
-            proposed_date: true,
-            time_window_start: true,
-            time_window_end: true,
-            proposed_pharmacist_id: true,
-            case_: { select: { patient: { select: { name: true } } } },
-          },
-        }),
-      ]);
+    const [
+      memberships,
+      schedules,
+      auditTaskGroups,
+      openTaskGroups,
+      reportPendingCount,
+      unavailableShifts,
+      proposals,
+    ] = await Promise.all([
+      prisma.membership.findMany({
+        where: {
+          org_id: ctx.orgId,
+          is_active: true,
+          role: { in: [...BOARD_MEMBER_ROLES] },
+        },
+        orderBy: [{ user: { name_kana: 'asc' } }],
+        select: {
+          role: true,
+          user: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.visitSchedule.findMany({
+        where: {
+          org_id: ctx.orgId,
+          scheduled_date: { gte: dayStart, lt: dayEnd },
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        },
+        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+        select: {
+          id: true,
+          pharmacist_id: true,
+          visit_type: true,
+          schedule_status: true,
+          priority: true,
+          time_window_start: true,
+          time_window_end: true,
+          confirmed_at: true,
+          facility_batch_id: true,
+          facility_batch: { select: { id: true, facility_id: true } },
+          case_: { select: { patient: { select: { name: true } } } },
+        },
+      }),
+      prisma.dispenseTask.groupBy({
+        by: ['assigned_to'],
+        where: { org_id: ctx.orgId, status: 'completed' },
+        _count: { id: true },
+      }),
+      prisma.task.groupBy({
+        by: ['assigned_to'],
+        where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
+        _count: { id: true },
+      }),
+      prisma.medicationCycle.count({
+        where: { org_id: ctx.orgId, overall_status: 'visit_completed' },
+      }),
+      prisma.pharmacistShift.findMany({
+        where: {
+          org_id: ctx.orgId,
+          date: { gte: dayStart, lt: dayEnd },
+          available: false,
+        },
+        select: { user_id: true },
+      }),
+      prisma.visitScheduleProposal.findMany({
+        where: {
+          org_id: ctx.orgId,
+          proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+          proposed_date: { gte: dayStart },
+        },
+        orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+        take: PENDING_PROPOSAL_LIMIT,
+        select: {
+          id: true,
+          visit_type: true,
+          proposal_status: true,
+          proposed_date: true,
+          time_window_start: true,
+          time_window_end: true,
+          proposed_pharmacist_id: true,
+          case_: { select: { patient: { select: { name: true } } } },
+        },
+      }),
+    ]);
 
     // 施設名(facility_batch.facility_id → Facility.name)
     const facilityIds = Array.from(
@@ -196,11 +211,14 @@ export const GET = withAuthContext(
         : 1,
     });
 
-    // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る
+    // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る。
+    // 当日シフトで不在(available=false)のメンバーはボードに出さない(デザイン 03: 休みはレーン非表示)
+    const unavailableUserIds = new Set(unavailableShifts.map((shift) => shift.user_id));
     const seenUserIds = new Set<string>();
     const staffAll: DayBoardStaff[] = [];
     for (const membership of memberships) {
       if (seenUserIds.has(membership.user.id)) continue;
+      if (unavailableUserIds.has(membership.user.id)) continue;
       seenUserIds.add(membership.user.id);
       staffAll.push({
         id: membership.user.id,

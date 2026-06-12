@@ -11,6 +11,7 @@ const {
   proposalFindManyMock,
   facilityFindManyMock,
   contactLogFindFirstMock,
+  pharmacistShiftFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   membershipFindManyMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   proposalFindManyMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
   contactLogFindFirstMock: vi.fn(),
+  pharmacistShiftFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -40,6 +42,7 @@ vi.mock('@/lib/db/client', () => ({
     visitScheduleProposal: { findMany: proposalFindManyMock },
     facility: { findMany: facilityFindManyMock },
     visitScheduleContactLog: { findFirst: contactLogFindFirstMock },
+    pharmacistShift: { findMany: pharmacistShiftFindManyMock },
   },
 }));
 
@@ -67,6 +70,7 @@ describe('/api/visit-schedules/day-board', () => {
     proposalFindManyMock.mockResolvedValue([]);
     facilityFindManyMock.mockResolvedValue([]);
     contactLogFindFirstMock.mockResolvedValue(null);
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -96,6 +100,26 @@ describe('/api/visit-schedules/day-board', () => {
     expect(where?.scheduled_date).toEqual({
       gte: new Date('2026-06-20T00:00:00.000Z'),
       lt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+  });
+
+  it('drops members who are shift-unavailable for the day', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+      { role: 'clerk', user: { id: 'user_4', name: '田中 真' } },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValue([{ user_id: 'user_4' }]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.staff.map((member: { id: string }) => member.id)).toEqual(['user_1']);
+    const shiftWhere = pharmacistShiftFindManyMock.mock.calls.at(0)?.[0]?.where;
+    expect(shiftWhere?.available).toBe(false);
+    expect(shiftWhere?.date).toEqual({
+      gte: new Date('2026-06-12T00:00:00.000Z'),
+      lt: new Date('2026-06-13T00:00:00.000Z'),
     });
   });
 
