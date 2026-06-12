@@ -287,7 +287,7 @@ function BoardSkeleton() {
       role="status"
       aria-label="患者一覧読み込み中"
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1500px]:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, index) => (
           <Skeleton key={index} className="h-44 w-full rounded-lg" />
         ))}
@@ -470,7 +470,7 @@ export function PatientsBoard() {
                 </p>
               ) : (
                 <div
-                  className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1500px]:grid-cols-4"
+                  className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
                   data-testid="patients-board-grid"
                 >
                   {visibleCards.map((card) => (
