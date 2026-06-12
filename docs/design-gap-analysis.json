@@ -36,7 +36,7 @@
       "kind": "改修",
       "currentRoute": null,
       "designSummary": "見出し「全体検索」+大型検索ボックス(プレースホルダ「田中 一郎 アムロジピン 施設A などで検索」)+カテゴリチップ(患者[青選択]/処方カード/薬剤/施設/報告書/連絡先)。結果は縦カードリストで、種別バッジ+太字タイトル(田中 一郎 様 / RX-202405-0001 / アムロジピン錠5mg / 5/20 訪問報告)+文脈サブ文(次回訪問 6/17、前回薬 5/21まで処方変更あり、一包化対象残薬あり、ケアマネ返信待ち)+右端「開く」ボタン。メイン領域全幅のページ風レイアウト。",
-      "currentStateSummary": "src/components/layout/global-search-modal.tsx が Cmd+K(app-shell.tsx で配線)で開く Dialog(sm:max-w-2xl)。タイトル「グローバル検索」で、患者/薬剤マスタ/施設/スタッフ/タスク/処方/訪問記録の 7 API を並列 fetch しカテゴリ別セクション+「すべて表示→」リンクで表示。空クエリ時は localStorage の最近の操作履歴を表示し、↑↓キーボード移動に対応。",
+      "currentStateSummary": "/search ページへ移行済み。Cmd+K は app-shell から /search へ遷移し、空クエリ時は src/lib/navigation/recent-operations.ts の最近の操作履歴を利用する。",
       "fidelityGaps": [
         "文言差: 「グローバル検索」→「全体検索」、プレースホルダを「田中 一郎 アムロジピン 施設A などで検索」へ",
         "カテゴリ絞り込みチップ(選択中=青)が無い: 現状は結果のグルーピング表示のみでカテゴリ切替 UI が存在しない",
@@ -54,7 +54,8 @@
         "患者検索 /api/patients?q= は residences/cases を返すが病名(conditions)と次回訪問は含まない → サブ文用に拡張要"
       ],
       "dataSources": [
-        "src/components/layout/global-search-modal.tsx / src/components/layout/app-shell.tsx(Cmd+K 配線、212 行目)",
+        "src/app/(dashboard)/search/search-content.tsx / src/components/layout/app-shell.tsx(Cmd+K → /search)",
+        "/api/search",
         "/api/patients(src/app/api/patients/route.ts、q+豊富なフィルタ)",
         "/api/drug-masters, /api/facilities, /api/prescription-intakes, /api/visit-records(いずれも q 対応)",
         "/api/care-reports(src/app/api/care-reports/route.ts、q 対応)",
@@ -69,7 +70,7 @@
       "kind": "新規",
       "currentRoute": null,
       "designSummary": "中央カード型モーダル「詳しく絞り込む」+説明「患者名・日付・タグ・担当者で探せます。」。6 条件フォーム: 訪問日(今日〜今週)/担当者(山田 花子)/現在の工程(セット監査待ち)/注意ポイント(麻薬/冷所/処方変更)/予定の状態(患者確認待ち/正式決定)/薬切れ(3日以内)。フッターは左「リセット」(アウトライン)+右「この条件で探す」(青・この画面唯一の主操作)。",
-      "currentStateSummary": "該当実装なし。global-search-modal に詳細条件 UI は無く、「詳しく絞り込む」という文言もリポジトリに存在しない(grep 0 件)。患者一覧(patients-table.tsx)には case_status/risk_level 等の別系統フィルタがあるが、デザインの 6 条件(工程・注意タグ・予定状態・薬切れ)を横断する絞り込みモーダルは未実装で、design-screen-map.ts でも route: null(導線精査待ち)。",
+      "currentStateSummary": "該当実装なし。/search ページに詳細条件 UI は無く、「詳しく絞り込む」という文言もリポジトリに存在しない(grep 0 件)。患者一覧(patients-table.tsx)には case_status/risk_level 等の別系統フィルタがあるが、デザインの 6 条件(工程・注意タグ・予定状態・薬切れ)を横断する絞り込みモーダルは未実装で、design-screen-map.ts でも route: null(導線精査待ち)。",
       "fidelityGaps": [
         "画面全体が新規: モーダル本体、ラベル+入力 6 行のフォーム、リセット/この条件で探すフッター",
         "起動導線が未定: 全体検索モーダル内のリンクか、ダッシュボードのカード一覧フィルタか(p0_05 との親子関係の設計判断)",
@@ -121,7 +122,8 @@
       "dataSources": [
         "src/server/services/patient-detail.ts(getPatientOverview、visit_brief 同梱)+ /api/patients/[id]/overview",
         "src/server/services/visit-brief.ts(getPatientVisitBrief: medication_changes/dispensing_items/must_check_today/ai_summary/unresolved_items)+ /api/patients/[id]/visit-brief",
-        "src/types/visit-brief.ts / src/types/dashboard-home.ts(ActionItem・PatientCard 型、/api/dashboard/home/actions・/api/dashboard/home/patients)",
+        "src/app/api/dashboard/cockpit/route.ts + src/app/api/patients/board/route.ts(旧 dashboard home API の後継)",
+        "src/types/visit-brief.ts / src/types/dashboard-home.ts(ActionItem・PatientCard 型は互換 type として継続)",
         "src/app/api/medication-cycles/route.ts と [id]/transition・[id]/history(工程状態・遷移・履歴)",
         "src/app/(dashboard)/patients/[id]/patient-workspace-rail.tsx + src/components/features/workspace/action-rail.tsx(右パネル 3 点セット)",
         "prisma/schema/prescription.prisma(MedicationCycleStatus 16 値、PrescriptionLine.start_date/end_date)/ prisma/schema/visit.prisma(ScheduleStatus・VisitProposalStatus)",
@@ -1890,13 +1892,13 @@
       },
       {
         "area": "5. 認可・監査の横断状態(新規 API の標準形)",
-        "currentState": "requireRole という関数は存在しない。認可は permission キー方式: permissions.ts の ROLE_PERMISSIONS(canDispense/canAuditDispense/canSet/canAuditSet/canVisit/canReport/canSendCareReport/canManageBilling/canViewDashboard/canAdmin)を hasPermission(role, key) で判定。ラッパーは 2 系統 — withAuth(handler,{permission,message})(middleware.ts、AuthenticatedRequest に userId/orgId/role/ipAddress/userAgent を注入、92 route ファイル)と withAuthContext(handler,{permission})(context.ts、(req, ctx, routeContext) シグネチャ、75 route ファイル)。どちらも requireAuthContext に集約: session 解決 → session_version 検証 → x-org-id による org 上書き(org_switch を AuditLog へ)→ Membership 検証 → permission 検証。失敗は logSecurityEvent が AuditLog(action 'security:auth_failure' 等、org_id='system'/actor='anonymous' フォールバック、60 秒デデュープ)へ fire-and-forget 書き込み。業務監査は AuditLog モデル { org_id, actor_id, action(snake_case), target_type(モデル名), target_id, changes Json, ip_address, user_agent } に対し、48 ファイルが withOrgContext トランザクション内で tx.auditLog.create を直接呼ぶインラインパターン(専用ヘルパー無し)。RLS は withOrgContext(rls.ts)が SET LOCAL app.current_org_id/actor_id/member_role/ip/user_agent を設定し、アプリ層 where org_id との二重防御。読み取りは /api/audit-logs(redactAuditLogsForResponse で changes をマスキング、page/limit 上限)。API キー併用は requireApiKeyOrAuthContext。レスポンスは success/validationError/notFound/forbiddenResponse ヘルパー、ボディは readJsonObjectRequestBody + zod。",
+        "currentState": "requireRole という関数は存在しない。認可は permission キー方式: permissions.ts の ROLE_PERMISSIONS(canDispense/canAuditDispense/canSet/canAuditSet/canVisit/canReport/canSendCareReport/canManageBilling/canViewDashboard/canAdmin)を hasPermission(role, key) で判定。src/app/api の route.ts は withAuthContext(handler,{permission})(context.ts、(req, ctx, routeContext) シグネチャ)または明示的な requireAuthContext / requireApiKeyOrAuthContext に移行済みで、rg \"withAuth\\\\(\" src/app/api -g route.ts は 0 件。いずれも requireAuthContext に集約: session 解決 → session_version 検証 → x-org-id による org 上書き(org_switch を AuditLog へ)→ Membership 検証 → permission 検証。失敗は logSecurityEvent が AuditLog(action 'security:auth_failure' 等、org_id='system'/actor='anonymous' フォールバック、60 秒デデュープ)へ fire-and-forget 書き込み。業務監査は createAuditLogEntry へ移行済みの API route では org_id/actor_id/ip_address/user_agent を一貫して受け渡し、rg \"auditLog\\\\.create\" src/app/api -g route.ts は 0 件。src/server 以下にはサービス境界の raw audit writes が残る。RLS は withOrgContext(rls.ts)が SET LOCAL app.current_org_id/actor_id/member_role/ip/user_agent を設定し、アプリ層 where org_id との二重防御。読み取りは /api/audit-logs(redactAuditLogsForResponse で changes をマスキング、page/limit 上限)。API キー併用は requireApiKeyOrAuthContext。レスポンスは success/validationError/notFound/forbiddenResponse ヘルパー、ボディは readJsonObjectRequestBody + zod。",
         "gaps": [
-          "withAuth と withAuthContext の二重系統が併存(新規実装は withAuthContext が推奨形だが明文化されていない)",
-          "auditLog.create の共通ヘルパーが無くフィールド漏れ(ip_address/user_agent 省略)が起きうる",
+          "旧 withAuth の API route 復帰を CI で検出する静的検査が必要",
+          "raw auditLog.create の API route 復帰を CI で検出する静的検査が必要",
           "site 単位の認可スコープは AuthContext に無い(area 2 参照)。permission キーにも site 概念なし"
         ],
-        "proposal": "本調査で提案する新規 API はすべて次の標準形に従う: (1) export const GET/POST/PATCH = withAuthContext(handler, { permission: <PermissionKey>, message: '…権限がありません' })。自分自身のリソース(me 系/saved-views)は permission 省略しハンドラ内で user_id=ctx.userId 制約。(2) 入力は readJsonObjectRequestBody + zod safeParse → validationError(parsed.error.flatten().fieldErrors)。(3) 書き込みは withOrgContext(ctx.orgId, async (tx) => { …mutation…; await tx.auditLog.create({ org_id: ctx.orgId, actor_id: ctx.userId, action: '<entity>_<verb>', target_type: '<PrismaModel>', target_id, changes, ip_address: ctx.ipAddress, user_agent: ctx.userAgent }); }) で監査と同一トランザクション化。(4) 読み取りも where { org_id: ctx.orgId } を必ず付与(RLS と二重防御)。(5) 新パスは src/lib/api/rate-limit.ts に登録。(6) 新モデルは org_id 列 + @@index([org_id]) + RLS ポリシー(prisma/migrations の既存ポリシー命名に追従)。あわせて小さな createAuditLogEntry(tx, ctx, {action, targetType, targetId, changes}) ヘルパーを src/lib/audit(新設)に切り出すと 48 箇所のインライン重複の漸進的解消にもなる。",
+        "proposal": "本調査で提案する新規 API はすべて次の標準形に従う: (1) export const GET/POST/PATCH = withAuthContext(handler, { permission: <PermissionKey>, message: '…権限がありません' })。自分自身のリソース(me 系/saved-views)は permission 省略しハンドラ内で user_id=ctx.userId 制約。(2) 入力は readJsonObjectRequestBody + zod safeParse → validationError(parsed.error.flatten().fieldErrors)。(3) 書き込みは withOrgContext(ctx.orgId, async (tx) => { …mutation…; await createAuditLogEntry(tx, ctx, { action: '<entity>_<verb>', targetType: '<PrismaModel>', targetId, changes }); }) で監査と同一トランザクション化。(4) 読み取りも where { org_id: ctx.orgId } を必ず付与(RLS と二重防御)。(5) 新パスは src/lib/api/rate-limit.ts に登録。(6) 新モデルは org_id 列 + @@index([org_id]) + RLS ポリシー(prisma/migrations の既存ポリシー命名に追従)。",
         "files": [
           "/Users/yusuke/workspace/careviax/src/lib/auth/context.ts",
           "/Users/yusuke/workspace/careviax/src/lib/auth/middleware.ts",
@@ -1911,14 +1913,14 @@
       },
       {
         "area": "6. workflow-exceptions projection(右パネル『止まっている理由』)",
-        "currentState": "/api/workflow-exceptions は [id] の GET/PATCH のみ(canDispense)。PATCH は解決時に open 例外残数 0 で medicationCycle.exception_status をクリアし cycleTransitionLog を記録。一覧 GET(コレクション)は存在しない。WorkflowException モデルは { org_id, cycle_id?, exception_type, description, severity(critical/warning/info), status(open/resolved/dismissed), resolved_by/at } で patient_id 直接列なし(cycle.case_.patient 経由)。画面向け projection は /api/dashboard/workflow 一本に集約: workflow-dashboard-queries.ts が open 例外 count + 先頭 6 件(cycle→case→patient 連結、assignmentScope で担当絞り込み)を取得し、workflow-dashboard-sections.ts が workflow_exceptions {open, items} / exception_command_center / billing_prevention.previsit_blockers に整形(serverCache TTL あり)。billing-evidence サービスの blocker projection は別系統: describeBillingEvidenceBlockers / blockerDefinition(core.ts L823-947)が missing_visit_consent / missing_management_plan / report_delivery_incomplete 等のキー付き理由(severity, action_href/label 付き)を『計算で』導出するもので、永続化された WorkflowException(調剤監査差戻し等のサイクル事象)とはデータ源が異なる。listBillingEvidenceBlockers は visit-records POST の算定 readiness 検査や /api/billing-evidence/stats・analytics で利用。",
+        "currentState": "/api/workflow-exceptions は [id] の GET/PATCH のみ(canDispense)。PATCH は解決時に open 例外残数 0 で medicationCycle.exception_status をクリアし cycleTransitionLog を記録。一覧 GET(コレクション)は存在しない。WorkflowException モデルは nullable patient_id が追加済みで、作成箇所の一部は患者へ直接紐付く。画面向け projection は /api/dashboard/workflow 一本に集約: workflow-dashboard-queries.ts が open 例外 count + 先頭 6 件(cycle→case→patient 連結、assignmentScope で担当絞り込み)を取得し、workflow-dashboard-sections.ts が workflow_exceptions {open, items} / exception_command_center / billing_prevention.previsit_blockers に整形(serverCache TTL あり)。billing-evidence サービスの blocker projection は別系統: describeBillingEvidenceBlockers / blockerDefinition(core.ts L823-947)が missing_visit_consent / missing_management_plan / report_delivery_incomplete 等のキー付き理由(severity, action_href/label 付き)を『計算で』導出するもので、永続化された WorkflowException(調剤監査差戻し等のサイクル事象)とはデータ源が異なる。listBillingEvidenceBlockers は visit-records POST の算定 readiness 検査や /api/billing-evidence/stats・analytics で利用。",
         "gaps": [
           "GET /api/workflow-exceptions(一覧)が無く、患者別・工程別のフィルタ/グルーピング projection が存在しない",
           "右パネル『止まっている理由』に必要な、WorkflowException(永続事象)+ billing blockers(計算値)を患者単位で合成した統合ビューが無い",
-          "WorkflowException に patient_id/site_id が無く、患者別絞り込みは常に cycle→case join 依存(cycle_id null の例外は患者へ紐付け不能)",
+          "WorkflowException.patient_id は nullable 追加済みだが、既存行 backfill と一覧 projection での直接利用が未完",
           "dashboard/workflow は先頭 6 件のみでページングなし。例外の全量確認画面を支えられない"
         ],
-        "proposal": "新規 API: (1) GET /api/workflow-exceptions — withAuthContext(permission:'canViewDashboard'。解決操作 PATCH は既存どおり canDispense)。クエリ: status(default 'open')/severity/exception_type/patient_id/cycle_id/limit+cursor(keyset)。include で cycle { overall_status, case_ { patient { id, name } } } を返し、resolveDashboardAssignmentScope + buildCycleRelationScope を流用して非管理者の担当スコープ絞り込みをダッシュボードと一致させる。(2) 同ルートに group_by=exception_type|process|patient のサマリモードを追加(_count 集計を返すのみ)。process 軸は exception_type→工程(調剤/監査/セット/訪問/報告)の静的マップを src/lib/constants に定義。(3) 患者右パネル用統合 projection: GET /api/patients/[id]/blockers — withAuthContext(canViewDashboard) で、(a) open WorkflowException(当該患者の cycle 経由)、(b) listBillingEvidenceBlockers / describeBillingEvidenceBlockers の出力(key/reason/severity/action_href/action_label)、(c) report_delivery 滞留を 1 レスポンスに合成し、画面はこの 1 API で『止まっている理由』を描画。読み取り専用のため AuditLog 不要(患者単位アクセスは既存の閲覧監査方針に従う)。レスポンス整形は BillingEvidenceBlocker 型(key/reason/severity/action_href/action_label)へ WorkflowException も正規化し、フロントの型を一本化する。RLS: 既存 org_id where + RLS のまま。スキーマ変更は不要(将来最適化として WorkflowException への patient_id 追加は任意)。レート制限登録を忘れない。",
+        "proposal": "新規 API: (1) GET /api/workflow-exceptions — withAuthContext(permission:'canViewDashboard'。解決操作 PATCH は既存どおり canDispense)。クエリ: status(default 'open')/severity/exception_type/patient_id/cycle_id/limit+cursor(keyset)。include で patient と cycle { overall_status, case_ { patient { id, name } } } を返し、resolveDashboardAssignmentScope + buildCycleRelationScope を流用して非管理者の担当スコープ絞り込みをダッシュボードと一致させる。(2) 同ルートに group_by=exception_type|process|patient のサマリモードを追加(_count 集計を返すのみ)。process 軸は exception_type→工程(調剤/監査/セット/訪問/報告)の静的マップを src/lib/constants に定義。(3) 患者右パネル用統合 projection: GET /api/patients/[id]/blockers — withAuthContext(canViewDashboard) で、(a) open WorkflowException(patient_id 優先、必要に応じ cycle 経由 fallback)、(b) listBillingEvidenceBlockers / describeBillingEvidenceBlockers の出力(key/reason/severity/action_href/action_label)、(c) report_delivery 滞留を 1 レスポンスに合成し、画面はこの 1 API で『止まっている理由』を描画。読み取り専用のため AuditLog 不要(患者単位アクセスは既存の閲覧監査方針に従う)。レスポンス整形は BillingEvidenceBlocker 型(key/reason/severity/action_href/action_label)へ WorkflowException も正規化し、フロントの型を一本化する。RLS: 既存 org_id where + RLS のまま。レート制限登録を忘れない。",
         "files": [
           "/Users/yusuke/workspace/careviax/src/app/api/workflow-exceptions/[id]/route.ts",
           "/Users/yusuke/workspace/careviax/prisma/schema/prescription.prisma",

@@ -39,16 +39,13 @@ it('returns 401 when not authenticated', async () => { ... });
 Use `vi.hoisted()` + `vi.mock()` to set up mocks before module evaluation:
 
 ```typescript
-const { withAuthMock, findManyMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn(),
+const { withAuthContextMock, findManyMock } = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn((handler) => handler),
   findManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler) => {
-    withAuthMock.mockImplementation(handler);
-    return handler;
-  },
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -60,21 +57,26 @@ vi.mock('@/lib/db/client', () => ({
 
 ### Auth Mock Helper
 
-Import from `src/__tests__/helpers/mock-auth.ts`:
+For new API Route Handlers, import the `withAuthContext` helper from
+`src/__tests__/helpers/mock-auth.ts`:
 
 ```typescript
-import { createAuthMock, callWithAuth } from '@/__tests__/helpers';
+import { createAuthContextMock, callWithAuthContext } from '@/__tests__/helpers';
 
-const { handlerMock, withAuthFactory } = createAuthMock();
+const { handlerMock, withAuthContextFactory } = createAuthContextMock();
 
-vi.mock('@/lib/auth/middleware', () => withAuthFactory());
+vi.mock('@/lib/auth/context', () => withAuthContextFactory());
 
 // In tests:
-const res = await callWithAuth(handlerMock, '/api/patients', {
+const res = await callWithAuthContext(handlerMock, '/api/patients', {
   method: 'GET',
   orgId: 'org_1',
 });
 ```
+
+Legacy `withAuth` helpers remain available for tests around existing
+compatibility modules, but new `src/app/api/**/route.ts` tests should use
+`withAuthContext`.
 
 ## Required Error Cases
 
