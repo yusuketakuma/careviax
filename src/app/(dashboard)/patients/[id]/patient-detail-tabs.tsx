@@ -298,7 +298,8 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
         {/* 右レール(300px)は 2xl 以上のみ 3 カラム化する。xl(1280)〜1535px で 3 カラムにすると
             中央カラムが約 360px まで潰れ、受付票 DetailBlock の値(dd)が幅 0 になるため。 */}
         <div className="md:grid md:grid-cols-[280px_minmax(0,1fr)] md:items-start md:gap-6 2xl:grid-cols-[260px_minmax(0,1fr)_300px]">
-          <aside className="hidden space-y-4 md:sticky md:top-6 md:block">
+          {/* モバイルでは縦積みでサマリーを先頭に出す(ガイドライン: 順序を変えず縦積み)。md 以上は左固定カラム */}
+          <aside className="space-y-4 md:sticky md:top-6">
             <Card data-testid="patient-mini-card">
               <CardContent className="flex flex-col gap-4 pt-6 text-sm">
                 <div>
