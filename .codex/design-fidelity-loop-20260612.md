@@ -213,3 +213,17 @@ E の設計指針(次ループ):
 - 基盤: src/lib/stores/sync-engine.ts(VisitRecordConflictSnapshot/overwriteVisitRecordConflict/discardSyncQueueItem)+ offline-store(syncConflicts)+ schedule-day-offline-panel.tsx の SyncConflictCard(二重確認パターン)
 - gap-analysis の指示: 新ルート /offline-sync(+詳細)、409 details.existing_record に最終更新者名+updated_at 追加検討、撮影は IndexedDB へ conflict 注入 seed ヘルパー
 - 中〜大なので: 第一段=同期センター画面(キュー/競合一覧)、第二段=競合解消ビュー の分割を検討
+
+## D-6-1 完了(2026-06-12 21:33)— 991a6b4c
+
+- **p0_34 合格**: /offline-sync 新設。同期キュー一覧(種類=訪問メモ/残薬調整、患者さん=brief cache から名前解決、状態=同期待ち青/失敗赤/競合амber、次にやること=そのまま/再試行/内容を確認)+右レール注意カード(赤文字+すべて再試行)。resetFailedSyncQueueRetries を sync-engine に追加(失敗分も再送対象へ)
+- **p0_35 合格**: 競合行「内容を確認」→ 3カラム比較(あなたの入力/最新の内容/選んでください)。最新の内容を使う=discard(青・主)/自分の入力で上書き=overwrite(二重確認)/あとで決める。結果は OUTCOME_LABELS で日本語化
+- 意図的差分: target の「佐藤薬剤師が5分前に更新。」は 409 details.existing_record に updated_by 表示名+updated_at が無く再現不可 → API 拡張(D-9 follow-up)としてメモ。target の「写真」「一時保存」種別は現キューに無いデータ差
+- 撮影 seed: dev 限定 window.__phosSeedOfflineSyncDemo(enqueueForSync+registerVisitRecordConflict+retryCount 直接更新)
+- 教訓: **normalizeConflictServer は SOAP4 キー+next_visit_suggestion_date のキー欠落(undefined)を弾く**。server snapshot を手で作る時は null を明示する。nav の activePrefixes 固定テスト(navigation-config.test)は仕様変更時に期待値更新
+
+### 次: p0_10 期間入力ビュー(中)の調査ポイント
+
+- p0_10 target を読む(服用期間+薬の加工指定チップ+止まっている理由)
+- 該当ルートの現状確認(処方カード/調剤の期間入力がどこにあるか: prescriptions 配下 or dispensing)
+- design-gap-analysis.md の p0_10 セクションを読む
