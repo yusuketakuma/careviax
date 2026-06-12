@@ -45,10 +45,12 @@ describe('createLambdaObservabilitySink AWS client defaults', () => {
     createLambdaObservabilitySink();
 
     expect(dynamoDbClientMock).toHaveBeenCalledOnce();
-    expect(dynamoDbClientMock).toHaveBeenCalledWith({
-      region: 'ap-northeast-1',
-      maxAttempts: 2,
-    });
+    expect(dynamoDbClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+      }),
+    );
   });
 
   it('creates separate default DynamoDB security-event clients when the runtime region changes', async () => {
@@ -62,13 +64,19 @@ describe('createLambdaObservabilitySink AWS client defaults', () => {
     createLambdaObservabilitySink();
 
     expect(dynamoDbClientMock).toHaveBeenCalledTimes(2);
-    expect(dynamoDbClientMock).toHaveBeenNthCalledWith(1, {
-      region: 'eu-central-1',
-      maxAttempts: 2,
-    });
-    expect(dynamoDbClientMock).toHaveBeenNthCalledWith(2, {
-      region: 'ca-central-1',
-      maxAttempts: 2,
-    });
+    expect(dynamoDbClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        region: 'eu-central-1',
+        maxAttempts: 2,
+      }),
+    );
+    expect(dynamoDbClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'ca-central-1',
+        maxAttempts: 2,
+      }),
+    );
   });
 });

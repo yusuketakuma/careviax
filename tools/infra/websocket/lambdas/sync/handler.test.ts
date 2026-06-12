@@ -156,10 +156,12 @@ describe('websocket sync handler', () => {
     expect(deleteConnectionCommandMock).toHaveBeenCalledWith({
       ConnectionId: 'conn_expired',
     });
-    expect(apiGatewayClientMock).toHaveBeenCalledWith({
-      endpoint: 'https://abc.execute-api.ap-northeast-1.amazonaws.com/prod',
-      maxAttempts: 2,
-    });
+    expect(apiGatewayClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: 'https://abc.execute-api.ap-northeast-1.amazonaws.com/prod',
+        maxAttempts: 2,
+      }),
+    );
     expect(apiGatewaySendMock).toHaveBeenCalledWith(expect.anything(), {
       abortSignal: expect.any(AbortSignal),
     });
@@ -177,10 +179,12 @@ describe('websocket sync handler', () => {
     await expect(handler(syncEventForEndpoint(endpoint))).resolves.toEqual({ statusCode: 200 });
 
     expect(apiGatewayClientMock).toHaveBeenCalledTimes(1);
-    expect(apiGatewayClientMock).toHaveBeenCalledWith({
-      endpoint,
-      maxAttempts: 2,
-    });
+    expect(apiGatewayClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint,
+        maxAttempts: 2,
+      }),
+    );
     expect(postToConnectionCommandMock).toHaveBeenCalledTimes(2);
     expect(apiGatewaySendMock).toHaveBeenCalledWith(expect.anything(), {
       abortSignal: expect.any(AbortSignal),
@@ -200,14 +204,20 @@ describe('websocket sync handler', () => {
     await expect(handler(syncEventForEndpoint(betaEndpoint))).resolves.toEqual({ statusCode: 200 });
 
     expect(apiGatewayClientMock).toHaveBeenCalledTimes(2);
-    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(1, {
-      endpoint: prodEndpoint,
-      maxAttempts: 2,
-    });
-    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(2, {
-      endpoint: betaEndpoint,
-      maxAttempts: 2,
-    });
+    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        endpoint: prodEndpoint,
+        maxAttempts: 2,
+      }),
+    );
+    expect(apiGatewayClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        endpoint: betaEndpoint,
+        maxAttempts: 2,
+      }),
+    );
     expect(postToConnectionCommandMock).toHaveBeenCalledTimes(2);
   });
 

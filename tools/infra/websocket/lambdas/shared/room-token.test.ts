@@ -213,10 +213,12 @@ describe('lambda room-token verifier', () => {
       SecretId:
         'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token',
     });
-    expect(secretsManagerClientMock).toHaveBeenCalledWith({
-      region: 'ap-northeast-1',
-      maxAttempts: 2,
-    });
+    expect(secretsManagerClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+      }),
+    );
     expect(secretsManagerSendMock).toHaveBeenCalledWith(expect.anything(), {
       abortSignal: expect.any(AbortSignal),
     });

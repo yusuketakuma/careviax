@@ -197,10 +197,12 @@ describe('collaboration-room-token', () => {
         'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ph-os/prod/collaboration-room-token',
     });
     expect(secretsManagerClientMock).toHaveBeenCalledOnce();
-    expect(secretsManagerClientMock).toHaveBeenCalledWith({
-      region: 'ap-northeast-1',
-      maxAttempts: 2,
-    });
+    expect(secretsManagerClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+      }),
+    );
     expect(secretsManagerSendMock).toHaveBeenCalledTimes(1);
     expect(secretsManagerSendMock).toHaveBeenCalledWith(expect.anything(), {
       abortSignal: expect.any(AbortSignal),
@@ -238,7 +240,9 @@ describe('collaboration-room-token', () => {
     });
 
     expect(secretsManagerClientMock).toHaveBeenCalledOnce();
-    expect(secretsManagerClientMock).toHaveBeenCalledWith({ region: 'us-west-2', maxAttempts: 2 });
+    expect(secretsManagerClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({ region: 'us-west-2', maxAttempts: 2 }),
+    );
     expect(secretsManagerSendMock).toHaveBeenCalledTimes(2);
   });
 

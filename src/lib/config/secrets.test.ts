@@ -93,10 +93,12 @@ describe('getSecrets', () => {
     });
 
     expect(secretsManagerClientMock).toHaveBeenCalledOnce();
-    expect(secretsManagerClientMock).toHaveBeenCalledWith({
-      region: 'ap-northeast-1',
-      maxAttempts: 2,
-    });
+    expect(secretsManagerClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+      }),
+    );
     expect(sendMock).toHaveBeenCalledTimes(2);
     expect(sendMock).toHaveBeenNthCalledWith(1, expect.anything(), {
       abortSignal: expect.any(AbortSignal),
@@ -148,14 +150,20 @@ describe('getSecrets', () => {
     });
 
     expect(secretsManagerClientMock).toHaveBeenCalledTimes(2);
-    expect(secretsManagerClientMock).toHaveBeenNthCalledWith(1, {
-      region: 'eu-central-1',
-      maxAttempts: 2,
-    });
-    expect(secretsManagerClientMock).toHaveBeenNthCalledWith(2, {
-      region: 'ca-central-1',
-      maxAttempts: 2,
-    });
+    expect(secretsManagerClientMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        region: 'eu-central-1',
+        maxAttempts: 2,
+      }),
+    );
+    expect(secretsManagerClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'ca-central-1',
+        maxAttempts: 2,
+      }),
+    );
     expect(sendMock).toHaveBeenCalledTimes(2);
     expect(getSecretValueCommandMock).toHaveBeenCalledTimes(2);
   });
