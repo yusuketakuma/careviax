@@ -49,7 +49,7 @@ const FILE_NAME_RULES: ReadonlyArray<{ keywords: readonly string[]; category: Ev
     { keywords: ['セット', 'カレンダー'], category: 'set_photo' },
     { keywords: ['設置'], category: 'placement_photo' },
     { keywords: ['報告書', '控え'], category: 'report_copy' },
-    { keywords: ['交付', '文書', '説明書'], category: 'document_delivery' },
+    { keywords: ['交付', '文書', '説明書', '説明資料'], category: 'document_delivery' },
   ];
 
 /**
@@ -127,6 +127,40 @@ export function filterEvidenceItemsByCategory(
   category: EvidenceCategoryId,
 ): EvidenceGalleryItem[] {
   return items.filter((item) => item.category === category);
+}
+
+/** p0_48 で端末に保存されたオフライン写真ドラフト(メタデータのみ、payload は扱わない) */
+export type OfflineEvidenceDraftSummaryLike = {
+  id: number | string | null;
+  category?: string | null;
+  fileName?: string | null;
+  /** ISO 文字列 */
+  capturedAt?: string | null;
+};
+
+/** オフライン写真ドラフトを「端末上のみ(未同期)」の証跡アイテムへ変換する。 */
+export function buildEvidenceItemsFromOfflineDrafts(
+  drafts: OfflineEvidenceDraftSummaryLike[],
+): EvidenceGalleryItem[] {
+  return drafts.map((draft, index) => ({
+    id: `offline-draft-${draft.id ?? index}`,
+    category: projectEvidenceCategory({
+      kind: 'photo',
+      explicitCategory: draft.category ?? null,
+      fileName: draft.fileName ?? null,
+    }),
+    syncState: 'pending',
+    capturedAt: draft.capturedAt ?? null,
+    fileName: draft.fileName ?? null,
+  }));
+}
+
+/** サーバー保存済み(同期済み)と端末ドラフト(未同期)を撮影時刻順の 1 一覧へ統合する。 */
+export function mergeEvidenceItems(
+  serverItems: EvidenceGalleryItem[],
+  draftItems: EvidenceGalleryItem[],
+): EvidenceGalleryItem[] {
+  return sortEvidenceItems([...serverItems, ...draftItems]);
 }
 
 /** 「撮影 HH:MM」表示用の時刻。parse 不能な値は null */

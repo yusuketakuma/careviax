@@ -3,12 +3,15 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
 import { cn } from '@/lib/utils';
 import {
   EVIDENCE_CATEGORIES,
+  buildEvidenceItemsFromOfflineDrafts,
   buildEvidenceItemsFromVisitRecords,
   filterEvidenceItemsByCategory,
   formatCaptureTime,
+  mergeEvidenceItems,
   sortEvidenceItems,
   type EvidenceCategoryId,
   type EvidenceGalleryItem,
@@ -19,7 +22,8 @@ import { buildEvidenceDemoItems } from './evidence-gallery.demo';
 /**
  * p0_33「画像・証跡」: 訪問で残した写真・文書を種類別に確認するギャラリー。
  * 左で証跡の種類を選び、右にサーバー保存済み(同期済み)と端末上のみ(未同期)を
- * 統合した画像一覧を表示する。データ取得は既存の visit-records API のみを使う。
+ * 統合した画像一覧を表示する。サーバー側は既存の visit-records API、
+ * 端末側は p0_48 のオフライン写真ドラフト(IndexedDB)を読む。
  */
 
 /** 添付を取りに行く訪問記録の最大件数(詳細 API の N+1 を抑える) */
@@ -74,6 +78,12 @@ export function EvidenceGalleryContent() {
       buildEvidenceItemsFromVisitRecords(await fetchVisitRecordsWithAttachments(orgId)),
   });
 
+  // p0_48 のモバイル撮影で端末保存された未同期ドラフト(IndexedDB)
+  const { data: offlineDraftItems } = useQuery({
+    queryKey: ['visit-evidence-offline-drafts'],
+    queryFn: async () => buildEvidenceItemsFromOfflineDrafts(await listEvidenceDraftSummaries()),
+  });
+
   // 撮影・動作確認用のデモ注入(dev 限定、p0_34 の window フックの作法)。
   // 注入後は決定的な一覧(未同期/同期済み混在)へ差し替える。
   React.useEffect(() => {
@@ -88,8 +98,11 @@ export function EvidenceGalleryContent() {
   }, []);
 
   const items = React.useMemo(
-    () => (demoItems ? sortEvidenceItems(demoItems) : (serverItems ?? [])),
-    [demoItems, serverItems],
+    () =>
+      demoItems
+        ? sortEvidenceItems(demoItems)
+        : mergeEvidenceItems(serverItems ?? [], offlineDraftItems ?? []),
+    [demoItems, serverItems, offlineDraftItems],
   );
 
   const visibleItems = React.useMemo(

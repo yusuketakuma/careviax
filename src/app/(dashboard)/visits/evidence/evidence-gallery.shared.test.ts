@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   EVIDENCE_CATEGORIES,
+  buildEvidenceItemsFromOfflineDrafts,
   buildEvidenceItemsFromVisitRecords,
   filterEvidenceItemsByCategory,
   formatCaptureTime,
+  mergeEvidenceItems,
   projectEvidenceCategory,
   sortEvidenceItems,
   type EvidenceGalleryItem,
@@ -207,5 +209,56 @@ describe('buildEvidenceDemoItems', () => {
         item.category,
       );
     }
+  });
+});
+
+describe('buildEvidenceItemsFromOfflineDrafts', () => {
+  it('p0_48 のオフラインドラフトを「未同期」アイテムへ変換する(明示区分が最優先)', () => {
+    const items = buildEvidenceItemsFromOfflineDrafts([
+      {
+        id: 12,
+        category: 'set_photo',
+        fileName: 'セット設置_20260613-103045.jpg',
+        capturedAt: localIso(10, 30),
+      },
+    ]);
+
+    expect(items).toEqual([
+      {
+        id: 'offline-draft-12',
+        category: 'set_photo',
+        syncState: 'pending',
+        capturedAt: localIso(10, 30),
+        fileName: 'セット設置_20260613-103045.jpg',
+      },
+    ]);
+  });
+
+  it('区分が欠けたドラフトはファイル名から射影する(説明資料 → 文書交付)', () => {
+    const [item] = buildEvidenceItemsFromOfflineDrafts([
+      { id: null, fileName: '説明資料_20260613-103045.jpg', capturedAt: localIso(10, 31) },
+    ]);
+
+    expect(item.category).toBe('document_delivery');
+    expect(item.syncState).toBe('pending');
+    expect(item.id).toBe('offline-draft-0');
+  });
+});
+
+describe('mergeEvidenceItems', () => {
+  it('サーバー保存済みと端末ドラフトを撮影時刻の昇順で統合する', () => {
+    const serverItems = [
+      buildItem({ id: 'server-1', capturedAt: localIso(10, 0) }),
+      buildItem({ id: 'server-2', capturedAt: localIso(10, 4) }),
+    ];
+    const draftItems = buildEvidenceItemsFromOfflineDrafts([
+      { id: 1, category: 'residual_photo', fileName: '残薬写真_a.jpg', capturedAt: localIso(10, 2) },
+    ]);
+
+    expect(mergeEvidenceItems(serverItems, draftItems).map((item) => item.id)).toEqual([
+      'server-1',
+      'offline-draft-1',
+      'server-2',
+    ]);
   });
 });

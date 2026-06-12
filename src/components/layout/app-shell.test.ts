@@ -44,9 +44,15 @@ describe('shouldUseMinimalShell', () => {
     expect(shouldUseMinimalShell('/patients/p1/visit-records/print')).toBe(true);
   });
 
+  it('routes the mobile evidence capture page (p0_48) through the minimal shell', () => {
+    expect(shouldUseMinimalShell('/visits/v1/capture')).toBe(true);
+  });
+
   it('does not collapse standard dashboard pages', () => {
     expect(shouldUseMinimalShell('/reports')).toBe(false);
     expect(shouldUseMinimalShell('/workflow')).toBe(false);
+    expect(shouldUseMinimalShell('/visits/v1/record')).toBe(false);
+    expect(shouldUseMinimalShell('/visits/evidence')).toBe(false);
   });
 });
 

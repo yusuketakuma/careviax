@@ -85,12 +85,33 @@ export type OfflinePrescriptionDraft = {
   updatedAt: Date;
 };
 
+/** p0_48 モバイル証跡撮影の写真ドラフト(通信がなくても端末に保存→復帰時に自動送信) */
+export type OfflineEvidenceDraft = {
+  id?: number;
+  /** 撮影画面を開いた訪問(visit-schedule)ID */
+  scheduleId: string;
+  patientId?: string;
+  /** p0_33 証跡 6 区分の ID(p0_48 チップはそのサブセット) */
+  category: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** encryptOfflinePayloadRequired で暗号化した画像 dataURL(PHI のため平文保存しない) */
+  payload: string;
+  capturedAt: Date;
+  createdAt: Date;
+  synced: boolean;
+  retryCount: number;
+  lastError?: string;
+};
+
 class PhOsOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
   syncQueue!: Table<OfflineSyncQueue, number>;
   visitBriefCache!: Table<OfflineVisitBriefCache, number>;
   prescriptionDrafts!: Table<OfflinePrescriptionDraft, number>;
+  evidenceDrafts!: Table<OfflineEvidenceDraft, number>;
 
   constructor() {
     super('PH-OSOffline');
@@ -155,6 +176,16 @@ class PhOsOfflineDB extends Dexie {
             purgeLegacyPlaintextSoapDraftFields(draft);
           }),
       );
+
+    // v7: p0_48 モバイル証跡撮影の写真ドラフト(暗号化 dataURL)を追加
+    this.version(7).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+      prescriptionDrafts: '++id, orgId, updatedAt',
+      evidenceDrafts: '++id, scheduleId, patientId, createdAt',
+    });
   }
 }
 
