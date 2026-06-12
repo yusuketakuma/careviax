@@ -9,6 +9,7 @@ import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { readJsonObject } from '@/lib/db/json';
+import { logger } from '@/lib/utils/logger';
 import { createFetchTimeout } from './fetch-timeout';
 import { readWebhookSigningSecret } from './webhook-secret-encryption';
 
@@ -569,7 +570,17 @@ async function recordWebhookDeliveryPending(
       },
     });
   } catch (error) {
-    console.error('[webhook] Failed to persist pending delivery:', error);
+    logger.error(
+      {
+        event: 'webhook.delivery_pending_persist_failed',
+        orgId: payload.orgId,
+        entityType: 'webhook_delivery',
+        entityId: payload.id,
+        targetId: registration.id,
+        code: 'WEBHOOK_PENDING_PERSIST_FAILED',
+      },
+      error,
+    );
   }
 }
 
@@ -598,7 +609,17 @@ async function recordWebhookDeliveryResult(
       },
     });
   } catch (error) {
-    console.error('[webhook] Failed to persist delivery result:', error);
+    logger.error(
+      {
+        event: 'webhook.delivery_result_persist_failed',
+        orgId: payload.orgId,
+        entityType: 'webhook_delivery',
+        entityId: payload.id,
+        targetId: registration.id,
+        code: 'WEBHOOK_RESULT_PERSIST_FAILED',
+      },
+      error,
+    );
   }
 }
 
@@ -773,7 +794,16 @@ export async function notifyWebhookEventForOrg(
   try {
     return await dispatchWebhookEventForOrg(orgId, event, data);
   } catch (error) {
-    console.error(`[webhook] Failed to dispatch ${event} for org ${orgId}:`, error);
+    logger.error(
+      {
+        event: 'webhook.org_dispatch_failed',
+        orgId,
+        entityType: 'webhook_event',
+        entityId: event,
+        code: 'WEBHOOK_ORG_DISPATCH_FAILED',
+      },
+      error,
+    );
     return [];
   }
 }

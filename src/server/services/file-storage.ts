@@ -16,6 +16,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { logger } from '@/lib/utils/logger';
 
 const FILE_SETTING_PREFIX = 'file_asset:';
 const UPLOAD_EXPIRY_SECONDS = 60 * 5;
@@ -79,6 +80,42 @@ export type StoredFileRecord = {
   completedAt?: string | null;
   expiresAt?: string | null;
   downloadDisposition?: DownloadDisposition;
+};
+
+type FileAssetRow = {
+  id: string;
+  org_id: string;
+  purpose: string;
+  storage_key: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  status: string;
+  patient_id: string | null;
+  visit_record_id: string | null;
+  report_id: string | null;
+  job_id: string | null;
+  uploaded_by: string | null;
+  etag: string | null;
+  completed_at: Date | null;
+  expires_at: Date | null;
+  download_disposition: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type FileAssetStore = {
+  findFirst(args: unknown): Promise<FileAssetRow | null>;
+  findMany(args: unknown): Promise<FileAssetRow[]>;
+  upsert(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
+  deleteMany(args: unknown): Promise<unknown>;
+};
+
+type StoredFileLookup = {
+  record: StoredFileRecord;
+  settingId: string | null;
+  fileAssetId: string | null;
 };
 
 export type VisitRecordAttachment = {
@@ -365,6 +402,62 @@ function toSettingKey(fileId: string) {
   return `${FILE_SETTING_PREFIX}${fileId}`;
 }
 
+function getFileAssetStore(): FileAssetStore | null {
+  return (prisma as unknown as { fileAsset?: FileAssetStore }).fileAsset ?? null;
+}
+
+function nullableDateFromIso(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function fileAssetRowToStoredRecord(row: FileAssetRow): StoredFileRecord | null {
+  return parseStoredFileRecord({
+    version: 1,
+    id: row.id,
+    orgId: row.org_id,
+    purpose: row.purpose,
+    storageKey: row.storage_key,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    status: row.status,
+    patientId: row.patient_id,
+    visitRecordId: row.visit_record_id,
+    reportId: row.report_id,
+    jobId: row.job_id,
+    uploadedBy: row.uploaded_by,
+    etag: row.etag,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() ?? null,
+    expiresAt: row.expires_at?.toISOString() ?? null,
+    downloadDisposition: row.download_disposition,
+  });
+}
+
+function storedRecordToFileAssetData(record: StoredFileRecord) {
+  return {
+    org_id: record.orgId,
+    purpose: record.purpose,
+    storage_key: record.storageKey,
+    original_name: record.originalName,
+    mime_type: record.mimeType,
+    size_bytes: record.sizeBytes,
+    status: record.status,
+    patient_id: record.patientId ?? null,
+    visit_record_id: record.visitRecordId ?? null,
+    report_id: record.reportId ?? null,
+    job_id: record.jobId ?? null,
+    uploaded_by: record.uploadedBy ?? null,
+    etag: record.etag ?? null,
+    completed_at: nullableDateFromIso(record.completedAt),
+    expires_at: nullableDateFromIso(record.expiresAt),
+    download_disposition: record.downloadDisposition ?? 'inline',
+  };
+}
+
 function normalizeStoredReferenceId(value: unknown) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -507,7 +600,85 @@ function resolveStoredFileExpiresAt(
   return resolveBulkExportExpiresAt(base);
 }
 
-async function readStoredFileRecord(orgId: string, fileId: string) {
+async function upsertFileAssetRecord(record: StoredFileRecord) {
+  const store = getFileAssetStore();
+  if (!store) return;
+
+  const fileAssetData = storedRecordToFileAssetData(record);
+  try {
+    await store.upsert({
+      where: { id: record.id },
+      create: {
+        id: record.id,
+        ...fileAssetData,
+      },
+      update: fileAssetData,
+    });
+  } catch (error) {
+    logger.warn({
+      event: 'file_storage.file_asset_upsert_failed',
+      orgId: record.orgId,
+      entityType: 'file',
+      entityId: record.id,
+      filePurpose: record.purpose,
+      code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+    });
+  }
+}
+
+async function upsertLegacySettingRecord(record: StoredFileRecord) {
+  await prisma.setting.upsert({
+    where: {
+      scope_scope_id_key: {
+        scope: 'organization',
+        scope_id: record.orgId,
+        key: toSettingKey(record.id),
+      },
+    },
+    create: {
+      scope: 'organization',
+      scope_id: record.orgId,
+      key: toSettingKey(record.id),
+      value: record,
+    },
+    update: {
+      value: record,
+    },
+  });
+}
+
+async function persistStoredFileRecord(record: StoredFileRecord) {
+  await upsertFileAssetRecord(record);
+  await upsertLegacySettingRecord(record);
+}
+
+async function readStoredFileRecord(orgId: string, fileId: string): Promise<StoredFileLookup> {
+  const store = getFileAssetStore();
+  const fileAsset = store
+    ? await store
+        .findFirst({
+          where: {
+            id: fileId,
+            org_id: orgId,
+          },
+        })
+        .catch((error) => {
+          logger.warn({
+            event: 'file_storage.file_asset_lookup_failed',
+            orgId,
+            entityType: 'file',
+            entityId: fileId,
+            code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+          });
+          return null;
+        })
+    : null;
+
+  const assetRecord = fileAsset ? fileAssetRowToStoredRecord(fileAsset) : null;
+  if (fileAsset && assetRecord) {
+    return { fileAssetId: fileAsset.id, settingId: null, record: assetRecord };
+  }
+
   const setting = await prisma.setting.findFirst({
     where: {
       scope: 'organization',
@@ -529,7 +700,9 @@ async function readStoredFileRecord(orgId: string, fileId: string) {
     );
   }
 
-  return { settingId: setting.id, record };
+  await upsertFileAssetRecord(record);
+
+  return { settingId: setting.id, fileAssetId: null, record };
 }
 
 function fileForbiddenCode(mode: StoredFileAccessMode) {
@@ -884,24 +1057,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
     downloadDisposition: 'inline',
   };
 
-  await prisma.setting.upsert({
-    where: {
-      scope_scope_id_key: {
-        scope: 'organization',
-        scope_id: args.orgId,
-        key: toSettingKey(fileId),
-      },
-    },
-    create: {
-      scope: 'organization',
-      scope_id: args.orgId,
-      key: toSettingKey(fileId),
-      value: record,
-    },
-    update: {
-      value: record,
-    },
-  });
+  await persistStoredFileRecord(record);
 
   return {
     id: fileId,
@@ -987,24 +1143,7 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
   };
 
   try {
-    await prisma.setting.upsert({
-      where: {
-        scope_scope_id_key: {
-          scope: 'organization',
-          scope_id: args.orgId,
-          key: toSettingKey(fileId),
-        },
-      },
-      create: {
-        scope: 'organization',
-        scope_id: args.orgId,
-        key: toSettingKey(fileId),
-        value: record,
-      },
-      update: {
-        value: record,
-      },
-    });
+    await persistStoredFileRecord(record);
   } catch (error) {
     await getClient()
       .send(
@@ -1014,11 +1153,17 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
         }),
       )
       .catch((cleanupError) => {
-        console.error('[file-storage] failed to clean up generated file after metadata failure', {
-          fileId,
-          storageKey,
-          error: cleanupError,
-        });
+        logger.error(
+          {
+            event: 'file_storage.generated_cleanup_failed',
+            orgId: args.orgId,
+            entityType: 'file',
+            entityId: fileId,
+            filePurpose: args.purpose,
+            code: 'GENERATED_METADATA_CLEANUP_FAILED',
+          },
+          cleanupError,
+        );
       });
     throw error;
   }
@@ -1042,6 +1187,23 @@ export async function deleteGeneratedFile(record: StoredFileRecord) {
       Key: record.storageKey,
     }),
   );
+  await getFileAssetStore()
+    ?.deleteMany({
+      where: {
+        id: record.id,
+        org_id: record.orgId,
+      },
+    })
+    .catch((error) => {
+      logger.warn({
+        event: 'file_storage.file_asset_delete_failed',
+        orgId: record.orgId,
+        entityType: 'file',
+        entityId: record.id,
+        filePurpose: record.purpose,
+        code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+      });
+    });
   await prisma.setting.deleteMany({
     where: {
       scope: 'organization',
@@ -1067,6 +1229,54 @@ export async function cleanupExpiredGeneratedFiles(args?: {
   const errors: string[] = [];
   let processedCount = 0;
   let scannedCount = 0;
+  let assetCursor: { id: string } | undefined;
+  const store = getFileAssetStore();
+
+  if (store) {
+    try {
+      for (let page = 0; page < maxPages; page += 1) {
+        const assets = await store.findMany({
+          where: {
+            purpose: 'bulk-export',
+            status: 'uploaded',
+            expires_at: { lte: now },
+            ...(args?.orgId ? { org_id: args.orgId } : {}),
+          },
+          orderBy: {
+            id: 'asc',
+          },
+          take: batchSize,
+          ...(assetCursor ? { cursor: assetCursor, skip: 1 } : {}),
+        });
+
+        if (assets.length === 0) break;
+        scannedCount += assets.length;
+        assetCursor = { id: assets[assets.length - 1].id };
+
+        for (const asset of assets) {
+          const record = fileAssetRowToStoredRecord(asset);
+          if (!record) continue;
+
+          try {
+            await deleteGeneratedFile(record);
+            processedCount += 1;
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+
+        if (assets.length < batchSize) break;
+      }
+    } catch (error) {
+      logger.warn({
+        event: 'file_storage.file_asset_cleanup_scan_failed',
+        orgId: args?.orgId,
+        entityType: 'file_asset',
+        code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+      });
+    }
+  }
+
   let cursor: { id: string } | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
@@ -1180,12 +1390,17 @@ export async function completeUploadedFile({
     completedAt,
   };
 
-  await prisma.setting.update({
-    where: { id: settingId },
-    data: {
-      value: nextRecord,
-    },
-  });
+  await upsertFileAssetRecord(nextRecord);
+  if (settingId) {
+    await prisma.setting.update({
+      where: { id: settingId },
+      data: {
+        value: nextRecord,
+      },
+    });
+  } else {
+    await upsertLegacySettingRecord(nextRecord);
+  }
 
   return nextRecord;
 }
