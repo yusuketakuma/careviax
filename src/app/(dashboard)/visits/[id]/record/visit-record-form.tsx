@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { useForm, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -48,7 +48,13 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
-import { VisitStepActionBar, VisitStepNav, useVisitStepSpy } from './visit-step-nav';
+import {
+  VisitEvidenceRail,
+  VisitModeHeader,
+  VisitStepActionBar,
+  VisitStepNav,
+  useVisitStepSpy,
+} from './visit-step-nav';
 import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
@@ -114,6 +120,13 @@ type ScheduleDetail = {
   visit_type: string;
   carry_items_status: string | null;
   recurrence_rule?: string | null;
+  time_window_start?: string | null;
+  case_?: {
+    patient?: {
+      id: string;
+      name: string;
+    } | null;
+  } | null;
 };
 
 const VISIT_RECORD_ALERT_TYPES = new Set(['renal_dose', 'pim_elderly', 'high_risk']);
@@ -1154,6 +1167,15 @@ export function VisitRecordForm({
     />
   );
 
+  // p0_22 右レール「写真・証跡」: 保存前の添付は端末上のみ=未同期として表示
+  const evidenceRailItems = selectedAttachments.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.file.name,
+    kindLabel: attachment.kind === 'photo' ? '写真' : '添付',
+    statusLabel: '未同期',
+    statusTone: 'pending' as const,
+  }));
+
   function handleAppendTranscript(
     field: 'soap_subjective' | 'soap_objective' | 'soap_assessment' | 'soap_plan',
     transcript: string,
@@ -1292,9 +1314,23 @@ export function VisitRecordForm({
   return (
     <FormProvider {...form}>
       <form onSubmit={handleVisitRecordFormSubmit} noValidate>
-        {/* p0_22 訪問モード: xl〜 左に訪問ステップレール(スクロール現在地+ジャンプ)。
-            pb は下部固定バー(fixed)に隠れない余白 */}
-        <div className="pb-24 xl:grid xl:grid-cols-[210px_minmax(0,1fr)] xl:items-start xl:gap-6">
+        {/* p0_22 訪問モード: ヘッダ(患者+訪問中+オフライン/未同期)→ 3カラム
+            (左=訪問ステップ / 中央=フォーム / 右=写真・証跡)。pb は下部固定バー分の余白 */}
+        <VisitModeHeader
+          patientName={schedule?.case_?.patient?.name ?? null}
+          dateTimeLabel={
+            schedule?.scheduled_date
+              ? `${format(parseISO(schedule.scheduled_date), 'M/d')}${
+                  schedule.time_window_start
+                    ? ` ${format(parseISO(schedule.time_window_start), 'HH:mm')}`
+                    : ''
+                }`
+              : null
+          }
+          isOffline={isOffline}
+          pendingSyncCount={pendingSyncCount}
+        />
+        <div className="mt-4 pb-24 xl:grid xl:grid-cols-[210px_minmax(0,1fr)_220px] xl:items-start xl:gap-6">
           <aside className="mb-4 xl:sticky xl:top-6 xl:mb-0 xl:self-start">
             <VisitStepNav activeId={activeStepId} />
           </aside>
@@ -1898,6 +1934,11 @@ export function VisitRecordForm({
               submitPending={createRecord.isPending}
             />
           </div>
+
+          {/* p0_22 右レール: 写真・証跡(xl〜) */}
+          <aside className="hidden xl:sticky xl:top-6 xl:block xl:self-start">
+            <VisitEvidenceRail items={evidenceRailItems} />
+          </aside>
         </div>
       </form>
     </FormProvider>

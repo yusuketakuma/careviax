@@ -127,6 +127,109 @@ export function VisitStepNav({ activeId }: { activeId: VisitRecordStepId | null 
 }
 
 /**
+ * p0_22 ヘッダ: 「患者名 様 M/d HH:mm 訪問中」+ オフライン / 未同期バッジ。
+ */
+export function VisitModeHeader({
+  patientName,
+  dateTimeLabel,
+  isOffline,
+  pendingSyncCount,
+}: {
+  patientName: string | null;
+  dateTimeLabel: string | null;
+  isOffline: boolean;
+  pendingSyncCount: number;
+}) {
+  return (
+    <div
+      data-testid="visit-mode-header"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3"
+    >
+      <p className="text-base font-bold text-foreground">
+        {patientName ? `${patientName} 様` : '患者情報を読み込み中'}
+        {dateTimeLabel ? `　${dateTimeLabel}` : ''}
+        　訪問中
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {isOffline ? (
+          <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+            オフライン
+          </span>
+        ) : null}
+        {pendingSyncCount > 0 ? (
+          <span className="inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+            未同期 {pendingSyncCount}件
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export type VisitEvidenceRailItem = {
+  id: string;
+  name: string;
+  kindLabel: string;
+  statusLabel: string;
+  statusTone: 'pending' | 'done';
+};
+
+/**
+ * p0_22 右レール「写真・証跡」: 添付ドラフトを同期状態付きで一覧する。
+ * 保存前の添付は端末上のみ(=未同期)、保存時にまとめてアップロードされる。
+ */
+export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] }) {
+  return (
+    <section aria-label="写真・証跡" data-testid="visit-evidence-rail">
+      <p className="px-1 text-sm font-bold text-foreground">写真・証跡</p>
+      {items.length === 0 ? (
+        <div className="mt-2 rounded-lg border border-dashed border-border bg-card px-3 py-4 text-center">
+          <p className="text-xs leading-5 text-muted-foreground">
+            写真はまだありません。お薬カレンダーや残薬の写真を残せます。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => scrollToVisitStep('visit-step-evidence')}
+          >
+            写真を追加
+          </Button>
+        </div>
+      ) : (
+        <ul className="mt-2 space-y-2" role="list">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="rounded-lg border border-border/70 bg-card px-3 py-2.5"
+              data-testid="visit-evidence-item"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 break-all text-xs font-medium leading-5 text-foreground">
+                  {item.name}
+                </p>
+                <span
+                  className={cn(
+                    'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium',
+                    item.statusTone === 'pending'
+                      ? 'border-amber-300 bg-amber-50 text-amber-800'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                  )}
+                >
+                  {item.statusLabel}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{item.kindLabel}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
  * p0_22 下部固定バー: 一時保存 / 前へ / 次へ(青)/ 訪問完了(緑)。
  * フォーム内に置く前提(訪問完了は type=submit)。メインのスクロールは
  * AppShell の main 内で起きるため sticky では常時表示できず fixed にする
