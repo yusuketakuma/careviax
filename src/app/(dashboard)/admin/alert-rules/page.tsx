@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
@@ -359,6 +360,9 @@ export default function AlertRulesPage() {
           </PageSection>
         </div>
       </div>
+
+      {/* p1_14: 気になる処方の表示設定(強く表示/標準+カードプレビュー) */}
+      <SignalTuningPanel />
     </PageScaffold>
   );
 }

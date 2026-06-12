@@ -690,6 +690,39 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p1_14_ai_signal_tuning',
     targetImage: 'images/P1/p1_14_ai_signal_tuning.png',
     route: '/admin/alert-rules',
+    setup: async (page) => {
+      // 表示設定パネルの描画を待ち、セクションへスクロール
+      await page
+        .waitForSelector('[data-testid="signal-tuning-panel"]', { timeout: 30_000 })
+        .catch(() => {});
+      // target は一部項目が「強く表示」: 腎機能・飲み合わせ・ハイリスクをON(UI 状態のみ、保存しない)
+      await page
+        .getByTestId('signal-tuning-item')
+        .filter({ hasText: '腎機能に注意' })
+        .getByRole('button')
+        .click()
+        .catch(() => {});
+      await page
+        .getByTestId('signal-tuning-item')
+        .filter({ hasText: '飲み合わせ' })
+        .getByRole('button')
+        .click()
+        .catch(() => {});
+      await page
+        .getByTestId('signal-tuning-item')
+        .filter({ hasText: 'ハイリスク薬' })
+        .getByRole('button')
+        .click()
+        .catch(() => {});
+      await page
+        .evaluate(() => {
+          document
+            .querySelector('[data-testid="signal-tuning-panel"]')
+            ?.scrollIntoView({ block: 'center' });
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
 ];
 
