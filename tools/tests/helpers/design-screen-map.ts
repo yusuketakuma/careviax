@@ -810,8 +810,32 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_11_voice_memo_transcription',
     targetImage: 'images/P1/p1_11_voice_memo_transcription.png',
-    route: null,
-    note: '音声メモ・文字起こしは未実装(新規・バックエンド要)',
+    // 田中一郎の当日訪問(seed-design-demo 固定 ID)の音声メモ・文字起こし。
+    // STT は外部サービス接続後(cc:blocked)のため、dev 限定 window フックで
+    // 転写済み状態(target の例文+01:23)を注入して撮影する。
+    route: '/visits/cmnhdemovis001amq9ph-os/voice-memo',
+    setup: async (page) => {
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedVoiceMemoDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (
+            window as unknown as { __phosSeedVoiceMemoDemo?: () => void }
+          ).__phosSeedVoiceMemoDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="voice-memo-transcript-text"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_12_advanced_route_scenario_compare',

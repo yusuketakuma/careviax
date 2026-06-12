@@ -105,6 +105,27 @@ export type OfflineEvidenceDraft = {
   lastError?: string;
 };
 
+/**
+ * p1_11 音声メモ・文字起こしの録音ドラフト(端末保存)。
+ * 文字起こしエンジン(STT)は外部サービス接続後のため、第一版は
+ * transcriptStatus='pending'(転写待ち)のまま端末にのみ保持する。
+ */
+export type OfflineVoiceMemoDraft = {
+  id?: number;
+  /** 録音画面を開いた訪問(visit-schedule または visit-record)ID */
+  visitId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** encryptOfflinePayloadRequired で暗号化した音声 dataURL(PHI のため平文保存しない) */
+  payload: string;
+  durationSeconds: number;
+  recordedAt: Date;
+  createdAt: Date;
+  /** 転写状態(第一版は外部 STT 未接続のため 'pending' のみ) */
+  transcriptStatus: 'pending' | 'done';
+};
+
 class PhOsOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
@@ -112,6 +133,7 @@ class PhOsOfflineDB extends Dexie {
   visitBriefCache!: Table<OfflineVisitBriefCache, number>;
   prescriptionDrafts!: Table<OfflinePrescriptionDraft, number>;
   evidenceDrafts!: Table<OfflineEvidenceDraft, number>;
+  voiceMemoDrafts!: Table<OfflineVoiceMemoDraft, number>;
 
   constructor() {
     super('PH-OSOffline');
@@ -185,6 +207,17 @@ class PhOsOfflineDB extends Dexie {
       visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
       prescriptionDrafts: '++id, orgId, updatedAt',
       evidenceDrafts: '++id, scheduleId, patientId, createdAt',
+    });
+
+    // v8: p1_11 音声メモの録音ドラフト(暗号化 dataURL、転写待ち)を追加
+    this.version(8).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+      prescriptionDrafts: '++id, orgId, updatedAt',
+      evidenceDrafts: '++id, scheduleId, patientId, createdAt',
+      voiceMemoDrafts: '++id, visitId, createdAt',
     });
   }
 }

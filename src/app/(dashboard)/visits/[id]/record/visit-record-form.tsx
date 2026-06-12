@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useForm, FormProvider, useWatch } from 'react-hook-form';
@@ -18,6 +19,8 @@ import {
   CalendarCheck,
   MapPin,
   LocateFixed,
+  Mic,
+  ChevronRight,
 } from 'lucide-react';
 import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
@@ -1938,6 +1941,23 @@ export function VisitRecordForm({
           {/* p0_22 右レール: 写真・証跡(xl〜) */}
           <aside className="hidden xl:sticky xl:top-6 xl:block xl:self-start">
             <VisitEvidenceRail items={evidenceRailItems} />
+            {/* p1_11 音声メモ・文字起こしへの導線(写真・証跡レールの並び) */}
+            <Link
+              href={`/visits/${id}/voice-memo`}
+              data-testid="visit-voice-memo-link"
+              className="group mt-3 flex min-h-11 items-center justify-between gap-2 rounded-lg border border-border/70 bg-card px-3 py-2.5 transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <span className="flex items-center gap-2">
+                <Mic className="size-4 text-muted-foreground" aria-hidden="true" />
+                <span className="text-xs font-medium leading-5 text-foreground">
+                  音声メモ・文字起こし
+                </span>
+              </span>
+              <ChevronRight
+                className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+                aria-hidden="true"
+              />
+            </Link>
           </aside>
         </div>
       </form>
