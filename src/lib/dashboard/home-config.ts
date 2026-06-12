@@ -362,6 +362,8 @@ export const DASHBOARD_ADMIN_LINKS: readonly DashboardNavigationLink[] = [
 ] as const;
 
 export const DASHBOARD_HEADER_SHORTCUTS = [
+  // p1_01: よく使う絞り込み(/views)はナビに載せず、ここからの導線のみ
+  { href: '/views', label: 'よく使う絞り込み' },
   { href: '/settings', label: 'ユーザー設定' },
   { href: '/qr-scan', label: 'QRスキャン' },
   { href: '/admin/notification-settings', label: '通知設定' },

@@ -132,6 +132,38 @@ describe('/api/me/preferences', () => {
       });
     });
 
+    it('stores the saved filter view (p1_01) alongside other preferences', async () => {
+      settingFindUniqueMock.mockResolvedValue({
+        value: { work_mode: 'pharmacist' },
+      });
+
+      const savedView = {
+        conditions: [
+          { field: 'visit_date', value: 'today_to_this_week' },
+          { field: 'assignee', value: 'me' },
+        ],
+        saved_at: '2026-06-13T09:00:00.000Z',
+      };
+
+      const response = await PATCH(makePatchRequest({ saved_view: savedView }), routeCtx);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data).toMatchObject({ work_mode: 'pharmacist', saved_view: savedView });
+    });
+
+    it('rejects saved_view conditions with unknown fields', async () => {
+      const response = await PATCH(
+        makePatchRequest({
+          saved_view: { conditions: [{ field: 'unknown_field', value: 'x' }] },
+        }),
+        routeCtx,
+      );
+
+      expect(response.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
     it('rejects invalid work_mode values', async () => {
       const response = await PATCH(makePatchRequest({ work_mode: 'invalid_mode' }), routeCtx);
 

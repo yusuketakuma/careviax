@@ -4,14 +4,27 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { SAVED_VIEW_CONDITION_FIELDS } from '@/lib/views/saved-filter-views';
 import { z } from 'zod';
 
 const UI_PREFERENCES_KEY = 'ui_preferences';
+
+/** p1_01「よく使う絞り込み」(/views)で保存する絞り込み条件 1 件。 */
+const savedViewConditionSchema = z.object({
+  field: z.enum(SAVED_VIEW_CONDITION_FIELDS),
+  value: z.string().min(1).max(100),
+});
 
 const preferencesSchema = z.object({
   work_mode: z.enum(['pharmacist', 'clerk_support', 'management']).optional(),
   care_mode: z.enum(['home_visit', 'outpatient']).optional(),
   start_page: z.string().optional(),
+  saved_view: z
+    .object({
+      conditions: z.array(savedViewConditionSchema).min(1).max(20),
+      saved_at: z.string().datetime().optional(),
+    })
+    .optional(),
 });
 
 export const GET = withAuthContext(async (_req, ctx) => {

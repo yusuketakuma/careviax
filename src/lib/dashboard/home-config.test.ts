@@ -86,6 +86,7 @@ describe('dashboard home config', () => {
   it('keeps dashboard header shortcuts for utility screens that are not in the main grids', () => {
     expect(DASHBOARD_HEADER_SHORTCUTS).toEqual(
       expect.arrayContaining([
+        { href: '/views', label: 'よく使う絞り込み' },
         { href: '/settings', label: 'ユーザー設定' },
         { href: '/qr-scan', label: 'QRスキャン' },
         { href: '/admin/notification-settings', label: '通知設定' },

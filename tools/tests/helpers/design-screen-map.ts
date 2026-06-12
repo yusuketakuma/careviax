@@ -641,14 +641,35 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_01_saved_views_advanced_filter',
     targetImage: 'images/P1/p1_01_saved_views_advanced_filter.png',
-    route: null,
-    note: '保存ビューは未実装(新規・API 要)',
+    // よく使う絞り込み(プリセット4枚+今の絞り込み条件。saved_view は me/preferences)
+    route: '/views',
+    setup: async (page) => {
+      await page
+        .waitForSelector('[data-testid="saved-views-page"]', { timeout: 30_000 })
+        .catch(() => {});
+      // me/preferences の取得完了 → 条件チップの描画まで待つ
+      await page
+        .waitForSelector('[data-testid="current-filter-chip"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_02_multi_card_split_workspace',
     targetImage: 'images/P1/p1_02_multi_card_split_workspace.png',
-    route: null,
-    note: '分割ワークスペースは未実装(新規)',
+    // 既定 = 「注目すべきカード3枚」(board 先頭=田中一郎 + 返信待ち=加藤 + 回答待ち=高橋)を導出
+    route: '/patients/compare',
+    setup: async (page) => {
+      // board → overview の 2 段 fetch 完了(3 カード描画)まで待つ
+      await page
+        .waitForFunction(
+          () => document.querySelectorAll('[data-testid="compare-card"]').length >= 3,
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_03_ai_visit_summary_review',
