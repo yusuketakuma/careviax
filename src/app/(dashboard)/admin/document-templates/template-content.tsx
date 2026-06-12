@@ -28,6 +28,7 @@ import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { TemplateBodyEditor } from './template-body-editor';
 
 type TemplateType =
   | 'care_report'
@@ -491,6 +492,15 @@ export function DocumentTemplateContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* p1_10: 文面の3カラムエディタ(テンプレート/文面を編集/差し込み項目) */}
+      <TemplateBodyEditor
+        templates={(data?.data ?? []).map((template) => ({
+          id: template.id,
+          name: template.name,
+          content: template.content,
+        }))}
+      />
 
       <DocumentDeliveryRuleManager />
     </PageScaffold>

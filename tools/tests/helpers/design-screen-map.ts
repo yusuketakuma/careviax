@@ -653,6 +653,20 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p1_10_report_template_editor',
     targetImage: 'images/P1/p1_10_report_template_editor.png',
     route: '/admin/document-templates',
+    setup: async (page) => {
+      // 文面3カラムエディタの描画を待ち、セクションへスクロール
+      await page
+        .waitForSelector('[data-testid="template-body-editor"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page
+        .evaluate(() => {
+          document
+            .querySelector('[data-testid="template-body-editor"]')
+            ?.scrollIntoView({ block: 'center' });
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_11_voice_memo_transcription',
