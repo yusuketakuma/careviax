@@ -588,8 +588,27 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_03_ai_visit_summary_review',
     targetImage: 'images/P1/p1_03_ai_visit_summary_review.png',
-    route: null,
-    note: 'visit-brief 画面の正ルート精査後にマッピング',
+    // 田中一郎の当日訪問(seed-design-demo 固定 ID)の訪問前まとめ確認
+    route: '/visits/cmnhdemovis001amq9ph-os/brief',
+    setup: async (page) => {
+      // visit-brief 生成(AI/ルール)完了 → 本文段落の描画まで待つ
+      await page
+        .waitForSelector('[data-testid="visit-brief-paragraph"]', { timeout: 30_000 })
+        .catch(() => {});
+      // target は「内容は正しい」選択済みの状態(フィードバックトーストの消滅まで待つ)
+      await page
+        .getByTestId('pharmacist-confirm-choice')
+        .first()
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-sonner-toast]', { state: 'attached', timeout: 3_000 })
+        .then(() =>
+          page.waitForSelector('[data-sonner-toast]', { state: 'detached', timeout: 8_000 }),
+        )
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_04_ai_report_draft',
