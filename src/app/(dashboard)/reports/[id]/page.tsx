@@ -52,6 +52,7 @@ import {
 } from '@/components/features/visits/visit-report-readiness-panel';
 import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient-care-team-source-panel';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import { ReportAiDraftReview } from './report-ai-draft-review';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import {
   readReportBillingContext,
@@ -287,6 +288,30 @@ export default function ReportDetailPage() {
       return res.json() as Promise<{ data: ExternalProfessionalSuggestion[] }>;
     },
     enabled: !!orgId && !!report?.patient_id,
+  });
+
+  // p1_04: AI 下書きの薬剤師確認(draft → confirmed)
+  const confirmDraftMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/care-reports/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ status: 'confirmed' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(
+          (err as { message?: string } | null)?.message ?? '薬剤師確認の保存に失敗しました',
+        );
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('薬剤師確認済みにしました');
+      queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-reports'] });
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const sendMutation = useMutation({
@@ -657,6 +682,20 @@ export default function ReportDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* p1_04: 下書きは AI 下書きレビュー(5見出し+宛先別プレビュー+薬剤師確認)を先に出す */}
+            {report.status === 'draft' && !editMode ? (
+              <ReportAiDraftReview
+                content={
+                  hasPhysicianContent || hasCareManagerContent
+                    ? (report.content as PhysicianReportContent | CareManagerReportContent)
+                    : null
+                }
+                reportType={report.report_type}
+                confirmPending={confirmDraftMutation.isPending}
+                onConfirm={() => confirmDraftMutation.mutate()}
+              />
+            ) : null}
 
             {/* Report content view or edit form */}
             {hasContentView ? (

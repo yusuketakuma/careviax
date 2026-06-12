@@ -595,7 +595,25 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p1_04_ai_report_draft',
     targetImage: 'images/P1/p1_04_ai_report_draft.png',
     route: '/reports',
-    note: 'AI 下書きビューの再現操作は実装フェーズで追加',
+    setup: async (page) => {
+      // 今日書く報告の「→ 下書きへ」から draft 報告書の AI 下書きレビューを開く
+      await page
+        .getByRole('link', { name: /下書きへ/ })
+        .first()
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="report-ai-draft-review"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page
+        .evaluate(() => {
+          document
+            .querySelector('[data-testid="report-ai-draft-review"]')
+            ?.scrollIntoView({ block: 'start' });
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_05_interprofessional_portal',
