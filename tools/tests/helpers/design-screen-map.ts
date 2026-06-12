@@ -146,14 +146,12 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_02_tenant_pharmacy_select',
     targetImage: 'images/P0/p0_02_tenant_pharmacy_select.png',
-    route: null,
-    note: '薬局選択画面は未実装(新規)',
+    route: '/select-site',
   },
   {
     screenId: 'p0_03_mode_role_select',
     targetImage: 'images/P0/p0_03_mode_role_select.png',
-    route: null,
-    note: 'モード/ロール選択画面は未実装(新規)',
+    route: '/select-mode',
   },
   {
     screenId: 'p0_04_notification_center',
