@@ -314,3 +314,11 @@ E の設計指針(次ループ):
 - **p1_14 合格**: /admin/alert-rules に SignalTuningPanel(表示を強める項目5種=renal_dose/pim_elderly/interaction/high_risk/duplicate を 強く表示⇔標準 トグル+患者カードプレビュー+保存する)。強く表示 = critical ルールの作成/有効化、標準 = 無効化(diffSignalTuning、テスト3件)
 - 意図的差分: 項目名は CDS の実 alert_type 語彙(target の転倒/低血糖/残薬多めは CDS マスタに無い概念)。撮影は setup で3項目を ON にして target の混在状態を再現
 - 次: p1_08(/admin/facility-standards 施設基準チェックリスト化+足りないもの)。届出一覧が空 seed なので、要件評価のデータ源(FacilityStandardNotification モデル)を確認してから判定表示を設計
+
+## p1_08 完了(2026-06-12 23:25)— 0e9b15e3
+
+- **p1_08 合格**: /admin/facility-standards に FacilityCriteriaChecklist(5項目を requirements_status から OK/不足/確認中 判定、buildFacilityCriteriaRows テスト3件)+足りないものガイド+資料を追加(登録フォームへスクロール)。seed-design-demo に届出1件追加(研修記録のみ false、電子的連携キー無し→確認中 = target と同分布)。副次で届出一覧テーブルにも実データが入った
+- p1 中改修バッチ(p1_04/06/10/14/08)完了。残: 精査組 p1_03(visit-brief 正ルート)/ p1_05(/shared/[token] seed トークン)/ p1_07(在庫予測)/ p0_45(PHOS_API スタブ)、新規実装組 p1_01/02/09/11/12/13(大、D-8 後方)
+
+### 次: 精査組の判定(p1_03 → p1_05 → p1_07 → p0_45)
+- 各 target を読み、既存実装・データで撮影可能かを判定。可能なら map 登録+撮影、不可なら必要な最小実装 or blocked 判定をメモに記録
