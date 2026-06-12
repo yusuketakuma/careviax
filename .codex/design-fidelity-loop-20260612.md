@@ -302,3 +302,9 @@ E の設計指針(次ループ):
   - DocumentTemplateRow.content は Record<string, unknown>(自由 JSON)→ 文面は content.body_text 文字列を新設して保存する方針
   - 実装案: template-body-editor.tsx 新設(左=テンプレ一覧カード/中央=文面 textarea/右=差し込みチップ{服薬状況}{残薬}{副作用}{薬剤師評価}{お願いしたいこと}{次回確認}+保存する)。純関数 insertMergeField(text, cursor, label)+readTemplateBodyText をテスト付きで切り出し、保存は PATCH {content: {...content, body_text}}
 - 再開時はこの節から: p1_10 実装 → p1_14 → p1_08。撮影保留(p0_45/p1_04 済→p0_45 のみ)と精査要(p1_03/05/07)も残
+
+## p1_10 完了(2026-06-12 23:12)— f4bbd99a
+
+- **p1_10 合格**: /admin/document-templates に TemplateBodyEditor(テンプレ一覧/文面 textarea/差し込みチップ6種+保存する)。文面は content.body_text に PATCH 保存、チップは insertMergeField でカーソル位置へ {項目} 挿入(純関数テスト4件)
+- データ差: テンプレは seed 3種(target は5種)。デフォルト文面は target とほぼ同一
+- 次: p1_14(/admin/alert-rules に表示強度プリセット+患者カードプレビュー)→ p1_08(施設基準チェックリスト化)
