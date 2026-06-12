@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
-import { VisitStepNav } from './visit-step-nav';
+import { VisitStepActionBar, VisitStepNav, useVisitStepSpy } from './visit-step-nav';
 import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
@@ -1103,6 +1103,19 @@ export function VisitRecordForm({
     shortcutStateRef.current = { watchedValues, visitGeoLog, onSubmit };
   });
 
+  // p0_22 訪問ステップ: スクロール現在地(左レール+下部固定バーで共有)
+  const activeStepId = useVisitStepSpy();
+  // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
+  const handleManualDraftSave = useCallback(() => {
+    const { watchedValues: vals, visitGeoLog: geoLog } = shortcutStateRef.current;
+    void saveDraft(buildStructuredSoap(vals), 0, buildDraftMetadata(vals, geoLog))
+      .then(() => {
+        draftSaveFailureNotifiedRef.current = false;
+        toast.info('下書きを保存しました');
+      })
+      .catch(notifyDraftSaveFailure);
+  }, [notifyDraftSaveFailure, saveDraft]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.metaKey && !e.ctrlKey) return;
@@ -1279,10 +1292,11 @@ export function VisitRecordForm({
   return (
     <FormProvider {...form}>
       <form onSubmit={handleVisitRecordFormSubmit} noValidate>
-        {/* p0_22 訪問モード: xl〜 左に訪問ステップレール(スクロール現在地+ジャンプ) */}
-        <div className="xl:grid xl:grid-cols-[210px_minmax(0,1fr)] xl:items-start xl:gap-6">
+        {/* p0_22 訪問モード: xl〜 左に訪問ステップレール(スクロール現在地+ジャンプ)。
+            pb は下部固定バー(fixed)に隠れない余白 */}
+        <div className="pb-24 xl:grid xl:grid-cols-[210px_minmax(0,1fr)] xl:items-start xl:gap-6">
           <aside className="mb-4 xl:sticky xl:top-6 xl:mb-0 xl:self-start">
-            <VisitStepNav />
+            <VisitStepNav activeId={activeStepId} />
           </aside>
           {/* Hidden fields */}
           <input type="hidden" {...form.register('schedule_id')} />
@@ -1756,7 +1770,7 @@ export function VisitRecordForm({
                 description="受領記録、次回提案、残薬、添付をまとめて確認して保存します。"
               >
                 {/* Receipt record */}
-                <Card>
+                <Card id="visit-step-receipt" className="scroll-mt-24">
                   <CardHeader className="pb-2">
                     <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                       <User className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1814,7 +1828,7 @@ export function VisitRecordForm({
                 </Card>
 
                 {/* Next visit suggestion */}
-                <Card>
+                <Card id="visit-step-next-visit" className="scroll-mt-24">
                   <CardHeader className="pb-2">
                     <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                       <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1839,7 +1853,7 @@ export function VisitRecordForm({
                 </Card>
 
                 {/* Residual medications */}
-                <Card>
+                <Card id="visit-step-residual" className="scroll-mt-24">
                   <CardContent className="pt-4">
                     <ResidualMedicationForm />
                   </CardContent>
@@ -1849,7 +1863,7 @@ export function VisitRecordForm({
                   <VisitCompletionReadinessWarning items={missingHomeVisit2026Items} />
                 ) : null}
 
-                <Card>
+                <Card id="visit-step-evidence" className="scroll-mt-24">
                   <CardHeader className="pb-2">
                     <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
                       <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1860,20 +1874,29 @@ export function VisitRecordForm({
                 </Card>
 
                 {/* Submit */}
-                <ActionRail className="pt-2">
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    キャンセル
-                  </Button>
-                  <LoadingButton
-                    type="submit"
-                    loading={createRecord.isPending}
-                    loadingLabel="保存中..."
-                  >
-                    保存
-                  </LoadingButton>
-                </ActionRail>
+                <div id="visit-step-final-check" className="scroll-mt-24">
+                  <ActionRail className="pt-2">
+                    <Button type="button" variant="outline" onClick={() => router.back()}>
+                      キャンセル
+                    </Button>
+                    <LoadingButton
+                      type="submit"
+                      loading={createRecord.isPending}
+                      loadingLabel="保存中..."
+                    >
+                      保存
+                    </LoadingButton>
+                  </ActionRail>
+                </div>
               </VisitRecordWorkflowSection>
             ) : null}
+
+            {/* p0_22 下部固定バー: 一時保存 / 前へ / 次へ / 訪問完了 */}
+            <VisitStepActionBar
+              activeId={activeStepId}
+              onSaveDraft={handleManualDraftSave}
+              submitPending={createRecord.isPending}
+            />
           </div>
         </div>
       </form>
