@@ -328,8 +328,42 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_23_visit_mode_smartphone',
     targetImage: 'images/P0/p0_23_visit_mode_smartphone.png',
+    // 田中一郎の当日訪問(p0_22 と同じ)をモバイル没入型ウィザードで撮影
     route: '/visits/cmnhdemovis001amq9ph-os/record',
     viewport: MOBILE_VIEWPORT,
+    setup: async (page) => {
+      // モバイル没入ヘッダ(PH-OS+ステップドット)の描画を待つ
+      await page
+        .waitForSelector('[data-testid="visit-mobile-mode-header"]', { timeout: 30_000 })
+        .catch(() => {});
+      // dev 限定 window フックで未同期写真 2 件を注入(未同期2 バッジ+橙バナー)
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedVisitModeDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (
+            window as unknown as { __phosSeedVisitModeDemo?: () => void }
+          ).__phosSeedVisitModeDemo?.(),
+        )
+        .catch(() => {});
+      // target と同じステップ「服薬・副作用」へ進み、「きちんと飲めている」を選択
+      await page
+        .getByRole('button', { name: /^ステップ4/ })
+        .click()
+        .catch(() => {});
+      await page
+        .getByRole('button', { name: 'きちんと飲めている' })
+        .click()
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_24_facility_visit_packet',
@@ -926,6 +960,6 @@ export function filterScreens(entries: DesignScreenEntry[]): DesignScreenEntry[]
     .filter(Boolean);
   if (wanted.length === 0) return entries;
   return entries.filter((entry) =>
-    wanted.some((w) => entry.screenId === w || entry.screenId.startsWith(w))
+    wanted.some((w) => entry.screenId === w || entry.screenId.startsWith(w)),
   );
 }

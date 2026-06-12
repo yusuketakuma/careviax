@@ -47,9 +47,7 @@ export function resolveAdjacentVisitStep(
   activeId: VisitRecordStepId | null,
   direction: 'prev' | 'next',
 ): VisitRecordStepId | null {
-  const activeIndex = activeId
-    ? VISIT_RECORD_STEPS.findIndex((step) => step.id === activeId)
-    : 0;
+  const activeIndex = activeId ? VISIT_RECORD_STEPS.findIndex((step) => step.id === activeId) : 0;
   const safeIndex = activeIndex === -1 ? 0 : activeIndex;
   const nextIndex = direction === 'prev' ? safeIndex - 1 : safeIndex + 1;
   if (nextIndex < 0 || nextIndex >= VISIT_RECORD_STEPS.length) return null;
@@ -134,16 +132,21 @@ export function VisitModeHeader({
   dateTimeLabel,
   isOffline,
   pendingSyncCount,
+  className,
 }: {
   patientName: string | null;
   dateTimeLabel: string | null;
   isOffline: boolean;
   pendingSyncCount: number;
+  className?: string;
 }) {
   return (
     <div
       data-testid="visit-mode-header"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3"
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3',
+        className,
+      )}
     >
       <p className="text-base font-bold text-foreground">
         {patientName ? `${patientName} 様` : '患者情報を読み込み中'}
@@ -162,6 +165,121 @@ export function VisitModeHeader({
           </span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * p0_23 モバイル没入ヘッダ: 「PH-OS」ロゴ+未同期バッジ+患者行+ステップドット。
+ * グローバルヘッダは app-shell 側で <md のみ隠れるため、本ヘッダが代替になる。
+ */
+export function VisitMobileModeHeader({
+  patientName,
+  dateTimeLabel,
+  isOffline,
+  pendingSyncCount,
+  activeStepId,
+  onStepSelect,
+}: {
+  patientName: string | null;
+  dateTimeLabel: string | null;
+  isOffline: boolean;
+  pendingSyncCount: number;
+  activeStepId: VisitRecordStepId;
+  onStepSelect: (stepId: VisitRecordStepId) => void;
+}) {
+  return (
+    <header
+      data-testid="visit-mobile-mode-header"
+      className="sticky top-0 z-20 -mx-4 -mt-4 border-b border-border/60 bg-card px-4 pb-3 pt-3 sm:-mx-6 sm:-mt-6 sm:px-6"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-lg font-bold tracking-tight text-primary">PH-OS</p>
+        <div className="flex items-center gap-2">
+          {isOffline ? (
+            <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+              オフライン
+            </span>
+          ) : null}
+          {pendingSyncCount > 0 ? (
+            <span
+              data-testid="visit-mobile-pending-sync-badge"
+              className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-600"
+            >
+              未同期{pendingSyncCount}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <p className="mt-2 text-base font-bold text-foreground">
+        {patientName ? `${patientName} 様` : '患者情報を読み込み中'}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        訪問中{dateTimeLabel ? ` ${dateTimeLabel}` : ''}
+      </p>
+      <VisitStepDots activeId={activeStepId} onSelect={onStepSelect} />
+    </header>
+  );
+}
+
+/**
+ * p0_23 ステップドット(1〜9)。現在地までが青塗り、残りはグレー。
+ * タップで該当ステップへ移動できる(色だけに依存しないよう番号+aria を併用)。
+ */
+export function VisitStepDots({
+  activeId,
+  onSelect,
+}: {
+  activeId: VisitRecordStepId;
+  onSelect: (stepId: VisitRecordStepId) => void;
+}) {
+  const states = buildVisitStepStates(activeId);
+
+  return (
+    <ol className="mt-2.5 flex items-center gap-1" data-testid="visit-step-dots" role="list">
+      {VISIT_RECORD_STEPS.map((step, index) => {
+        const state = states[index];
+        const stateLabel = state === 'done' ? '完了' : state === 'current' ? '現在' : '未入力';
+        return (
+          <li key={step.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(step.id)}
+              aria-label={`ステップ${index + 1} ${step.label}(${stateLabel})`}
+              aria-current={state === 'current' ? 'step' : undefined}
+              data-state={state}
+              className="flex h-11 w-8 items-center justify-center"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'flex size-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors',
+                  state === 'todo'
+                    ? 'bg-muted text-muted-foreground'
+                    : 'bg-primary text-primary-foreground',
+                  state === 'current' ? 'ring-2 ring-primary/30' : undefined,
+                )}
+              >
+                {index + 1}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** p0_23 橙バナー: 未同期の写真ドラフト(p0_48)が残っているときの注意喚起 */
+export function VisitUnsyncedEvidenceBanner({ className }: { className?: string }) {
+  return (
+    <div
+      role="status"
+      data-testid="visit-unsynced-evidence-banner"
+      className={cn('rounded-lg border border-amber-300 bg-amber-50/80 px-4 py-3', className)}
+    >
+      <p className="text-sm font-bold text-amber-700">未同期の写真があります</p>
+      <p className="mt-1 text-xs leading-5 text-amber-900/80">訪問完了前に同期してください。</p>
     </div>
   );
 }
@@ -230,57 +348,103 @@ export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] })
 }
 
 /**
- * p0_22 下部固定バー: 一時保存 / 前へ / 次へ(青)/ 訪問完了(緑)。
- * フォーム内に置く前提(訪問完了は type=submit)。メインのスクロールは
- * AppShell の main 内で起きるため sticky では常時表示できず fixed にする
- * (xl はデスクトップサイドバー幅 w-56 分を空ける)。
+ * p0_22/p0_23 下部固定バー。フォーム内に置く前提(訪問完了は type=submit)。
+ * - md 以上(p0_22): 一時保存 / 前へ / 次へ(青)/ 訪問完了(緑)— スクロール現在地に追従
+ * - md 未満(p0_23): 保存(アウトライン)+ 次へ(青・幅広)。最終ステップのみ訪問完了(緑)
+ * メインのスクロールは AppShell の main 内で起きるため sticky では常時表示できず
+ * fixed にする(xl はデスクトップサイドバー幅 w-56 分を空ける)。
  */
 export function VisitStepActionBar({
   activeId,
+  mobileStepId,
   onSaveDraft,
+  onMobileStepSelect,
   submitPending,
 }: {
   activeId: VisitRecordStepId | null;
+  /** p0_23 モバイルウィザードの現在ステップ(state 管理。スクロール現在地とは独立) */
+  mobileStepId: VisitRecordStepId;
   onSaveDraft: () => void;
+  onMobileStepSelect: (stepId: VisitRecordStepId) => void;
   submitPending: boolean;
 }) {
   const prevStep = resolveAdjacentVisitStep(activeId, 'prev');
   const nextStep = resolveAdjacentVisitStep(activeId, 'next');
+  const mobileNextStep = resolveAdjacentVisitStep(mobileStepId, 'next');
 
   return (
     <div
       data-testid="visit-step-action-bar"
-      className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center gap-2 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/85 sm:px-6 xl:left-56"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur supports-[backdrop-filter]:bg-card/85 sm:px-6 xl:left-56"
     >
-      <Button type="button" variant="outline" className="min-h-11 sm:min-w-28" onClick={onSaveDraft}>
-        一時保存
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11 sm:min-w-24"
-        disabled={!prevStep}
-        onClick={() => prevStep && scrollToVisitStep(prevStep)}
-      >
-        前へ
-      </Button>
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      {/* md 以上: p0_22 のスクロール準拠ナビ */}
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
         <Button
           type="button"
-          className="min-h-11 sm:min-w-32"
-          disabled={!nextStep}
-          onClick={() => nextStep && scrollToVisitStep(nextStep)}
+          variant="outline"
+          className="min-h-11 sm:min-w-28"
+          onClick={onSaveDraft}
         >
-          次へ
+          一時保存
         </Button>
-        <LoadingButton
-          type="submit"
-          loading={submitPending}
-          loadingLabel="保存中..."
-          className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700 sm:min-w-32"
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 sm:min-w-24"
+          disabled={!prevStep}
+          onClick={() => prevStep && scrollToVisitStep(prevStep)}
         >
-          訪問完了
-        </LoadingButton>
+          前へ
+        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            className="min-h-11 sm:min-w-32"
+            disabled={!nextStep}
+            onClick={() => nextStep && scrollToVisitStep(nextStep)}
+          >
+            次へ
+          </Button>
+          <LoadingButton
+            type="submit"
+            loading={submitPending}
+            loadingLabel="保存中..."
+            className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700 sm:min-w-32"
+          >
+            訪問完了
+          </LoadingButton>
+        </div>
+      </div>
+
+      {/* md 未満: p0_23 ウィザードの 保存 + 次へ(最終ステップは訪問完了) */}
+      <div className="flex items-center gap-3 md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          aria-label="一時保存"
+          className="min-h-12 min-w-24"
+          onClick={onSaveDraft}
+        >
+          保存
+        </Button>
+        {mobileNextStep ? (
+          <Button
+            type="button"
+            className="min-h-12 flex-1"
+            onClick={() => onMobileStepSelect(mobileNextStep)}
+          >
+            次へ
+          </Button>
+        ) : (
+          <LoadingButton
+            type="submit"
+            loading={submitPending}
+            loadingLabel="保存中..."
+            className="min-h-12 flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            訪問完了
+          </LoadingButton>
+        )}
       </div>
     </div>
   );

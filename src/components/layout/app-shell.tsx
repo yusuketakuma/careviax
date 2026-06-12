@@ -19,6 +19,7 @@ import { ShortcutHelpModal } from '@/components/features/keyboard/shortcut-help-
 import { GLOBAL_SHORTCUTS } from '@/components/features/keyboard/global-shortcuts';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -75,6 +76,17 @@ export function shouldUseMinimalShell(pathname: string) {
   return segments.at(-1) === 'print';
 }
 
+/**
+ * p0_23 訪問モード Smartphone: /visits/[id]/record はモバイル幅(<md)のみ
+ * 没入型(グローバルヘッダ・下部ナビなし。ページ内の専用ヘッダで代替)。
+ * ルート単位の最小シェル化はデスクトップ p0_22(3 カラム+サイドバー)への
+ * 回帰が大きいため、CSS(max-md:hidden)でモバイル幅のクロームだけ隠す。
+ */
+export function shouldUseMobileImmersiveShell(pathname: string) {
+  const segments = pathname.split('/').filter(Boolean);
+  return segments[0] === 'visits' && segments.length === 3 && segments.at(-1) === 'record';
+}
+
 export function deriveShellViewport(target: Pick<Window, 'matchMedia'>): ShellViewportState {
   const isDesktopLayout = target.matchMedia('(min-width: 1280px)').matches;
   const isTabletLayout = target.matchMedia('(min-width: 768px) and (max-width: 1279px)').matches;
@@ -99,6 +111,8 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const useMinimalShell = shouldUseMinimalShell(pathname);
+  // p0_23: 訪問記録入力はモバイル幅のみ没入型(ヘッダ/下部ナビを CSS で隠す)
+  const mobileImmersiveShell = shouldUseMobileImmersiveShell(pathname);
   const [viewport, setViewport] = useState<ShellViewportState>({
     isReady: false,
     isDesktopLayout: false,
@@ -309,7 +323,10 @@ export function AppShell({ children }: AppShellProps) {
         )}
 
         {chromeHidden ? null : (
-          <div data-print-skip="true">
+          <div
+            data-print-skip="true"
+            className={mobileImmersiveShell ? 'max-md:hidden' : undefined}
+          >
             <AppHeader />
           </div>
         )}
@@ -325,14 +342,20 @@ export function AppShell({ children }: AppShellProps) {
         )}
 
         {/* Bottom padding for mobile nav bar */}
-        <div className={chromeHidden ? 'flex-1 pb-0' : 'flex-1 pb-16 md:pb-0 print:pb-0'}>
+        <div
+          className={
+            chromeHidden
+              ? 'flex-1 pb-0'
+              : cn('flex-1 pb-16 md:pb-0 print:pb-0', mobileImmersiveShell && 'max-md:pb-0')
+          }
+        >
           {children}
         </div>
       </main>
 
       {/* Mobile bottom navigation */}
       {chromeHidden ? null : (
-        <div data-print-skip="true">
+        <div data-print-skip="true" className={mobileImmersiveShell ? 'max-md:hidden' : undefined}>
           <MobileNav />
         </div>
       )}

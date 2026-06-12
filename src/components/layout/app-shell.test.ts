@@ -4,6 +4,7 @@ import {
   resolveQuickCreateTarget,
   resolveSidebarSheetOpen,
   shouldUseMinimalShell,
+  shouldUseMobileImmersiveShell,
   shouldRenderCompactSidebarSheet,
 } from './app-shell';
 
@@ -56,6 +57,20 @@ describe('shouldUseMinimalShell', () => {
   });
 });
 
+describe('shouldUseMobileImmersiveShell', () => {
+  it('marks the visit record route (p0_23) for mobile-immersive chrome', () => {
+    expect(shouldUseMobileImmersiveShell('/visits/v1/record')).toBe(true);
+  });
+
+  it('keeps every other route on the standard chrome', () => {
+    expect(shouldUseMobileImmersiveShell('/visits')).toBe(false);
+    expect(shouldUseMobileImmersiveShell('/visits/v1')).toBe(false);
+    expect(shouldUseMobileImmersiveShell('/visits/v1/capture')).toBe(false);
+    expect(shouldUseMobileImmersiveShell('/visits/evidence')).toBe(false);
+    expect(shouldUseMobileImmersiveShell('/patients/p1/record')).toBe(false);
+  });
+});
+
 describe('deriveShellViewport', () => {
   it('marks desktop widths as non-compact', () => {
     const viewport = deriveShellViewport({
@@ -98,7 +113,7 @@ describe('shouldRenderCompactSidebarSheet', () => {
         isDesktopLayout: false,
         isTabletLayout: false,
         isCompactLayout: false,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -109,7 +124,7 @@ describe('shouldRenderCompactSidebarSheet', () => {
         isDesktopLayout: false,
         isTabletLayout: true,
         isCompactLayout: true,
-      })
+      }),
     ).toBe(true);
   });
 });

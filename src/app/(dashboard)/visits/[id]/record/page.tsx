@@ -11,8 +11,14 @@ export default async function VisitRecordPage({ params }: { params: Promise<{ id
   const { id } = await params;
 
   return (
-    <PageScaffold>
+    // p0_23(<md): 没入型ウィザードのため余白・カード装飾・導入ブロックを外し、
+    // フォーム内の専用ヘッダ(PH-OS+未同期)から始める。md 以上は p0_22 のまま
+    <PageScaffold
+      className="max-md:bg-background max-md:p-0"
+      stackClassName="max-md:space-y-0 max-md:[&>*]:overflow-visible max-md:[&>*]:rounded-none max-md:[&>*]:border-0 max-md:[&>*]:shadow-none"
+    >
       <WorkflowPageIntro
+        className="max-md:hidden"
         backHref="/visits"
         backLabel="訪問一覧へ戻る"
         eyebrow="Visit Recording"

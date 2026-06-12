@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Eye,
   Brain,
+  Check,
   ClipboardList,
   User,
   CalendarCheck,
@@ -26,11 +27,11 @@ import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
+import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
 import {
   enqueueForSync,
   registerVisitRecordConflict,
@@ -51,17 +52,31 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
+import { cn } from '@/lib/utils';
 import {
   VisitEvidenceRail,
+  VisitMobileModeHeader,
   VisitModeHeader,
   VisitStepActionBar,
   VisitStepNav,
+  VisitUnsyncedEvidenceBanner,
   useVisitStepSpy,
+  type VisitRecordStepId,
 } from './visit-step-nav';
+import {
+  FINAL_SECTION_STEP_IDS,
+  MEDICATION_ADHERENCE_CHOICES,
+  applyMedicationAdherenceChoice,
+  applyMedicationAdherenceMemo,
+  countUnsyncedEvidenceDrafts,
+  deriveMedicationAdherenceChoice,
+  mobileVisitStepSectionClassName,
+  resolveMobilePendingSyncCount,
+  resolveMobileVisitStepHeading,
+} from './visit-mode-mobile.shared';
 import { ActionRail } from '@/components/ui/action-rail';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
-import { SoapStepWizard } from '@/components/features/visits/soap-step-wizard';
 import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
 import { FacilityVisitRecordSwitcher } from '@/components/features/visits/facility-visit-record-switcher';
 import {
@@ -229,19 +244,28 @@ function VisitRecordWorkflowSection({
   description,
   children,
   id,
+  className,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   /** 訪問ステップナビ(p0_22)のアンカー。scroll-margin で固定ヘッダー分を逃がす */
   id?: string;
+  /** p0_23: モバイルウィザードのステップ表示制御(max-md:hidden)を渡す */
+  className?: string;
 }) {
   return (
     <PageSection
       id={id}
       title={title}
       description={description}
-      className="scroll-mt-24"
+      // <md はウィザードの 1 ステップ 1 画面(p0_23)。セクションのカード装飾と
+      // 見出しを外し、ウィザード側のステップ見出しに置き換える(md 以上は不変)
+      className={cn(
+        'scroll-mt-24 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0',
+        className,
+      )}
+      headerClassName="max-md:hidden"
       contentClassName="space-y-3 sm:space-y-4"
     >
       {children}
@@ -336,8 +360,11 @@ export function VisitRecordForm({
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
   const [draftHydrated, setDraftHydrated] = useState(false);
+  // p0_23 モバイルウィザード(<md)の現在ステップ。md 以上はスクロール準拠のまま
+  const [mobileStepId, setMobileStepId] = useState<VisitRecordStepId>('visit-step-readiness');
+  // 撮影・動作確認用のデモ注入(dev 限定、p0_34 の window フックの作法)
+  const [demoUnsyncedPhotoCount, setDemoUnsyncedPhotoCount] = useState<number | null>(null);
   const [selectedAttachments, setSelectedAttachments] = useState<VisitAttachmentDraft[]>([]);
   const [visitGeoLog, setVisitGeoLog] = useState<VisitGeoLog | null>(null);
   const [locationTrackingEnabled] = useState(() =>
@@ -393,6 +420,12 @@ export function VisitRecordForm({
     staleTime: 30_000,
     retry: false,
   });
+  // p0_23: この訪問の未同期写真ドラフト(p0_48 撮影分)。橙バナーとモバイル未同期バッジに使う
+  const { data: evidenceDraftSummaries } = useQuery({
+    queryKey: ['visit-evidence-drafts', id],
+    queryFn: () => listEvidenceDraftSummaries(),
+  });
+
   const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
     useQuery<VisitPreparationSnapshot>({
       queryKey: ['visit-preparation-care-team', id, orgId],
@@ -1121,6 +1154,37 @@ export function VisitRecordForm({
 
   // p0_22 訪問ステップ: スクロール現在地(左レール+下部固定バーで共有)
   const activeStepId = useVisitStepSpy();
+
+  // p0_23 モバイルウィザード: ステップ移動(移動後は先頭から読めるよう最上部へ)
+  const handleMobileStepSelect = useCallback((stepId: VisitRecordStepId) => {
+    setMobileStepId(stepId);
+    if (typeof document === 'undefined') return;
+    const main = document.getElementById('main-content');
+    if (main) {
+      main.scrollTo({ top: 0 });
+    } else {
+      window.scrollTo({ top: 0 });
+    }
+  }, []);
+
+  // p0_23 撮影用 dev フック: 未同期写真 2 件相当(橙バナー+未同期バッジ)を再現する
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const target = window as unknown as Record<string, unknown>;
+    target.__phosSeedVisitModeDemo = () => {
+      setDemoUnsyncedPhotoCount(2);
+    };
+    return () => {
+      delete target.__phosSeedVisitModeDemo;
+    };
+  }, []);
+
+  const unsyncedPhotoCount =
+    demoUnsyncedPhotoCount ?? countUnsyncedEvidenceDrafts(evidenceDraftSummaries, id);
+  const mobilePendingSyncCount = resolveMobilePendingSyncCount(
+    pendingSyncCount,
+    unsyncedPhotoCount,
+  );
   // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
   const handleManualDraftSave = useCallback(() => {
     const { watchedValues: vals, visitGeoLog: geoLog } = shortcutStateRef.current;
@@ -1314,27 +1378,46 @@ export function VisitRecordForm({
     );
   }
 
+  const visitDateTimeLabel = schedule?.scheduled_date
+    ? `${format(parseISO(schedule.scheduled_date), 'M/d')}${
+        schedule.time_window_start
+          ? ` ${format(parseISO(schedule.time_window_start), 'HH:mm')}`
+          : ''
+      }`
+    : null;
+  const patientName = schedule?.case_?.patient?.name ?? null;
+
   return (
     <FormProvider {...form}>
       <form onSubmit={handleVisitRecordFormSubmit} noValidate>
-        {/* p0_22 訪問モード: ヘッダ(患者+訪問中+オフライン/未同期)→ 3カラム
+        {/* p0_23 訪問モード Smartphone(<md): 没入ヘッダ(PH-OS+未同期)+ステップ
+            ドット+橙バナー+ステップ見出し。1 ステップ 1 画面のウィザードで進む */}
+        <div className="md:hidden">
+          <VisitMobileModeHeader
+            patientName={patientName}
+            dateTimeLabel={visitDateTimeLabel}
+            isOffline={isOffline}
+            pendingSyncCount={mobilePendingSyncCount}
+            activeStepId={mobileStepId}
+            onStepSelect={handleMobileStepSelect}
+          />
+          {unsyncedPhotoCount > 0 ? <VisitUnsyncedEvidenceBanner className="mt-3" /> : null}
+          <h2 className="mt-4 text-lg font-bold text-foreground">
+            {resolveMobileVisitStepHeading(mobileStepId)}
+          </h2>
+        </div>
+
+        {/* p0_22 訪問モード(md 以上): ヘッダ(患者+訪問中+オフライン/未同期)→ 3カラム
             (左=訪問ステップ / 中央=フォーム / 右=写真・証跡)。pb は下部固定バー分の余白 */}
         <VisitModeHeader
-          patientName={schedule?.case_?.patient?.name ?? null}
-          dateTimeLabel={
-            schedule?.scheduled_date
-              ? `${format(parseISO(schedule.scheduled_date), 'M/d')}${
-                  schedule.time_window_start
-                    ? ` ${format(parseISO(schedule.time_window_start), 'HH:mm')}`
-                    : ''
-                }`
-              : null
-          }
+          className="max-md:hidden"
+          patientName={patientName}
+          dateTimeLabel={visitDateTimeLabel}
           isOffline={isOffline}
           pendingSyncCount={pendingSyncCount}
         />
         <div className="mt-4 pb-24 xl:grid xl:grid-cols-[210px_minmax(0,1fr)_220px] xl:items-start xl:gap-6">
-          <aside className="mb-4 xl:sticky xl:top-6 xl:mb-0 xl:self-start">
+          <aside className="mb-4 max-md:hidden xl:sticky xl:top-6 xl:mb-0 xl:self-start">
             <VisitStepNav activeId={activeStepId} />
           </aside>
           {/* Hidden fields */}
@@ -1353,6 +1436,7 @@ export function VisitRecordForm({
               id="visit-step-readiness"
               title="訪問前確認"
               description="現地で迷わないための担当者、会議からの引き継ぎ、薬学的管理、位置情報、同期状態を先に確認します。"
+              className={mobileVisitStepSectionClassName(mobileStepId, ['visit-step-readiness'])}
             >
               {medicationManagementSection}
 
@@ -1540,6 +1624,7 @@ export function VisitRecordForm({
               id="visit-step-status"
               title="入力状況"
               description="報告書化と訪問薬剤管理の確認事項がどこまで揃っているかを見ます。"
+              className={mobileVisitStepSectionClassName(mobileStepId, ['visit-step-status'])}
             >
               <VisitReportReadinessPanel mode="visit_mobile" items={visitReportReadinessItems} />
             </VisitRecordWorkflowSection>
@@ -1548,6 +1633,7 @@ export function VisitRecordForm({
               id="visit-step-result"
               title="訪問結果"
               description="訪問日の確定と、完了・延期・再訪などの結果を先に決めます。"
+              className={mobileVisitStepSectionClassName(mobileStepId, ['visit-step-result'])}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
                 <div className="space-y-1.5">
@@ -1641,7 +1727,58 @@ export function VisitRecordForm({
               id="visit-step-soap"
               title="現地記録"
               description="S/O/A/Pを中心に、訪問先で確認した薬学的評価と介入内容を記録します。"
+              className={mobileVisitStepSectionClassName(mobileStepId, ['visit-step-soap'])}
             >
+              {/* p0_23(<md のみ): 服薬状況の 3 択カード+メモ(任意)。
+                  既存の structured_soap.objective(medication_status / adherence_score /
+                  free_text)へ射影し、新規フィールドは作らない */}
+              <div className="space-y-2 md:hidden" role="group" aria-label="服薬状況の確認">
+                {MEDICATION_ADHERENCE_CHOICES.map((choice) => {
+                  const selected =
+                    deriveMedicationAdherenceChoice(structuredSoapDraft.objective) === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      aria-pressed={selected}
+                      data-testid={`medication-adherence-choice-${choice.value}`}
+                      onClick={() =>
+                        handleStructuredSoapChange(
+                          applyMedicationAdherenceChoice(structuredSoapDraft, choice.value),
+                        )
+                      }
+                      className={cn(
+                        'flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors',
+                        selected
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                          : 'border-border bg-card text-foreground hover:bg-muted/40',
+                      )}
+                    >
+                      <span>{choice.label}</span>
+                      {selected ? (
+                        <Check className="size-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="space-y-1.5 md:hidden">
+                <Label htmlFor="medication_adherence_memo" className="sr-only">
+                  服薬・副作用のメモ(任意)
+                </Label>
+                <Textarea
+                  id="medication_adherence_memo"
+                  placeholder="メモ(任意)"
+                  rows={3}
+                  value={structuredSoapDraft.objective.free_text ?? ''}
+                  onChange={(event) =>
+                    handleStructuredSoapChange(
+                      applyMedicationAdherenceMemo(structuredSoapDraft, event.target.value),
+                    )
+                  }
+                />
+              </div>
+
               <VoiceSoapAssist
                 activeField={voiceRecognition.activeField}
                 error={voiceRecognition.error}
@@ -1651,289 +1788,315 @@ export function VisitRecordForm({
                 lastTranscript={voiceRecognition.transcript}
               />
 
-              {isMobile ? (
-                <SoapStepWizard
-                  isPending={createRecord.isPending}
-                  recurrenceRule={schedule?.recurrence_rule}
-                  attachmentsContent={attachmentsField}
-                  voiceInput={{
-                    activeField: voiceRecognition.activeField,
-                    error: voiceRecognition.error,
-                    interimTranscript: voiceRecognition.interimTranscript,
-                    isOffline,
-                    isSupported: voiceRecognition.isSupported,
-                    onToggle: voiceRecognition.toggleListening,
-                  }}
-                />
-              ) : (
-                <>
-                  {/* SOAP — tablet 2-column */}
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:gap-5">
-                    {/* S + O (left column) */}
-                    <div className="space-y-4">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                            <span className="inline-flex items-center gap-2">
-                              <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S
-                              — 主観情報（患者の訴え）
-                            </span>
-                            <SoapVoiceFieldToggle
-                              field="soap_subjective"
-                              activeField={voiceRecognition.activeField}
-                              disabled={createRecord.isPending}
-                              error={voiceRecognition.error}
-                              interimTranscript={voiceRecognition.interimTranscript}
-                              isOffline={isOffline}
-                              isSupported={voiceRecognition.isSupported}
-                              onToggle={voiceRecognition.toggleListening}
-                            />
-                          </h3>
-                        </CardHeader>
-                        <CardContent>
-                          <Textarea
-                            id="soap_subjective"
-                            placeholder="患者・家族からの訴え、服薬状況の自己申告など"
-                            rows={5}
-                            aria-label="主観情報"
-                            {...form.register('soap_subjective')}
-                          />
-                        </CardContent>
-                      </Card>
+              {/* SOAP — mobile 1-column / tablet 2-column */}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:gap-5">
+                {/* S + O (left column) */}
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />S —
+                          主観情報（患者の訴え）
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_subjective"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        id="soap_subjective"
+                        placeholder="患者・家族からの訴え、服薬状況の自己申告など"
+                        rows={5}
+                        aria-label="主観情報"
+                        {...form.register('soap_subjective')}
+                      />
+                    </CardContent>
+                  </Card>
 
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                            <span className="inline-flex items-center gap-2">
-                              <Eye className="size-4 text-green-500" aria-hidden="true" />O —
-                              客観情報（観察・計測）
-                            </span>
-                            <SoapVoiceFieldToggle
-                              field="soap_objective"
-                              activeField={voiceRecognition.activeField}
-                              disabled={createRecord.isPending}
-                              error={voiceRecognition.error}
-                              interimTranscript={voiceRecognition.interimTranscript}
-                              isOffline={isOffline}
-                              isSupported={voiceRecognition.isSupported}
-                              onToggle={voiceRecognition.toggleListening}
-                            />
-                          </h3>
-                        </CardHeader>
-                        <CardContent>
-                          <Textarea
-                            id="soap_objective"
-                            placeholder="残薬確認、保管状況、副作用観察、バイタル、介助者の様子など"
-                            rows={5}
-                            aria-label="客観情報"
-                            {...form.register('soap_objective')}
-                          />
-                        </CardContent>
-                      </Card>
-                    </div>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <Eye className="size-4 text-green-500" aria-hidden="true" />O —
+                          客観情報（観察・計測）
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_objective"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        id="soap_objective"
+                        placeholder="残薬確認、保管状況、副作用観察、バイタル、介助者の様子など"
+                        rows={5}
+                        aria-label="客観情報"
+                        {...form.register('soap_objective')}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
 
-                    {/* A + P (right column) */}
-                    <div className="space-y-4">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                            <span className="inline-flex items-center gap-2">
-                              <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
-                              薬学的評価
-                            </span>
-                            <SoapVoiceFieldToggle
-                              field="soap_assessment"
-                              activeField={voiceRecognition.activeField}
-                              disabled={createRecord.isPending}
-                              error={voiceRecognition.error}
-                              interimTranscript={voiceRecognition.interimTranscript}
-                              isOffline={isOffline}
-                              isSupported={voiceRecognition.isSupported}
-                              onToggle={voiceRecognition.toggleListening}
-                            />
-                          </h3>
-                        </CardHeader>
-                        <CardContent>
-                          <Textarea
-                            id="soap_assessment"
-                            placeholder="処方の適正評価、相互作用、副作用リスク、アドヒアランス評価など"
-                            rows={5}
-                            aria-label="薬学的評価"
-                            {...form.register('soap_assessment')}
-                          />
-                        </CardContent>
-                      </Card>
+                {/* A + P (right column) */}
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <Brain className="size-4 text-purple-500" aria-hidden="true" />A —
+                          薬学的評価
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_assessment"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        id="soap_assessment"
+                        placeholder="処方の適正評価、相互作用、副作用リスク、アドヒアランス評価など"
+                        rows={5}
+                        aria-label="薬学的評価"
+                        {...form.register('soap_assessment')}
+                      />
+                    </CardContent>
+                  </Card>
 
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
-                            <span className="inline-flex items-center gap-2">
-                              <ClipboardList
-                                className="size-4 text-orange-500"
-                                aria-hidden="true"
-                              />
-                              P — 計画・介入
-                            </span>
-                            <SoapVoiceFieldToggle
-                              field="soap_plan"
-                              activeField={voiceRecognition.activeField}
-                              disabled={createRecord.isPending}
-                              error={voiceRecognition.error}
-                              interimTranscript={voiceRecognition.interimTranscript}
-                              isOffline={isOffline}
-                              isSupported={voiceRecognition.isSupported}
-                              onToggle={voiceRecognition.toggleListening}
-                            />
-                          </h3>
-                        </CardHeader>
-                        <CardContent>
-                          <Textarea
-                            id="soap_plan"
-                            placeholder="介入内容、次回対応事項、多職種連携の要否、処方医への報告など"
-                            rows={5}
-                            aria-label="計画・介入"
-                            {...form.register('soap_plan')}
-                          />
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </div>
-                </>
-              )}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <h3 className="flex items-center justify-between gap-2 font-heading text-sm leading-snug font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />P —
+                          計画・介入
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_plan"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        id="soap_plan"
+                        placeholder="介入内容、次回対応事項、多職種連携の要否、処方医への報告など"
+                        rows={5}
+                        aria-label="計画・介入"
+                        {...form.register('soap_plan')}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             </VisitRecordWorkflowSection>
 
-            {!isMobile ? (
-              <VisitRecordWorkflowSection
-                id="visit-step-final"
-                title="保存前チェック"
-                description="受領記録、次回提案、残薬、添付をまとめて確認して保存します。"
+            <VisitRecordWorkflowSection
+              id="visit-step-final"
+              title="保存前チェック"
+              description="受領記録、次回提案、残薬、添付をまとめて確認して保存します。"
+              className={mobileVisitStepSectionClassName(mobileStepId, FINAL_SECTION_STEP_IDS)}
+            >
+              {/* Receipt record(p0_23: モバイルはステップ5のみ表示) */}
+              <Card
+                id="visit-step-receipt"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-receipt']),
+                )}
               >
-                {/* Receipt record */}
-                <Card id="visit-step-receipt" className="scroll-mt-24">
-                  <CardHeader className="pb-2">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                      <User className="size-4 text-muted-foreground" aria-hidden="true" />
-                      受領記録
-                    </h3>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="receipt_person_name">受領者名</Label>
-                        <Input
-                          id="receipt_person_name"
-                          placeholder="例: 山田 花子"
-                          {...form.register('receipt_person_name')}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="receipt_person_relation">続柄</Label>
-                        <Select
-                          value={receiptPersonRelation}
-                          onValueChange={(v) =>
-                            form.setValue('receipt_person_relation', v ?? undefined)
-                          }
-                        >
-                          <SelectTrigger id="receipt_person_relation" className="w-full">
-                            <SelectValue placeholder="続柄を選択" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {relationOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="receipt_at">受領日時</Label>
-                        <Input
-                          id="receipt_at"
-                          type="datetime-local"
-                          {...form.register('receipt_at')}
-                          defaultValue={`${visitDate}T00:00`}
-                        />
-                        {form.formState.errors.receipt_at && (
-                          <p className="text-xs text-destructive" role="alert">
-                            {form.formState.errors.receipt_at.message}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Next visit suggestion */}
-                <Card id="visit-step-next-visit" className="scroll-mt-24">
-                  <CardHeader className="pb-2">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                      <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                      次回訪問提案
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                    <User className="size-4 text-muted-foreground" aria-hidden="true" />
+                    受領記録
+                  </h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="next_visit_suggestion_date">次回提案日</Label>
+                      <Label htmlFor="receipt_person_name">受領者名</Label>
                       <Input
-                        id="next_visit_suggestion_date"
-                        type="date"
-                        {...form.register('next_visit_suggestion_date')}
+                        id="receipt_person_name"
+                        placeholder="例: 山田 花子"
+                        {...form.register('receipt_person_name')}
                       />
                     </div>
-                    {schedule?.recurrence_rule && (
-                      <p className="text-xs text-muted-foreground">
-                        定期ルール: {schedule.recurrence_rule}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
 
-                {/* Residual medications */}
-                <Card id="visit-step-residual" className="scroll-mt-24">
-                  <CardContent className="pt-4">
-                    <ResidualMedicationForm />
-                  </CardContent>
-                </Card>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="receipt_person_relation">続柄</Label>
+                      <Select
+                        value={receiptPersonRelation}
+                        onValueChange={(v) =>
+                          form.setValue('receipt_person_relation', v ?? undefined)
+                        }
+                      >
+                        <SelectTrigger id="receipt_person_relation" className="w-full">
+                          <SelectValue placeholder="続柄を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {relationOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {isCompletionOutcome && missingHomeVisit2026Items.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="receipt_at">受領日時</Label>
+                      <Input
+                        id="receipt_at"
+                        type="datetime-local"
+                        {...form.register('receipt_at')}
+                        defaultValue={`${visitDate}T00:00`}
+                      />
+                      {form.formState.errors.receipt_at && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {form.formState.errors.receipt_at.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next visit suggestion(p0_23: モバイルはステップ6のみ表示) */}
+              <Card
+                id="visit-step-next-visit"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-next-visit']),
+                )}
+              >
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                    <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+                    次回訪問提案
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="next_visit_suggestion_date">次回提案日</Label>
+                    <Input
+                      id="next_visit_suggestion_date"
+                      type="date"
+                      {...form.register('next_visit_suggestion_date')}
+                    />
+                  </div>
+                  {schedule?.recurrence_rule && (
+                    <p className="text-xs text-muted-foreground">
+                      定期ルール: {schedule.recurrence_rule}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Residual medications(p0_23: モバイルはステップ7のみ表示) */}
+              <Card
+                id="visit-step-residual"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-residual']),
+                )}
+              >
+                <CardContent className="pt-4">
+                  <ResidualMedicationForm />
+                </CardContent>
+              </Card>
+
+              {isCompletionOutcome && missingHomeVisit2026Items.length > 0 ? (
+                <div
+                  className={mobileVisitStepSectionClassName(mobileStepId, [
+                    'visit-step-final-check',
+                  ])}
+                >
                   <VisitCompletionReadinessWarning items={missingHomeVisit2026Items} />
-                ) : null}
-
-                <Card id="visit-step-evidence" className="scroll-mt-24">
-                  <CardHeader className="pb-2">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                      <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
-                      写真・添付
-                    </h3>
-                  </CardHeader>
-                  <CardContent>{attachmentsField}</CardContent>
-                </Card>
-
-                {/* Submit */}
-                <div id="visit-step-final-check" className="scroll-mt-24">
-                  <ActionRail className="pt-2">
-                    <Button type="button" variant="outline" onClick={() => router.back()}>
-                      キャンセル
-                    </Button>
-                    <LoadingButton
-                      type="submit"
-                      loading={createRecord.isPending}
-                      loadingLabel="保存中..."
-                    >
-                      保存
-                    </LoadingButton>
-                  </ActionRail>
                 </div>
-              </VisitRecordWorkflowSection>
-            ) : null}
+              ) : null}
 
-            {/* p0_22 下部固定バー: 一時保存 / 前へ / 次へ / 訪問完了 */}
+              <Card
+                id="visit-step-evidence"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-evidence']),
+                )}
+              >
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                    <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
+                    写真・添付
+                  </h3>
+                </CardHeader>
+                <CardContent>{attachmentsField}</CardContent>
+              </Card>
+
+              {/* Submit(p0_23: モバイルはステップ9のみ表示。送信は下部バーの「訪問完了」) */}
+              <div
+                id="visit-step-final-check"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-final-check']),
+                )}
+              >
+                <div className="space-y-3 md:hidden">
+                  <VisitReportReadinessPanel
+                    mode="visit_mobile"
+                    items={visitReportReadinessItems}
+                  />
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    内容を確認し、下の「訪問完了」で記録を保存します。
+                  </p>
+                </div>
+                <ActionRail className="pt-2 max-md:hidden">
+                  <Button type="button" variant="outline" onClick={() => router.back()}>
+                    キャンセル
+                  </Button>
+                  <LoadingButton
+                    type="submit"
+                    loading={createRecord.isPending}
+                    loadingLabel="保存中..."
+                  >
+                    保存
+                  </LoadingButton>
+                </ActionRail>
+              </div>
+            </VisitRecordWorkflowSection>
+
+            {/* p0_22/p0_23 下部固定バー: md 以上=一時保存/前へ/次へ/訪問完了、
+                md 未満=保存+次へ(最終ステップのみ訪問完了) */}
             <VisitStepActionBar
               activeId={activeStepId}
+              mobileStepId={mobileStepId}
               onSaveDraft={handleManualDraftSave}
+              onMobileStepSelect={handleMobileStepSelect}
               submitPending={createRecord.isPending}
             />
           </div>

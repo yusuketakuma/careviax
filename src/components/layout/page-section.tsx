@@ -8,6 +8,8 @@ type PageSectionProps = React.ComponentPropsWithoutRef<'section'> & {
   description?: string;
   actions?: React.ReactNode;
   contentClassName?: string;
+  /** 見出し行(タイトル+説明+actions)に付与する追加クラス(モバイルで隠す等) */
+  headerClassName?: string;
   headingId?: string;
   headingLevel?: 2 | 3;
   tone?: 'default' | 'subtle' | 'warning' | 'danger';
@@ -27,6 +29,7 @@ export function PageSection({
   children,
   className,
   contentClassName,
+  headerClassName,
   headingId,
   headingLevel = 2,
   tone = 'default',
@@ -42,7 +45,12 @@ export function PageSection({
       className={cn('space-y-4 rounded-2xl border p-4', toneClassName[tone], className)}
       {...props}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div
+        className={cn(
+          'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between',
+          headerClassName,
+        )}
+      >
         <div className="min-w-0">
           <Heading id={titleId} className="text-base font-semibold text-foreground">
             {title}

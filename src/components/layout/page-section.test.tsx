@@ -37,4 +37,15 @@ describe('PageSection', () => {
 
     expect(screen.getByRole('heading', { level: 3, name: '補助導線' })).toBeTruthy();
   });
+
+  it('applies headerClassName to the heading row (p0_23 のモバイル見出し制御)', () => {
+    render(
+      <PageSection title="現地記録" headerClassName="max-md:hidden">
+        <p>本文</p>
+      </PageSection>,
+    );
+
+    const heading = screen.getByRole('heading', { name: '現地記録' });
+    expect(heading.parentElement?.parentElement?.className).toContain('max-md:hidden');
+  });
 });

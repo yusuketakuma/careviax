@@ -100,6 +100,11 @@ vi.mock('@/lib/stores/sync-engine', () => ({
   setupAutoSync: setupAutoSyncMock,
 }));
 
+// p0_23 未同期写真バッジ用(IndexedDB は jsdom で使えないためモック)
+vi.mock('@/lib/offline/evidence-drafts', () => ({
+  listEvidenceDraftSummaries: vi.fn(async () => []),
+}));
+
 vi.mock('@/lib/visit-location', () => ({
   captureVisitGeoPoint: vi.fn(),
   getVisitLocationPermissionState: vi.fn().mockResolvedValue('unavailable'),
