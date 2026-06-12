@@ -21,6 +21,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PackagingMethodMaster',
     'Task',
     'TaskComment',
+    'IncidentReport',
     'Facility',
     'ServiceArea',
     'ExternalProfessional',
