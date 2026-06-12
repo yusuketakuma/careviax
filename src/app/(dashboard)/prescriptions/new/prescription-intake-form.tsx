@@ -48,6 +48,7 @@ import {
   getPrescriptionSubmitBlockers,
   parsePrescriptionSubmitError,
 } from './prescription-intake-submit';
+import { PrescriptionPeriodReview } from './prescription-period-review';
 import {
   normalizeJahisSupplementalRecords,
   type JahisSupplementalRecordDbView,
@@ -376,6 +377,79 @@ export function PrescriptionIntakeForm() {
   const [facilityBatchEntries, setFacilityBatchEntries] = useState<FacilityBatchEntryDraft[]>([]);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [lines, setLines] = useState<PrescriptionLineInput[]>([emptyLine()]);
+
+  // p0_10 撮影・動作確認用のデモ明細注入(dev 限定で window に公開)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const target = window as unknown as Record<string, unknown>;
+    target.__phosSeedPeriodReviewDemo = () => {
+      updatePatientSelection({ selectedPatientName: '田中 一郎' });
+      setLines([
+        {
+          line_number: 1,
+          drug_name: 'ロキソニン錠60mg',
+          drug_code: 'demo-loxonin',
+          dose: '1錠',
+          frequency: '毎食後',
+          days: 10,
+          start_date: '2026-05-22',
+          is_generic: false,
+          notes: '胃薬と確認',
+        },
+        {
+          line_number: 2,
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: 'demo-amlodipine',
+          dose: '1錠',
+          frequency: '朝食後',
+          days: 28,
+          start_date: '2026-05-22',
+          dispensing_method: 'unit_dose',
+          is_generic: true,
+          notes: '今回中止→回収',
+        },
+        {
+          line_number: 3,
+          drug_name: 'トラセミド錠4mg',
+          drug_code: 'demo-torasemide',
+          dose: '1錠',
+          frequency: '朝食後',
+          days: 28,
+          start_date: '2026-05-22',
+          dispensing_method: 'unit_dose',
+          is_generic: true,
+          notes: '利尿薬・ふらつき',
+        },
+        {
+          line_number: 4,
+          drug_name: '酸化Mg錠330mg',
+          drug_code: 'demo-mgo',
+          dose: '1錠',
+          frequency: '夕食後',
+          days: 28,
+          start_date: '2026-05-22',
+          packaging_instructions: '別包',
+          is_generic: true,
+          notes: '便通確認',
+        },
+        {
+          line_number: 5,
+          drug_name: '粉薬A',
+          drug_code: 'demo-powder',
+          dose: '1包',
+          frequency: '朝夕',
+          days: 14,
+          start_date: '2026-05-22',
+          dispensing_method: 'crushed',
+          is_generic: false,
+          notes: '嚥下確認',
+        },
+      ]);
+    };
+    return () => {
+      delete target.__phosSeedPeriodReviewDemo;
+    };
+  }, [updatePatientSelection]);
   const [appliedQrDraftId, setAppliedQrDraftId] = useState('');
   const [qrDraftSubmissionId, setQrDraftSubmissionId] = useState('');
   const mapQrLineToForm = toFormLineFromQr;
@@ -2680,6 +2754,15 @@ export function PrescriptionIntakeForm() {
           </div>
         </fieldset>
       )}
+
+      {/* p0_10 服用期間レビュー: いつからいつまでの薬か・加工する薬かを保存前に確認 */}
+      <PrescriptionPeriodReview
+        lines={lines}
+        patientName={selectedPatientName}
+        submitBlockers={submitBlockers}
+        canSubmit={canSubmit}
+        isSubmitting={isSubmitting}
+      />
 
       {/* Submit */}
       <div

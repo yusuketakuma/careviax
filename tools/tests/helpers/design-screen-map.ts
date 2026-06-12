@@ -206,7 +206,36 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p0_10_prescription_entry_period',
     targetImage: 'images/P0/p0_10_prescription_entry_period.png',
     route: '/prescriptions/new',
-    note: '期間入力ステップの再現操作は実装フェーズで追加',
+    setup: async (page) => {
+      // dev 限定 window フックでデモ5明細を注入し、期間レビューカードへスクロール
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedPeriodReviewDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (
+            window as unknown as { __phosSeedPeriodReviewDemo?: () => void }
+          ).__phosSeedPeriodReviewDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="prescription-period-review"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page
+        .evaluate(() => {
+          document
+            .querySelector('[data-testid="prescription-period-review"]')
+            ?.scrollIntoView({ block: 'start' });
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_11_prescription_diff_review',
