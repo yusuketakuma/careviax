@@ -301,7 +301,8 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_26_contact_delivery_target_edit',
     targetImage: 'images/P0/p0_26_contact_delivery_target_edit.png',
-    route: '/admin/contact-profiles',
+    // 患者文脈の送付先・連絡先(多職種連携先パネル: FAX未登録警告つき)
+    route: '/patients/cmnhdemopt001amq9ph-os?view=profile&tab=communications',
   },
   {
     screenId: 'p0_27_handoff_bidirectional',

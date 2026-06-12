@@ -21,7 +21,7 @@ vi.mock('sonner', () => ({
   },
 }));
 
-import { PatientCareTeamPanel } from './patient-care-team-panel';
+import { careTeamContactBadges, PatientCareTeamPanel } from './patient-care-team-panel';
 
 setupDomTestEnv();
 
@@ -65,5 +65,42 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByDisplayValue('千代田クリニック')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+});
+
+describe('careTeamContactBadges', () => {
+  it('warns when a document-channel role is missing a fax number', () => {
+    expect(
+      careTeamContactBadges({ role: 'care_manager', fax: '', email: '', phone: '03-0000-0000' }),
+    ).toEqual([
+      { label: 'FAX未登録', tone: 'alert' },
+      { label: '電話のみ', tone: 'muted' },
+    ]);
+  });
+
+  it('marks registered fax and email channels as ok', () => {
+    expect(
+      careTeamContactBadges({
+        role: 'physician',
+        fax: '03-1234-5678',
+        email: 'doctor@example.jp',
+        phone: '',
+      }),
+    ).toEqual([
+      { label: 'FAX登録済', tone: 'ok' },
+      { label: 'メールOK', tone: 'ok' },
+    ]);
+  });
+
+  it('shows phone-only for family-like contacts without fax warning', () => {
+    expect(
+      careTeamContactBadges({ role: 'other', fax: '', email: '', phone: '090-0000-0000' }),
+    ).toEqual([{ label: '電話のみ', tone: 'muted' }]);
+  });
+
+  it('alerts when no contact channel is registered at all', () => {
+    expect(careTeamContactBadges({ role: 'other', fax: '', email: '', phone: '' })).toEqual([
+      { label: '連絡先未登録', tone: 'alert' },
+    ]);
   });
 });

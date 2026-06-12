@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { cn } from '@/lib/utils';
 
 type CareTeamRow = {
   id?: string;
@@ -74,6 +75,56 @@ const roleLabel: Record<CareTeamRow['role'], string> = {
   care_manager: 'ケアマネジャー',
   pharmacist: '担当薬剤師',
   other: 'その他他職種',
+};
+
+export type CareTeamContactBadge = {
+  label: string;
+  tone: 'alert' | 'ok' | 'muted';
+};
+
+/** 文書送付の主対象(報告書・トレーシングレポートの宛先になりやすい役割) */
+const DOCUMENT_CHANNEL_ROLES = new Set<CareTeamRow['role']>(['physician', 'nurse', 'care_manager']);
+
+/**
+ * デザイン p0_26「送付先・連絡先を整える」: 送付前に連絡チャネルの抜けを
+ * 一覧で気づけるようにする。文書送付対象の役割は FAX 未登録を赤で警告する。
+ */
+export function careTeamContactBadges(row: {
+  role: CareTeamRow['role'];
+  fax: string;
+  email: string;
+  phone: string;
+}): CareTeamContactBadge[] {
+  const hasFax = row.fax.trim().length > 0;
+  const hasEmail = row.email.trim().length > 0;
+  const hasPhone = row.phone.trim().length > 0;
+
+  // どのチャネルも無いときは個別警告を束ねて1つに集約する
+  if (!hasFax && !hasEmail && !hasPhone) {
+    return [{ label: '連絡先未登録', tone: 'alert' }];
+  }
+
+  const badges: CareTeamContactBadge[] = [];
+  if (DOCUMENT_CHANNEL_ROLES.has(row.role)) {
+    badges.push(
+      hasFax ? { label: 'FAX登録済', tone: 'ok' } : { label: 'FAX未登録', tone: 'alert' },
+    );
+  } else if (hasFax) {
+    badges.push({ label: 'FAX登録済', tone: 'ok' });
+  }
+  if (hasEmail) {
+    badges.push({ label: 'メールOK', tone: 'ok' });
+  }
+  if (!hasFax && !hasEmail) {
+    badges.push({ label: '電話のみ', tone: 'muted' });
+  }
+  return badges;
+}
+
+const CONTACT_BADGE_TONE_CLASSES: Record<CareTeamContactBadge['tone'], string> = {
+  alert: 'border-red-200 bg-red-50 text-red-700',
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  muted: 'border-border bg-muted text-muted-foreground',
 };
 
 export function PatientCareTeamPanel({
@@ -342,6 +393,32 @@ export function PatientCareTeamPanel({
         <div className="space-y-3">
           {rows.map((row, index) => (
             <div key={row.id ?? `care-team-${index}`} className="rounded-lg border p-3">
+              {/* p0_26: 役割+連絡チャネル状態のサマリ(FAX未登録は赤で警告) */}
+              <div
+                className="mb-3 flex flex-wrap items-center gap-2 border-b border-border/60 pb-2.5"
+                data-testid="care-team-contact-summary"
+              >
+                <span className="text-sm font-semibold text-foreground">
+                  {roleLabel[row.role]}
+                  {row.name.trim() ? `: ${row.name}` : ''}
+                </span>
+                {row.is_primary ? (
+                  <span className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    主担当
+                  </span>
+                ) : null}
+                {careTeamContactBadges(row).map((badge) => (
+                  <span
+                    key={badge.label}
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium',
+                      CONTACT_BADGE_TONE_CLASSES[badge.tone],
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="他職種マスター">
                   <Select
