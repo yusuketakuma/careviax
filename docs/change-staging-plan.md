@@ -2,29 +2,26 @@
 
 作成日: 2026-06-12
 
-この文書は、広範な dirty worktree を安全に checkpoint / review / commit するための staging plan です。2026-06-12 時点の `git status --short`、`git diff --stat`、`docs/refactor-proposals.md`、`.codex/ralph-state.md` を根拠に分類しています。
+この文書は、dirty worktree を安全に checkpoint / review / commit するための staging plan です。2026-06-12 時点の `git status --short`、`git diff --stat`、`docs/refactor-proposals.md`、`.codex/ralph-state.md` を根拠に分類しています。
 
 ## Current Verified Baseline
 
 - Node / pnpm: Node `v24.16.0`、pnpm `11.5.2`
-- Full validation: `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test -- --reporter=dot`、`pnpm build` は pass
+- Full validation: `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test -- --reporter=dot`、`pnpm build` は pass。直近の full Vitest は 855 files passed / 1 skipped、5883 tests passed / 1 skipped。`pnpm build` は 248 static pages generated。
 - API auth migration: `rg "withAuth\\(" src/app/api -g route.ts` は 0 件
 - API raw audit writes: `rg "auditLog\\.create" src/app/api -g route.ts` は 0 件
 - DB migration: 未適用。承認済み DB 環境でのみ precheck / apply / verify する
 
 ## Dirty Tree Summary
 
-- tracked changes: 295 files
-- untracked files: 18 files
+- tracked changes: 9 files
+- untracked files: 4 files
 - largest change families:
-  - API auth/audit standardization
-  - Node / pnpm runtime pinning
-  - env safety and structured logger groundwork
-  - DB schema and migration groundwork
-  - dashboard / patient UI replacement and legacy deletion
-  - scheduling / visit route typing and helper cleanup
-  - file storage and webhook security groundwork
-  - docs and Ralph state
+  - DB-gated precheck/verifier import-safety, timeout, and JSON error output
+  - ExternalAccessGrant case-boundary audit bounded apply and transaction safety
+  - FileAsset migration precondition coverage for integer range and timestamp casts
+  - audit-log static convention guard
+  - operations/script docs and Ralph state
 
 ## Proposed Checkpoint Order
 
