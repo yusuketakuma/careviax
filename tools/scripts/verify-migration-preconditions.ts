@@ -184,6 +184,75 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
     });
   }
 
+  const duplicateFileAssetStorageKeys = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT value->>'storageKey' AS storage_key
+        FROM "Setting"
+        WHERE "scope" = 'organization'
+          AND "key" LIKE 'file_asset:%'
+          AND jsonb_typeof("value") = 'object'
+          AND value->>'version' = '1'
+          AND value->>'id' IS NOT NULL
+          AND value->>'storageKey' IS NOT NULL
+        GROUP BY value->>'storageKey'
+        HAVING COUNT(DISTINCT value->>'id') > 1
+      ) AS duplicate_storage_keys
+    `,
+  );
+  if (duplicateFileAssetStorageKeys > 0) {
+    issues.push({
+      name: 'file-asset-duplicate-storage-key',
+      severity: 'error',
+      detail: `${duplicateFileAssetStorageKeys} file asset storageKey group(s) map to multiple ids and would violate FileAsset_storage_key_key`,
+    });
+  }
+
+  const invalidFileAssetSizeBytes = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM "Setting"
+      WHERE "scope" = 'organization'
+        AND "key" LIKE 'file_asset:%'
+        AND jsonb_typeof("value") = 'object'
+        AND value->>'version' = '1'
+        AND NULLIF(value->>'sizeBytes', '') IS NOT NULL
+        AND NOT (value->>'sizeBytes' ~ '^[0-9]+$')
+    `,
+  );
+  if (invalidFileAssetSizeBytes > 0) {
+    issues.push({
+      name: 'file-asset-invalid-size-bytes',
+      severity: 'error',
+      detail: `${invalidFileAssetSizeBytes} file asset Setting row(s) have non-integer sizeBytes and would fail FileAsset backfill casting`,
+    });
+  }
+
+  const missingFileAssetOrganizations = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM "Setting" AS setting
+      LEFT JOIN "Organization" AS org ON org.id = setting.value->>'orgId'
+      WHERE setting."scope" = 'organization'
+        AND setting."key" LIKE 'file_asset:%'
+        AND jsonb_typeof(setting."value") = 'object'
+        AND setting.value->>'version' = '1'
+        AND setting.value->>'orgId' IS NOT NULL
+        AND org.id IS NULL
+    `,
+  );
+  if (missingFileAssetOrganizations > 0) {
+    issues.push({
+      name: 'file-asset-missing-organization',
+      severity: 'error',
+      detail: `${missingFileAssetOrganizations} file asset Setting row(s) reference a missing organization and would violate FileAsset_org_id_fkey`,
+    });
+  }
+
   return {
     ok: issues.every((issue) => issue.severity !== 'error'),
     issues,
@@ -196,6 +265,9 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
       'pca-invalid-returned-state',
       'pca-duplicate-serial-numbers',
       'btree-gist-extension',
+      'file-asset-duplicate-storage-key',
+      'file-asset-invalid-size-bytes',
+      'file-asset-missing-organization',
     ],
   };
 }

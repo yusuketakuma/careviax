@@ -106,6 +106,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PushSubscription',
     'WebhookRegistration',
     'WebhookDelivery',
+    'FileAsset',
     'User',
     'Membership',
     'FacilityStandardRegistration',

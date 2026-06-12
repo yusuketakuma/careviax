@@ -100,6 +100,7 @@ model PrescriptionIntake {
   cycle_id                   String
   cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
   source_type                PrescriptionSourceType
+  rx_number                  String?
   prescribed_date            DateTime
   prescriber_name            String?
   prescriber_institution_id  String?
@@ -122,6 +123,7 @@ model PrescriptionIntake {
   lines                      PrescriptionLine[]
   jahis_supplemental_records JahisSupplementalRecord[]
 
+  @@unique([org_id, rx_number])
   @@index([org_id])
   @@index([cycle_id])
   @@index([prescriber_institution_id])
@@ -381,6 +383,8 @@ model WorkflowException {
   org_id         String
   cycle_id       String?
   cycle          MedicationCycle? @relation(fields: [cycle_id], references: [id])
+  patient_id     String?
+  patient        Patient?         @relation(fields: [patient_id], references: [id])
   exception_type String
   description    String
   severity       String // critical/warning/info
@@ -391,6 +395,7 @@ model WorkflowException {
   updated_at     DateTime         @updatedAt
 
   @@index([org_id])
+  @@index([patient_id])
   @@index([status])
 }
 

@@ -326,13 +326,23 @@ const DO_PRESCRIPTION_RISK_PROFILES: DoPrescriptionRiskProfile[] = [
   },
 ];
 
-async function resolveManagedAlertTypeStates() {
+function scopedDrugAlertRuleWhere(
+  orgId: string,
+  where: Prisma.DrugAlertRuleWhereInput,
+): Prisma.DrugAlertRuleWhereInput {
+  return {
+    ...where,
+    OR: [{ org_id: orgId }, { org_id: null }],
+  };
+}
+
+async function resolveManagedAlertTypeStates(orgId: string) {
   const configuredRules = await prisma.drugAlertRule.findMany({
-    where: {
+    where: scopedDrugAlertRuleWhere(orgId, {
       alert_type: {
         in: MANAGED_ALERT_TYPES,
       },
-    },
+    }),
     select: {
       alert_type: true,
       is_active: true,
@@ -756,6 +766,7 @@ async function checkTransitionalExpiry(
 // ---------------------------------------------------------------------------
 
 async function checkAllergyReactions(
+  orgId: string,
   prescriptionLines: PrescriptionLine[],
   patient: PatientForChecks | null,
   drugMasterMap?: Map<string, DrugMasterForCds>,
@@ -772,7 +783,7 @@ async function checkAllergyReactions(
 
   // Fetch allergy_cross rules
   const allergyRules = await prisma.drugAlertRule.findMany({
-    where: { alert_type: 'allergy_cross', is_active: true },
+    where: scopedDrugAlertRuleWhere(orgId, { alert_type: 'allergy_cross', is_active: true }),
   });
 
   // Resolve DrugMaster for prescription lines to get therapeutic_category
@@ -934,13 +945,14 @@ async function checkNarcoticFlags(
 // ---------------------------------------------------------------------------
 
 async function checkHighRiskDrugs(
+  orgId: string,
   prescriptionLines: PrescriptionLine[],
   drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
   const highRiskRules = await prisma.drugAlertRule.findMany({
-    where: { alert_type: 'high_risk', is_active: true },
+    where: scopedDrugAlertRuleWhere(orgId, { alert_type: 'high_risk', is_active: true }),
   });
 
   // Resolve DrugMaster for therapeutic category matching
@@ -1178,6 +1190,7 @@ async function checkDoPrescriptionRisk(
 // ---------------------------------------------------------------------------
 
 async function checkElderlyPIM(
+  orgId: string,
   prescriptionLines: PrescriptionLine[],
   patient: PatientForChecks | null,
   drugMasterMap?: Map<string, DrugMasterForCds>,
@@ -1190,7 +1203,7 @@ async function checkElderlyPIM(
   if (age < 65) return alerts;
 
   const pimRules = await prisma.drugAlertRule.findMany({
-    where: { alert_type: 'pim_elderly', is_active: true },
+    where: scopedDrugAlertRuleWhere(orgId, { alert_type: 'pim_elderly', is_active: true }),
   });
 
   if (pimRules.length === 0) return alerts;
@@ -1506,7 +1519,7 @@ export async function checkDispenseAlerts(
   cycleId: string,
   patientId: string,
 ): Promise<CdsAlert[]> {
-  const managedAlertStates = await resolveManagedAlertTypeStates();
+  const managedAlertStates = await resolveManagedAlertTypeStates(orgId);
 
   // Fetch prescription lines for this cycle
   const prescriptionLines = await prisma.prescriptionLine.findMany({
@@ -1604,17 +1617,17 @@ export async function checkDispenseAlerts(
       : Promise.resolve([]),
     checkTransitionalExpiry(prescriptionLines, drugMasterMap),
     managedAlertStates.get('allergy_cross')
-      ? checkAllergyReactions(prescriptionLines, patient, drugMasterMap)
+      ? checkAllergyReactions(orgId, prescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('narcotic')
       ? checkNarcoticFlags(prescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('high_risk')
-      ? checkHighRiskDrugs(prescriptionLines, drugMasterMap)
+      ? checkHighRiskDrugs(orgId, prescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
     managedAlertStates.get('pim_elderly')
-      ? checkElderlyPIM(prescriptionLines, patient, drugMasterMap)
+      ? checkElderlyPIM(orgId, prescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('renal_dose')
       ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)

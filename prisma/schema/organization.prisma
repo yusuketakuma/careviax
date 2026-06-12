@@ -73,6 +73,8 @@ model Organization {
   visit_vehicle_resources     VisitVehicleResource[]
   webhook_registrations       WebhookRegistration[]
   webhook_deliveries          WebhookDelivery[]
+  drug_alert_rules            DrugAlertRule[]
+  file_assets                 FileAsset[]
 
   @@index([name])
 }

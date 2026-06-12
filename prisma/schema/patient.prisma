@@ -131,6 +131,7 @@ model Patient {
   insurances                 PatientInsurance[]
   lab_observations           PatientLabObservation[]
   jahis_supplemental_records JahisSupplementalRecord[]
+  workflow_exceptions        WorkflowException[]
 
   @@index([org_id])
   @@index([name_kana])

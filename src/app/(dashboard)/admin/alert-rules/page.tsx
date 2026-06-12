@@ -19,6 +19,7 @@ import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 type DrugAlertRule = {
   id: string;
+  org_id: string | null;
   alert_type: string;
   condition: Record<string, unknown>;
   severity: 'critical' | 'warning' | 'info';
@@ -303,51 +304,57 @@ export default function AlertRulesPage() {
                 まだ処方安全アラートルールはありません。
               </p>
             ) : (
-              rules.map((rule) => (
-                <div key={rule.id} className="rounded-lg border border-border/60 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground">
-                        {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
-                      </p>
-                      <Badge variant={rule.is_active ? 'default' : 'outline'}>
-                        {rule.is_active ? '有効' : '停止'}
-                      </Badge>
-                      <Badge variant="outline">{rule.severity}</Badge>
+              rules.map((rule) => {
+                const canMutateRule = rule.org_id === orgId;
+                return (
+                  <div key={rule.id} className="rounded-lg border border-border/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground">
+                          {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
+                        </p>
+                        <Badge variant={rule.is_active ? 'default' : 'outline'}>
+                          {rule.is_active ? '有効' : '停止'}
+                        </Badge>
+                        <Badge variant="outline">{rule.severity}</Badge>
+                        <Badge variant="secondary">{canMutateRule ? '組織' : '共通'}</Badge>
+                      </div>
+                      {canMutateRule ? (
+                        <ActionRail>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setForm({
+                                id: rule.id,
+                                alert_type: rule.alert_type,
+                                severity: rule.severity,
+                                is_active: rule.is_active,
+                                message: rule.message,
+                                conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
+                              })
+                            }
+                          >
+                            編集
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteMutation.mutate(rule.id)}
+                            disabled={deleteMutation.isPending}
+                          >
+                            削除
+                          </Button>
+                        </ActionRail>
+                      ) : null}
                     </div>
-                    <ActionRail>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setForm({
-                            id: rule.id,
-                            alert_type: rule.alert_type,
-                            severity: rule.severity,
-                            is_active: rule.is_active,
-                            message: rule.message,
-                            conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
-                          })
-                        }
-                      >
-                        編集
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => deleteMutation.mutate(rule.id)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        削除
-                      </Button>
-                    </ActionRail>
+                    <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
+                    <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
+                      {JSON.stringify(rule.condition ?? {}, null, 2)}
+                    </pre>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
-                  <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
-                    {JSON.stringify(rule.condition ?? {}, null, 2)}
-                  </pre>
-                </div>
-              ))
+                );
+              })
             )}
           </PageSection>
         </div>

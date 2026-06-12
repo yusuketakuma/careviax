@@ -138,9 +138,10 @@ model DrugInteraction {
   @@index([drug_b_id])
 }
 
-// グローバルマスタ（org_id なし）
 model DrugAlertRule {
   id         String        @id @default(cuid())
+  org_id     String?
+  org        Organization? @relation(fields: [org_id], references: [id])
   alert_type AlertType
   condition  Json
   severity   AlertSeverity
@@ -149,6 +150,7 @@ model DrugAlertRule {
   created_at DateTime      @default(now())
   updated_at DateTime      @updatedAt
 
+  @@index([org_id])
   @@index([alert_type])
 }
 

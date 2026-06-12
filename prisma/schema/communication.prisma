@@ -328,14 +328,14 @@ model HandoffBoard {
 }
 
 model HandoffItem {
-  id          String       @id @default(cuid())
-  board_id    String
-  board       HandoffBoard @relation(fields: [board_id], references: [id])
-  content     String
-  priority    String       @default("normal") // normal, high, urgent
-  entity_type String? // optional link to workflow entity
-  entity_id   String?
-  read_by     String[] // user IDs who confirmed reading
+  id                String       @id @default(cuid())
+  board_id          String
+  board             HandoffBoard @relation(fields: [board_id], references: [id])
+  content           String
+  priority          String       @default("normal") // normal, high, urgent
+  entity_type       String? // optional link to workflow entity
+  entity_id         String?
+  read_by           String[] // user IDs who confirmed reading
   // --- responsibility transfer model (new design 12_handoff) ---
   // All nullable for backward compatibility: legacy rows (= plain shift notes)
   // keep every new column NULL and continue to work with the read_by flow.
@@ -347,8 +347,8 @@ model HandoffItem {
   deadline          DateTime? // ③いつまで(期限)
   progress_done     Int? // 作業中 9/12 の 9
   progress_total    Int? // 作業中 9/12 の 12
-  created_by  String
-  created_at  DateTime     @default(now())
+  created_by        String
+  created_at        DateTime     @default(now())
 
   @@index([board_id])
   @@index([recipient_user_id])

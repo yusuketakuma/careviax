@@ -253,6 +253,36 @@ model Setting {
   @@index([scope, scope_id])
 }
 
+model FileAsset {
+  id                   String       @id
+  org_id               String
+  org                  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  purpose              String
+  storage_key          String       @unique
+  original_name        String
+  mime_type            String
+  size_bytes           Int
+  status               String
+  patient_id           String?
+  visit_record_id      String?
+  report_id            String?
+  job_id               String?
+  uploaded_by          String?
+  etag                 String?
+  completed_at         DateTime?
+  expires_at           DateTime?
+  download_disposition String       @default("inline")
+  metadata             Json?
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
+
+  @@index([org_id])
+  @@index([org_id, purpose])
+  @@index([org_id, status])
+  @@index([org_id, job_id])
+  @@index([expires_at])
+}
+
 model LabelDictionary {
   id         String   @id @default(cuid())
   key        String   @unique
