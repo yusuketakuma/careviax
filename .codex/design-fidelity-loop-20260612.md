@@ -248,3 +248,16 @@ E の設計指針(次ループ):
 - **下部固定バー**: 一時保存(Cmd+S と同じ下書き保存)/前へ/次へ(青)/訪問完了(緑・submit)。**AppShell は main が overflow-y-auto のスクロールコンテナなので sticky bottom は常時表示にならない → fixed inset-x-0 bottom-0 + xl:left-56(デスクトップサイドバー幅)**+フォーム pb-24
 - 教訓: sticky bottom は自然位置がビューポート外だと貼り付かない。main 内スクロールのアプリでは下部常駐バーは fixed+サイドバー幅オフセット
 - 残り(E-2b/2c): 右列「写真・証跡」カード列+ヘッダ患者名/オフライン/未同期バッジ(useOfflineStore)/ p0_24 施設パケット3カラム(facility-visit-context 調査から)
+
+## E-2b/2c 完了(2026-06-12 22:20)— 5e0d0721 / ffe12268
+
+- **p0_22 合格(E-2b)**: VisitModeHeader(患者名+M/d HH:mm+訪問中+オフライン/未同期バッジ=useOfflineStore)+右レール VisitEvidenceRail(添付ドラフト=未同期表示、空状態は「写真を追加」ジャンプ)+xl 3カラム [210px_1fr_220px]。ScheduleDetail 型に case_.patient/time_window_start を追加(API は元から返している)
+- **p0_24 合格(E-2c 第一版)**: /visits/[id]/facility-packet 新設。facility_parallel_context から部屋カード列(101-103号室+訪問準備/止まりN件)+施設訪問パケット(common_notes 行分解)+次にやること(訪問モードを開始/施設用メモを印刷=window.print)。撮影ルート=visitOgawa cmnhdemovis010amq9ph-os
+- 意図的差分: p0_22 バッジはオンライン時非表示(state 由来)/ p0_24 見出しは label が住所込み(データ差)、カード枚数・工程横断状態(セット済/監査待ち)はデータ未整備で省略
+- 将来拡張メモ: パケット構造化編集 UI+印刷専用ビュー+batch GET API(gap-analysis 記載)は未着手
+- 教訓: 撮影直後の「読み込み中...」flake は dev 再コンパイル直後に起きる — 再実行で解消(コード起因でない)
+
+### 次: p1 系(D-8)の優先判定 + 撮影保留2枚
+
+- p1_01〜p1_14 の target を一括で読み、既存実装で撮影可能なもの(改修小)と新規実装が要るものを仕分け
+- 撮影保留: p0_45(PHOS_API スタブが必要)/ p1_04(setup 未定)の解消方法を判定
