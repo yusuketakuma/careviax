@@ -1,8 +1,4 @@
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-4 py-8">
       <div className="mb-8 text-center">
@@ -25,7 +21,7 @@ export default function AuthLayout({
           </div>
         </div>
         <h1 className="text-xl font-semibold text-slate-800">PH-OS</h1>
-        <p className="mt-1 text-sm text-slate-500">在宅訪問薬局プラットフォーム</p>
+        <p className="mt-1 text-sm text-slate-500">在宅薬局オペレーション</p>
       </div>
       {children}
       <p className="mt-6 text-center text-xs text-slate-400">

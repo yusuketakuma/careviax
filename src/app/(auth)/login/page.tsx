@@ -165,7 +165,7 @@ function LoginForm() {
               disabled={isLoading}
               aria-busy={isLoading}
             >
-              {isLoading ? 'ログイン中...' : 'ログイン'}
+              {isLoading ? 'ログイン中...' : 'ログインする'}
             </Button>
           </form>
 
@@ -176,6 +176,14 @@ function LoginForm() {
             >
               パスワードを忘れた方
             </Link>
+          </div>
+
+          {/* デザイン p0_01: MFA 確認コードの事前案内(初回・端末変更時の戸惑い防止) */}
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3.5">
+            <p className="text-sm font-semibold text-foreground">確認コードが必要な場合</p>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              スマホまたはメールに届いた6桁のコードを入力してください。初回だけでなく、端末が変わった時にも確認します。
+            </p>
           </div>
         </CardContent>
       </Card>

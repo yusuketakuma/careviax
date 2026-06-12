@@ -144,7 +144,7 @@ async function ensureUiDemoData() {
             "billing_support_flag" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.patient, base.org_id, patientName, patientKana]
+      [DEMO_IDS.patient, base.org_id, patientName, patientKana],
     );
 
     await client.query(
@@ -154,7 +154,7 @@ async function ensureUiDemoData() {
             "updated_at" = NOW()
         WHERE "patient_id" = $1
       `,
-      [DEMO_IDS.patient]
+      [DEMO_IDS.patient],
     );
 
     await client.query(
@@ -171,7 +171,7 @@ async function ensureUiDemoData() {
             "is_primary" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.residence, base.org_id, DEMO_IDS.patient, address, 'facility-demo-1', '305号室']
+      [DEMO_IDS.residence, base.org_id, DEMO_IDS.patient, address, 'facility-demo-1', '305号室'],
     );
 
     await client.query(
@@ -202,7 +202,7 @@ async function ensureUiDemoData() {
         'サンプル家族',
         '家族連絡先',
         '東京都千代田区丸の内1-2-3',
-      ]
+      ],
     );
 
     await client.query(
@@ -219,7 +219,13 @@ async function ensureUiDemoData() {
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.condition, base.org_id, DEMO_IDS.patient, conditionName, '定期的な血圧チェックが必要']
+      [
+        DEMO_IDS.condition,
+        base.org_id,
+        DEMO_IDS.patient,
+        conditionName,
+        '定期的な血圧チェックが必要',
+      ],
     );
 
     await client.query(
@@ -262,7 +268,7 @@ async function ensureUiDemoData() {
           },
         }),
         'UI検証用の進行ケース',
-      ]
+      ],
     );
 
     await client.query(
@@ -278,7 +284,7 @@ async function ensureUiDemoData() {
             "is_active" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.consent, base.org_id, DEMO_IDS.patient, DEMO_IDS.caseId]
+      [DEMO_IDS.consent, base.org_id, DEMO_IDS.patient, DEMO_IDS.caseId],
     );
 
     await client.query(
@@ -294,7 +300,7 @@ async function ensureUiDemoData() {
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.packaging, base.org_id, DEMO_IDS.patient, '朝昼夕で一包化']
+      [DEMO_IDS.packaging, base.org_id, DEMO_IDS.patient, '朝昼夕で一包化'],
     );
 
     await client.query(
@@ -313,7 +319,15 @@ async function ensureUiDemoData() {
             "is_current" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.medication, base.org_id, DEMO_IDS.patient, medicationName, '1錠', '1日1回 朝食後', '東京内科クリニック']
+      [
+        DEMO_IDS.medication,
+        base.org_id,
+        DEMO_IDS.patient,
+        medicationName,
+        '1錠',
+        '1日1回 朝食後',
+        '東京内科クリニック',
+      ],
     );
 
     await client.query(
@@ -332,7 +346,15 @@ async function ensureUiDemoData() {
             "related_entity_id" = EXCLUDED."related_entity_id",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.task, base.org_id, '訪問前の服薬確認', 'ご家族へ持参薬確認の電話', base.user_id, nextWeek, DEMO_IDS.patient]
+      [
+        DEMO_IDS.task,
+        base.org_id,
+        '訪問前の服薬確認',
+        'ご家族へ持参薬確認の電話',
+        base.user_id,
+        nextWeek,
+        DEMO_IDS.patient,
+      ],
     );
 
     await client.query(
@@ -358,7 +380,7 @@ async function ensureUiDemoData() {
         externalShareName,
         '090-3333-4444',
         jsonb({ medications: true, schedules: true }),
-      ]
+      ],
     );
 
     await client.query(
@@ -387,7 +409,7 @@ async function ensureUiDemoData() {
         selfReportSubject,
         '朝食後に少しふらつきがあるとのこと。',
         '午前中',
-      ]
+      ],
     );
 
     await client.query(
@@ -416,7 +438,7 @@ async function ensureUiDemoData() {
         '次回訪問時の残薬状況を共有してください。',
         base.user_id,
         nextWeek,
-      ]
+      ],
     );
 
     await client.query(
@@ -441,7 +463,7 @@ async function ensureUiDemoData() {
         '鈴木ケアマネ',
         '架電メモ',
         '来週の訪問予定を共有済み',
-      ]
+      ],
     );
 
     await client.query(
@@ -478,7 +500,7 @@ async function ensureUiDemoData() {
         }),
         base.user_id,
         nextVisitDate,
-      ]
+      ],
     );
 
     await client.query(
@@ -553,7 +575,7 @@ async function ensureUiDemoData() {
           warnings: [],
         }),
         base.user_id,
-      ]
+      ],
     );
 
     await client.query(
@@ -571,7 +593,14 @@ async function ensureUiDemoData() {
             "confirmed_at" = NOW(),
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.visitSchedule, base.org_id, DEMO_IDS.caseId, base.site_id, scheduleDate, base.user_id]
+      [
+        DEMO_IDS.visitSchedule,
+        base.org_id,
+        DEMO_IDS.caseId,
+        base.site_id,
+        scheduleDate,
+        base.user_id,
+      ],
     );
 
     await client.query(
@@ -604,7 +633,7 @@ async function ensureUiDemoData() {
         '服薬継続で問題なし',
         '次回訪問で残薬確認',
         nextVisitDate,
-      ]
+      ],
     );
 
     return {
@@ -718,10 +747,10 @@ test('login screen renders without runtime errors', async ({ page }) => {
   await openStableRoute(page, '/login');
 
   await expect(page.getByRole('heading', { name: 'PH-OS' })).toBeVisible();
-  await expect(page.getByText('在宅訪問薬局プラットフォーム')).toBeVisible();
+  await expect(page.getByText('在宅薬局オペレーション').first()).toBeVisible();
   await expect(page.getByLabel('メールアドレス')).toBeVisible();
   await expect(page.getByLabel('パスワード')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'ログイン' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ログインする' })).toBeVisible();
   await writeScreenshot(page, 'login');
   expect(errors).toEqual([]);
 });
@@ -751,9 +780,9 @@ test.describe('major authenticated screens', () => {
       page.getByLabel('患者検索').fill(demoContext.patientName),
     ]);
 
-    const patientLink = page.locator(
-      `main a[href="/patients/${demoContext.patientId}"]:visible`
-    ).first();
+    const patientLink = page
+      .locator(`main a[href="/patients/${demoContext.patientId}"]:visible`)
+      .first();
     await expect(patientLink).toContainText(demoContext.patientName, { timeout: 30_000 });
     await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`, {
       timeout: 30_000,
@@ -792,7 +821,9 @@ test.describe('major authenticated screens', () => {
     });
     const intakeSummaryCard = page.getByTestId('patient-intake-summary-card');
     await expect(intakeSummaryCard).toBeVisible();
-    await expect(page.locator('main').getByText('訪問薬剤管理 新規依頼受付票').first()).toBeVisible();
+    await expect(
+      page.locator('main').getByText('訪問薬剤管理 新規依頼受付票').first(),
+    ).toBeVisible();
     await expect(intakeSummaryCard).toContainText('要介護 3');
     await expect(intakeSummaryCard).toContainText('在宅酸素');
     await expect(intakeSummaryCard).toContainText('一包化');
@@ -805,7 +836,10 @@ test.describe('major authenticated screens', () => {
   const dynamicRoutes = [
     { name: 'patient-consent', route: () => `/patients/${demoContext.patientId}/consent` },
     { name: 'patient-medications', route: () => `/patients/${demoContext.patientId}/medications` },
-    { name: 'patient-prescriptions', route: () => `/patients/${demoContext.patientId}/prescriptions` },
+    {
+      name: 'patient-prescriptions',
+      route: () => `/patients/${demoContext.patientId}/prescriptions`,
+    },
     { name: 'patient-share', route: () => `/patients/${demoContext.patientId}/share` },
     { name: 'report-detail', route: () => `/reports/${demoContext.reportId}` },
     { name: 'visit-detail', route: () => `/visits/${demoContext.visitRecordId}` },
@@ -882,9 +916,11 @@ test.describe('major authenticated screens', () => {
     await expect(page.locator('main').getByText('共有済みリンクと連絡文脈')).toBeVisible({
       timeout: 60_000,
     });
-    await expect(page.locator('main').getByText(demoContext.selfReportSubject).first()).toBeVisible({
-      timeout: 60_000,
-    });
+    await expect(page.locator('main').getByText(demoContext.selfReportSubject).first()).toBeVisible(
+      {
+        timeout: 60_000,
+      },
+    );
     await writeScreenshot(page, 'patient-share-data');
     expect(errors).toEqual([]);
   });
@@ -904,12 +940,16 @@ test.describe('major authenticated screens', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/reports');
 
-    const reportLink = page.locator(`main a[href="/reports/${demoContext.reportId}"]:visible`).first();
+    const reportLink = page
+      .locator(`main a[href="/reports/${demoContext.reportId}"]:visible`)
+      .first();
     await expect(reportLink).toBeVisible({ timeout: 60_000 });
     await expect(reportLink).toHaveAttribute('href', /\/reports\/[^/]+$/);
     await expect(page.getByRole('button', { name: '詳細を開く' }).first()).toBeVisible();
 
-    const patientLink = page.locator(`main a[href="/patients/${demoContext.patientId}"]:visible`).first();
+    const patientLink = page
+      .locator(`main a[href="/patients/${demoContext.patientId}"]:visible`)
+      .first();
     await expect(patientLink).toBeVisible();
     await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`);
 

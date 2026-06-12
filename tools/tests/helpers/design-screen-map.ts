@@ -371,8 +371,8 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_38_patient_profile',
     targetImage: 'images/P0/p0_38_patient_profile.png',
-    route: '/patients',
-    note: '患者詳細(動的 ID)はデモ seed 後に差し替え',
+    // 田中一郎(seed-design-demo)の旧プロフィールビュー(カード詳細は new_06 が正)
+    route: '/patients/cmnhdemopt001amq9ph-os?view=profile',
   },
   {
     screenId: 'p0_39_medication_master',
