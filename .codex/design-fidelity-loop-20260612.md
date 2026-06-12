@@ -69,3 +69,29 @@ P0 の過去判定: p0_04/05/06/07/08 は D-2 で合格済み(p0_05 のみ再撮
 - DashboardCockpitResponse を使うテストフィクスチャは7+1ファイル(team_capacity 必須)
 - mobile-chromium プロジェクトでも fidelity spec が走る(new_05 で1失敗あり、未調査)。撮影は --project=chromium 指定が速い
 - Tailwind named breakpoint 同士でないと CSS 順序が不定(min-[...] が xl に負けた前例)
+
+## 最終検証の記録(2026-06-12 18:55)
+
+- full vitest 2回実行: 1回目 2 failed / 2回目 4 failed(validate-phos-deploy-template, api-gateway-routes, day-view, schedule-proposals-content)— **すべて単独実行で green(98 tests)**。dev サーバー並走による高負荷 flaky(import 1468s = 通常の4倍超)で、回帰ではない。
+- 全変更ファイルの focused テストは一貫して green。コミット済み変更は健全。
+
+## P0/P1 フェーズ(進行中)
+
+- 撮影: `DESIGN_SCREEN_IDS=p0_,p1_ --project=chromium` 実行中(route 確定の約30画面)
+- 比較対象(new 未カバー+route 確定 ≈16枚): p0_01 login / p0_04 notifications / p0_05 search(D-2 残: 再撮影未確認)/ p0_06 search modal / p0_10 prescriptions/new 期間入力 / p0_17 proposals / p0_22-24 visits(タブレット・スマホ・施設)/ p0_25 my-day / p0_26 contact-profiles / p0_29 communications/requests / p0_38 patients プロフィール / p0_45 capacity(PHOS_API 依存注意)/ p1_04 reports AI 下書き / p1_06 admin/analytics
+- route: null ≈24枚は未実装の新規画面(D-6: p0_02/03 薬局・モード選択, p0_34/35 オフライン同期 / D-8: p1 大半)→ 実装タスクとして Plans.md 対応。撮影ループの範囲外
+
+## P0/P1 1巡目の判定(2026-06-12 19:25 時点)
+
+- 撮影: 比較対象16画面すべて captured(40 passed)。撮影終盤に dev サーバーがコンパイル中に死亡 → 再起動済み(撮影成果には影響なし)
+- p0_05 検索: 「検索中...」のまま撮影(一括撮影中の cold compile 渋滞で 6 並列 fetch が 20s 内に揃わず)→ warm 再撮影で再判定
+- **p0_22/23(訪問モード)は実装案件**: target はステップウィザード(1.到着確認〜10.完了チェック+服薬3択+写真・証跡+一時保存/次へ/訪問完了バー)。現実装 /visits/[id]/record は SOAP フォーム(1858行)で別物。Plans.md D-4 に対応。screen-map ルートも暫定(/visits 一覧)のまま
+- p0_24(施設一括訪問パケット)も同様に D-4 範囲の可能性大
+- 残り比較対象(未比較): p0_01 login / p0_04 notifications(D-2合格済み・再確認のみ)/ p0_10 期間入力(ステップ操作要)/ p0_17 proposals / p0_25 my-day / p0_26 contact-profiles / p0_29 communications/requests / p0_38 patients profile / p0_45 capacity / p1_04 / p1_06
+
+## P0/P1 比較の確定判定(2026-06-12 19:40)
+
+- **p0_05 合格**(単独 warm 再撮影で結果カード+チップ件数表示を確認)。「検索中...」は p0_05/06 連続実行時の撮影 flake(API は並列でも 50ms、ブラウザ再現でも 6/6 成功)。カテゴリ選択式は D-2 設計判断済みの意図的差分 → Plans.md D-2/D-2-3b を cc:完了 化
+- **p0_22/23(訪問モード)= 実装案件**: target はステップウィザード(到着確認〜完了チェック 10 ステップ+服薬3択+写真・証跡)。現 /visits/[id]/record は SOAP フォーム。D-4 対応
+- **p0_25(事務サポート)= 実装案件**: target は事務ロール専用ダッシュボード(事務でできること 6 KPI+作業テーブル+薬剤師相談リスト)。現 /my-day は薬剤師向け別物
+- 残り未比較(次ループ): p0_01 / p0_04 / p0_10 / p0_17 / p0_24 / p0_26 / p0_29 / p0_38 / p0_45 / p1_04 / p1_06(actual はすべて captured 済み、target との見比べのみ)
