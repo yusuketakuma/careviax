@@ -297,7 +297,7 @@ describe('/api/presence', () => {
 
     it('returns 400 for unsupported entity types before reading presence', async () => {
       const req = createRequest(
-        'http://localhost/api/presence?entity_type=patient&entity_id=patient_1',
+        'http://localhost/api/presence?entity_type=care_report&entity_id=cr_1',
       );
       const res = await GET(req);
       expect(res!.status).toBe(400);

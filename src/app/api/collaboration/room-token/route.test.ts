@@ -180,8 +180,8 @@ describe('/api/collaboration/room-token', () => {
   it('rejects unsupported entity types before access or token side effects', async () => {
     const res = await POST(
       createRequest({
-        entity_type: 'patient',
-        entity_id: 'patient_1',
+        entity_type: 'care_report',
+        entity_id: 'cr_1',
       }),
     );
 

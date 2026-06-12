@@ -37,6 +37,7 @@ import {
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import type {
   PatientOverview,
@@ -176,6 +177,9 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
   const router = useRouter();
 
+  // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
+  usePresenceHeartbeat({ entityType: 'patient', entityId: patientId, activeField: 'card' });
+
   const {
     data: patient,
     isLoading,
@@ -226,6 +230,13 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/patients/${patientId}/collaboration`}
+          className={buttonVariants({ variant: 'outline' })}
+          data-testid="card-open-collaboration"
+        >
+          いま見ている人
+        </Link>
         <Link
           href={profileHref}
           className={buttonVariants({ variant: 'outline' })}

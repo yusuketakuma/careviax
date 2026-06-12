@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { dispenseTaskFindFirstMock, visitRecordFindFirstMock } = vi.hoisted(() => ({
-  dispenseTaskFindFirstMock: vi.fn(),
-  visitRecordFindFirstMock: vi.fn(),
-}));
+const { dispenseTaskFindFirstMock, visitRecordFindFirstMock, patientFindFirstMock } = vi.hoisted(
+  () => ({
+    dispenseTaskFindFirstMock: vi.fn(),
+    visitRecordFindFirstMock: vi.fn(),
+    patientFindFirstMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseTask: { findFirst: dispenseTaskFindFirstMock },
     visitRecord: { findFirst: visitRecordFindFirstMock },
+    patient: { findFirst: patientFindFirstMock },
   },
 }));
 
@@ -90,6 +94,59 @@ describe('collaboration-access', () => {
             },
           },
         ],
+      },
+      select: { id: true },
+    });
+  });
+
+  it('checks patient access through case assignment scope (P1-13 presence)', async () => {
+    patientFindFirstMock.mockResolvedValue({ id: 'pt_1' });
+
+    await expect(canAccessCollaborationEntity(pharmacistCtx, 'patient', 'pt_1')).resolves.toBe(
+      true,
+    );
+
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pt_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cases: {
+              some: {
+                OR: [
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+  });
+
+  it('returns false for inaccessible patients', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    await expect(
+      canAccessCollaborationEntity(pharmacistCtx, 'patient', 'pt_unassigned'),
+    ).resolves.toBe(false);
+  });
+
+  it('uses org-only patient lookup for owner/admin bypass roles', async () => {
+    patientFindFirstMock.mockResolvedValue({ id: 'pt_1' });
+
+    await expect(
+      canAccessCollaborationEntity({ ...pharmacistCtx, role: 'owner' }, 'patient', 'pt_1'),
+    ).resolves.toBe(true);
+
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pt_1',
+        org_id: 'org_1',
       },
       select: { id: true },
     });

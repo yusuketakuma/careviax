@@ -3,9 +3,11 @@ import { z } from 'zod';
 import type { AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { canAccessPatient } from '@/server/services/patient-access';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
-export const collaborationEntityTypeSchema = z.enum(['dispense_task', 'visit_record']);
+// patient は P1-13「今だれが見ているか」(患者カード単位の presence)で使う
+export const collaborationEntityTypeSchema = z.enum(['dispense_task', 'visit_record', 'patient']);
 
 export type CollaborationEntityType = z.infer<typeof collaborationEntityTypeSchema>;
 
@@ -39,6 +41,15 @@ export async function canAccessCollaborationEntity(
       select: { id: true },
     });
     return Boolean(task);
+  }
+
+  if (entityType === 'patient') {
+    return canAccessPatient({
+      db: prisma,
+      orgId: ctx.orgId,
+      patientId: entityId,
+      accessContext: ctx,
+    });
   }
 
   const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
