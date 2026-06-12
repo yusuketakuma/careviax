@@ -364,14 +364,63 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_34_offline_sync_center',
     targetImage: 'images/P0/p0_34_offline_sync_center.png',
-    route: null,
-    note: 'オフライン同期センターは未実装(新規)',
+    route: '/offline-sync',
+    setup: async (page) => {
+      // dev 限定の window フックで同期キューにデモ3状態(同期待ち/失敗/競合)を注入
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedOfflineSyncDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (
+            window as unknown as { __phosSeedOfflineSyncDemo?: () => Promise<void> }
+          ).__phosSeedOfflineSyncDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="offline-sync-row"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_35_data_conflict_resolution',
     targetImage: 'images/P0/p0_35_data_conflict_resolution.png',
-    route: null,
-    note: '同期競合解消画面は未実装(新規)',
+    route: '/offline-sync',
+    setup: async (page) => {
+      // デモ注入後、競合行の「内容を確認」から比較ビューを開く
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedOfflineSyncDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (
+            window as unknown as { __phosSeedOfflineSyncDemo?: () => Promise<void> }
+          ).__phosSeedOfflineSyncDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .getByRole('button', { name: '内容を確認' })
+        .first()
+        .click()
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="offline-sync-conflict-view"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_36_reject_reason_modal',

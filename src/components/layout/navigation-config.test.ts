@@ -105,7 +105,7 @@ describe('layout navigation config', () => {
     ]);
     expect(MOBILE_BOTTOM_NAV_ITEMS.find((item) => item.label === '訪問')).toEqual(
       expect.objectContaining({
-        activePrefixes: ['/visits', '/my-day'],
+        activePrefixes: ['/visits', '/my-day', '/offline-sync'],
         excludePrefixes: ['/visits/handoffs'],
       }),
     );

@@ -359,6 +359,24 @@ export async function registerVisitRecordConflict(args: {
   await offlineDb.syncQueue.add(data);
 }
 
+/**
+ * 失敗(リトライ上限到達)アイテムの retryCount を 0 に戻し、再送対象へ復帰させる。
+ * 競合(server_conflict)は解決操作が必要なため対象外。戻り値はリセット件数。
+ */
+export async function resetFailedSyncQueueRetries(): Promise<number> {
+  const failed = await offlineDb.syncQueue
+    .where('retryCount')
+    .aboveOrEqual(MAX_RETRIES)
+    .and((item) => item.conflict_state !== 'server_conflict')
+    .toArray();
+  await Promise.all(
+    failed.map((item) =>
+      offlineDb.syncQueue.update(item.id!, { retryCount: 0, lastError: undefined }),
+    ),
+  );
+  return failed.length;
+}
+
 export async function discardSyncQueueItem(itemId: number): Promise<void> {
   const item = await offlineDb.syncQueue.get(itemId);
   if (!item) return;
