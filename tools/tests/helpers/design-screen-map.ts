@@ -816,14 +816,41 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_12_advanced_route_scenario_compare',
     targetImage: 'images/P1/p1_12_advanced_route_scenario_compare.png',
-    route: null,
-    note: 'ルート案比較の正ルート精査後にマッピング',
+    route: '/schedules/route-compare',
+    setup: async (page) => {
+      // 本日の訪問予定 fetch 完了 → 3 案カードの描画を待つ
+      await page
+        .waitForSelector('[data-testid="route-scenario-card"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_13_realtime_collaboration_presence',
     targetImage: 'images/P1/p1_13_realtime_collaboration_presence.png',
-    route: null,
-    note: 'presence 表示の対象画面精査後にマッピング',
+    // prisma/seed-design-demo.ts の田中一郎カードの連携ビュー(今だれが見ているか)
+    route: '/patients/cmnhdemopt001amq9ph-os/collaboration',
+    setup: async (page) => {
+      // dev 限定の window フックで target と同じ presence 3 人+コメント 3 件を注入
+      await page
+        .waitForFunction(
+          () =>
+            typeof (window as unknown as Record<string, unknown>).__phosSeedPresenceDemo ===
+            'function',
+          undefined,
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page
+        .evaluate(() =>
+          (window as unknown as { __phosSeedPresenceDemo?: () => void }).__phosSeedPresenceDemo?.(),
+        )
+        .catch(() => {});
+      await page
+        .waitForSelector('[data-testid="presence-user-card"]', { timeout: 20_000 })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_14_ai_signal_tuning',

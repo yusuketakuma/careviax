@@ -83,6 +83,7 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
             <PageShortcutLinks
               links={[
                 { href: '/schedules/proposals', label: '提案一覧' },
+                { href: '/schedules/route-compare', label: 'ルート案を比べる' },
                 { href: '/communications/requests', label: '依頼・照会' },
                 { href: '/workflow', label: 'ワークフロー' },
               ]}

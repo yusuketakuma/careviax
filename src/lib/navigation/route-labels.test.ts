@@ -23,5 +23,6 @@ describe('route labels', () => {
     expect(labelForSegment('record', 'visits')).toBe('記録入力');
     expect(labelForSegment('settings', 'admin')).toBe('管理設定');
     expect(labelForSegment('mcs', 'patients')).toBe('MCS連携');
+    expect(labelForSegment('collaboration')).toBe('今だれが見ているか');
   });
 });
