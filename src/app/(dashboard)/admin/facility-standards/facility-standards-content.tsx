@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { FacilityCriteriaChecklist } from './facility-criteria-checklist';
 import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, differenceInDays, parseISO } from 'date-fns';
@@ -204,6 +205,16 @@ export function FacilityStandardsContent() {
           />
         </CardContent>
       </Card>
+
+      {/* p1_08: 施設基準チェック(要件達成状態の OK/不足/確認中)+足りないものガイド */}
+      <FacilityCriteriaChecklist
+        registrations={standards}
+        onAddDocument={() => {
+          document
+            .querySelector('[data-testid="facility-standards-form"], form')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+      />
     </div>
   );
 }

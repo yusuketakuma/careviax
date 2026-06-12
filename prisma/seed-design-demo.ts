@@ -224,6 +224,7 @@ export const DEMO_SEED_IDS = {
   facilityGreenHill: 'cmnhdemofac001amq9ph-os',
   facilityUnitGreenHill: 'cmnhdemofacu001amq9ph-os',
   facilityBatchGreenHill: 'cmnhdemofvb001amq9ph-os',
+  facilityStandardHomeCare: 'cmnhdemofsr001amq9ph-os',
   patientOgawa: 'cmnhdemopt011amq9ph-os',
   caseOgawa: 'cmnhdemocase011amq9ph-os',
   cycleOgawa: 'cmnhdemocyc011amq9ph-os',
@@ -2392,6 +2393,30 @@ export async function seedDesignFidelityDemo(
       pharmacist_id: ctx.userId,
       patient_ids: greenHillPatientIds,
       estimated_duration: 90,
+    },
+  });
+
+  // p1_08: 施設基準チェック用の届出(研修記録のみ不足、電子的連携は未評価=確認中)
+  const facilityStandardRequirements = {
+    home_visit_record: true,
+    emergency_response: true,
+    training_record: false,
+    document_delivery: true,
+  };
+  await prisma.facilityStandardRegistration.upsert({
+    where: { id: DEMO_SEED_IDS.facilityStandardHomeCare },
+    create: {
+      id: DEMO_SEED_IDS.facilityStandardHomeCare,
+      org_id: ctx.orgId,
+      site_id: ctx.siteId,
+      standard_type: '在宅薬学総合体制加算1',
+      filed_date: new Date('2026-04-01T00:00:00+09:00'),
+      effective_date: new Date('2026-04-01T00:00:00+09:00'),
+      expiry_date: new Date('2027-03-31T00:00:00+09:00'),
+      requirements_status: facilityStandardRequirements,
+    },
+    update: {
+      requirements_status: facilityStandardRequirements,
     },
   });
 

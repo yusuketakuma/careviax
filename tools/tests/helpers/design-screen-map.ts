@@ -642,6 +642,20 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p1_08_facility_criteria_dashboard',
     targetImage: 'images/P1/p1_08_facility_criteria_dashboard.png',
     route: '/admin/facility-standards',
+    setup: async (page) => {
+      // 施設基準チェックリストの描画を待ち、セクションへスクロール
+      await page
+        .waitForSelector('[data-testid="facility-criteria-checklist"]', { timeout: 30_000 })
+        .catch(() => {});
+      await page
+        .evaluate(() => {
+          document
+            .querySelector('[data-testid="facility-criteria-checklist"]')
+            ?.scrollIntoView({ block: 'center' });
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p1_09_incident_hiyarihatto',
