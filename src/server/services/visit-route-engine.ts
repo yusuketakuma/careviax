@@ -1,10 +1,12 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { createFetchTimeout } from './fetch-timeout';
-import { createRoadTravelEstimator, type RouteTravelMode } from './road-routing';
+import { createRoadTravelEstimator } from './road-routing';
 
-export type VisitRouteTravelMode = RouteTravelMode;
+export type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
+
 const DEFAULT_GOOGLE_ROUTE_TIMEOUT_MS = 5000;
 
 export type VisitRouteWaypoint = {
@@ -14,30 +16,6 @@ export type VisitRouteWaypoint = {
   lat: number;
   lng: number;
   priority?: string | null;
-};
-
-export type VisitRouteOrigin = {
-  lat: number;
-  lng: number;
-  label: string;
-};
-
-export type VisitRoutePlan = {
-  status: 'ok' | 'unavailable';
-  note: string | null;
-  travelMode: VisitRouteTravelMode;
-  origin: VisitRouteOrigin | null;
-  encodedPath: string | null;
-  orderedScheduleIds: string[];
-  totalDistanceMeters: number | null;
-  totalDurationSeconds: number | null;
-  stopSummaries: Array<{
-    scheduleId: string;
-    optimizedOrder: number;
-    arrivalOffsetSeconds: number | null;
-    distanceFromPreviousMeters: number | null;
-    durationFromPreviousSeconds: number | null;
-  }>;
 };
 
 type GoogleRouteLeg = {

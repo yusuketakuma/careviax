@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
-import type { VisitRoutePlan } from '@/server/services/visit-route-engine';
+import type { VisitRoutePlan } from '@/types/visit-route';
 import type { ScheduleDayRouteTravelMode } from './schedule-day-planner';
 import type {
   ScheduleDayRouteMapPoint,

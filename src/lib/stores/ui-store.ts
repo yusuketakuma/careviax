@@ -10,7 +10,6 @@ interface UIState {
   theme: 'light' | 'dark' | 'system';
   notificationDrawerOpen: boolean;
   shortcutHelpOpen: boolean;
-  globalSearchOpen: boolean;
   workMode: WorkMode;
   careMode: CareMode;
   setSidebarOpen: (open: boolean) => void;
@@ -22,8 +21,6 @@ interface UIState {
   setNotificationDrawerOpen: (open: boolean) => void;
   setShortcutHelpOpen: (open: boolean) => void;
   toggleShortcutHelp: () => void;
-  setGlobalSearchOpen: (open: boolean) => void;
-  toggleGlobalSearch: () => void;
   setWorkMode: (mode: WorkMode) => void;
   setCareMode: (mode: CareMode) => void;
 }
@@ -36,7 +33,6 @@ export const useUIStore = create<UIState>()(
       theme: 'system',
       notificationDrawerOpen: false,
       shortcutHelpOpen: false,
-      globalSearchOpen: false,
       workMode: 'pharmacist' as WorkMode,
       careMode: 'home_visit' as CareMode,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -50,8 +46,6 @@ export const useUIStore = create<UIState>()(
       setNotificationDrawerOpen: (open) => set({ notificationDrawerOpen: open }),
       setShortcutHelpOpen: (open) => set({ shortcutHelpOpen: open }),
       toggleShortcutHelp: () => set((s) => ({ shortcutHelpOpen: !s.shortcutHelpOpen })),
-      setGlobalSearchOpen: (open) => set({ globalSearchOpen: open }),
-      toggleGlobalSearch: () => set((s) => ({ globalSearchOpen: !s.globalSearchOpen })),
       setWorkMode: (mode) => set({ workMode: mode }),
       setCareMode: (mode) => set({ careMode: mode }),
     }),
@@ -65,6 +59,6 @@ export const useUIStore = create<UIState>()(
         workMode: state.workMode,
         careMode: state.careMode,
       }),
-    }
-  )
+    },
+  ),
 );

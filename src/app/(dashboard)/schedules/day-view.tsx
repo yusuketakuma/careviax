@@ -59,6 +59,7 @@ import {
   setupAutoSync,
 } from '@/lib/stores/sync-engine';
 import { cn } from '@/lib/utils';
+import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
 import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
 import { VISIT_ROUTE_TRAVEL_MODE_LABELS } from '@/components/features/visits/visit-route-shared';
@@ -117,7 +118,6 @@ import {
   getScheduleDayEffectivePlannerCandidateCount,
   handleScheduleDayProposalGenerationSuccess,
   resolveScheduleDayPlannerVehicleRouteTravelMode,
-  type ScheduleDayRouteTravelMode,
 } from './schedule-day-planner';
 import { useScheduleDayPlannerQueries } from './schedule-day-planner-hooks';
 import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
@@ -185,6 +185,7 @@ import {
   buildScheduleDayViewModel,
   buildScheduleBillingPreviewRequests,
   buildWeekProposalStats,
+  canExecuteProposalConfirmAction,
   canBulkConfirmFacilityCarryItems,
   buildDirectionsUrl,
   buildMapEmbedUrl,
@@ -195,6 +196,8 @@ import {
   getFacilityTrackerGrouping,
   getDepartureCarryWarning,
   getUnsafeFacilityCarryPatients,
+  proposalConfirmActionLabel,
+  proposalConfirmResultLabel,
   proposalLockText,
   scheduleLockText,
   splitTrace,
@@ -213,29 +216,7 @@ import {
   saveScheduleDayVisitBriefCards,
 } from './schedule-day-visit-brief-cache';
 
-type RouteTravelMode = ScheduleDayRouteTravelMode;
-
-type VisitRoutePlan = {
-  status: 'ok' | 'unavailable';
-  note: string | null;
-  travelMode: RouteTravelMode;
-  origin: {
-    lat: number;
-    lng: number;
-    label: string;
-  } | null;
-  encodedPath: string | null;
-  orderedScheduleIds: string[];
-  totalDistanceMeters: number | null;
-  totalDurationSeconds: number | null;
-  stopSummaries: Array<{
-    scheduleId: string;
-    optimizedOrder: number;
-    arrivalOffsetSeconds: number | null;
-    distanceFromPreviousMeters: number | null;
-    durationFromPreviousSeconds: number | null;
-  }>;
-};
+type RouteTravelMode = VisitRouteTravelMode;
 
 const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
   { value: 1, label: '月' },
@@ -268,25 +249,6 @@ type ProposalConfirmAction = {
   proposal: Proposal;
   action: 'approve' | 'confirm';
 };
-
-function proposalConfirmActionLabel(action: ProposalConfirmAction['action']) {
-  return action === 'approve' ? '承認して架電へ進める' : '日時確定する';
-}
-
-function proposalConfirmResultLabel(action: ProposalConfirmAction['action']) {
-  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
-}
-
-function canExecuteProposalConfirmAction(action: ProposalConfirmAction) {
-  if (action.action === 'approve') {
-    return ['proposed', 'reschedule_pending'].includes(action.proposal.proposal_status);
-  }
-
-  return (
-    action.proposal.proposal_status === 'patient_contact_pending' &&
-    action.proposal.patient_contact_status === 'confirmed'
-  );
-}
 
 export function ScheduleDayView({
   initialSelectedDate,
@@ -4510,7 +4472,9 @@ export function ScheduleDayView({
 
                   {preparationDetails.pack.billing_blockers.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">算定を止めている理由</p>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        算定を止めている理由
+                      </p>
                       <div className="grid gap-2 lg:grid-cols-2">
                         {preparationDetails.pack.billing_blockers.map((blocker) => (
                           <div

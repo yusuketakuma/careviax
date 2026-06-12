@@ -8,6 +8,7 @@ import {
   buildScheduleDayRouteMapSite,
   buildScheduleDayViewModel,
   buildScheduleBillingPreviewRequests,
+  canExecuteProposalConfirmAction,
   canBulkConfirmFacilityCarryItems,
   buildFacilityRouteDefaults,
   buildFacilityTracker,
@@ -17,6 +18,8 @@ import {
   getUnsafeFacilityCarryPatients,
   getDepartureCarryWarning,
   getFacilityTrackerGrouping,
+  proposalConfirmActionLabel,
+  proposalConfirmResultLabel,
   proposalLockText,
   scheduleLockText,
   splitTrace,
@@ -246,6 +249,34 @@ describe('schedule-day-view.helpers', () => {
     expect(proposalActionTargetLabel(proposal)).toBe(
       '山田花子 2026/04/09 18:00 - 19:00 / 薬剤師A / 社用車A / ケース 1 / 候補 1',
     );
+  });
+
+  it('keeps proposal confirmation action labels and executable states stable', () => {
+    expect(proposalConfirmActionLabel('approve')).toBe('承認して架電へ進める');
+    expect(proposalConfirmActionLabel('confirm')).toBe('日時確定する');
+    expect(proposalConfirmResultLabel('approve')).toBe('患者連絡待ち');
+    expect(proposalConfirmResultLabel('confirm')).toBe('訪問予定確定');
+    expect(
+      canExecuteProposalConfirmAction({
+        action: 'approve',
+        proposal: { proposal_status: 'proposed', patient_contact_status: 'pending' },
+      }),
+    ).toBe(true);
+    expect(
+      canExecuteProposalConfirmAction({
+        action: 'approve',
+        proposal: { proposal_status: 'patient_contact_pending', patient_contact_status: 'pending' },
+      }),
+    ).toBe(false);
+    expect(
+      canExecuteProposalConfirmAction({
+        action: 'confirm',
+        proposal: {
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+        },
+      }),
+    ).toBe(true);
   });
 
   it('derives proposal route decision labels from reason and priority', () => {

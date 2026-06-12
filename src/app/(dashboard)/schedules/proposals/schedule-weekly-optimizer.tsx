@@ -43,7 +43,7 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
-import type { VisitRoutePlan } from '@/server/services/visit-route-engine';
+import type { VisitRoutePlan } from '@/types/visit-route';
 import { applyMixedVisitRouteUpdates, applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { useRouteOrderDraft } from '../route-order-draft';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';

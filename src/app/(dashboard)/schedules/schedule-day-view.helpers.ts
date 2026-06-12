@@ -216,6 +216,30 @@ export type ScheduleDayOfflineStatusViewModel = {
   showConflictResolutionHint: boolean;
 };
 
+export type ProposalConfirmActionInput = {
+  proposal: Pick<Proposal, 'proposal_status' | 'patient_contact_status'>;
+  action: 'approve' | 'confirm';
+};
+
+export function proposalConfirmActionLabel(action: ProposalConfirmActionInput['action']) {
+  return action === 'approve' ? '承認して架電へ進める' : '日時確定する';
+}
+
+export function proposalConfirmResultLabel(action: ProposalConfirmActionInput['action']) {
+  return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
+}
+
+export function canExecuteProposalConfirmAction(action: ProposalConfirmActionInput) {
+  if (action.action === 'approve') {
+    return ['proposed', 'reschedule_pending'].includes(action.proposal.proposal_status);
+  }
+
+  return (
+    action.proposal.proposal_status === 'patient_contact_pending' &&
+    action.proposal.patient_contact_status === 'confirmed'
+  );
+}
+
 export type ScheduleDayVisitBriefCacheStatus = 'ready' | 'load_failed' | 'refresh_failed';
 
 export type ScheduleDayOfflineStatusInput = {

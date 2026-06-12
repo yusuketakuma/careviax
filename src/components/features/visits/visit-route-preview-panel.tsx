@@ -17,7 +17,7 @@ import {
   formatDistanceLabel,
   formatDurationLabel,
 } from '@/app/(dashboard)/schedules/calendar-view.helpers';
-import type { VisitRoutePlan, VisitRouteTravelMode } from '@/server/services/visit-route-engine';
+import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { VisitRouteMap, type VisitRouteMapPoint } from './visit-route-map';
 import {
   VISIT_ROUTE_TRAVEL_MODE_LABELS,

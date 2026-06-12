@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { VisitRoutePlan, VisitRouteTravelMode } from '@/server/services/visit-route-engine';
+import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import {
   PROPOSAL_STATUS_LABELS,
   timeLabel,

@@ -1,4 +1,4 @@
-import type { VisitRouteTravelMode } from '@/server/services/visit-route-engine';
+import type { VisitRouteTravelMode } from '@/types/visit-route';
 
 export const VISIT_ROUTE_TRAVEL_MODE_LABELS: Record<VisitRouteTravelMode, string> = {
   DRIVE: '車',
