@@ -267,7 +267,7 @@ export function MainWorkflowCompactNav({
       ) : null}
 
       <ol
-        className="mt-4 flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
+        className="mt-4 flex max-h-24 snap-x gap-2 overflow-x-auto overflow-y-hidden pb-1 md:grid md:max-h-none md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
         aria-label="主業務フローの工程一覧"
       >
         {MAIN_WORKFLOW_STEPS.map((step) => {
@@ -276,7 +276,7 @@ export function MainWorkflowCompactNav({
             <li key={`compact-${step.key}`} className="min-w-40 snap-start md:min-w-0">
               <div
                 className={cn(
-                  'h-full rounded-xl border px-3 py-3 transition-colors',
+                  'h-20 rounded-xl border px-3 py-2 transition-colors md:h-full md:py-3',
                   isActive
                     ? 'border-primary/40 bg-primary/[0.08] shadow-sm'
                     : 'border-border/70 bg-background',
@@ -300,7 +300,7 @@ export function MainWorkflowCompactNav({
                     <Link
                       href={step.href}
                       className={cn(
-                        'inline-flex min-h-11 min-w-11 items-center rounded-lg px-2 py-2 text-sm font-semibold transition-colors hover:text-primary',
+                        'inline-flex min-h-11 min-w-0 items-center truncate rounded-lg px-2 py-2 text-sm font-semibold transition-colors hover:text-primary',
                         isActive ? 'text-primary' : 'text-foreground',
                       )}
                     >

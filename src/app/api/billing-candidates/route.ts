@@ -57,46 +57,50 @@ export const GET = withAuthContext(
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const candidates = await tx.billingCandidate.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
-          ...(patientId ? { patient_id: patientId } : {}),
-          billing_domain: billingDomain,
-          ...(status ? { status } : {}),
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
-      });
-      const summary = parsedBillingMonth
-        ? await getBillingCandidateWorkbenchSummary(tx, {
-            orgId: ctx.orgId,
-            billingMonth: parsedBillingMonth.start,
-            patientId,
-            billingDomain,
-          })
-        : null;
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const candidates = await tx.billingCandidate.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
+            ...(patientId ? { patient_id: patientId } : {}),
+            billing_domain: billingDomain,
+            ...(status ? { status } : {}),
+          },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
+        });
+        const summary = parsedBillingMonth
+          ? await getBillingCandidateWorkbenchSummary(tx, {
+              orgId: ctx.orgId,
+              billingMonth: parsedBillingMonth.start,
+              patientId,
+              billingDomain,
+            })
+          : null;
 
-      const patientIds = [
-        ...new Set(
-          candidates
-            .map((c) => c.patient_id)
-            .filter((value): value is string => typeof value === 'string' && value.length > 0),
-        ),
-      ];
-      const patients =
-        patientIds.length === 0
-          ? []
-          : await tx.patient.findMany({
-              where: { org_id: ctx.orgId, id: { in: patientIds } },
-              select: { id: true, name: true },
-            });
-      const patientNameMap = new Map(patients.map((p) => [p.id, p.name]));
+        const patientIds = [
+          ...new Set(
+            candidates
+              .map((c) => c.patient_id)
+              .filter((value): value is string => typeof value === 'string' && value.length > 0),
+          ),
+        ];
+        const patients =
+          patientIds.length === 0
+            ? []
+            : await tx.patient.findMany({
+                where: { org_id: ctx.orgId, id: { in: patientIds } },
+                select: { id: true, name: true },
+              });
+        const patientNameMap = new Map(patients.map((p) => [p.id, p.name]));
 
-      return { candidates, summary, patientNameMap };
-    });
+        return { candidates, summary, patientNameMap };
+      },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
 
     const candidates = result.candidates.map((candidate) => ({
       ...candidate,
@@ -168,41 +172,45 @@ export const POST = withAuthContext(
         })
       : [];
 
-    const created = await withOrgContext(ctx.orgId, async (tx) => {
-      if (generateHomeCare) {
-        for (const visitRecord of visitRecords) {
-          await upsertBillingEvidenceForVisit(tx, {
-            orgId: ctx.orgId,
-            visitRecordId: visitRecord.id,
-          });
+    const created = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        if (generateHomeCare) {
+          for (const visitRecord of visitRecords) {
+            await upsertBillingEvidenceForVisit(tx, {
+              orgId: ctx.orgId,
+              visitRecordId: visitRecord.id,
+            });
+          }
         }
-      }
 
-      const candidates = generateHomeCare
-        ? await generateBillingCandidatesForMonth(tx, {
-            orgId: ctx.orgId,
-            billingMonth: billingMonth.start,
-          })
-        : [];
-      const pcaRentalCandidates = generatePcaRental
-        ? await generatePcaRentalBillingCandidatesForMonth(tx, {
-            orgId: ctx.orgId,
-            billingMonth: billingMonth.start,
-          })
-        : [];
-      const allCandidates = [...candidates, ...pcaRentalCandidates];
+        const candidates = generateHomeCare
+          ? await generateBillingCandidatesForMonth(tx, {
+              orgId: ctx.orgId,
+              billingMonth: billingMonth.start,
+            })
+          : [];
+        const pcaRentalCandidates = generatePcaRental
+          ? await generatePcaRentalBillingCandidatesForMonth(tx, {
+              orgId: ctx.orgId,
+              billingMonth: billingMonth.start,
+            })
+          : [];
+        const allCandidates = [...candidates, ...pcaRentalCandidates];
 
-      return {
-        billing_domain: billingDomain ?? 'all',
-        generated: allCandidates.length,
-        home_care_generated: candidates.length,
-        pca_rental_generated: pcaRentalCandidates.length,
-        confirmed: allCandidates.filter((candidate) => candidate.status === 'confirmed').length,
-        review_required: allCandidates.filter((candidate) => candidate.status === 'candidate')
-          .length,
-        excluded: allCandidates.filter((candidate) => candidate.status === 'excluded').length,
-      };
-    });
+        return {
+          billing_domain: billingDomain ?? 'all',
+          generated: allCandidates.length,
+          home_care_generated: candidates.length,
+          pca_rental_generated: pcaRentalCandidates.length,
+          confirmed: allCandidates.filter((candidate) => candidate.status === 'confirmed').length,
+          review_required: allCandidates.filter((candidate) => candidate.status === 'candidate')
+            .length,
+          excluded: allCandidates.filter((candidate) => candidate.status === 'excluded').length,
+        };
+      },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
 
     return success({
       message: `${billingMonth.canonical} の請求候補を生成しました`,

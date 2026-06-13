@@ -17,10 +17,7 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type {
-  DayBoardPendingProposal,
-  ScheduleDayBoardResponse,
-} from '@/types/schedule-day-board';
+import type { DayBoardPendingProposal, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import {
   BOARD_END_MINUTES,
   BOARD_START_MINUTES,
@@ -104,7 +101,7 @@ export function ScheduleViewModeToggle({
             href={option.href}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'inline-flex min-h-[36px] min-w-12 items-center justify-center rounded px-3 text-sm font-semibold transition-colors',
+              'inline-flex min-h-[44px] min-w-12 items-center justify-center rounded px-3 text-sm font-semibold transition-colors sm:min-h-9',
               isActive
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -264,7 +261,10 @@ function TeamGanttCard({
         <div className="mt-4">
           <div className="grid grid-cols-[88px_minmax(0,1fr)_92px] gap-2">
             <span aria-hidden="true" />
-            <div aria-hidden="true" className="flex justify-between text-[10px] text-muted-foreground">
+            <div
+              aria-hidden="true"
+              className="flex justify-between text-[10px] text-muted-foreground"
+            >
               {hourLabels.map((label) => (
                 <span key={label}>{label}</span>
               ))}
@@ -315,7 +315,11 @@ function TeamGanttCard({
           </p>
           <Link
             href={riskAlert.actionHref}
-            className={buttonVariants({ variant: 'outline', size: 'sm', className: 'mt-2 bg-card' })}
+            className={buttonVariants({
+              variant: 'outline',
+              size: 'sm',
+              className: 'mt-2 bg-card',
+            })}
           >
             {riskAlert.actionLabel}
           </Link>
@@ -366,7 +370,11 @@ function PendingProposalRow({
         ) : null}
         <Link
           href="/dashboard"
-          className={buttonVariants({ variant: 'outline', size: 'sm', className: 'shrink-0 bg-card' })}
+          className={buttonVariants({
+            variant: 'outline',
+            size: 'sm',
+            className: 'shrink-0 bg-card',
+          })}
         >
           → ダッシュボードへ
         </Link>

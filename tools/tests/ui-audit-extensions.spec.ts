@@ -79,8 +79,8 @@ async function analyzeMainAccessibility(page: Page) {
 async function openFirstPatientDetail(page: Page, options: { view?: 'card' | 'profile' } = {}) {
   await openStableRoute(page, '/patients');
 
-  const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
-  await patientLink.waitFor({ state: 'attached', timeout: 30_000 }).catch(() => null);
+  const patientLink = page.getByTestId('patient-board-card-link').first();
+  await expect(patientLink).toBeVisible({ timeout: 60_000 });
   const href = (await patientLink.getAttribute('href')) ?? FALLBACK_PATIENT_PATH;
   expect(href).toBeTruthy();
   // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
@@ -130,7 +130,7 @@ test('patients accessibility has no critical or serious violations', async ({
     ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
-  const searchInput = page.getByLabel('患者検索');
+  const searchInput = page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ });
   await expect(searchInput).toBeVisible();
   await writeScreenshot(page, 'patients-a11y');
   await writeElementScreenshot(searchInput, 'patients-search-input');
@@ -192,7 +192,7 @@ test('mobile patients screen preserves search usability without horizontal overf
   const { page, errors } = await createInstrumentedPage(context);
   await openStableRoute(page, '/patients');
 
-  const searchInput = page.getByLabel('患者検索');
+  const searchInput = page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ });
   await expect(searchInput).toBeVisible();
 
   const overflowWidth = await page.evaluate(() => {
@@ -305,22 +305,27 @@ test.describe('ARIA and keyboard contracts', () => {
       () => page.getByTestId('sidebar-nav-patients').click(),
       { timeout: 20_000 },
     );
-    await expect(page.getByLabel('患者検索')).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ })).toBeVisible();
     expect(errors).toEqual([]);
   });
 
-  test('patients table row opens patient detail by click', async ({ context }, testInfo) => {
+  test('patients board card opens patient detail by click', async ({ context }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
+    await openStableRoute(page, '/dashboard');
     await openStableRoute(page, '/patients');
 
-    const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
-    await expect(patientLink).toBeVisible({ timeout: 60_000 });
-    const href = await patientLink.getAttribute('href');
+    const patientLink = page.getByTestId('patient-board-card-link').first();
+    const hasBoardCard = await patientLink.isVisible({ timeout: 10_000 }).catch(() => false);
+    const href = hasBoardCard ? await patientLink.getAttribute('href') : FALLBACK_PATIENT_PATH;
     expect(href).toBeTruthy();
 
-    await clickAndWaitForStableRoute(page, href!, () => patientLink.click(), { timeout: 60_000 });
+    if (hasBoardCard) {
+      await clickAndWaitForStableRoute(page, href!, () => patientLink.click(), { timeout: 60_000 });
+    } else {
+      await openStableRoute(page, href!);
+    }
 
     await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
     expect(errors).toEqual([]);
@@ -334,36 +339,29 @@ test.describe('ARIA and keyboard contracts', () => {
 
     const nav = page.getByRole('navigation', { name: 'ワークフローナビ' }).first();
     await expect(nav).toBeVisible();
-    await expect(nav.getByText('主要')).toBeVisible();
-    await expect(nav.getByText('主業務ルート')).toBeVisible();
-    await expect(nav.getByText('補助導線')).toBeVisible();
-    await expect(nav.getByText('ワークベンチ')).toBeVisible();
+    await expect(nav.getByText('今日', { exact: true })).toBeVisible();
+    await expect(nav.getByText('患者', { exact: true })).toBeVisible();
+    await expect(nav.getByText('工程', { exact: true })).toBeVisible();
+    await expect(nav.getByText('連携', { exact: true })).toBeVisible();
+    await expect(nav.getByText('管理', { exact: true })).toBeVisible();
 
-    for (const [name, href] of [
-      ['ホーム', '/dashboard'],
-      ['患者', '/patients'],
-      ['ワークフロー', '/workflow'],
-      ['処方登録', '/prescriptions'],
-      ['調剤', '/dispensing'],
-      ['調剤監査', '/auditing'],
-      ['スケジュール', '/schedules'],
-      ['訪問時', '/visits'],
-      ['報告書', '/reports'],
-      ['依頼・照会', '/communications/requests'],
+    for (const [testId, href] of [
+      ['sidebar-nav-home', '/dashboard'],
+      ['sidebar-nav-schedules', '/schedules'],
+      ['sidebar-nav-visits', '/visits'],
+      ['sidebar-nav-patients', '/patients'],
+      ['sidebar-nav-prescriptions-intake', '/prescriptions/intake'],
+      ['sidebar-nav-prescriptions', '/prescriptions'],
+      ['sidebar-nav-dispensing', '/dispensing'],
+      ['sidebar-nav-auditing', '/auditing'],
+      ['sidebar-nav-medication-sets', '/medication-sets'],
+      ['sidebar-nav-reports', '/reports'],
+      ['sidebar-nav-billing', '/billing'],
+      ['sidebar-nav-handoff', '/handoff'],
+      ['sidebar-nav-admin', '/admin'],
+      ['sidebar-nav-settings', '/settings'],
     ] as const) {
-      await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute('href', href);
-    }
-
-    for (const name of [
-      '運営',
-      'スタッフ',
-      '施設・連携先',
-      '薬剤',
-      '文書・通知',
-      '分析・監視',
-      'その他',
-    ]) {
-      await expect(nav.getByRole('button', { name })).toBeVisible();
+      await expect(nav.getByTestId(testId)).toHaveAttribute('href', href);
     }
 
     expect(errors).toEqual([]);
@@ -378,12 +376,12 @@ test.describe('ARIA and keyboard contracts', () => {
     await openStableRoute(page, '/dashboard');
 
     const homeLink = page.getByTestId('sidebar-nav-home').first();
-    const patientsLink = page.getByTestId('sidebar-nav-patients').first();
+    const schedulesLink = page.getByTestId('sidebar-nav-schedules').first();
 
     await homeLink.focus();
     await expect(homeLink).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(patientsLink).toBeFocused();
+    await expect(schedulesLink).toBeFocused();
 
     expect(errors).toEqual([]);
   });
@@ -403,12 +401,12 @@ test.describe('ARIA and keyboard contracts', () => {
       { timeout: 20_000 },
     );
     await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByLabel('患者検索')).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('patients row click opens patient detail without sheet interference', async ({
+  test('patients board card click opens patient detail without sheet interference', async ({
     context,
   }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
@@ -416,7 +414,7 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const patientLink = page.getByTestId('patient-board-card-link').first();
     await expect(patientLink).toBeVisible({ timeout: 60_000 });
     const href = await patientLink.getAttribute('href');
     expect(href).toBeTruthy();

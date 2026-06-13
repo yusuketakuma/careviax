@@ -39,4 +39,12 @@ describe('medical UI E2E release contract', () => {
     expect(packageJson).toContain(guardrailSpec);
     expect(preflight).toContain(guardrailSpec);
   });
+
+  it('keeps recent org-scoped operational tables inside the RLS preflight contract', () => {
+    const preflight = readFileSync('tools/scripts/medical-ui-e2e-preflight.ts', 'utf8');
+
+    expect(preflight).toContain("'DrugAlertRule'");
+    expect(preflight).toContain("'FileAsset'");
+    expect(preflight).toContain("'WebhookDelivery'");
+  });
 });

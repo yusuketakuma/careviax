@@ -297,7 +297,7 @@ function TodayFlowSection({
           今日の流れ
         </h3>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Lock className="size-3 text-emerald-600" aria-hidden="true" />
+          <Lock className="size-3 text-emerald-700" aria-hidden="true" />
           訪問は動かせない固定点・デスク作業はその間を流れます
         </p>
         <Button asChild variant="outline" size="sm" className="ml-auto">

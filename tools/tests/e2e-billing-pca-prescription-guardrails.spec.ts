@@ -292,25 +292,33 @@ async function apiFetch(
   page: Page,
   args: { path: string; method: 'GET' | 'POST' | 'PATCH'; body?: unknown },
 ) {
-  return page.evaluate(
-    async ({ path, method, body, orgId }) => {
-      const response = await fetch(path, {
-        method,
-        credentials: 'same-origin',
+  const maxAttempts = args.method === 'POST' ? 1 : 3;
+  const requestUrl = new URL(args.path, page.url()).toString();
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await page.request.fetch(requestUrl, {
+        method: args.method,
         headers: {
           'Content-Type': 'application/json',
-          'x-org-id': orgId,
+          'x-org-id': ORG_ID,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        data: args.body,
       });
       const text = await response.text();
       return {
-        status: response.status,
+        status: response.status(),
         body: text ? JSON.parse(text) : null,
       };
-    },
-    { ...args, orgId: ORG_ID },
-  );
+    } catch (error) {
+      if (attempt === maxAttempts || !/Failed to fetch/i.test(String(error))) {
+        throw error;
+      }
+      await page.waitForTimeout(750);
+    }
+  }
+
+  throw new Error(`apiFetch exhausted retry attempts for ${args.method} ${args.path}`);
 }
 
 async function fetchBillingPreview(page: Page, caseId: string) {
@@ -330,7 +338,7 @@ function buildPrescriptionPayload(args: {
     case_id: IDS.prescriptionCase,
     patient_id: IDS.prescriptionPatient,
     source_type: args.sourceType,
-    prescribed_date: '2026-06-08',
+    prescribed_date: todayDateKey(),
     prescriber_name: 'E2E処方医',
     prescriber_institution_id: IDS.institution,
     lines: [
@@ -349,6 +357,14 @@ function buildPrescriptionPayload(args: {
       },
     ],
   };
+}
+
+function todayDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function withoutExpectedValidationConsole(errors: string[]) {

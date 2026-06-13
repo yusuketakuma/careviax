@@ -88,7 +88,7 @@ export const GET = withAuthContext(
           orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
           take: 100,
         }),
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     return success({ data: rentals.map(serializePcaPumpRental) });
@@ -122,7 +122,7 @@ export const POST = withAuthContext(
             select: { id: true },
           }),
         ]),
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
     if (!pump) return notFound('PCAポンプが見つかりません');
     if (!institution) return notFound('貸出先医療機関が見つかりません');
@@ -198,7 +198,7 @@ export const POST = withAuthContext(
 
           return { kind: 'rental' as const, rental };
         },
-        { requestContext: ctx },
+        { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
       );
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {

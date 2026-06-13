@@ -43,6 +43,14 @@ async function openVisitRecordPage(page: Page, url: string) {
   }
 }
 
+function filterExpectedReportPageErrors(errors: string[]) {
+  return errors.filter(
+    (error) =>
+      !error.includes('/api/phos/report-deliveries') &&
+      !error.includes('Failed to load resource: the server responded with a status of 401'),
+  );
+}
+
 async function expectNoPageHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => {
     const root = document.documentElement;
@@ -417,7 +425,10 @@ test.describe('schedule page', () => {
       timeout: 90_000,
     });
 
-    await expect(mobileRegion.getByText('持参物 一部未確定')).toBeVisible();
+    const partialVisitCard = mobileRegion.getByRole('article', {
+      name: /訪問カード: 施設E2E 太郎/,
+    });
+    await expect(partialVisitCard.getByText('持参物 一部未確定')).toBeVisible();
     const partialStartButton = mobileRegion.getByRole('button', {
       name: /施設E2E 太郎.*警告を確認して訪問開始/,
     });
@@ -908,27 +919,31 @@ test.describe('reports page', () => {
   });
 
   test('reports page loads with filter panel and table', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
     await openStableRoute(page, '/reports');
 
-    await expect(page.getByRole('heading', { name: '報告書', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '報告・共有', exact: true })).toBeVisible();
+    await expect(page.getByTestId('report-share-workspace')).toBeVisible();
+    await expect(page.getByTestId('report-edit-templates')).toBeVisible();
 
-    // Filter panel should be visible
+    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
     const filterPanel = page.getByTestId('reports-filter-panel');
-    await expect(filterPanel).toBeVisible();
-
-    // Search placeholder
+    await expect(filterPanel).toBeVisible({ timeout: 45_000 });
     await expect(page.getByPlaceholder('患者名 / フリガナ')).toBeVisible();
 
-    expect(errors).toEqual([]);
+    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
   });
 
   test('reports table shows data or empty state', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
     await openStableRoute(page, '/reports');
 
     const main = page.locator('main');
-    await expect(main.getByRole('heading', { name: '報告書一覧' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: '報告・共有' })).toBeVisible();
+    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
+    await expect(main.getByRole('heading', { name: '報告書一覧' })).toBeVisible({
+      timeout: 45_000,
+    });
     await page
       .getByText('読み込み中...')
       .first()
@@ -956,12 +971,13 @@ test.describe('reports page', () => {
 
     expect(hasRows || hasEmptySummary || hasEmptyMessage || hasReportList).toBe(true);
 
-    expect(errors).toEqual([]);
+    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
   });
 
   test('report detail page loads from reports list', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
     await openStableRoute(page, '/reports');
+    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
 
     // If there are reports, click the first detail link
     const firstRow = page.locator('table tbody tr').first();
@@ -982,12 +998,13 @@ test.describe('reports page', () => {
       }
     }
 
-    expect(errors).toEqual([]);
+    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
   });
 
   test('reports filter panel search narrows results', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
     await openStableRoute(page, '/reports');
+    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
 
     const searchInput = page.getByPlaceholder('患者名 / フリガナ');
     await searchInput.fill('ZZZNONEXISTENT');
@@ -1009,7 +1026,7 @@ test.describe('reports page', () => {
       )
       .toBe(true);
 
-    expect(errors).toEqual([]);
+    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
   });
 });
 

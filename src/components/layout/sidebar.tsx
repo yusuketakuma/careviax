@@ -18,6 +18,12 @@ interface SidebarNavItemProps {
   badgeCount?: number;
 }
 
+function getSidebarNavTestId(href: string) {
+  if (href === '/dashboard') return 'sidebar-nav-home';
+  const slug = href.replace(/^\//, '').replace(/\//g, '-');
+  return slug ? `sidebar-nav-${slug}` : undefined;
+}
+
 function SidebarNavItem({
   item,
   collapsed,
@@ -37,7 +43,7 @@ function SidebarNavItem({
       onClick={() => {
         if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
       }}
-      data-testid={item.href === '/dashboard' ? 'sidebar-nav-home' : undefined}
+      data-testid={getSidebarNavTestId(item.href)}
       className={cn(
         'flex min-h-[44px] items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',

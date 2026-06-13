@@ -119,7 +119,7 @@ function QueueRow({
       <TableCell className="text-sm font-medium text-foreground">{contentLabel}</TableCell>
       <TableCell className="whitespace-nowrap">
         {row.auto_read_percent != null ? (
-          <span className="text-sm font-bold text-emerald-600">{row.auto_read_percent}%</span>
+          <span className="text-sm font-bold text-emerald-700">{row.auto_read_percent}%</span>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
         )}

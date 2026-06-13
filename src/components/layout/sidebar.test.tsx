@@ -150,9 +150,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'カード' }).getAttribute('aria-current')).toEqual(
       'page',
     );
-    expect(
-      screen.getByRole('link', { name: '患者一覧' }).getAttribute('aria-current'),
-    ).toBeNull();
+    expect(screen.getByRole('link', { name: '患者一覧' }).getAttribute('aria-current')).toBeNull();
   });
 
   it('separates prescription intake from the card item', () => {
@@ -189,6 +187,14 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'ハンドオフ' }).getAttribute('aria-current')).toEqual(
       'page',
     );
+  });
+
+  it('exposes stable nav test ids used by browser smoke tests', () => {
+    render(<Sidebar />);
+
+    expect(screen.getByTestId('sidebar-nav-home').getAttribute('href')).toBe('/dashboard');
+    expect(screen.getByTestId('sidebar-nav-patients').getAttribute('href')).toBe('/patients');
+    expect(screen.getByTestId('sidebar-nav-dispensing').getAttribute('href')).toBe('/dispensing');
   });
 
   it('keeps admin analytics pages active under マスター after the report item removal', () => {

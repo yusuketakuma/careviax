@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         },
       }),
-    { requestContext: ctx },
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
   if (!existing) return notFound('PCAポンプレンタルが見つかりません');
 
@@ -137,7 +137,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           where: { id: parsed.data.institution_id, org_id: ctx.orgId },
           select: { id: true },
         }),
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
     if (!institution) return notFound('貸出先医療機関が見つかりません');
   }
@@ -323,7 +323,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         return { kind: 'rental' as const, rental };
       },
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
   } catch (error) {
     if (isPrismaUniqueConstraintError(error)) {

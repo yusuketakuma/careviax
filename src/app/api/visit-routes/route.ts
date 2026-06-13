@@ -409,7 +409,7 @@ export const POST = withAuthContext(
 
         return planWithVehicleResource;
       },
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     if (hasRoutePlanLookupError(routePlan)) {

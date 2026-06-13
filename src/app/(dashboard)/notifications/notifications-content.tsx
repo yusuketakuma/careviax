@@ -144,8 +144,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     return itemCategory === category;
   });
 
-  const showUnsyncedRow =
-    pendingSyncCount > 0 && (category === 'all' || category === 'unsynced');
+  const showUnsyncedRow = pendingSyncCount > 0 && (category === 'all' || category === 'unsynced');
 
   const unreadIds = notifications
     .filter((notification) => !notification.is_read)
@@ -166,7 +165,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     <div className="mx-auto max-w-4xl space-y-5" data-testid="notifications-inbox">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             急ぎの確認、返信待ち、未同期をまとめて見ます。
           </p>
@@ -219,9 +218,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
             return (
               <ListOpenCard
                 key={notification.id}
-                badgeLabel={
-                  itemCategory ? NOTIFICATION_CATEGORY_LABELS[itemCategory] : 'お知らせ'
-                }
+                badgeLabel={itemCategory ? NOTIFICATION_CATEGORY_LABELS[itemCategory] : 'お知らせ'}
                 badgeClassName={
                   itemCategory ? NOTIFICATION_CATEGORY_BADGE_CLASSES[itemCategory] : undefined
                 }

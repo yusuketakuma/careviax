@@ -41,10 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  ReasonDialog,
-  type ReasonSubmission,
-} from '@/components/features/workflow/reason-dialog';
+import { ReasonDialog, type ReasonSubmission } from '@/components/features/workflow/reason-dialog';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { OFFLINE_CACHE_TTL_HOURS } from '@/lib/offline/cache-policy';
@@ -853,6 +850,14 @@ export function ScheduleDayView({
     }
 
     router.push(createVisitRecordHref(schedule));
+  }
+
+  function confirmDepartureWarningStart() {
+    if (!departureWarningTarget || !departureWarningAcknowledged) return;
+    const href = createVisitRecordHref(departureWarningTarget);
+    setDepartureWarningAcknowledged(false);
+    setDepartureWarningTarget(null);
+    router.push(href);
   }
 
   function handleVisitComplete(schedule: VisitSchedule) {
@@ -5000,9 +5005,7 @@ export function ScheduleDayView({
         title="取消・再開の理由を入力"
         options={VISIT_SCHEDULE_CANCEL_REASON_OPTIONS}
         warning={
-          reopenTarget
-            ? `${reopenTarget.case_.patient.name} 様の訪問予定を再開します。`
-            : undefined
+          reopenTarget ? `${reopenTarget.case_.patient.name} 様の訪問予定を再開します。` : undefined
         }
         pending={reopenScheduleMutation.isPending}
         onSubmit={(reason) =>
@@ -5080,11 +5083,11 @@ export function ScheduleDayView({
             {canOverrideDepartureCarryWarning(departureWarningTarget) ? (
               <Button
                 variant="destructive"
-                onClick={() => {
-                  if (!departureWarningTarget) return;
-                  router.push(createVisitRecordHref(departureWarningTarget));
-                  setDepartureWarningAcknowledged(false);
-                  setDepartureWarningTarget(null);
+                onClick={confirmDepartureWarningStart}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  confirmDepartureWarningStart();
                 }}
                 disabled={!departureWarningAcknowledged}
               >

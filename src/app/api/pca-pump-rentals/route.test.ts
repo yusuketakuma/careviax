@@ -155,6 +155,8 @@ describe('/api/pca-pump-rentals', () => {
     expect(response.status).toBe(200);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1' }),
+      maxWaitMs: 10_000,
+      timeoutMs: 20_000,
     });
     expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({

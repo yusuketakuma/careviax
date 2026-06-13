@@ -41,7 +41,7 @@ export function FilterChipBar<T extends string>({
             onClick={() => onChange(option.value)}
             aria-pressed={isActive}
             className={cn(
-              'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors',
+              'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors sm:min-h-9',
               isActive
                 ? 'border-primary/20 bg-primary/10 text-primary'
                 : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground',

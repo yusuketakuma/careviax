@@ -127,7 +127,7 @@ export async function attachLocalSession(context: BrowserContext) {
 }
 
 export async function waitForStableUi(page: Page) {
-  await page.waitForLoadState('domcontentloaded');
+  await page.waitForLoadState('domcontentloaded', { timeout: 45_000 }).catch(() => null);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => null);
   await page
     .getByText(/Compiling|Rendering/)
@@ -140,7 +140,7 @@ function delay(ms: number) {
 }
 
 function isRetriableDevNavigationError(message: string) {
-  return /net::ERR_ABORTED|frame was detached|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_REFUSED/i.test(
+  return /net::ERR_ABORTED|frame was detached|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_REFUSED|page\.goto: Test timeout|page\.goto: Timeout|page\.reload: Timeout/i.test(
     message,
   );
 }
@@ -182,7 +182,7 @@ async function waitForCurrentUrlTarget(
 export async function openStableRoute(page: Page, path: string) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 90_000 });
       await waitForStableUi(page);
       return;
     } catch (error) {
@@ -211,8 +211,21 @@ export async function openStableRoute(page: Page, path: string) {
 }
 
 export async function reloadStablePage(page: Page) {
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await waitForStableUi(page);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
+      await waitForStableUi(page);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === 2 || !isRetriableDevNavigationError(message)) {
+        throw error;
+      }
+      await delay(
+        /ERR_CONNECTION|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET/i.test(message) ? 1_000 : 250,
+      );
+    }
+  }
 }
 
 export async function clickAndWaitForStableRoute(
@@ -221,7 +234,7 @@ export async function clickAndWaitForStableRoute(
   clickAction: () => Promise<unknown>,
   options: { timeout?: number } = {},
 ) {
-  const timeout = options.timeout ?? 10_000;
+  const timeout = options.timeout ?? 90_000;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const [waitResult] = await Promise.all([

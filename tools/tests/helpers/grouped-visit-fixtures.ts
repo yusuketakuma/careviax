@@ -239,7 +239,7 @@ export async function ensureGroupedVisitFixtures() {
         caseId: GROUPED_VISIT_IDS.homeCases[index],
         batchId: null,
         unitId: null,
-        routeOrder: index + 1,
+        routeOrder: index + 11,
       })),
     ];
     for (const item of schedules) {
@@ -360,7 +360,7 @@ export async function ensureConfirmedScheduleActionFixture(
       `
         INSERT INTO "VisitSchedule" (
           "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","facility_batch_id","facility_unit_id","medication_start_date","medication_end_date","confirmed_at","confirmed_by","carry_items_status","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,'09:00','10:00',$6,'primary',1,$7,$8,$5,$5,NOW(),$6,$9,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,'09:00','10:00',$6,'primary',91,$7,$8,$5,$5,NOW(),$6,$9,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
             "case_id" = EXCLUDED."case_id",

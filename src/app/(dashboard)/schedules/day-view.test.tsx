@@ -3007,7 +3007,8 @@ describe('ScheduleDayView', () => {
     );
     expect(confirmationButton.disabled).toBe(false);
 
-    fireEvent.click(confirmationButton);
+    confirmationButton.focus();
+    fireEvent.keyDown(confirmationButton, { key: 'Enter' });
 
     expect(push).toHaveBeenCalledWith('/visits/schedule_partial/record');
   });

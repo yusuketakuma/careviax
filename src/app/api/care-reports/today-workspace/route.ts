@@ -107,280 +107,285 @@ export const GET = withAuthContext(
     const monthStart = new Date(targetYear, targetMonth - 1, 1);
     const nextMonthStart = new Date(targetYear, targetMonth, 1);
 
-    const data = await withOrgContext(ctx.orgId, async (tx) => {
-      const schedules = await tx.visitSchedule.findMany({
-        where: {
-          org_id: ctx.orgId,
-          scheduled_date: { gte: today, lt: tomorrow },
-          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-        },
-        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-        select: {
-          id: true,
-          time_window_start: true,
-          facility_batch_id: true,
-          facility_batch: {
-            select: { id: true, facility_id: true, patient_ids: true },
+    const data = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const schedules = await tx.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            scheduled_date: { gte: today, lt: tomorrow },
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
           },
-          case_: {
-            select: {
-              patient: { select: { id: true, name: true } },
-              care_team_links: {
-                select: { role: true, name: true, is_primary: true },
-              },
+          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+          select: {
+            id: true,
+            time_window_start: true,
+            facility_batch_id: true,
+            facility_batch: {
+              select: { id: true, facility_id: true, patient_ids: true },
             },
-          },
-          cycle: {
-            select: {
-              prescription_intakes: {
-                orderBy: { created_at: 'desc' },
-                take: 1,
-                select: {
-                  lines: { select: { packaging_instruction_tags: true } },
+            case_: {
+              select: {
+                patient: { select: { id: true, name: true } },
+                care_team_links: {
+                  select: { role: true, name: true, is_primary: true },
                 },
               },
             },
-          },
-          visit_record: { select: { id: true } },
-        },
-      });
-
-      const visitRecordIds = schedules
-        .map((schedule) => schedule.visit_record?.id)
-        .filter((id): id is string => Boolean(id));
-      const draftReports =
-        visitRecordIds.length === 0
-          ? []
-          : await tx.careReport.findMany({
-              where: {
-                org_id: ctx.orgId,
-                visit_record_id: { in: visitRecordIds },
-                status: 'draft',
+            cycle: {
+              select: {
+                prescription_intakes: {
+                  orderBy: { created_at: 'desc' },
+                  take: 1,
+                  select: {
+                    lines: { select: { packaging_instruction_tags: true } },
+                  },
+                },
               },
-              select: { id: true, visit_record_id: true },
-            });
-      const draftReportByRecordId = new Map(
-        draftReports
-          .filter((report) => report.visit_record_id)
-          .map((report) => [report.visit_record_id as string, report.id]),
-      );
+            },
+            visit_record: { select: { id: true } },
+          },
+        });
 
-      const facilityIds = [
-        ...new Set(
-          schedules
-            .map((schedule) => schedule.facility_batch?.facility_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
-      const facilities =
-        facilityIds.length === 0
-          ? []
-          : await tx.facility.findMany({
-              where: { id: { in: facilityIds }, org_id: ctx.orgId },
-              select: { id: true, name: true },
-            });
-      const facilityNameById = new Map(facilities.map((facility) => [facility.id, facility.name]));
+        const visitRecordIds = schedules
+          .map((schedule) => schedule.visit_record?.id)
+          .filter((id): id is string => Boolean(id));
+        const draftReports =
+          visitRecordIds.length === 0
+            ? []
+            : await tx.careReport.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  visit_record_id: { in: visitRecordIds },
+                  status: 'draft',
+                },
+                select: { id: true, visit_record_id: true },
+              });
+        const draftReportByRecordId = new Map(
+          draftReports
+            .filter((report) => report.visit_record_id)
+            .map((report) => [report.visit_record_id as string, report.id]),
+        );
 
-      const draftRows: ReportDraftRow[] = [];
-      const seenFacilityBatchIds = new Set<string>();
-      for (const schedule of schedules) {
-        const batch = schedule.facility_batch;
-        if (batch) {
-          // 施設一括訪問は 1 行に集約(「12名分を1通に集約」)
-          if (seenFacilityBatchIds.has(batch.id)) continue;
-          seenFacilityBatchIds.add(batch.id);
-          const patientCount = readPatientIdsLength(batch.patient_ids);
+        const facilityIds = [
+          ...new Set(
+            schedules
+              .map((schedule) => schedule.facility_batch?.facility_id)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        const facilities =
+          facilityIds.length === 0
+            ? []
+            : await tx.facility.findMany({
+                where: { id: { in: facilityIds }, org_id: ctx.orgId },
+                select: { id: true, name: true },
+              });
+        const facilityNameById = new Map(
+          facilities.map((facility) => [facility.id, facility.name]),
+        );
+
+        const draftRows: ReportDraftRow[] = [];
+        const seenFacilityBatchIds = new Set<string>();
+        for (const schedule of schedules) {
+          const batch = schedule.facility_batch;
+          if (batch) {
+            // 施設一括訪問は 1 行に集約(「12名分を1通に集約」)
+            if (seenFacilityBatchIds.has(batch.id)) continue;
+            seenFacilityBatchIds.add(batch.id);
+            const patientCount = readPatientIdsLength(batch.patient_ids);
+            draftRows.push({
+              id: `facility-${batch.id}`,
+              time_start: schedule.time_window_start?.toISOString() ?? null,
+              patient_label: facilityNameById.get(batch.facility_id) ?? '施設一括訪問',
+              // 施設一括報告の宛先は現状データソースが無いため看護師長宛で固定表示
+              recipient_label: '施設(看護師長)',
+              status: 'before_visit',
+              note: patientCount > 0 ? `${patientCount}名分を1通に集約` : null,
+              action: null,
+            });
+            continue;
+          }
+
+          const intakeLines = schedule.cycle?.prescription_intakes[0]?.lines ?? [];
+          const hasNarcotic = intakeLines.some((line) =>
+            line.packaging_instruction_tags.includes('narcotic'),
+          );
+          const draftReportId = schedule.visit_record?.id
+            ? (draftReportByRecordId.get(schedule.visit_record.id) ?? null)
+            : null;
           draftRows.push({
-            id: `facility-${batch.id}`,
+            id: schedule.id,
             time_start: schedule.time_window_start?.toISOString() ?? null,
-            patient_label: facilityNameById.get(batch.facility_id) ?? '施設一括訪問',
-            // 施設一括報告の宛先は現状データソースが無いため看護師長宛で固定表示
-            recipient_label: '施設(看護師長)',
-            status: 'before_visit',
-            note: patientCount > 0 ? `${patientCount}名分を1通に集約` : null,
-            action: null,
+            patient_label: `${schedule.case_.patient.name} 様`,
+            recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
+            status: draftReportId ? 'draft_ready' : 'before_visit',
+            note: hasNarcotic ? '麻薬使用状況を含む' : null,
+            action: draftReportId
+              ? { label: '→ 下書きへ', href: `/reports/${draftReportId}` }
+              : { label: '→ 訪問へ', href: '/visits' },
           });
-          continue;
         }
 
-        const intakeLines = schedule.cycle?.prescription_intakes[0]?.lines ?? [];
-        const hasNarcotic = intakeLines.some((line) =>
-          line.packaging_instruction_tags.includes('narcotic'),
-        );
-        const draftReportId = schedule.visit_record?.id
-          ? (draftReportByRecordId.get(schedule.visit_record.id) ?? null)
-          : null;
-        draftRows.push({
-          id: schedule.id,
-          time_start: schedule.time_window_start?.toISOString() ?? null,
-          patient_label: `${schedule.case_.patient.name} 様`,
-          recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
-          status: draftReportId ? 'draft_ready' : 'before_visit',
-          note: hasNarcotic ? '麻薬使用状況を含む' : null,
-          action: draftReportId
-            ? { label: '→ 下書きへ', href: `/reports/${draftReportId}` }
-            : { label: '→ 訪問へ', href: '/visits' },
-        });
-      }
-
-      const [waitingDeliveries, waitingRequests, resolvedResponses] = [
-        await tx.deliveryRecord.findMany({
-          where: { org_id: ctx.orgId, status: 'response_waiting' },
-          orderBy: { sent_at: 'asc' },
-          take: WAITING_LIMIT,
-          select: {
-            id: true,
-            sent_at: true,
-            report: {
-              select: { id: true, patient_id: true, report_type: true, content: true },
+        const [waitingDeliveries, waitingRequests, resolvedResponses] = [
+          await tx.deliveryRecord.findMany({
+            where: { org_id: ctx.orgId, status: 'response_waiting' },
+            orderBy: { sent_at: 'asc' },
+            take: WAITING_LIMIT,
+            select: {
+              id: true,
+              sent_at: true,
+              report: {
+                select: { id: true, patient_id: true, report_type: true, content: true },
+              },
             },
-          },
-        }),
-        await tx.communicationRequest.findMany({
-          where: {
-            org_id: ctx.orgId,
-            status: { in: ['sent', 'received', 'in_progress'] },
-          },
-          orderBy: { requested_at: 'asc' },
-          take: WAITING_LIMIT,
-          select: {
-            id: true,
-            subject: true,
-            patient_id: true,
-            requested_at: true,
-          },
-        }),
-        await tx.communicationResponse.findMany({
-          where: {
-            org_id: ctx.orgId,
-            responded_at: { gte: localDayStart, lt: localDayEnd },
-          },
-          orderBy: { responded_at: 'desc' },
-          take: RESOLVED_LIMIT,
-          select: {
-            id: true,
-            responded_at: true,
-            request: { select: { subject: true, patient_id: true } },
-          },
-        }),
-      ];
+          }),
+          await tx.communicationRequest.findMany({
+            where: {
+              org_id: ctx.orgId,
+              status: { in: ['sent', 'received', 'in_progress'] },
+            },
+            orderBy: { requested_at: 'asc' },
+            take: WAITING_LIMIT,
+            select: {
+              id: true,
+              subject: true,
+              patient_id: true,
+              requested_at: true,
+            },
+          }),
+          await tx.communicationResponse.findMany({
+            where: {
+              org_id: ctx.orgId,
+              responded_at: { gte: localDayStart, lt: localDayEnd },
+            },
+            orderBy: { responded_at: 'desc' },
+            take: RESOLVED_LIMIT,
+            select: {
+              id: true,
+              responded_at: true,
+              request: { select: { subject: true, patient_id: true } },
+            },
+          }),
+        ];
 
-      const waitingPatientIds = [
-        ...new Set(
-          [
-            ...waitingDeliveries.map((delivery) => delivery.report.patient_id),
-            ...waitingRequests.map((request) => request.patient_id),
-            ...resolvedResponses.map((response) => response.request.patient_id),
-          ].filter((id): id is string => Boolean(id)),
-        ),
-      ];
-      const waitingPatients =
-        waitingPatientIds.length === 0
-          ? []
-          : await tx.patient.findMany({
-              where: { id: { in: waitingPatientIds }, org_id: ctx.orgId },
-              select: { id: true, name: true },
-            });
-      const patientNameById = new Map(waitingPatients.map((patient) => [patient.id, patient.name]));
-      const patientLabel = (patientId: string | null) => {
-        if (!patientId) return null;
-        const name = patientNameById.get(patientId);
-        return name ? `${name} 様` : null;
-      };
-      const waitingDaysFrom = (since: Date | null) =>
-        since
-          ? Math.max(0, Math.floor((now.getTime() - since.getTime()) / 86_400_000))
-          : 0;
-
-      const waitingReplies: ReportWaitingReply[] = [
-        ...waitingDeliveries.map((delivery): ReportWaitingReply => {
-          const contentTitle = readJsonObjectString(readJsonObject(delivery.report.content), 'title');
-          const title =
-            contentTitle ??
-            REPORT_TYPE_FALLBACK_TITLES[delivery.report.report_type] ??
-            '報告書';
-          const patient = patientLabel(delivery.report.patient_id);
-          return {
-            id: `delivery-${delivery.id}`,
-            kind: 'report_delivery',
-            waiting_days: waitingDaysFrom(delivery.sent_at),
-            title: patient ? `${patient} — ${title}` : title,
-            subtitle: '再送は前回送付の記録つきで送られます',
-            actions: [
-              {
-                label: '再送する',
-                href: `/reports/${delivery.report.id}`,
-                kind: 'button',
-              },
-            ],
-          };
-        }),
-        ...waitingRequests.map((request): ReportWaitingReply => {
-          const patient = patientLabel(request.patient_id);
-          return {
-            id: `request-${request.id}`,
-            kind: 'inquiry',
-            waiting_days: waitingDaysFrom(request.requested_at),
-            title: patient ? `${patient} — ${request.subject}` : request.subject,
-            subtitle: null,
-            actions: [
-              { label: '電話で確認', href: '/communications', kind: 'button' },
-              {
-                label: '→ カードへ',
-                href: request.patient_id ? `/patients/${request.patient_id}` : '/patients',
-                kind: 'link',
-              },
-            ],
-          };
-        }),
-      ]
-        .sort((left, right) => right.waiting_days - left.waiting_days)
-        .slice(0, WAITING_LIMIT);
-
-      const resolvedToday: ReportResolvedToday[] = resolvedResponses.map((response) => {
-        const patient = patientLabel(response.request.patient_id);
-        return {
-          id: response.id,
-          received_at: response.responded_at.toISOString(),
-          title: patient
-            ? `${patient} — ${response.request.subject}`
-            : response.request.subject,
-          // 回答反映と「お礼不要」は運用ポリシー(14_settings)由来の説明文
-          subtitle: '回答は調剤画面に自動で反映済み。返信のお礼は不要の設定です。',
-          action: { label: '→ 調剤へ', href: '/dispensing' },
+        const waitingPatientIds = [
+          ...new Set(
+            [
+              ...waitingDeliveries.map((delivery) => delivery.report.patient_id),
+              ...waitingRequests.map((request) => request.patient_id),
+              ...resolvedResponses.map((response) => response.request.patient_id),
+            ].filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        const waitingPatients =
+          waitingPatientIds.length === 0
+            ? []
+            : await tx.patient.findMany({
+                where: { id: { in: waitingPatientIds }, org_id: ctx.orgId },
+                select: { id: true, name: true },
+              });
+        const patientNameById = new Map(
+          waitingPatients.map((patient) => [patient.id, patient.name]),
+        );
+        const patientLabel = (patientId: string | null) => {
+          if (!patientId) return null;
+          const name = patientNameById.get(patientId);
+          return name ? `${name} 様` : null;
         };
-      });
+        const waitingDaysFrom = (since: Date | null) =>
+          since ? Math.max(0, Math.floor((now.getTime() - since.getTime()) / 86_400_000)) : 0;
 
-      const [templateCount, monthlyDeliveryCount] = [
-        await tx.template.count({
-          where: { org_id: ctx.orgId, template_type: 'care_report' },
-        }),
-        await tx.deliveryRecord.count({
-          where: {
-            org_id: ctx.orgId,
-            sent_at: { gte: monthStart, lt: nextMonthStart },
+        const waitingReplies: ReportWaitingReply[] = [
+          ...waitingDeliveries.map((delivery): ReportWaitingReply => {
+            const contentTitle = readJsonObjectString(
+              readJsonObject(delivery.report.content),
+              'title',
+            );
+            const title =
+              contentTitle ?? REPORT_TYPE_FALLBACK_TITLES[delivery.report.report_type] ?? '報告書';
+            const patient = patientLabel(delivery.report.patient_id);
+            return {
+              id: `delivery-${delivery.id}`,
+              kind: 'report_delivery',
+              waiting_days: waitingDaysFrom(delivery.sent_at),
+              title: patient ? `${patient} — ${title}` : title,
+              subtitle: '再送は前回送付の記録つきで送られます',
+              actions: [
+                {
+                  label: '再送する',
+                  href: `/reports/${delivery.report.id}`,
+                  kind: 'button',
+                },
+              ],
+            };
+          }),
+          ...waitingRequests.map((request): ReportWaitingReply => {
+            const patient = patientLabel(request.patient_id);
+            return {
+              id: `request-${request.id}`,
+              kind: 'inquiry',
+              waiting_days: waitingDaysFrom(request.requested_at),
+              title: patient ? `${patient} — ${request.subject}` : request.subject,
+              subtitle: null,
+              actions: [
+                { label: '電話で確認', href: '/communications', kind: 'button' },
+                {
+                  label: '→ カードへ',
+                  href: request.patient_id ? `/patients/${request.patient_id}` : '/patients',
+                  kind: 'link',
+                },
+              ],
+            };
+          }),
+        ]
+          .sort((left, right) => right.waiting_days - left.waiting_days)
+          .slice(0, WAITING_LIMIT);
+
+        const resolvedToday: ReportResolvedToday[] = resolvedResponses.map((response) => {
+          const patient = patientLabel(response.request.patient_id);
+          return {
+            id: response.id,
+            received_at: response.responded_at.toISOString(),
+            title: patient ? `${patient} — ${response.request.subject}` : response.request.subject,
+            // 回答反映と「お礼不要」は運用ポリシー(14_settings)由来の説明文
+            subtitle: '回答は調剤画面に自動で反映済み。返信のお礼は不要の設定です。',
+            action: { label: '→ 調剤へ', href: '/dispensing' },
+          };
+        });
+
+        const [templateCount, monthlyDeliveryCount] = [
+          await tx.template.count({
+            where: { org_id: ctx.orgId, template_type: 'care_report' },
+          }),
+          await tx.deliveryRecord.count({
+            where: {
+              org_id: ctx.orgId,
+              sent_at: { gte: monthStart, lt: nextMonthStart },
+            },
+          }),
+        ];
+
+        const responseData: ReportsTodayWorkspaceResponse = {
+          generated_at: now.toISOString(),
+          draft_rows: draftRows,
+          waiting_replies: waitingReplies,
+          resolved_today: resolvedToday,
+          counts: {
+            to_write: draftRows.length,
+            waiting: waitingReplies.length,
+            resolved: resolvedToday.length,
           },
-        }),
-      ];
+          evidence: {
+            template_count: templateCount,
+            monthly_delivery_count: monthlyDeliveryCount,
+          },
+        };
 
-      const responseData: ReportsTodayWorkspaceResponse = {
-        generated_at: now.toISOString(),
-        draft_rows: draftRows,
-        waiting_replies: waitingReplies,
-        resolved_today: resolvedToday,
-        counts: {
-          to_write: draftRows.length,
-          waiting: waitingReplies.length,
-          resolved: resolvedToday.length,
-        },
-        evidence: {
-          template_count: templateCount,
-          monthly_delivery_count: monthlyDeliveryCount,
-        },
-      };
-
-      return responseData;
-    });
+        return responseData;
+      },
+      { maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
 
     return success({ data });
   },

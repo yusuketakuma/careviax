@@ -167,7 +167,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       return { kind: 'pump' as const, pump };
     },
-    { requestContext: ctx },
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
 
   if (result.kind === 'not_found') return notFound('PCAポンプが見つかりません');
@@ -199,7 +199,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         where: { id, org_id: ctx.orgId },
         select: { id: true, _count: { select: { rentals: true } } },
       }),
-    { requestContext: ctx },
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
   if (!existing) return notFound('PCAポンプが見つかりません');
   if (existing._count.rentals > 0) {
@@ -217,9 +217,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         changes: { id },
       });
     },
-    {
-      requestContext: ctx,
-    },
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
 
   return success({ data: { id } });

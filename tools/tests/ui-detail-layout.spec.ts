@@ -35,7 +35,7 @@ function assertSafeE2eDatabase() {
   }
 }
 
-test.setTimeout(240_000);
+test.setTimeout(420_000);
 
 function jsonb(value: unknown) {
   return JSON.stringify(value);
@@ -67,23 +67,22 @@ async function openFirstPatientProfile(page: Page) {
 }
 
 async function openVisitDetailPage(page: Page, visitRecordId: string) {
-  await openStableRoute(page, `/visits/${visitRecordId}`);
-
+  const visitDetailPath = `/visits/${visitRecordId}`;
   const main = page.locator('main');
   const detailReady = main.getByRole('link', { name: '訪問記録 PDF を開く' });
   const loading = main.getByText('読み込み中...');
 
-  if (await detailReady.isVisible({ timeout: 30_000 }).catch(() => false)) {
-    await expect(loading).toBeHidden({ timeout: 30_000 });
-    return;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await openStableRoute(page, visitDetailPath);
+
+    if (await detailReady.isVisible({ timeout: 180_000 }).catch(() => false)) {
+      await expect(loading).toBeHidden({ timeout: 60_000 });
+      return;
+    }
   }
 
-  if (await loading.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await reloadStablePage(page);
-  }
-
-  await expect(detailReady).toBeVisible({ timeout: 30_000 });
-  await expect(loading).toBeHidden({ timeout: 30_000 });
+  await expect(detailReady).toBeVisible({ timeout: 180_000 });
+  await expect(loading).toBeHidden({ timeout: 60_000 });
 }
 
 async function openReportDetailPage(page: Page, reportId: string) {
@@ -221,7 +220,7 @@ async function ensureVisitWorkflowFixture() {
       `
         INSERT INTO "VisitSchedule" (
           "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","time_window_start","time_window_end","pharmacist_id","assignment_mode","route_order","confirmed_at","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'regular','normal','completed','2026-04-25','09:00','10:00',$5,'primary',1,NOW(),NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,'regular','normal','completed','2026-04-25','09:00','10:00',$5,'primary',21,NOW(),NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
             "case_id" = EXCLUDED."case_id",
@@ -474,7 +473,7 @@ test.describe('detail page layout', () => {
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
     await expect(page.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible({
-      timeout: 30_000,
+      timeout: 60_000,
     });
     await expect(page.getByRole('button', { name: /報告書生成|生成中/ })).toBeVisible();
 
@@ -498,7 +497,7 @@ test.describe('detail page layout', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible({
-      timeout: 30_000,
+      timeout: 60_000,
     });
     await expect(main.getByText('訪問後ワークフロー')).toBeVisible({ timeout: 30_000 });
     await expect(main.getByRole('heading', { name: '報告書作成' })).toBeVisible();

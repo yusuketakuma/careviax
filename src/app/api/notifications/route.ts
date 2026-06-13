@@ -22,13 +22,16 @@ export const GET = withAuthContext(async (req, ctx) => {
     ...(isRead !== undefined ? { is_read: isRead } : {}),
   };
 
-  const notifications = await withOrgContext(ctx.orgId, (tx) =>
-    tx.notification.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { created_at: 'desc' },
-    }),
+  const notifications = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.notification.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { created_at: 'desc' },
+      }),
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
 
   const hasMore = notifications.length > limit;
@@ -44,11 +47,14 @@ export const PATCH = withAuthContext(async (req, ctx) => {
 
   if (payload.all === true) {
     // Mark all as read for the current user
-    await withOrgContext(ctx.orgId, (tx) =>
-      tx.notification.updateMany({
-        where: { org_id: ctx.orgId, user_id: ctx.userId, is_read: false },
-        data: { is_read: true, read_at: new Date() },
-      }),
+    await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.notification.updateMany({
+          where: { org_id: ctx.orgId, user_id: ctx.userId, is_read: false },
+          data: { is_read: true, read_at: new Date() },
+        }),
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
     return success({ message: '全て既読にしました' });
   }
@@ -72,15 +78,18 @@ export const PATCH = withAuthContext(async (req, ctx) => {
     return validationError('ids または all が必要です');
   }
 
-  await withOrgContext(ctx.orgId, (tx) =>
-    tx.notification.updateMany({
-      where: {
-        id: { in: ids },
-        org_id: ctx.orgId,
-        user_id: ctx.userId,
-      },
-      data: { is_read: true, read_at: new Date() },
-    }),
+  await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.notification.updateMany({
+        where: {
+          id: { in: ids },
+          org_id: ctx.orgId,
+          user_id: ctx.userId,
+        },
+        data: { is_read: true, read_at: new Date() },
+      }),
+    { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
 
   return success({ message: `${ids.length}件を既読にしました` });

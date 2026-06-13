@@ -43,9 +43,7 @@ const DRAFT_STATUS_LABELS: Record<string, string> = {
   draft_ready: '下書きあり',
 };
 
-async function fetchReportsTodayWorkspace(
-  orgId: string,
-): Promise<ReportsTodayWorkspaceResponse> {
+async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {
     headers: { 'x-org-id': orgId },
   });
@@ -119,7 +117,7 @@ function TodayDraftsCard({ data }: { data: ReportsTodayWorkspaceResponse }) {
                   ) : row.action ? (
                     <Link
                       href={row.action.href}
-                      className="inline-flex min-h-[32px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10"
+                      className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-8"
                     >
                       {row.action.label}
                     </Link>
@@ -154,10 +152,7 @@ function WaitingReplyRow({ reply }: { reply: ReportWaitingReply }) {
             <Link
               key={action.label}
               href={action.href}
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'text-primary',
-              )}
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-primary')}
             >
               {action.label}
             </Link>

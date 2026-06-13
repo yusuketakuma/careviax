@@ -74,7 +74,7 @@ function HeaderSyncStatus() {
 
   return (
     <span
-      className="hidden shrink-0 text-xs font-medium text-emerald-600 sm:inline"
+      className="hidden shrink-0 text-xs font-medium text-emerald-700 sm:inline"
       data-testid="app-header-sync-status"
     >
       同期済み{syncTime ? ` ${syncTime}` : ''}
@@ -204,7 +204,7 @@ export function AppHeader() {
           <Button
             asChild
             variant="ghost"
-            className="min-h-[44px] px-2 text-sm text-muted-foreground hover:text-foreground sm:min-h-9"
+            className="min-h-[44px] min-w-[44px] px-2 text-sm text-muted-foreground hover:text-foreground sm:min-h-9 sm:min-w-0"
           >
             <Link href="/settings" aria-label="ヘルプ">
               <CircleHelp className="size-4 md:hidden" aria-hidden="true" />

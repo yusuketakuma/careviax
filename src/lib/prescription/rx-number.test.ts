@@ -25,6 +25,15 @@ describe('formatPrescriptionCardNumber (rx_yearmonth: default)', () => {
     expect(result).toMatch(/^RX-202603-/);
   });
 
+  it('uses opaque full-id suffixes for long non-numeric ids to avoid collisions', () => {
+    const first = formatPrescriptionCardNumber('cm0rxintake0001aaa', '2026-06-13');
+    const second = formatPrescriptionCardNumber('cm0rxintake0001bbb', '2026-06-13');
+
+    expect(first).toMatch(/^RX-202606-[A-Z0-9]{6}-CM0RXINTAKE0001AAA$/);
+    expect(second).toMatch(/^RX-202606-[A-Z0-9]{6}-CM0RXINTAKE0001BBB$/);
+    expect(first).not.toBe(second);
+  });
+
   it('matches the explicit rx_yearmonth format (backward compatibility)', () => {
     expect(formatPrescriptionCardNumber('abc1234', '2026-05-20', 'rx_yearmonth')).toBe(
       formatPrescriptionCardNumber('abc1234', '2026-05-20'),

@@ -582,7 +582,7 @@ async function ensureUiDemoData() {
       `
         INSERT INTO "VisitSchedule" (
           "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","pharmacist_id","assignment_mode","route_order","confirmed_at","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,$6,'primary',1,NOW(),NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,$6,'primary',90,NOW(),NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
             "case_id" = EXCLUDED."case_id",
@@ -590,6 +590,7 @@ async function ensureUiDemoData() {
             "schedule_status" = 'ready',
             "scheduled_date" = EXCLUDED."scheduled_date",
             "pharmacist_id" = EXCLUDED."pharmacist_id",
+            "route_order" = EXCLUDED."route_order",
             "confirmed_at" = NOW(),
             "updated_at" = NOW()
       `,

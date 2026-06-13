@@ -41,6 +41,8 @@ const REQUIRED_RLS_TABLES = [
   'CycleTransitionLog',
   'DispensingDecision',
   'DocumentDeliveryRule',
+  'DrugAlertRule',
+  'FileAsset',
   'HandoffBoard',
   'PatientInsurance',
   'PcaPump',
@@ -51,6 +53,7 @@ const REQUIRED_RLS_TABLES = [
   'ServiceArea',
   'TaskComment',
   'VisitVehicleResource',
+  'WebhookDelivery',
 ] as const;
 
 const ORG_ID_RLS_EXEMPT_TABLES = [

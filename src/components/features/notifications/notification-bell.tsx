@@ -185,7 +185,7 @@ export function NotificationBell() {
         type="button"
         onClick={() => setNotificationDrawerOpen(true)}
         className={cn(
-          'flex min-h-[44px] items-center gap-1.5 rounded-md px-2 text-sm font-medium hover:bg-accent sm:min-h-9',
+          'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium hover:bg-accent sm:min-h-9 sm:min-w-0',
           unreadCount > 0 ? 'text-destructive' : 'text-muted-foreground',
         )}
         aria-label={`通知${unreadCount > 0 ? ` ${unreadCount}件の未読` : ''}`}

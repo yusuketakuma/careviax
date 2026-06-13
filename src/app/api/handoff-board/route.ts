@@ -16,7 +16,10 @@ import { z } from 'zod';
  */
 
 const dateQuerySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付はYYYY-MM-DD形式で指定してください').optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付はYYYY-MM-DD形式で指定してください')
+    .optional(),
 });
 
 function toDateOnly(dateStr: string): Date {
@@ -62,45 +65,49 @@ export const GET = withAuthContext(
     const monthStart = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth() + 1, 1));
 
-    const { board, monthItemCount } = await withOrgContext(ctx.orgId, async (tx) => {
-      const existing = await tx.handoffBoard.findUnique({
-        where: {
-          org_id_shift_date: {
-            org_id: ctx.orgId,
-            shift_date: shiftDate,
-          },
-        },
-        include: {
-          items: {
-            orderBy: { created_at: 'asc' },
-          },
-        },
-      });
-
-      const resolvedBoard =
-        existing ??
-        (await tx.handoffBoard.create({
-          data: {
-            org_id: ctx.orgId,
-            shift_date: shiftDate,
-            created_by: ctx.userId,
+    const { board, monthItemCount } = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const existing = await tx.handoffBoard.findUnique({
+          where: {
+            org_id_shift_date: {
+              org_id: ctx.orgId,
+              shift_date: shiftDate,
+            },
           },
           include: {
-            items: true,
+            items: {
+              orderBy: { created_at: 'asc' },
+            },
           },
-        }));
+        });
 
-      const count = await tx.handoffItem.count({
-        where: {
-          board: {
-            org_id: ctx.orgId,
-            shift_date: { gte: monthStart, lt: monthEnd },
+        const resolvedBoard =
+          existing ??
+          (await tx.handoffBoard.create({
+            data: {
+              org_id: ctx.orgId,
+              shift_date: shiftDate,
+              created_by: ctx.userId,
+            },
+            include: {
+              items: true,
+            },
+          }));
+
+        const count = await tx.handoffItem.count({
+          where: {
+            board: {
+              org_id: ctx.orgId,
+              shift_date: { gte: monthStart, lt: monthEnd },
+            },
           },
-        },
-      });
+        });
 
-      return { board: resolvedBoard, monthItemCount: count };
-    });
+        return { board: resolvedBoard, monthItemCount: count };
+      },
+      { maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
 
     const userIds = [
       ...new Set(
@@ -128,9 +135,7 @@ export const GET = withAuthContext(
       direction: resolveHandoffDirection(item, ctx.userId),
     }));
 
-    const outgoingCount = items.filter(
-      (item) => item.created_by === ctx.userId,
-    ).length;
+    const outgoingCount = items.filter((item) => item.created_by === ctx.userId).length;
     const incomingCount = items.filter(
       (item) =>
         item.direction === 'incoming' &&
@@ -152,5 +157,5 @@ export const GET = withAuthContext(
   {
     permission: 'canDispense',
     message: '申し送りボードの閲覧権限がありません',
-  }
+  },
 );

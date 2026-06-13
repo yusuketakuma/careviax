@@ -53,6 +53,7 @@ import {
   createPrescriptionIntakeInTx,
   runPrescriptionIntakePostCreateHooks,
 } from './prescription-intake-service';
+import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 
 function createMockTx() {
   return {
@@ -474,7 +475,8 @@ describe('createPrescriptionIntake', () => {
 
     expect(result.kind).toBe('intake');
     if (result.kind !== 'intake') throw new Error('expected intake result');
-    expect(result.intake.rx_number).toBe('RX-202604-0001');
+    const expectedRxNumber = formatPrescriptionCardNumber('intake_1', '2026-04-01');
+    expect(result.intake.rx_number).toBe(expectedRxNumber);
     expect(tx.workflowException.create).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -492,7 +494,7 @@ describe('createPrescriptionIntake', () => {
     });
     expect(tx.prescriptionIntake.update).toHaveBeenCalledWith({
       where: { id: 'intake_1' },
-      data: { rx_number: 'RX-202604-0001' },
+      data: { rx_number: expectedRxNumber },
     });
     expect(createDispenseDraftMock).toHaveBeenCalled();
   });

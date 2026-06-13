@@ -67,7 +67,7 @@ export const GET = withAuthContext(
           },
           orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
         }),
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     return success({ data: pumps.map(serializePcaPump) });
@@ -119,7 +119,7 @@ export const POST = withAuthContext(
         });
         return pump;
       },
-      { requestContext: ctx },
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
     return success({ data: serializePcaPump(created) }, 201);
