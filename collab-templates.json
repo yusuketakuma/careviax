@@ -1,0 +1,38 @@
+{
+  "_note": "参照用ドキュメント。Ensemble は collab-templates.json を自身のリポジトリ直下からのみ読む(services/ensemble-service.ts:342) ため、ここに置いても自動では読まれない。careviax では templateName を使わず、ロールと partition 制約を team description に直書きする方針。lane の編成意図のみここに記録する。",
+  "templates": {
+    "careviax-frontend": {
+      "name": "careviax-frontend",
+      "description": "Frontend implementation lane (Claude Opus 4.8)",
+      "agents": [
+        { "program": "claude-frontend-opus48", "role": "frontend-implementer", "focus": "Implement assigned frontend partition only. Design grounding + minimal diff." },
+        { "program": "claude-review-opus48", "role": "frontend-reviewer", "focus": "Review FE diff: design grounding, minimal diff, state handling, a11y, regression." }
+      ]
+    },
+    "careviax-backend": {
+      "name": "careviax-backend",
+      "description": "Backend implementation lane (Codex GPT-5.5)",
+      "agents": [
+        { "program": "codex-backend-gpt55", "role": "backend-implementer", "focus": "Implement assigned backend partition only. Backend gap plan + minimal diff." },
+        { "program": "codex-backend-review-gpt55", "role": "backend-reviewer", "focus": "Review BE diff: schema/API/permission/data integrity/testing risk." }
+      ]
+    },
+    "careviax-cross-boundary": {
+      "name": "careviax-cross-boundary",
+      "description": "Sequential FE/BE integration lane (backend-first)",
+      "agents": [
+        { "program": "codex-backend-gpt55", "role": "backend-first", "focus": "Implement backend contract first." },
+        { "program": "claude-frontend-opus48", "role": "frontend-second", "focus": "Implement frontend integration after backend contract is stable." },
+        { "program": "claude-review-opus48", "role": "integration-reviewer", "focus": "Review cross-boundary integration." }
+      ]
+    },
+    "careviax-recon": {
+      "name": "careviax-recon",
+      "description": "F0/F1 read-only reconnaissance",
+      "agents": [
+        { "program": "claude-recon-opus48", "role": "design-ground-lead", "focus": "UI/design ground + system understanding. Plan mode (read-only)." },
+        { "program": "codex-backend-review-gpt55", "role": "backend-recon", "focus": "Backend/schema/API/permission recon. read-only sandbox." }
+      ]
+    }
+  }
+}

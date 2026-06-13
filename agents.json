@@ -1,0 +1,47 @@
+{
+  "claude-frontend-opus48": {
+    "name": "claude-frontend-opus48",
+    "command": "claude",
+    "flags": ["--model", "claude-opus-4-8", "--permission-mode", "bypassPermissions"],
+    "readyMarker": "❯",
+    "inputMethod": "sendKeys",
+    "color": "green",
+    "icon": "●"
+  },
+  "claude-review-opus48": {
+    "name": "claude-review-opus48",
+    "command": "claude",
+    "flags": ["--model", "claude-opus-4-8", "--permission-mode", "bypassPermissions"],
+    "readyMarker": "❯",
+    "inputMethod": "sendKeys",
+    "color": "yellow",
+    "icon": "◆"
+  },
+  "claude-recon-opus48": {
+    "name": "claude-recon-opus48",
+    "command": "claude",
+    "flags": ["--model", "claude-opus-4-8", "--permission-mode", "plan"],
+    "readyMarker": "❯",
+    "inputMethod": "sendKeys",
+    "color": "green",
+    "icon": "○"
+  },
+  "codex-backend-gpt55": {
+    "name": "codex-backend-gpt55",
+    "command": "codex",
+    "flags": ["-m", "gpt-5.5", "-s", "workspace-write", "-a", "never"],
+    "readyMarker": "›",
+    "inputMethod": "pasteFromFile",
+    "color": "blue",
+    "icon": "■"
+  },
+  "codex-backend-review-gpt55": {
+    "name": "codex-backend-review-gpt55",
+    "command": "codex",
+    "flags": ["-m", "gpt-5.5", "-s", "read-only", "-a", "never"],
+    "readyMarker": "›",
+    "inputMethod": "pasteFromFile",
+    "color": "cyan",
+    "icon": "□"
+  }
+}
