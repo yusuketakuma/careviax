@@ -1,4 +1,5 @@
 import { DefaultSession } from 'next-auth';
+import type { MemberRole } from '@prisma/client';
 import type { UserRole } from '@/phos/contracts/phos_contracts';
 
 declare module 'next-auth' {
@@ -10,6 +11,7 @@ declare module 'next-auth' {
       id?: string;
       cognitoSub?: string;
       orgId?: string;
+      role: MemberRole | null;
       sessionVersion?: number;
     };
   }
@@ -26,6 +28,7 @@ declare module 'next-auth/jwt' {
     idToken?: string;
     accessTokenExpiry?: number;
     sessionVersion?: number;
+    memberRole?: MemberRole | null;
     phosRole?: UserRole;
     error?: string;
   }

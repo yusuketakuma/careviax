@@ -26,9 +26,16 @@ function SessionStateBridge() {
         email: session?.user?.email ?? null,
         name: session?.user?.name ?? null,
         cognitoSub: session?.user?.cognitoSub ?? null,
+        role: session?.user?.role ?? null,
       },
     }));
-  }, [session?.user?.cognitoSub, session?.user?.email, session?.user?.id, session?.user?.name]);
+  }, [
+    session?.user?.cognitoSub,
+    session?.user?.email,
+    session?.user?.id,
+    session?.user?.name,
+    session?.user?.role,
+  ]);
 
   useEffect(() => {
     if (status === 'loading') return;

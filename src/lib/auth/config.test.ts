@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from 'next-auth';
 import { NextRequest } from 'next/server';
 
-const { getServerSessionMock, nextAuthMock, getTokenMock } = vi.hoisted(() => ({
+const { getMembershipMock, getServerSessionMock, nextAuthMock, getTokenMock } = vi.hoisted(() => ({
+  getMembershipMock: vi.fn(),
   getServerSessionMock: vi.fn(),
   nextAuthMock: vi.fn(() => vi.fn()),
   getTokenMock: vi.fn(),
@@ -23,6 +24,10 @@ vi.mock('next-auth/providers/cognito', () => ({
 
 vi.mock('next-auth/providers/credentials', () => ({
   default: vi.fn(() => ({ id: 'credentials' })),
+}));
+
+vi.mock('./context', () => ({
+  getMembership: getMembershipMock,
 }));
 
 vi.mock('./user-resolution', () => ({
@@ -46,6 +51,7 @@ describe('authOptions jwt callback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(resolveLocalUserByIdentity).mockResolvedValue(null);
+    getMembershipMock.mockResolvedValue(null);
   });
 
   it('reads Cognito profile claims through the guarded profile object', async () => {
@@ -90,6 +96,32 @@ describe('authOptions jwt callback', () => {
       cognitoSub: 'sub_1',
       email: 'user@example.com',
     });
+    expect(getMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('stores the current organization membership role in the JWT', async () => {
+    const jwtCallback = authOptions.callbacks?.jwt;
+    expect(jwtCallback).toBeTypeOf('function');
+    getMembershipMock.mockResolvedValue({ role: 'pharmacist' });
+
+    const token = await jwtCallback!({
+      token: {
+        userId: 'user_1',
+        orgId: 'org_1',
+      },
+      account: null,
+      profile: undefined,
+      user: {
+        id: 'user_1',
+        email: 'user@example.com',
+        emailVerified: null,
+      },
+      trigger: undefined,
+      isNewUser: false,
+    } satisfies Parameters<JwtCallback>[0]);
+
+    expect(getMembershipMock).toHaveBeenCalledWith('user_1', 'org_1');
+    expect(token.memberRole).toBe('pharmacist');
   });
 });
 
@@ -103,6 +135,7 @@ describe('authOptions session callback', () => {
         user: {
           name: 'PH-OS User',
           email: 'user@example.com',
+          role: null,
         },
         expires: '2026-04-04T00:00:00.000Z',
       },
@@ -113,6 +146,7 @@ describe('authOptions session callback', () => {
         refreshToken: 'refresh-token',
         idToken: 'id-token',
         cognitoGroups: ['admin'],
+        memberRole: 'pharmacist',
         phosRole: 'ADMIN',
       },
       user: {
@@ -128,6 +162,7 @@ describe('authOptions session callback', () => {
 
     expect(clientSession.user?.id).toBe('user_1');
     expect(clientSession.user?.cognitoSub).toBe('sub_1');
+    expect(clientSession.user?.role).toBe('pharmacist');
     expect(clientSession.cognitoGroups).toEqual(['admin']);
     expect(clientSession.phosRole).toBe('ADMIN');
     expect(clientSession).not.toHaveProperty('phosAccessToken');

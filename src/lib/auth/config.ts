@@ -4,6 +4,7 @@ import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextRequest } from 'next/server';
 import { readJsonObject } from '@/lib/db/json';
+import { getMembership } from './context';
 import { normalizePhosRole } from './phos-role';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
@@ -149,6 +150,13 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
+      if (typeof token.userId === 'string' && typeof token.orgId === 'string') {
+        const membership = await getMembership(token.userId, token.orgId);
+        token.memberRole = membership?.role ?? null;
+      } else {
+        token.memberRole = null;
+      }
+
       // Refresh Cognito access token before it expires (credentials flow only)
       if (
         token.refreshToken &&
@@ -178,6 +186,7 @@ export const authOptions: NextAuthOptions = {
         session.user.cognitoSub =
           typeof token.cognitoSub === 'string' ? token.cognitoSub : undefined;
         session.user.orgId = typeof token.orgId === 'string' ? token.orgId : undefined;
+        session.user.role = token.memberRole ?? null;
         session.user.sessionVersion =
           typeof token.sessionVersion === 'number' ? token.sessionVersion : undefined;
         session.cognitoGroups = token.cognitoGroups;

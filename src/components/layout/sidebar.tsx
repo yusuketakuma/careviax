@@ -4,12 +4,19 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { useUIStore } from '@/lib/stores/ui-store';
+import { useUIStore, type WorkMode } from '@/lib/stores/ui-store';
 import { Button } from '@/components/ui/button';
 import { SIDEBAR_MAIN_NAV_GROUPS, type LayoutNavItem } from './navigation-config';
 import { isLayoutNavItemActive } from './navigation-utils';
 import { useNavBadges } from './use-nav-badges';
+
+const WORK_MODE_LABELS: Record<WorkMode, string> = {
+  pharmacist: '薬剤師モード',
+  clerk_support: '事務サポートモード',
+  management: '管理モード',
+};
 
 interface SidebarNavItemProps {
   item: LayoutNavItem;
@@ -78,8 +85,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, toggleSidebar, workMode } = useUIStore();
   const currentUserName = useAuthStore((state) => state.currentUser?.name ?? null);
+  const currentUserRole = useAuthStore((state) => state.currentUser?.role ?? null);
   const navBadges = useNavBadges();
 
   return (
@@ -166,7 +174,22 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
               <span className="block truncate text-sm font-medium text-sidebar-foreground">
                 {currentUserName}
               </span>
-              <span className="block text-[11px] text-sidebar-foreground/55">薬剤師</span>
+              {currentUserRole ? (
+                <span
+                  className="block text-[11px] text-sidebar-foreground/55"
+                  data-testid="sidebar-current-user-role"
+                >
+                  {memberRoleLabel(currentUserRole)}
+                </span>
+              ) : null}
+              {workMode ? (
+                <span
+                  className="block text-[10px] text-sidebar-foreground/45"
+                  data-testid="sidebar-current-user-mode"
+                >
+                  {WORK_MODE_LABELS[workMode]}
+                </span>
+              ) : null}
             </span>
           </div>
         ) : null}

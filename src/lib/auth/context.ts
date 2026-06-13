@@ -1,4 +1,3 @@
-import { auth } from './config';
 import { prisma } from '@/lib/db/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { MemberRole } from '@prisma/client';
@@ -30,6 +29,11 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
   apiKeyHeader?: string;
 };
 
+async function authSession() {
+  const { auth } = await import('./config');
+  return auth();
+}
+
 async function resolveOrgIdFromUserId(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -54,7 +58,7 @@ function resolveRequestPath(request: NextRequest): string {
 }
 
 export async function getAuthContext(request: NextRequest): Promise<AuthContext | null> {
-  const session = await auth();
+  const session = await authSession();
   const requestedOrgId = request.headers.get('x-org-id');
   const resolvedUser =
     !requestedOrgId || !session?.user?.id
@@ -95,7 +99,7 @@ export async function requireAuthContext(
 ): Promise<{ ctx: AuthContext } | { response: NextResponse }> {
   clearRequestAuthContext();
 
-  const session = await auth();
+  const session = await authSession();
   const requestedOrgId = request.headers.get('x-org-id');
   const resolvedUser =
     !requestedOrgId || !session?.user?.id

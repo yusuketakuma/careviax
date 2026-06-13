@@ -1,10 +1,12 @@
 import { create } from 'zustand';
+import type { MemberRole } from '@prisma/client';
 
 type CurrentUser = {
   id: string | null;
   email: string | null;
   name: string | null;
   cognitoSub: string | null;
+  role: MemberRole | null;
 };
 
 interface AuthState {
@@ -25,6 +27,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     email: null,
     name: null,
     cognitoSub: null,
+    role: null,
   },
   setOrg: (orgId) => set({ orgId }),
   setSite: (siteId) => set({ siteId }),
@@ -44,6 +47,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         email: null,
         name: null,
         cognitoSub: null,
+        role: null,
       },
     }),
 }));

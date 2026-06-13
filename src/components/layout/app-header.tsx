@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -87,6 +88,7 @@ export function AppHeader() {
   const orgId = useOrgId();
   const { setSidebarOpen, careMode, setCareMode } = useUIStore();
   const currentUserName = useAuthStore((state) => state.currentUser.name);
+  const currentUserRole = useAuthStore((state) => state.currentUser.role);
   const modeLabel = CARE_MODE_LABELS[careMode] ?? CARE_MODE_LABELS.home_visit;
 
   const handleCareModeSelect = useCallback(
@@ -219,7 +221,14 @@ export function AppHeader() {
               >
                 {currentUserName}
               </span>
-              <span className="text-[11px] leading-tight text-muted-foreground">薬剤師</span>
+              {currentUserRole ? (
+                <span
+                  className="text-[11px] leading-tight text-muted-foreground"
+                  data-testid="app-header-user-role"
+                >
+                  {memberRoleLabel(currentUserRole)}
+                </span>
+              ) : null}
             </span>
           ) : null}
         </div>
