@@ -895,6 +895,16 @@ async function main() {
     userId: user.id,
     dispenserUserId: userSato.id,
   });
+
+  await prisma.visitSchedule.updateMany({
+    where: {
+      id: 'ui_demo_visit_schedule_1',
+      org_id: org.id,
+    },
+    data: {
+      route_order: 90,
+    },
+  });
 }
 
 main()

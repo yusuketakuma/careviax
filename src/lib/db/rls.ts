@@ -49,6 +49,8 @@ export async function withOrgContext<T>(
   options?: {
     requestContext?: RequestAuthContext;
     isolationLevel?: Prisma.TransactionIsolationLevel;
+    maxWaitMs?: number;
+    timeoutMs?: number;
   },
 ): Promise<T> {
   validateOrgId(orgId);
@@ -72,11 +74,9 @@ export async function withOrgContext<T>(
     return fn(tx);
   };
 
-  if (options?.isolationLevel) {
-    return prisma.$transaction(work, {
-      isolationLevel: options.isolationLevel,
-    });
-  }
-
-  return prisma.$transaction(work);
+  return prisma.$transaction(work, {
+    ...(options?.isolationLevel ? { isolationLevel: options.isolationLevel } : {}),
+    ...(options?.maxWaitMs ? { maxWait: options.maxWaitMs } : {}),
+    ...(options?.timeoutMs ? { timeout: options.timeoutMs } : {}),
+  });
 }
