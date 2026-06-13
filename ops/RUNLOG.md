@@ -47,3 +47,10 @@
 - 衝突表で 3レーン owned 排他を確認。base-state 注意: `app-header`/`sidebar` は未コミット差分に含む（X-B0 前提）。
 - 成果: `ops/P0_CANDIDATES.md` `ops/P0_SCOPE.md` `ops/IMPLEMENTATION_PARTITION.md`(instances) `ops/BACKEND_GAP_PLAN.md` `ops/TEST_PLAN.md` + CHECKPOINT 進捗更新。
 - CHECKPOINT=No 継続。残ゲート: P0_SCOPE 人手承認 + base state クリーン化。
+
+## base-state クリーン化 + CHECKPOINT=Yes（2026-06-13）
+- 検証: `pnpm db:generate && typecheck && lint && test` 全 green（Test Files 904 passed/1 skip、**Tests 6299 passed**/1 skip、exit 0）。
+- commit: 4分割 — 7e657f83 incident-reports / 8ae62603 RLS hardening(FORCE RLS on DrugAlertRule/FileAsset/WebhookDelivery等) / 22159ca0 製品misc(UI/PCA/rx-number/e2e) / dc7f61e7 Ensemble harness(ops/+agents.json)。
+- 残置（意図的）: `.harness-mem/state/continuity.json`(harness状態) `.codex/`(codex成果物) は製品外・worktree無影響。
+- 承認: P0_SCOPE 第1波 + base-state を人手承認 → **CHECKPOINT=Yes**。
+- 次: F3 — worktree(fe-a0/be-b0/fe-c0) + node_modules → /implement-ensemble で lane 起動。

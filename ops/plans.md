@@ -10,7 +10,7 @@
 | F0/F1 recon | **概ね完了** | ✅`ops/SYSTEM_MAP.md` ✅`ops/UI_AUDIT.md` ✅`ops/DESIGN_LANGUAGE.md`(草案) / ⬜FEATURE_INTENT は ground で |
 | ground | **完了** | ✅`ops/DESIGN_LANGUAGE.md`確定(状態色=design p0_46で決定) ✅`ops/DESIGN_GROUNDING_TABLE.md`(62画面×コード×gap→P0候補) |
 | partition | **起草完了・承認待ち** | ✅`ops/P0_CANDIDATES.md` ✅`ops/P0_SCOPE.md`(第1波3件) ✅`ops/IMPLEMENTATION_PARTITION.md`(FE-A0/X-B0/FE-C0) ✅`ops/BACKEND_GAP_PLAN.md` ✅`ops/TEST_PLAN.md` |
-| implement (F3) | ブロック | CHECKPOINT=No（残り: P0_SCOPE人手承認 + base state クリーン化） |
+| implement (F3) | **GO**（CHECKPOINT=Yes） | 第1波 FE-A0/X-B0/FE-C0。worktree + node_modules 用意 → /implement-ensemble |
 | verify | 未着手 | `ops/VERIFICATION.md` |
 
 ## Ensemble 検証の結論（F3 前提の de-risk 完了）

@@ -3,19 +3,20 @@
 > このファイルが実装の唯一のゲート。`/implement-ensemble` は preflight でここを読み、
 > "Implementation Allowed? Yes" 以外なら STOP する。手動でのみ Yes にする。
 
-## Implementation Allowed? **No**（残り2点で Yes 可）
+## Implementation Allowed? **Yes**（第1波: FE-A0 / X-B0 / FE-C0）
 
-理由: partition は起草済だが、**(1) P0_SCOPE の人手承認** と **(2) base state クリーン化** が未了。
+承認: 2026-06-13。P0_SCOPE 人手承認済 + base state クリーン化済（4コミット・検証green）。
+注: 実 lane 起動時に worktree へ node_modules を用意（symlink/install）。
 
 ## ゲート前提
 
 - [x] F0/F1 recon 完了 → `ops/SYSTEM_MAP.md` `ops/UI_AUDIT.md`（FEATURE_INTENT は grounding 表に統合）
 - [x] design ground 完了 → `ops/DESIGN_LANGUAGE.md`（状態色=p0_46で決定）`ops/DESIGN_GROUNDING_TABLE.md`
-- [ ] **`ops/P0_SCOPE.md` 人手承認**（第1波: FE-A0 / X-B0 / FE-C0）← **要あなたの承認**
+- [x] **`ops/P0_SCOPE.md` 人手承認**（第1波: FE-A0 / X-B0 / FE-C0）— 2026-06-13 承認
 - [x] `ops/IMPLEMENTATION_PARTITION.md` 起草（3 partition に id/type/goal/owned/forbidden/verify）
 - [x] 並列 partition 間で owned files の重複なし（衝突表で確認）
-- [ ] **base state クリーン**: 未コミット48ファイルを commit/stash（特に X-B0 が触る `app-header.tsx`/`sidebar.tsx`）← **要対応**
-- [ ] lane worktree に node_modules（main から symlink か `pnpm install`）← F3 起動時
+- [x] **base state クリーン**: 4コミット（incident-reports / RLS hardening / 製品misc / Ensemble harness）、typecheck+lint+6299 tests green
+- [ ] lane worktree に node_modules（main から symlink か `pnpm install`）← **F3 起動時に実施**
 - [x] Ensemble server health OK（`:23100` 隔離・稼働中）
 - [x] `agents.json` に 5 program 登録・`ENSEMBLE_AGENTS_CONFIG` 設定・解決検証済（危険fallbackなし）
 
