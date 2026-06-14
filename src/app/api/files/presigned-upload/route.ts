@@ -15,6 +15,7 @@ import {
   assertFileUploadConstraints,
   createPresignedUpload,
   FileStorageError,
+  type FilePurpose,
 } from '@/server/services/file-storage';
 
 function trimStringOrUndefined(value: unknown) {
@@ -31,7 +32,8 @@ const optionalTrimmedStringSchema = z.preprocess(
 
 const presignedUploadSchema = z
   .object({
-    purpose: z.enum(['prescription', 'visit-photo', 'report']),
+    // 'set-photo' はセット監査(p0_15)の写真確認で使用。エンティティ参照を必要としない画像専用用途。
+    purpose: z.enum(['prescription', 'visit-photo', 'report', 'set-photo']),
     file_name: z
       .string()
       .trim()
@@ -217,7 +219,7 @@ export async function POST(req: NextRequest) {
 
   try {
     assertFileUploadConstraints({
-      purpose: parsed.data.purpose,
+      purpose: parsed.data.purpose as FilePurpose,
       mimeType: parsed.data.mime_type,
       sizeBytes: parsed.data.size_bytes,
     });
@@ -334,10 +336,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (parsed.data.purpose === 'set-photo') {
+    // セット監査の写真(セット前/セット後/設置予定)はセット鑑査権限を要する。参照エンティティは持たない。
+    if (!hasPermission(ctx.role, 'canAuditSet')) {
+      return forbiddenResponse('セット監査写真のアップロード権限がありません');
+    }
+  }
+
   try {
     const data = await createPresignedUpload({
       orgId: ctx.orgId,
-      purpose: parsed.data.purpose,
+      purpose: parsed.data.purpose as FilePurpose,
       fileName: parsed.data.file_name,
       mimeType: parsed.data.mime_type,
       sizeBytes: parsed.data.size_bytes,

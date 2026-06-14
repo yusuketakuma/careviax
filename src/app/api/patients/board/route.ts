@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
+import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import {
   buildCareCaseAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
@@ -90,42 +91,6 @@ const STEADY_STATUS_TEXT: Record<string, string> = {
   visit: '訪問準備が整っています',
   report: '報告書 作成待ち',
   billing: '報告済み — 算定チェック待ち',
-};
-
-type ExceptionPresentation = {
-  category: string;
-  actionLabel: string;
-  actionHref: string;
-};
-
-/** WorkflowException.exception_type → 止まっている理由のカテゴリ/個別アクション。 */
-const EXCEPTION_PRESENTATIONS: Record<string, ExceptionPresentation> = {
-  family_consent_pending: {
-    category: '患者',
-    actionLabel: '再連絡する →',
-    actionHref: '/communications/requests',
-  },
-  consent_revoked: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  missing_visit_consent: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  no_show: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  hospitalized: { category: '患者', actionLabel: '状況を見る →', actionHref: '/patients' },
-  delivery_target_confirmation: {
-    category: '事務',
-    actionLabel: '状況を見る →',
-    actionHref: '/admin/contact-profiles',
-  },
-  awaiting_reply: { category: '医療機関', actionLabel: '状況を見る →', actionHref: '/communications/requests' },
-  prescription_structuring_block: {
-    category: '医療機関',
-    actionLabel: '状況を見る →',
-    actionHref: '/prescriptions',
-  },
-};
-
-const EXCEPTION_PRESENTATION_FALLBACK: ExceptionPresentation = {
-  category: '事務',
-  actionLabel: '状況を見る →',
-  actionHref: '/workflow',
 };
 
 function formatTimeOfDay(date: Date): string {
@@ -595,22 +560,7 @@ export const GET = withAuthContext(
         return (left.due_at ?? '9999').localeCompare(right.due_at ?? '9999');
       });
 
-    const blockedReasons: PatientBoardBlockedReason[] = openExceptions.map((exception) => {
-      const presentation =
-        EXCEPTION_PRESENTATIONS[exception.exception_type] ?? EXCEPTION_PRESENTATION_FALLBACK;
-      return {
-        id: exception.id,
-        label: exception.description,
-        severity: exception.severity === 'critical' ? 'critical' : 'warning',
-        category: presentation.category,
-        age_minutes: Math.max(
-          0,
-          Math.floor((now.getTime() - exception.created_at.getTime()) / 60_000),
-        ),
-        action_label: presentation.actionLabel,
-        action_href: presentation.actionHref,
-      };
-    });
+    const blockedReasons: PatientBoardBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
     const responseData: PatientBoardResponse = {
       generated_at: now.toISOString(),

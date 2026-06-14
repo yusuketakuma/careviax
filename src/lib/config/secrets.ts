@@ -20,6 +20,11 @@
  * Secret name convention: ph-os/{env}/app-secrets
  *   e.g. ph-os/production/app-secrets
  *        ph-os/staging/app-secrets
+ *
+ * Activation (SAFETY): Secrets Manager is consulted ONLY when it is actually
+ * configured. When it is NOT configured the helpers return values straight from
+ * `process.env`, so behavior is byte-identical to a pure env-based setup (local
+ * dev + tests). See `isSecretsManagerConfigured()` for the activation rules.
  */
 
 import { readJsonObject } from '@/lib/db/json';
@@ -87,7 +92,52 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 // Secret name
 // ---------------------------------------------------------------------------
 
+function isExplicitlyTrue(value: string | undefined): boolean {
+  return value === '1' || value === 'true';
+}
+
+/**
+ * Whether AWS Secrets Manager should be consulted for this process.
+ *
+ * SAFETY (guardrail): when this returns `false`, every helper resolves secrets
+ * directly from `process.env`, so the runtime is identical to a pure env setup.
+ *
+ * Activation precedence:
+ *   1. `SECRETS_MANAGER_DISABLED` truthy  → always OFF (explicit kill switch).
+ *   2. `SECRETS_MANAGER_ENABLED`  truthy  → ON.
+ *   3. A secret id/ARN override is present (`SECRETS_MANAGER_SECRET_ID` /
+ *      `SECRETS_MANAGER_SECRET_ARN`)      → ON.
+ *   4. Otherwise fall back to the legacy environment rule: any non-development
+ *      `APP_ENV` (staging / production) consults Secrets Manager.
+ *
+ * Local development and the test suite leave all `SECRETS_MANAGER_*` env unset
+ * and run with `APP_ENV=development`, so they never touch Secrets Manager.
+ */
+export function isSecretsManagerConfigured(): boolean {
+  if (isExplicitlyTrue(process.env.SECRETS_MANAGER_DISABLED)) return false;
+  if (isExplicitlyTrue(process.env.SECRETS_MANAGER_ENABLED)) return true;
+  if (
+    typeof process.env.SECRETS_MANAGER_SECRET_ID === 'string' &&
+    process.env.SECRETS_MANAGER_SECRET_ID.trim() !== ''
+  ) {
+    return true;
+  }
+  if (
+    typeof process.env.SECRETS_MANAGER_SECRET_ARN === 'string' &&
+    process.env.SECRETS_MANAGER_SECRET_ARN.trim() !== ''
+  ) {
+    return true;
+  }
+  // Legacy behavior preserved for backward compatibility: non-development
+  // deployments consult Secrets Manager unless explicitly disabled above.
+  return APP_ENV !== 'development';
+}
+
 function secretName(): string {
+  const explicit =
+    process.env.SECRETS_MANAGER_SECRET_ID?.trim() ||
+    process.env.SECRETS_MANAGER_SECRET_ARN?.trim();
+  if (explicit) return explicit;
   return `ph-os/${APP_ENV}/app-secrets`;
 }
 
@@ -216,7 +266,10 @@ async function loadSecretsManagerModule(): Promise<SecretsManagerModule | null> 
  *   then returns cached values until the TTL expires.
  */
 export async function getSecrets(): Promise<AppSecrets> {
-  if (APP_ENV === 'development') {
+  // SAFETY: when Secrets Manager is not configured (local dev, tests, or a
+  // deployment that has not opted in), resolve straight from process.env so
+  // behavior is byte-identical to a pure env setup.
+  if (!isSecretsManagerConfigured()) {
     return fromEnv();
   }
 
@@ -254,6 +307,54 @@ export async function getSecret<K extends keyof AppSecrets>(key: K): Promise<App
   return secrets[key];
 }
 
+let bootstrapPromise: Promise<void> | null = null;
+
+/**
+ * Populates `process.env` from Secrets Manager once per process.
+ *
+ * This is the bridge for synchronous consumers (NextAuth `secret`, the Prisma
+ * connection string, the Edge proxy job-API-key check) that read secrets from
+ * `process.env` at module-evaluation time and cannot await an async fetch.
+ *
+ * SAFETY (guardrails):
+ *  - When Secrets Manager is not configured this is a no-op — `process.env`
+ *    stays exactly as provided by the environment.
+ *  - `process.env` remains the source of truth: a value already present in the
+ *    environment is NEVER overwritten, so explicit env always wins.
+ *  - Secret values are never logged or interpolated into messages.
+ *  - Resolves once and caches the in-flight promise; safe to call repeatedly.
+ *  - Never throws — a failed fetch leaves `process.env` untouched.
+ */
+export async function bootstrapSecretsIntoEnv(): Promise<void> {
+  if (!isSecretsManagerConfigured()) return;
+  if (bootstrapPromise) return bootstrapPromise;
+
+  bootstrapPromise = (async () => {
+    try {
+      const secrets = await getSecrets();
+      for (const key of REQUIRED_SECRET_KEYS) {
+        const value = secrets[key];
+        // Source-of-truth rule: only fill keys the environment did not provide.
+        if (
+          typeof value === 'string' &&
+          value !== '' &&
+          (process.env[key] === undefined || process.env[key] === '')
+        ) {
+          process.env[key] = value;
+        }
+      }
+    } catch (error) {
+      // Never block startup on Secrets Manager; env remains authoritative.
+      console.warn(
+        '[secrets] bootstrapSecretsIntoEnv failed; continuing with environment values:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  })();
+
+  return bootstrapPromise;
+}
+
 /**
  * Clears the in-process secret cache.
  * Useful after a detected rotation event or in tests.
@@ -262,4 +363,5 @@ export function clearSecretsCache(): void {
   cachedSecrets = null;
   cachePopulatedAt = null;
   cachedSecretsSource = null;
+  bootstrapPromise = null;
 }

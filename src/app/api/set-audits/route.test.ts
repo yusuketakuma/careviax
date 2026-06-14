@@ -39,6 +39,10 @@ vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: vi.fn(),
+}));
+
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
@@ -266,6 +270,30 @@ describe('/api/set-audits POST', () => {
     expect(taskCreateMock).not.toHaveBeenCalled();
     expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects approval with an incomplete checklist (server-side gate, 3-pane flow)', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: {
+            date_match: true,
+            timing_match: true,
+            quantity_match: true,
+            no_discontinued: true,
+            residual_usage_ok: true,
+            // cold_storage_separated を欠く（5/6）→ 監査OK 不可
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist set audits before writes or downstream side effects', async () => {

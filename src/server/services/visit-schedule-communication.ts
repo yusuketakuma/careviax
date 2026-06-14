@@ -81,6 +81,12 @@ export function buildVisitScheduleContactFollowupTask(
   };
 }
 
+// チャネルは「明示的に要求されたもの」または「患者側が明示的に希望したもの」のみを
+// 採用する。preferredContactMethod が未設定/不明な場合でも fax を黙って既定にはせず、
+// 呼び出し側が明示指定した requestedChannel をそのまま使う（暗黙の fax 既定を作らない）。
+// なお fax は記録専用チャネル（FAX ゲートウェイ未実装）であり、本サービスからも自動
+// 送信は行わない。fax が選ばれるのは患者が明示的に FAX を希望した場合のみで、その実体は
+// 手動送付の記録として communication event に残るだけである。
 export function resolveVisitScheduleCommunicationChannel(
   requestedChannel: VisitScheduleCommunicationChannel,
   preferredContactMethod: string | null

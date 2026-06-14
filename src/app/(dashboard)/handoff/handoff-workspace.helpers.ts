@@ -17,6 +17,15 @@ import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 export type HandoffLifecycleStatus = 'proposed' | 'in_progress' | 'confirming' | 'completed';
 
+/** 相談の状態(p0_27 薬剤師に相談 / 事務へ戻す)。 */
+export type HandoffConsultStatus = 'open' | 'checking' | 'returned_to_clerk' | 'resolved';
+
+/** 薬剤師の対応(p0_27)。 */
+export type HandoffResolutionAction =
+  | 'acknowledged'
+  | 'escalated_to_physician'
+  | 'returned_to_clerk';
+
 export type HandoffBoardItem = {
   id: string;
   content: string;
@@ -37,7 +46,78 @@ export type HandoffBoardItem = {
   progress_done: number | null;
   progress_total: number | null;
   direction: 'outgoing' | 'incoming';
+  // --- 相談解決フロー(p0_27)。consult_status が null の行は従来の引き継ぎ項目。---
+  consult_status: string | null;
+  resolution_action: string | null;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
 };
+
+export const CONSULT_STATUS_ORDER: HandoffConsultStatus[] = [
+  'open',
+  'checking',
+  'returned_to_clerk',
+  'resolved',
+];
+
+/** 相談一覧のグループ見出し(状態色は規約: 未対応=橙 / 確認中=青 / 事務へ戻し=紫 / 完了=灰)。 */
+export const CONSULT_STATUS_META: Record<
+  HandoffConsultStatus,
+  { label: string; countClassName: string; labelClassName: string }
+> = {
+  open: {
+    label: '未対応',
+    labelClassName: 'text-amber-700',
+    countClassName: 'text-amber-700',
+  },
+  checking: {
+    label: '確認中',
+    labelClassName: 'text-blue-700',
+    countClassName: 'text-blue-700',
+  },
+  returned_to_clerk: {
+    label: '事務へ戻し',
+    labelClassName: 'text-violet-700',
+    countClassName: 'text-violet-700',
+  },
+  resolved: {
+    label: '完了',
+    labelClassName: 'text-emerald-700',
+    countClassName: 'text-emerald-700',
+  },
+};
+
+/** 薬剤師の対応ラベル。 */
+export const RESOLUTION_ACTION_LABEL: Record<HandoffResolutionAction, string> = {
+  acknowledged: '内容を確認した',
+  escalated_to_physician: '医師へ確認する',
+  returned_to_clerk: '事務へ戻す',
+};
+
+/** consult_status を持つ相談だけを取り出す。 */
+export function consultItemsOf(items: HandoffBoardItem[]): HandoffBoardItem[] {
+  return items.filter((item) => item.consult_status != null);
+}
+
+/** 相談を状態ごとに件数集計する。 */
+export function countConsultByStatus(
+  items: HandoffBoardItem[],
+): Record<HandoffConsultStatus, number> {
+  const counts: Record<HandoffConsultStatus, number> = {
+    open: 0,
+    checking: 0,
+    returned_to_clerk: 0,
+    resolved: 0,
+  };
+  for (const item of items) {
+    const status = item.consult_status as HandoffConsultStatus | null;
+    if (status && status in counts) {
+      counts[status] += 1;
+    }
+  }
+  return counts;
+}
 
 export type HandoffBoardResponse = {
   id: string;

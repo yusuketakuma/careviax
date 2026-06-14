@@ -193,7 +193,8 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         data: expect.objectContaining({
           event_type: 'tracing_report',
           counterpart_name: '在宅主治医',
-          channel: 'fax',
+          // チャネル未指定時は自動送信可能な既定 ph_os_share になる（旧来の幻の 'fax' 既定は廃止）。
+          channel: 'ph_os_share',
         }),
       }),
     );
@@ -228,6 +229,60 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         }),
       }),
     });
+  });
+
+  it('records the explicitly selected deliverable channel on the communication event', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          channel: 'email',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(communicationEventCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'tracing_report',
+          channel: 'email',
+        }),
+      }),
+    );
+  });
+
+  it('records a manually sent fax without any automated transmission', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          // 手動 FAX 送付の記録（自動送信は行わない）。
+          channel: 'fax',
+          status_change_reason: '医師へ FAX で服薬情報提供書を手動送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(communicationEventCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'tracing_report',
+          // 手動送付の事実として記録されるだけで、ゲートウェイ送信は発生しない。
+          channel: 'fax',
+        }),
+      }),
+    );
   });
 
   it('returns 400 for an invalid communication event channel before side effects', async () => {

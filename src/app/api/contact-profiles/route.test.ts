@@ -24,9 +24,13 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
 
-vi.mock('@/lib/contact-profiles', () => ({
-  listContactProfiles: listContactProfilesMock,
-}));
+vi.mock('@/lib/contact-profiles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/contact-profiles')>();
+  return {
+    ...actual,
+    listContactProfiles: listContactProfilesMock,
+  };
+});
 
 import { GET } from './route';
 

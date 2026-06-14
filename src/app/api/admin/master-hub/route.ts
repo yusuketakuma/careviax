@@ -14,8 +14,9 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 /** 車両: 更新が止まったら鮮度警告(期限接近)にする閾値。 */
 const VEHICLE_STALE_DAYS = 30;
-/** 車両 notes の「点検期限 M/d」表記から期限接近(14日以内)を判定する。 */
+/** 点検期限の接近(14日以内)を期限警告にする閾値。 */
 const VEHICLE_INSPECTION_SOON_DAYS = 14;
+/** 後方互換: 専用カラム未設定の車両のみ notes の「点検期限 M/d」表記から判定する。 */
 const VEHICLE_INSPECTION_NOTE_PATTERN = /点検期限[:\s]*(\d{1,2})\/(\d{1,2})/;
 
 /** 変更履歴(今月)として数えるマスター系 AuditLog target_type。 */
@@ -44,6 +45,15 @@ function maxDate(...values: Array<Date | null | undefined>): Date | null {
     if (value && (!latest || value.getTime() > latest.getTime())) latest = value;
   }
   return latest;
+}
+
+/**
+ * next_inspection_date(@db.Date)は UTC 深夜で返るため、表示・日数計算系
+ * (format / daysUntil はローカル深夜で扱う)に合わせてローカル深夜の Date に正規化する。
+ */
+function localDateFromInspectionColumn(value: Date | null): Date | null {
+  if (!value) return null;
+  return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
 }
 
 /** notes の「点検期限 M/d」を当年(過ぎていれば翌年)の日付として解釈する。 */
@@ -131,7 +141,13 @@ export const GET = withAuthContext(
         tx.visitVehicleResource.findMany({
           where: { org_id: ctx.orgId },
           orderBy: { updated_at: 'desc' },
-          select: { label: true, available: true, notes: true, updated_at: true },
+          select: {
+            label: true,
+            available: true,
+            notes: true,
+            next_inspection_date: true,
+            updated_at: true,
+          },
         }),
         tx.auditLog.count({
           where: {
@@ -213,11 +229,14 @@ export const GET = withAuthContext(
       };
 
       // ── 車両マスター ────────────────────────────────────────────────
-      // 点検期限の専用カラムは未整備のため、運用は notes の「点検期限 M/d」表記を読む。
+      // 点検期限は専用カラム next_inspection_date を優先し、未設定の車両のみ
+      // 後方互換として notes の「点検期限 M/d」表記にフォールバックする。
       const unavailableVehicles = vehicles.filter((vehicle) => !vehicle.available);
       const inspectionCandidates = vehicles
         .map((vehicle) => {
-          const deadline = parseInspectionDeadline(vehicle.notes, now);
+          const deadline =
+            localDateFromInspectionColumn(vehicle.next_inspection_date) ??
+            parseInspectionDeadline(vehicle.notes, now);
           return deadline ? { label: vehicle.label, deadline } : null;
         })
         .filter((value): value is { label: string; deadline: Date } => value != null)

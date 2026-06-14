@@ -4,6 +4,7 @@ import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextRequest } from 'next/server';
 import { readJsonObject } from '@/lib/db/json';
+import { bootstrapSecretsIntoEnv } from '@/lib/config/secrets';
 import { getMembership } from './context';
 import { normalizePhosRole } from './phos-role';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
@@ -17,6 +18,13 @@ import {
 
 // Refresh access token 5 minutes before expiry
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+// When AWS Secrets Manager is configured, hydrate process.env (NEXTAUTH_SECRET,
+// JOB_API_KEY, …) from it once at startup. No-op + env stays authoritative when
+// Secrets Manager is not configured (local dev / tests), so behavior is
+// unchanged there. Fire-and-forget: env already provides a synchronous secret
+// via getAuthSecret(), so NextAuth never blocks on this.
+void bootstrapSecretsIntoEnv();
 
 const authBaseUrl = getAuthBaseUrl();
 

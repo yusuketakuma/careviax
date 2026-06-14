@@ -16,6 +16,9 @@ import { z } from 'zod';
 
 const lifecycleStatusSchema = z.enum(['proposed', 'in_progress', 'confirming', 'completed']);
 
+// 相談の状態(p0_27 薬剤師に相談)。事務員が相談を起票すると open で入る。
+const consultStatusSchema = z.enum(['open', 'checking', 'returned_to_clerk', 'resolved']);
+
 const createHandoffItemSchema = z
   .object({
     board_id: z.string().trim().min(1, 'board_idは必須です'),
@@ -32,6 +35,8 @@ const createHandoffItemSchema = z
     deadline: z.string().datetime().optional(),
     progress_done: z.number().int().min(0).optional(),
     progress_total: z.number().int().min(1).optional(),
+    // --- 相談(薬剤師に相談 / 事務へ戻す p0_27)起票用 ---
+    consult_status: consultStatusSchema.optional(),
   })
   .superRefine((value, refinementCtx) => {
     const isTransfer = Boolean(value.recipient_label || value.recipient_user_id);
@@ -104,6 +109,7 @@ export const POST = withAuthContext(
           deadline: parsed.data.deadline ? new Date(parsed.data.deadline) : null,
           progress_done: parsed.data.progress_done ?? null,
           progress_total: parsed.data.progress_total ?? null,
+          consult_status: parsed.data.consult_status ?? null,
           read_by: [],
           created_by: ctx.userId,
         },

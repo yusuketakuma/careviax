@@ -40,10 +40,17 @@ import {
   buildStatusBadge,
   buildWorkspaceBlockedReasons,
   buildWorkspaceNextAction,
+  consultItemsOf,
+  countConsultByStatus,
   formatTimeOfDay,
   progressPercent,
+  CONSULT_STATUS_META,
+  CONSULT_STATUS_ORDER,
+  RESOLUTION_ACTION_LABEL,
   type HandoffBoardItem,
   type HandoffBoardResponse,
+  type HandoffConsultStatus,
+  type HandoffResolutionAction,
 } from './handoff-workspace.helpers';
 
 /**
@@ -361,6 +368,298 @@ function TransferDialog({
 }
 
 // ---------------------------------------------------------------------------
+// 相談一覧 / 相談内容 / 薬剤師の対応(p0_27 薬剤師に相談 / 事務へ戻す)
+// ---------------------------------------------------------------------------
+
+/** 薬剤師の対応 3 アクション。確認系=青/緑、戻す=紫(状態色規約)。 */
+const RESOLUTION_ACTIONS: {
+  action: HandoffResolutionAction;
+  buttonClassName: string;
+}[] = [
+  {
+    action: 'acknowledged',
+    buttonClassName: 'bg-emerald-600 text-white hover:bg-emerald-700',
+  },
+  {
+    action: 'escalated_to_physician',
+    buttonClassName: 'bg-blue-600 text-white hover:bg-blue-700',
+  },
+  {
+    action: 'returned_to_clerk',
+    buttonClassName: 'bg-violet-600 text-white hover:bg-violet-700',
+  },
+];
+
+function ConsultStatusList({
+  counts,
+  selectedStatus,
+  onSelectStatus,
+}: {
+  counts: Record<HandoffConsultStatus, number>;
+  selectedStatus: HandoffConsultStatus;
+  onSelectStatus: (status: HandoffConsultStatus) => void;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-consult-list-heading"
+      data-testid="handoff-consult-list"
+    >
+      <h3
+        id="handoff-consult-list-heading"
+        className="text-base font-bold text-foreground"
+      >
+        相談一覧
+      </h3>
+      <div className="mt-3 space-y-2">
+        {CONSULT_STATUS_ORDER.map((status) => {
+          const meta = CONSULT_STATUS_META[status];
+          const isSelected = status === selectedStatus;
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => onSelectStatus(status)}
+              aria-pressed={isSelected}
+              data-testid={`handoff-consult-group-${status}`}
+              className={cn(
+                'flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors',
+                isSelected
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/70 bg-card hover:bg-muted/50',
+              )}
+            >
+              <span className={cn('text-sm font-bold', meta.labelClassName)}>{meta.label}</span>
+              <span className={cn('text-sm font-bold', meta.countClassName)}>
+                {counts[status]}件
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ConsultDetail({ item }: { item: HandoffBoardItem | null }) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-consult-detail-heading"
+      data-testid="handoff-consult-detail"
+    >
+      <h3
+        id="handoff-consult-detail-heading"
+        className="text-base font-bold text-foreground"
+      >
+        相談内容
+      </h3>
+      {item ? (
+        <div className="mt-3 space-y-2">
+          <p className="text-sm font-bold text-amber-700">
+            {item.created_by_name} から薬剤師へ
+          </p>
+          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
+          {item.rationale ? (
+            <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+              {item.rationale}
+            </p>
+          ) : null}
+          {item.resolution_note ? (
+            <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm leading-6 text-violet-800">
+              <span className="font-bold">薬剤師のメモ:</span> {item.resolution_note}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          相談を選択すると内容が表示されます。
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ConsultResolutionPanel({
+  item,
+  orgId,
+  onResolved,
+}: {
+  item: HandoffBoardItem | null;
+  orgId: string;
+  onResolved: () => void;
+}) {
+  const [note, setNote] = useState('');
+  const [pendingAction, setPendingAction] = useState<HandoffResolutionAction | null>(null);
+
+  const resolveMutation = useMutation({
+    mutationFn: async (action: HandoffResolutionAction) => {
+      if (!item) throw new Error('相談が選択されていません');
+      const res = await fetch(`/api/handoff-board/items/${item.id}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          resolution_action: action,
+          resolution_note: note.trim() ? note.trim() : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? '対応を記録できませんでした');
+      }
+      return res.json();
+    },
+    onSuccess: (_data, action) => {
+      toast.success(`「${RESOLUTION_ACTION_LABEL[action]}」を記録しました。`);
+      setNote('');
+      setPendingAction(null);
+      onResolved();
+    },
+    onError: (err: Error) => {
+      setPendingAction(null);
+      toast.error(err.message);
+    },
+  });
+
+  const disabled = !item || resolveMutation.isPending;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-consult-resolution-heading"
+      data-testid="handoff-consult-resolution"
+    >
+      <h3
+        id="handoff-consult-resolution-heading"
+        className="text-base font-bold text-foreground"
+      >
+        薬剤師の対応
+      </h3>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {RESOLUTION_ACTIONS.map(({ action, buttonClassName }) => (
+          <Button
+            key={action}
+            type="button"
+            className={cn('min-h-[44px]', buttonClassName)}
+            disabled={disabled}
+            data-testid={`handoff-consult-action-${action}`}
+            onClick={() => {
+              setPendingAction(action);
+              resolveMutation.mutate(action);
+            }}
+          >
+            {resolveMutation.isPending && pendingAction === action
+              ? '記録中...'
+              : RESOLUTION_ACTION_LABEL[action]}
+          </Button>
+        ))}
+      </div>
+      <div className="mt-3 space-y-1.5">
+        <Label htmlFor="handoff-consult-note" className="sr-only">
+          事務へ戻す時のメモ
+        </Label>
+        <Textarea
+          id="handoff-consult-note"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="事務へ戻す時のメモ"
+          rows={4}
+          disabled={!item}
+          className="resize-none text-sm"
+          data-testid="handoff-consult-note"
+        />
+        <p className="text-xs text-muted-foreground">
+          「事務へ戻す」を選ぶ時はメモ(指示内容)が必須です。
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ConsultWorkspace({
+  items,
+  orgId,
+  onResolved,
+}: {
+  items: HandoffBoardItem[];
+  orgId: string;
+  onResolved: () => void;
+}) {
+  const consultItems = useMemo(() => consultItemsOf(items), [items]);
+  const counts = useMemo(() => countConsultByStatus(consultItems), [consultItems]);
+  const [selectedStatus, setSelectedStatus] = useState<HandoffConsultStatus>('open');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const visibleItems = useMemo(
+    () => consultItems.filter((item) => item.consult_status === selectedStatus),
+    [consultItems, selectedStatus],
+  );
+
+  const selectedItem = useMemo(() => {
+    const fromSelection = selectedId
+      ? (visibleItems.find((item) => item.id === selectedId) ?? null)
+      : null;
+    return fromSelection ?? visibleItems[0] ?? null;
+  }, [visibleItems, selectedId]);
+
+  if (consultItems.length === 0) return null;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-consult-heading"
+      data-testid="handoff-consult-workspace"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 id="handoff-consult-heading" className="text-base font-bold text-foreground">
+          薬剤師に相談 / 事務へ戻す
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          事務員からの相談に薬剤師が対応します。対応は監査ログに記録されます。
+        </p>
+      </div>
+      <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)]">
+        <ConsultStatusList
+          counts={counts}
+          selectedStatus={selectedStatus}
+          onSelectStatus={(status) => {
+            setSelectedStatus(status);
+            setSelectedId(null);
+          }}
+        />
+        <div className="min-w-0 space-y-3">
+          {visibleItems.length > 1 ? (
+            <div className="flex flex-wrap gap-2" data-testid="handoff-consult-picker">
+              {visibleItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedId(item.id)}
+                  aria-pressed={item.id === selectedItem?.id}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    item.id === selectedItem?.id
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border/70 text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  {item.content.slice(0, 16) || '相談'}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <ConsultDetail item={selectedItem} />
+        </div>
+        <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 本体
 // ---------------------------------------------------------------------------
 
@@ -479,6 +778,11 @@ export function HandoffWorkspace() {
         ) : (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
+              <ConsultWorkspace
+                items={board.items}
+                orgId={orgId}
+                onResolved={invalidateBoard}
+              />
               <section
                 className="rounded-lg border border-border/70 bg-card p-4"
                 aria-labelledby="handoff-outgoing-heading"

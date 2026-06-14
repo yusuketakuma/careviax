@@ -1,5 +1,19 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { bootstrapSecretsIntoEnv } from '@/lib/config/secrets';
+
+// HIGH BLAST RADIUS — DB bootstrap. SAFETY (guardrail 2): process.env.DATABASE_URL
+// stays the synchronous source of truth. Prisma construction below is unchanged
+// when Secrets Manager is not configured (local dev / tests). When it IS
+// configured, this fire-and-forget bootstrap hydrates process.env.DATABASE_URL
+// (only if the environment did not already provide it) BEFORE the lazy
+// getPrismaClient() runs on the first query. It never overwrites an existing
+// env value and never throws, so it cannot break import or local dev.
+//
+// We intentionally do NOT await Secrets Manager inside createPrismaClient():
+// the client is built synchronously behind a Proxy and an async module-init
+// could throw on import. See followups for the residual cold-start race window.
+void bootstrapSecretsIntoEnv();
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 const DEFAULT_DATABASE_POOL_SIZE = 20;

@@ -833,3 +833,23 @@ export function buildProposalFlowSteps(proposal: {
     state: index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'pending',
   }));
 }
+
+/**
+ * デザイン p0_17「候補日時」列のカードに付く順位ラベル(第1候補 / 第2候補 …)を返す。
+ * rank は 1 始まり。
+ */
+export function proposalCandidateRankLabel(rank: number): string {
+  return `第${rank}候補`;
+}
+
+/**
+ * デザイン p0_17「候補日時」カードに表示する短い採用理由を返す。
+ * proposal_reason の先頭セグメントを使い、無ければ簡潔な既定文言にフォールバックする。
+ */
+export function proposalCandidateRankReason(
+  proposal: Pick<Proposal, 'proposal_reason'>,
+  fallback = '移動効率と条件のバランス',
+): string {
+  const [firstReason] = splitProposalReason(proposal.proposal_reason);
+  return firstReason ?? fallback;
+}

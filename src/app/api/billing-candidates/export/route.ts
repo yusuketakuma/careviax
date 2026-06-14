@@ -1,10 +1,39 @@
 import { NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { validationError } from '@/lib/api/response';
+import { error, validationError } from '@/lib/api/response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import {
+  ClaimsExportAdapterError,
+  createClaimsExportAdapter,
+  resolveClaimsExportConfig,
+  type ClaimsExportRecord,
+} from '@/server/adapters/claims-export';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
+
+type ExportFormat = 'csv' | 'claims-xml';
+
+function parseExportFormat(value: string | null): ExportFormat | null {
+  if (value === null || value === '') return 'csv';
+  return value === 'csv' || value === 'claims-xml' ? value : null;
+}
+
+function filenamePrefixFor(billingDomain: string) {
+  return billingDomain === 'pca_rental' ? 'billing_pca_rental' : 'billing_home_care';
+}
+
+/**
+ * 請求候補の billing_domain / payer_basis から CLAIMS-XML の保険区分を導出する。
+ * pca_rental は自費（self）、home_care は payer_basis に応じて care / medical に振り分ける。
+ */
+function resolveInsuranceType(
+  billingDomain: string,
+  sourceSnapshot: unknown,
+): ClaimsExportRecord['insuranceType'] {
+  if (billingDomain === 'pca_rental') return 'self';
+  return readJsonObjectString(sourceSnapshot, 'payer_basis') === 'care' ? 'care' : 'medical';
+}
 
 function csvCell(value: string | number | null | undefined) {
   if (value == null) return '';
@@ -44,6 +73,7 @@ export const GET = withAuthContext(
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
     const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
+    const exportFormat = parseExportFormat(searchParams.get('format'));
 
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
@@ -54,6 +84,9 @@ export const GET = withAuthContext(
     }
     if (requestedBillingDomain === null) {
       return validationError('billing_domain は home_care または pca_rental を指定してください');
+    }
+    if (exportFormat === null) {
+      return validationError('format は csv または claims-xml を指定してください');
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
@@ -200,12 +233,63 @@ export const GET = withAuthContext(
           billing_domain: billingDomain,
           statuses: ['confirmed', 'exported'],
         },
+        metadata: { export_format: exportFormat },
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
       });
 
       return candidates;
     });
+
+    const monthOf = (value: Date | string) =>
+      value instanceof Date ? value.toISOString().slice(0, 7) : String(value).slice(0, 7);
+
+    if (exportFormat === 'claims-xml') {
+      const records: ClaimsExportRecord[] = candidates.map((c) => ({
+        patientId: c.patient_id ?? '',
+        patientName: c.patient_name,
+        billingMonth: monthOf(c.billing_month),
+        insuranceType: resolveInsuranceType(c.billing_domain, c.source_snapshot),
+        billingCode: c.billing_code ?? '',
+        billingName: c.billing_name ?? '',
+        points: typeof c.points === 'number' ? c.points : 0,
+        status: c.status,
+      }));
+
+      const adapter = createClaimsExportAdapter(resolveClaimsExportConfig());
+      let result;
+      try {
+        result = await adapter.exportClaims({
+          orgId: ctx.orgId,
+          siteId: '',
+          billingMonth: parsedBillingMonth ? parsedBillingMonth.canonical.slice(0, 7) : '',
+          records,
+        });
+      } catch (cause) {
+        if (cause instanceof ClaimsExportAdapterError) {
+          return error(
+            'CLAIMS_EXPORT_FAILED',
+            'CLAIMS-XML の生成に失敗しました',
+            cause.retriable ? 502 : 422,
+            { code: cause.code },
+          );
+        }
+        throw cause;
+      }
+
+      const xmlFilename = parsedBillingMonth
+        ? `${filenamePrefixFor(billingDomain)}_${parsedBillingMonth.canonical.slice(0, 7)}.xml`
+        : `${filenamePrefixFor(billingDomain)}_candidates.xml`;
+      const encodedXmlFilename = encodeURIComponent(xmlFilename);
+
+      return new NextResponse(result.content, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${encodedXmlFilename}"; filename*=UTF-8''${encodedXmlFilename}`,
+        },
+      });
+    }
 
     const header = [
       'id',
@@ -256,8 +340,7 @@ export const GET = withAuthContext(
     });
 
     const csv = [header, ...rows].join('\n');
-    const filenamePrefix =
-      billingDomain === 'pca_rental' ? 'billing_pca_rental' : 'billing_home_care';
+    const filenamePrefix = filenamePrefixFor(billingDomain);
     const filename = parsedBillingMonth
       ? `${filenamePrefix}_${parsedBillingMonth.canonical.slice(0, 7)}.csv`
       : `${filenamePrefix}_candidates.csv`;

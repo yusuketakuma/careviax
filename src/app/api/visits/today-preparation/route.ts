@@ -6,6 +6,7 @@ import {
   buildVisitScheduleAssignmentWhere,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
+import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
   VisitPrepCheck,
@@ -44,39 +45,6 @@ const SAFETY_TAG_ORDER = [
 /** セット工程を通過済みの MedicationCycleStatus。 */
 const SET_DONE_STATUSES = ['set_audited', 'visit_ready', 'visit_completed', 'reported'];
 const SET_IN_PROGRESS_STATUSES = ['audited', 'setting'];
-
-type ExceptionPresentation = {
-  category: string;
-  actionLabel: string;
-  actionHref: string;
-};
-
-const EXCEPTION_PRESENTATIONS: Record<string, ExceptionPresentation> = {
-  family_consent_pending: {
-    category: '患者',
-    actionLabel: '再連絡する →',
-    actionHref: '/communications/requests',
-  },
-  consent_revoked: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  missing_visit_consent: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  no_show: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  delivery_target_confirmation: {
-    category: '事務',
-    actionLabel: '状況を見る →',
-    actionHref: '/admin/contact-profiles',
-  },
-  awaiting_reply: {
-    category: '医療機関',
-    actionLabel: '状況を見る →',
-    actionHref: '/communications/requests',
-  },
-};
-
-const EXCEPTION_PRESENTATION_FALLBACK: ExceptionPresentation = {
-  category: '事務',
-  actionLabel: '状況を見る →',
-  actionHref: '/workflow',
-};
 
 function formatTimeOfDay(date: Date): string {
   const hours = `${date.getHours()}`.padStart(2, '0');
@@ -548,22 +516,7 @@ export const GET = withAuthContext(
         return (left.due_at ?? '9999').localeCompare(right.due_at ?? '9999');
       });
 
-    const blockedReasons: VisitPrepBlockedReason[] = openExceptions.map((exception) => {
-      const presentation =
-        EXCEPTION_PRESENTATIONS[exception.exception_type] ?? EXCEPTION_PRESENTATION_FALLBACK;
-      return {
-        id: exception.id,
-        label: exception.description,
-        severity: exception.severity === 'critical' ? 'critical' : 'warning',
-        category: presentation.category,
-        age_minutes: Math.max(
-          0,
-          Math.floor((now.getTime() - exception.created_at.getTime()) / 60_000),
-        ),
-        action_label: presentation.actionLabel,
-        action_href: presentation.actionHref,
-      };
-    });
+    const blockedReasons: VisitPrepBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
     const facilityPatientCount = cards
       .filter((card) => card.is_facility)

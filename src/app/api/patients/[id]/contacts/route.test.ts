@@ -36,6 +36,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: vi.fn(),
+}));
+
 import { GET, PUT } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {

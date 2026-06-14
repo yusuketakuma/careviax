@@ -75,6 +75,7 @@ export const REPORT_STATUS_CONFIG: Record<string, StatusConfig> = {
 };
 
 export const CHANNEL_LABELS: Record<string, string> = {
+  ph_os_share: 'PH-OS共有',
   email: 'メール',
   fax: 'FAX',
   phone: '電話',

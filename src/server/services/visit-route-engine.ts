@@ -387,6 +387,12 @@ async function computeHeuristicRoute(args: {
   origin: VisitRouteOrigin;
   travelMode: VisitRouteTravelMode;
   waypoints: VisitRouteWaypoint[];
+  /**
+   * 確定済み訪問の scheduleId 群。指定された訪問は「移動なし」で入力順のまま先頭に固定し、
+   * 残り(緊急割込など)だけを貪欲法で並べ替える。p0_20 の「案1: 確定患者の移動なし」を実現する。
+   * 既定 [] のときは従来どおり全件を最適化する(後方互換)。
+   */
+  lockedScheduleIds?: string[];
 }): Promise<VisitRoutePlan> {
   // Fix #1: validate geocodes before doing any computation
   const missingGeocodeWaypointIds = args.waypoints
@@ -475,7 +481,44 @@ async function computeHeuristicRoute(args: {
   let totalDurationSeconds = 0;
   const usesPriorityConstraint = hasPriorityRouteConstraint(args.waypoints);
 
+  // 確定済み(ロック)訪問を入力順のまま先頭に固定する。残りは貪欲法で最適化する。
+  const lockedScheduleIdSet = new Set(args.lockedScheduleIds ?? []);
+  const hasLockedConstraint = lockedScheduleIdSet.size > 0;
+  // 入力順に残っている最初のロック訪問の waypointIndex(未消化のロックがあるうちはこれを優先する)
+  function nextLockedWaypointIndex(): number | null {
+    if (!hasLockedConstraint) return null;
+    for (let idx = 0; idx < args.waypoints.length; idx++) {
+      if (lockedScheduleIdSet.has(args.waypoints[idx].scheduleId) && remaining.includes(idx)) {
+        return idx;
+      }
+    }
+    return null;
+  }
+
   while (remaining.length > 0) {
+    const forcedWaypointIdx = nextLockedWaypointIndex();
+    if (forcedWaypointIdx !== null) {
+      // ロック訪問は移動なし: 入力順のまま先頭側へ確定し、最適化対象から除外する
+      const forcedRemIdx = remaining.indexOf(forcedWaypointIdx);
+      remaining.splice(forcedRemIdx, 1);
+      ordered.push(forcedWaypointIdx);
+      const targetNodeIndex = forcedWaypointIdx + 1;
+      const cell = matrix[currentNodeIndex][targetNodeIndex];
+      const distanceMeters = cell ? cell.meters : null;
+      const durationSeconds = cell ? cell.seconds : null;
+      totalDistanceMeters += distanceMeters != null ? Math.round(distanceMeters) : 0;
+      totalDurationSeconds += durationSeconds != null ? durationSeconds : 0;
+      stopSummaries.push({
+        scheduleId: args.waypoints[forcedWaypointIdx].scheduleId,
+        optimizedOrder: ordered.length,
+        arrivalOffsetSeconds: totalDurationSeconds,
+        distanceFromPreviousMeters: distanceMeters != null ? Math.round(distanceMeters) : null,
+        durationFromPreviousSeconds: durationSeconds,
+      });
+      currentNodeIndex = targetNodeIndex;
+      continue;
+    }
+
     let bestRemIdx = 0;
     let bestScoreSeconds = Number.POSITIVE_INFINITY;
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
@@ -529,11 +572,15 @@ async function computeHeuristicRoute(args: {
     currentNodeIndex = nextWaypointIdx + 1;
   }
 
+  const baseNote = usesPriorityConstraint
+    ? '優先度補正を含むヒューリスティック順序を表示しています'
+    : 'ヒューリスティック順序を表示しています';
+
   return {
     status: 'ok',
-    note: usesPriorityConstraint
-      ? '優先度補正を含むヒューリスティック順序を表示しています'
-      : 'ヒューリスティック順序を表示しています',
+    note: hasLockedConstraint
+      ? `確定済み訪問を固定したヒューリスティック順序を表示しています(${lockedScheduleIdSet.size}件固定)`
+      : baseNote,
     travelMode: args.travelMode,
     origin: args.origin,
     encodedPath: null,
@@ -548,8 +595,16 @@ export async function computeOptimizedVisitRoute(args: {
   origin: VisitRouteOrigin | null;
   travelMode: VisitRouteTravelMode;
   waypoints: VisitRouteWaypoint[];
+  /**
+   * 緊急割込時に「移動させない」確定済み訪問の scheduleId 群(任意 / 既定 []).
+   * 指定すると入力順のまま先頭に固定され、残りだけがヒューリスティックで並べ替えられる。
+   * 1件以上指定された場合は Google 最適化を使わずヒューリスティック経路にフォールバックする
+   *(Google Routes は中間地点の固定に非対応のため)。
+   */
+  lockedScheduleIds?: string[];
 }): Promise<VisitRoutePlan> {
   const orderedScheduleIds = args.waypoints.map((waypoint) => waypoint.scheduleId);
+  const hasLockedConstraint = (args.lockedScheduleIds?.length ?? 0) > 0;
 
   if (args.waypoints.length === 0) {
     return {
@@ -587,7 +642,12 @@ export async function computeOptimizedVisitRoute(args: {
 
   const providerName = process.env.ROUTING_API_PROVIDER ?? 'osrm';
   const googleApiKey = resolveGoogleMapsServerApiKey();
-  if (providerName === 'google' && googleApiKey && !hasPriorityRouteConstraint(args.waypoints)) {
+  if (
+    providerName === 'google' &&
+    googleApiKey &&
+    !hasPriorityRouteConstraint(args.waypoints) &&
+    !hasLockedConstraint
+  ) {
     return computeGoogleWaypointRoute({
       origin: args.origin,
       travelMode: args.travelMode,
@@ -600,5 +660,6 @@ export async function computeOptimizedVisitRoute(args: {
     origin: args.origin,
     travelMode: args.travelMode,
     waypoints: args.waypoints,
+    ...(hasLockedConstraint ? { lockedScheduleIds: args.lockedScheduleIds } : {}),
   });
 }

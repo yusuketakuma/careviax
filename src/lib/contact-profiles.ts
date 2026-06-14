@@ -75,9 +75,42 @@ type ExternalProfessionalSuggestion = {
   source: 'patient_care_team' | 'external_professional_master';
 };
 
+export type ContactProfileKind =
+  | 'facility_contact'
+  | 'external_professional'
+  | 'prescriber_institution';
+
+/**
+ * 送付方法（送付先・連絡先の編集 p0_26）で選択可能なチャネル一覧。
+ * 既定は PH-OS 内共有。表示順は設計（PH-OS共有 / FAX / 電話 / メール / 郵送 / 対面）に合わせる。
+ */
+export const CONTACT_METHOD_OPTIONS = [
+  'ph_os_share',
+  'fax',
+  'phone',
+  'email',
+  'postal',
+  'in_person',
+] as const satisfies readonly CommunicationChannel[];
+
+export const CONTACT_METHOD_LABELS: Record<CommunicationChannel, string> = {
+  ph_os_share: 'PH-OS共有',
+  fax: 'FAX',
+  phone: '電話',
+  email: 'メール',
+  postal: '郵送',
+  in_person: '対面',
+  ses: 'SESメール',
+};
+
+export function contactMethodLabel(value: CommunicationChannel | string | null | undefined) {
+  if (!value) return '未設定';
+  return CONTACT_METHOD_LABELS[value as CommunicationChannel] ?? value;
+}
+
 type ContactProfileRow = {
   id: string;
-  kind: 'facility_contact' | 'external_professional' | 'prescriber_institution';
+  kind: ContactProfileKind;
   name: string;
   subtitle: string | null;
   phone: string | null;
@@ -111,6 +144,7 @@ type ChannelStats = Record<
 
 function createEmptyChannelStats(): ChannelStats {
   return {
+    ph_os_share: { success: 0, failure: 0 },
     email: { success: 0, failure: 0 },
     fax: { success: 0, failure: 0 },
     phone: { success: 0, failure: 0 },
@@ -745,4 +779,93 @@ export async function listContactProfiles(
       if (kindDelta !== 0) return kindDelta;
       return left.name.localeCompare(right.name, 'ja');
     });
+}
+
+export type ContactProfileUpdateInput = {
+  name?: string;
+  role?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  fax?: string | null;
+  preferred_contact_method?: CommunicationChannel | null;
+  preferred_contact_time?: string | null;
+};
+
+/**
+ * 送付先・連絡先の更新（p0_26）。種別ごとに対応する Prisma モデルへ反映する。
+ * org スコープ内のレコードのみ対象とし、更新前後の値を返して監査記録に利用する。
+ */
+export async function updateContactProfile(
+  tx: DbClient,
+  orgId: string,
+  kind: ContactProfileKind,
+  id: string,
+  input: ContactProfileUpdateInput
+): Promise<{ before: Record<string, unknown>; after: Record<string, unknown> } | null> {
+  const has = <K extends keyof ContactProfileUpdateInput>(key: K) =>
+    Object.prototype.hasOwnProperty.call(input, key);
+  const trimmedName = input.name?.trim();
+
+  if (kind === 'facility_contact') {
+    const existing = await tx.facilityContact.findFirst({
+      where: { id, org_id: orgId },
+    });
+    if (!existing) return null;
+    const data = {
+      ...(trimmedName ? { name: trimmedName } : {}),
+      ...(has('role') ? { role: input.role || null } : {}),
+      ...(has('phone') ? { phone: input.phone || null } : {}),
+      ...(has('email') ? { email: input.email || null } : {}),
+      ...(has('fax') ? { fax: input.fax || null } : {}),
+      ...(has('preferred_contact_method')
+        ? { preferred_contact_method: input.preferred_contact_method ?? null }
+        : {}),
+      ...(has('preferred_contact_time')
+        ? { preferred_contact_time: input.preferred_contact_time || null }
+        : {}),
+    };
+    const after = await tx.facilityContact.update({ where: { id }, data });
+    return { before: existing, after };
+  }
+
+  if (kind === 'external_professional') {
+    const existing = await tx.externalProfessional.findFirst({
+      where: { id, org_id: orgId },
+    });
+    if (!existing) return null;
+    const data = {
+      ...(trimmedName ? { name: trimmedName } : {}),
+      ...(has('department') ? { department: input.department || null } : {}),
+      ...(has('phone') ? { phone: input.phone || null } : {}),
+      ...(has('email') ? { email: input.email || null } : {}),
+      ...(has('fax') ? { fax: input.fax || null } : {}),
+      ...(has('preferred_contact_method')
+        ? { preferred_contact_method: input.preferred_contact_method ?? null }
+        : {}),
+      ...(has('preferred_contact_time')
+        ? { preferred_contact_time: input.preferred_contact_time || null }
+        : {}),
+    };
+    const after = await tx.externalProfessional.update({ where: { id }, data });
+    return { before: existing, after };
+  }
+
+  const existing = await tx.prescriberInstitution.findFirst({
+    where: { id, org_id: orgId },
+  });
+  if (!existing) return null;
+  const data = {
+    ...(trimmedName ? { name: trimmedName } : {}),
+    ...(has('phone') ? { phone: input.phone || null } : {}),
+    ...(has('fax') ? { fax: input.fax || null } : {}),
+    ...(has('preferred_contact_method')
+      ? { preferred_contact_method: input.preferred_contact_method ?? null }
+      : {}),
+    ...(has('preferred_contact_time')
+      ? { preferred_contact_time: input.preferred_contact_time || null }
+      : {}),
+  };
+  const after = await tx.prescriberInstitution.update({ where: { id }, data });
+  return { before: existing, after };
 }

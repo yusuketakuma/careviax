@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { CloudOff, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,21 +28,26 @@ export function OfflineDraftIndicator({
 }: OfflineDraftIndicatorProps) {
   if (pendingCount === 0 && !isSyncing) {
     return (
-      <span
-        className="flex items-center gap-1 text-xs text-green-700"
+      <Link
+        href="/offline-sync"
+        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-green-700 hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         role="status"
         aria-live="polite"
-        aria-label="同期済み"
+        aria-label="同期済み — 同期状況を開く"
       >
         <CheckCircle2 className="size-3.5" aria-hidden="true" />
         同期済み
-      </span>
+      </Link>
     );
   }
 
   return (
     <div className="flex items-center gap-2" role="status" aria-live="polite">
-      <span className="flex items-center gap-1 text-xs text-orange-700">
+      <Link
+        href="/offline-sync"
+        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-orange-700 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="同期待ち — 同期状況を開く"
+      >
         <CloudOff className="size-3.5" aria-hidden="true" />
         <span>同期待ち</span>
         {pendingCount > 0 && (
@@ -52,7 +58,7 @@ export function OfflineDraftIndicator({
             {pendingCount}
           </Badge>
         )}
-      </span>
+      </Link>
 
       {onSync && (
         <Button

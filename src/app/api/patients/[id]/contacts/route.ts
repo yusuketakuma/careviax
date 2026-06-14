@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, success, validationError } from '@/lib/api/response';
 import {
   getPatientPrivacyFlags,
@@ -89,35 +90,49 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return notFound('患者が見つかりません');
   }
 
-  const data = await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.contactParty.deleteMany({
-      where: { org_id: ctx.orgId, patient_id: id },
-    });
-    if (parsed.data.contacts.length === 0) return [];
+  const data = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      await tx.contactParty.deleteMany({
+        where: { org_id: ctx.orgId, patient_id: id },
+      });
 
-    await tx.contactParty.createMany({
-      data: parsed.data.contacts.map((contact) => ({
-        org_id: ctx.orgId,
-        patient_id: id,
-        name: contact.name,
-        relation: contact.relation,
-        phone: contact.phone || null,
-        email: contact.email || null,
-        fax: contact.fax || null,
-        organization_name: contact.organization_name || null,
-        department: contact.department || null,
-        address: contact.address || null,
-        is_primary: contact.is_primary,
-        is_emergency_contact: contact.is_emergency_contact,
-        notes: contact.notes || null,
-      })),
-    });
+      if (parsed.data.contacts.length > 0) {
+        await tx.contactParty.createMany({
+          data: parsed.data.contacts.map((contact) => ({
+            org_id: ctx.orgId,
+            patient_id: id,
+            name: contact.name,
+            relation: contact.relation,
+            phone: contact.phone || null,
+            email: contact.email || null,
+            fax: contact.fax || null,
+            organization_name: contact.organization_name || null,
+            department: contact.department || null,
+            address: contact.address || null,
+            is_primary: contact.is_primary,
+            is_emergency_contact: contact.is_emergency_contact,
+            notes: contact.notes || null,
+          })),
+        });
+      }
 
-    return tx.contactParty.findMany({
-      where: { org_id: ctx.orgId, patient_id: id },
-      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-    });
-  });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'patient_contacts_updated',
+        targetType: 'Patient',
+        targetId: id,
+        changes: {
+          contact_count: parsed.data.contacts.length,
+        },
+      });
+
+      return tx.contactParty.findMany({
+        where: { org_id: ctx.orgId, patient_id: id },
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+      });
+    },
+    { requestContext: ctx },
+  );
 
   const privacy = getPatientPrivacyFlags(ctx.role);
 

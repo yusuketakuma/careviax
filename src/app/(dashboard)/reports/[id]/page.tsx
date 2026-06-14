@@ -123,6 +123,60 @@ type SendRequestData = SendFormData & {
   safety_ack: true;
 };
 
+// p0_28: 一括送付。共有先(複数)をまとめて送付する。
+type BulkSendRequestData = {
+  recipients: SendFormData[];
+  safety_ack: true;
+};
+
+// 共有先の送付候補(処方元医療機関 / 他職種マスター / 患者ケアチーム)
+type ShareTarget = {
+  id: string;
+  label: string;
+  audience: string;
+  channel: string;
+  recipient_name: string;
+  recipient_contact: string;
+};
+
+// 送付前チェックの4ガバナンス項目(design p0_28: 薬剤師確認済み / 宛先が設定済み /
+// 添付資料あり / 患者情報の出しすぎなし)。key は内部状態用。
+const PRE_SEND_CHECK_ITEMS = [
+  {
+    key: 'content',
+    label: '薬剤師確認済み',
+    description: '薬剤師が報告内容を確認しました',
+  },
+  {
+    key: 'recipient',
+    label: '宛先が設定済み',
+    description: '共有先・連絡先・送付方法が設定されているか確認しました',
+  },
+  {
+    key: 'channel',
+    label: '添付資料あり',
+    description: '必要な添付資料が揃っているか確認しました',
+  },
+  {
+    key: 'consent',
+    label: '患者情報の出しすぎなし',
+    description: '不要な患者情報・同意外の情報を含めていないか確認しました',
+  },
+] as const;
+
+type PreSendCheckKey = (typeof PRE_SEND_CHECK_ITEMS)[number]['key'];
+
+// 他職種の職種タイプを共有先の表示ラベル(医師/ケアマネ/訪問看護/施設/家族)へ寄せる。
+const PROFESSION_AUDIENCE_LABELS: Record<string, string> = {
+  physician: '医師',
+  doctor: '医師',
+  care_manager: 'ケアマネ',
+  visiting_nurse: '訪問看護',
+  nurse: '訪問看護',
+  facility: '施設',
+  family: '家族',
+};
+
 type SendFormErrors = Partial<Record<keyof SendFormData | 'safety_ack', string>>;
 
 type ExternalProfessionalSuggestion = {
@@ -234,6 +288,68 @@ function isCareManagerReportContent(content: unknown): content is CareManagerRep
   );
 }
 
+// 送付候補(処方元医療機関 / 他職種)から送付チャネルと連絡先を解決する純粋関数。
+// 単一送付ダイアログと p0_28 コンポーザーの共有先で同じ解決ロジックを使う。
+function resolveSuggestionDelivery(
+  type: 'institution' | 'professional',
+  suggestion: {
+    name: string;
+    phone: string | null;
+    fax: string | null;
+    email?: string | null;
+    recommended_channels: string[];
+    prescriber_name?: string | null;
+    preferred_contact_method?: string | null;
+  },
+  deliveryRule: { channel: string; fallback_channels: string[] } | null,
+): SendFormData {
+  const suggestedChannels = [
+    deliveryRule?.channel,
+    ...(deliveryRule?.fallback_channels ?? []),
+    ...suggestion.recommended_channels,
+  ].filter((value): value is string => Boolean(value));
+
+  const contactByChannel = (ch: string): string | null => {
+    if (ch === 'email' || ch === 'ses') return suggestion.email ?? null;
+    if (ch === 'fax') return suggestion.fax ?? null;
+    if (ch === 'phone') return suggestion.phone ?? null;
+    return null;
+  };
+
+  const hasContact = (ch: string): boolean => Boolean(contactByChannel(ch));
+
+  let resolvedChannel: string;
+  if (type === 'institution') {
+    resolvedChannel =
+      suggestedChannels.find((ch) => (ch === 'fax' || ch === 'phone' ? hasContact(ch) : false)) ??
+      (suggestion.fax ? 'fax' : 'phone');
+  } else {
+    resolvedChannel =
+      suggestedChannels.find(hasContact) ??
+      suggestion.preferred_contact_method ??
+      (suggestion.email
+        ? 'email'
+        : suggestion.fax
+          ? 'fax'
+          : suggestion.phone
+            ? 'phone'
+            : 'email');
+  }
+
+  const resolvedContact =
+    contactByChannel(resolvedChannel) ??
+    (type === 'professional'
+      ? (suggestion.email ?? suggestion.fax ?? suggestion.phone ?? '')
+      : '');
+
+  return {
+    channel: resolvedChannel,
+    recipient_name:
+      (type === 'institution' ? suggestion.prescriber_name : null) ?? suggestion.name,
+    recipient_contact: resolvedContact,
+  };
+}
+
 // --- Main ---
 
 export default function ReportDetailPage() {
@@ -251,6 +367,16 @@ export default function ReportDetailPage() {
   });
   const [sendSafetyAck, setSendSafetyAck] = useState(false);
   const [sendFormErrors, setSendFormErrors] = useState<SendFormErrors>({});
+
+  // p0_28: 報告書コンポーザー(共有先の複数選択 + 送付前チェック)
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
+  const [preSendChecks, setPreSendChecks] = useState<Record<PreSendCheckKey, boolean>>({
+    recipient: false,
+    content: false,
+    consent: false,
+    channel: false,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['care-report', id, orgId],
@@ -339,6 +465,31 @@ export default function ReportDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // p0_28: 一括送付。選択した共有先すべてに送付する。
+  const bulkSendMutation = useMutation({
+    mutationFn: async (requestData: BulkSendRequestData) => {
+      const res = await fetch(`/api/care-reports/${id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(requestData),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error((err as { message?: string } | null)?.message ?? '一括送付に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('報告書を共有先へ送付しました');
+      setComposerOpen(false);
+      setSelectedTargetIds([]);
+      setPreSendChecks({ recipient: false, content: false, consent: false, channel: false });
+      queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-reports'] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   function handleSend() {
     const normalizedForm = {
       channel: sendForm.channel,
@@ -370,6 +521,26 @@ export default function ReportDetailPage() {
       return;
     }
     sendMutation.mutate({ ...normalizedForm, safety_ack: true });
+  }
+
+  function handleBulkSend(targets: ShareTarget[]) {
+    const selectedTargets = targets.filter((target) => selectedTargetIds.includes(target.id));
+    if (selectedTargets.length === 0) {
+      toast.error('共有先を1件以上選択してください');
+      return;
+    }
+    if (!allPreSendChecksDone) {
+      toast.error('送付前チェックをすべて確認してください');
+      return;
+    }
+    bulkSendMutation.mutate({
+      recipients: selectedTargets.map((target) => ({
+        channel: target.channel,
+        recipient_name: target.recipient_name,
+        recipient_contact: target.recipient_contact,
+      })),
+      safety_ack: true,
+    });
   }
 
   if (isBootstrappingOrg || isLoading) {
@@ -460,90 +631,96 @@ export default function ReportDetailPage() {
     },
   ];
 
-  function applySuggestion(
-    type: 'institution' | 'professional',
-    suggestion: {
-      name: string;
-      phone: string | null;
-      fax: string | null;
-      email?: string | null;
-      recommended_channels: string[];
-      prescriber_name?: string | null;
-      preferred_contact_method?: string | null;
-    },
-  ) {
-    const suggestedChannels = [
-      deliveryRuleSuggestion?.channel,
-      ...(deliveryRuleSuggestion?.fallback_channels ?? []),
-      ...suggestion.recommended_channels,
-    ].filter((value): value is string => Boolean(value));
-
-    const contactByChannel = (ch: string): string | null => {
-      if (ch === 'email' || ch === 'ses') return suggestion.email ?? null;
-      if (ch === 'fax') return suggestion.fax ?? null;
-      if (ch === 'phone') return suggestion.phone ?? null;
-      return null;
-    };
-
-    const hasContact = (ch: string): boolean => Boolean(contactByChannel(ch));
-
-    let resolvedChannel: string;
-    if (type === 'institution') {
-      resolvedChannel =
-        suggestedChannels.find((ch) => (ch === 'fax' || ch === 'phone' ? hasContact(ch) : false)) ??
-        (suggestion.fax ? 'fax' : 'phone');
-    } else {
-      resolvedChannel =
-        suggestedChannels.find(hasContact) ??
-        suggestion.preferred_contact_method ??
-        (suggestion.email
-          ? 'email'
-          : suggestion.fax
-            ? 'fax'
-            : suggestion.phone
-              ? 'phone'
-              : 'email');
-    }
-
-    const resolvedContact =
-      contactByChannel(resolvedChannel) ??
-      (type === 'professional'
-        ? (suggestion.email ?? suggestion.fax ?? suggestion.phone ?? '')
-        : '');
-
-    setSendForm({
-      channel: resolvedChannel,
-      recipient_name:
-        (type === 'institution' ? suggestion.prescriber_name : null) ?? suggestion.name,
-      recipient_contact: resolvedContact,
-    });
-  }
+  const deliveryRuleForResolve = deliveryRuleSuggestion
+    ? {
+        channel: deliveryRuleSuggestion.channel,
+        fallback_channels: deliveryRuleSuggestion.fallback_channels,
+      }
+    : null;
 
   function applyInstitutionSuggestion() {
     if (!prescriberInstitutionSuggestion) return;
-    applySuggestion('institution', prescriberInstitutionSuggestion);
+    setSendForm(
+      resolveSuggestionDelivery('institution', prescriberInstitutionSuggestion, deliveryRuleForResolve),
+    );
   }
 
   function applyExternalProfessionalSuggestion(suggestion: ExternalProfessionalSuggestion) {
-    applySuggestion('professional', suggestion);
+    setSendForm(resolveSuggestionDelivery('professional', suggestion, deliveryRuleForResolve));
   }
 
+  // p0_28: 共有先候補(処方元医療機関 + ケアチーム/他職種)を送付ターゲットに正規化する。
+  const shareTargets: ShareTarget[] = [
+    ...(prescriberInstitutionSuggestion
+      ? [
+          {
+            id: `institution:${prescriberInstitutionSuggestion.id}`,
+            label:
+              prescriberInstitutionSuggestion.prescriber_name ??
+              prescriberInstitutionSuggestion.name,
+            audience: '医師',
+            ...resolveSuggestionDelivery(
+              'institution',
+              prescriberInstitutionSuggestion,
+              deliveryRuleForResolve,
+            ),
+          },
+        ]
+      : []),
+    ...externalProfessionalSuggestions.map((suggestion) => ({
+      id: `professional:${suggestion.id}`,
+      label: suggestion.name,
+      audience: PROFESSION_AUDIENCE_LABELS[suggestion.profession_type] ?? '他職種',
+      ...resolveSuggestionDelivery('professional', suggestion, deliveryRuleForResolve),
+    })),
+  ].filter((target) => target.recipient_contact.trim().length > 0);
+
+  const selectedShareTargets = shareTargets.filter((target) =>
+    selectedTargetIds.includes(target.id),
+  );
+  const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
+  const canBulkSend =
+    selectedShareTargets.length > 0 && allPreSendChecksDone && !bulkSendMutation.isPending;
+
   const sendReportAction = (
-    <Button
-      size="sm"
-      className="min-h-[44px] sm:min-h-0"
-      onClick={() => {
-        if (prescriberInstitutionSuggestion) {
-          applyInstitutionSuggestion();
-        }
-        setSendSafetyAck(false);
-        setSendFormErrors({});
-        setSendDialogOpen(true);
-      }}
-    >
-      <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-      送付
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      {shareTargets.length > 0 ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] sm:min-h-0"
+          onClick={() => {
+            // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
+            setSelectedTargetIds(shareTargets.map((target) => target.id));
+            setPreSendChecks({
+              recipient: false,
+              content: false,
+              consent: false,
+              channel: false,
+            });
+            setComposerOpen(true);
+          }}
+        >
+          <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+          共有を作成
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        className="min-h-[44px] sm:min-h-0"
+        onClick={() => {
+          if (prescriberInstitutionSuggestion) {
+            applyInstitutionSuggestion();
+          }
+          setSendSafetyAck(false);
+          setSendFormErrors({});
+          setSendDialogOpen(true);
+        }}
+      >
+        <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+        送付
+      </Button>
+    </div>
   );
 
   return (
@@ -605,6 +782,155 @@ export default function ReportDetailPage() {
           items={reportReadinessItems}
           actions={sendReportAction}
         />
+
+        {/* p0_28: 報告書コンポーザー(共有先複数選択 + 報告内容 + 送付前チェック) */}
+        {composerOpen ? (
+          <Card data-testid="report-composer">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Share2 className="size-4" aria-hidden="true" />
+                報告書を作成・共有
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-[44px] sm:min-h-0"
+                onClick={() => setComposerOpen(false)}
+              >
+                閉じる
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
+                {/* LEFT: 共有先 multi-select */}
+                <section aria-label="共有先" className="space-y-2">
+                  <h3 className="text-sm font-semibold text-foreground">共有先</h3>
+                  {shareTargets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      送付可能な共有先候補がありません。
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {shareTargets.map((target) => {
+                        const checked = selectedTargetIds.includes(target.id);
+                        return (
+                          <li key={target.id}>
+                            <label
+                              className={cn(
+                                'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm transition-colors',
+                                checked
+                                  ? 'border-primary/40 bg-primary/5'
+                                  : 'border-border bg-background',
+                              )}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  setSelectedTargetIds((prev) =>
+                                    value
+                                      ? [...new Set([...prev, target.id])]
+                                      : prev.filter((targetId) => targetId !== target.id),
+                                  )
+                                }
+                                className="mt-0.5"
+                                aria-label={`${target.audience} ${target.label} を共有先に含める`}
+                              />
+                              <span className="min-w-0 space-y-0.5">
+                                <span className="block font-medium text-foreground">
+                                  {target.audience}
+                                </span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {target.label}
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {CHANNEL_LABELS[target.channel] ?? target.channel}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+
+                {/* CENTER: 報告内容(既存の報告書セクションを再利用) */}
+                <section aria-label="報告内容" className="min-w-0 space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">報告内容</h3>
+                  {hasContentView ? (
+                    <ReportEditForm
+                      reportId={id}
+                      reportType={report.report_type}
+                      content={report.content}
+                      onSaved={() => toast.success('報告内容を保存しました')}
+                    />
+                  ) : reportContentObject ? (
+                    <div className="space-y-2 rounded-md border border-border p-4">
+                      {genericReportTitle ? (
+                        <p className="text-sm font-semibold text-foreground">
+                          {genericReportTitle}
+                        </p>
+                      ) : null}
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+                        {genericReportBody ??
+                          'この報告書は構造化セクションを持たないため、本文のみ共有します。'}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      共有可能な報告内容がありません。
+                    </p>
+                  )}
+                </section>
+
+                {/* RIGHT: 送付前チェック(4ガバナンス項目) */}
+                <section aria-label="送付前チェック" className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">送付前チェック</h3>
+                  <ul className="space-y-2">
+                    {PRE_SEND_CHECK_ITEMS.map((item) => (
+                      <li key={item.key}>
+                        <label className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-sm">
+                          <Checkbox
+                            checked={preSendChecks[item.key]}
+                            onCheckedChange={(value) =>
+                              setPreSendChecks((prev) => ({
+                                ...prev,
+                                [item.key]: Boolean(value),
+                              }))
+                            }
+                            className="mt-0.5"
+                            aria-label={item.label}
+                          />
+                          <span className="space-y-0.5">
+                            <span className="block font-medium text-foreground">{item.label}</span>
+                            <span className="block text-xs leading-5 text-muted-foreground">
+                              {item.description}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  {!allPreSendChecksDone ? (
+                    <p className="text-xs text-muted-foreground" role="note">
+                      4項目すべて確認すると一括送付できます。
+                    </p>
+                  ) : null}
+                  <Button
+                    className="w-full min-h-[44px] sm:min-h-11"
+                    onClick={() => handleBulkSend(shareTargets)}
+                    disabled={!canBulkSend}
+                  >
+                    <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+                    {bulkSendMutation.isPending
+                      ? '送付中...'
+                      : `一括送付（${selectedShareTargets.length}件）`}
+                  </Button>
+                </section>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Main + Sidebar layout */}
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.28fr)] 2xl:grid-cols-[minmax(0,1fr)_22rem]">

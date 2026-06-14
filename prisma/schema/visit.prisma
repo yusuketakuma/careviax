@@ -85,6 +85,7 @@ model VisitVehicleResource {
   max_stops                  Int                    @default(8)
   max_route_duration_minutes Int?
   available                  Boolean                @default(true)
+  next_inspection_date       DateTime?              @db.Date // 車検/点検期限（notes 正規表現依存を解消する専用カラム）
   notes                      String?
   created_at                 DateTime               @default(now())
   updated_at                 DateTime               @updatedAt

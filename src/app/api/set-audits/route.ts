@@ -14,6 +14,7 @@ import {
 } from '@/server/services/prescription-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import type { ScheduleStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
@@ -23,6 +24,9 @@ const approvedScopeSchema = z
   .record(z.string().regex(/^\d+-(?:morning|noon|evening|bedtime|prn)$/), z.boolean())
   .optional();
 
+// p0_15: 6項目チェックリスト(項目キー → 真偽)。3ペイン再構築の右ペインで記録する。
+const checklistSchema = z.record(z.string().min(1), z.boolean()).optional();
+
 const createSetAuditSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
   result: z.enum(['approved', 'partial_approved', 'rejected'], {
@@ -31,7 +35,22 @@ const createSetAuditSchema = z.object({
   approved_scope: approvedScopeSchema,
   reject_reason: z.string().optional(),
   audited_at: z.string().datetime().optional(),
+  // p0_15 セット監査 3ペイン: チェックリストと写真資産(セット前/セット後/設置予定)。
+  checklist: checklistSchema,
+  photo_asset_ids: z.array(z.string().min(1)).max(50).optional(),
 });
+
+// 監査OK(approved)に必須の6チェック項目。
+// SSOT: set-audit-content.helpers.ts SET_AUDIT_CHECKLIST_ITEMS（client 専用のため値を複製）。
+// クライアント側 gate だけでは要求改竄でバイパス可能なので、サーバでも完了を必須にする。
+const SET_AUDIT_REQUIRED_CHECKLIST_KEYS = [
+  'date_match',
+  'timing_match',
+  'quantity_match',
+  'no_discontinued',
+  'residual_usage_ok',
+  'cold_storage_separated',
+] as const;
 
 const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
   'planned',
@@ -109,7 +128,20 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { plan_id, result, approved_scope, reject_reason, audited_at } = parsed.data;
+    const { plan_id, result, approved_scope, reject_reason, audited_at, checklist, photo_asset_ids } =
+      parsed.data;
+
+    // 監査OK(3ペインUI)はサーバ側でもチェックリスト完了を必須にする（client gate のバイパス防止）。
+    // checklist を送らない旧UI(medication-sets-content)の承認は後方互換で従来どおり許可し、
+    // checklist を送る新フローでは空/部分チェックでの承認を拒否する。
+    if (result === 'approved' && checklist !== undefined) {
+      const allChecked = SET_AUDIT_REQUIRED_CHECKLIST_KEYS.every(
+        (key) => checklist[key] === true,
+      );
+      if (!allChecked) {
+        return validationError('監査OKには全6項目のチェックが必要です');
+      }
+    }
 
     const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
       const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
@@ -199,8 +231,25 @@ export const POST = withAuthContext(
             ? toPrismaJsonInput(effectiveApprovedScope)
             : undefined,
           reject_reason: reject_reason ?? null,
+          checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
+          photo_asset_ids: photo_asset_ids ?? [],
           audited_by: ctx.userId,
           audited_at: now,
+        },
+      });
+
+      // 監査ログ(audit-by-default): セット鑑査の判定・チェックリスト・写真資産を記録。
+      await createAuditLogEntry(tx, ctx, {
+        action: 'set_audit.create',
+        targetType: 'set_audit',
+        targetId: audit.id,
+        changes: {
+          plan_id,
+          cycle_id: plan.cycle_id,
+          result,
+          reject_reason: reject_reason ?? null,
+          checklist: checklist ?? null,
+          photo_asset_ids: photo_asset_ids ?? [],
         },
       });
 

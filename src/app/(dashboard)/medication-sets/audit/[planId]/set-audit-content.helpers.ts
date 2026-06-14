@@ -201,6 +201,124 @@ export function buildSetAuditSubmission(args: {
   };
 }
 
+// ── p0_15 セット監査 3ペイン再構築 ──
+
+/** 監査チェックの6項目(右ペイン)。キーは checklist Json に保存される。 */
+export const SET_AUDIT_CHECKLIST_ITEMS = [
+  { key: 'date_match', label: '日付が合っている' },
+  { key: 'timing_match', label: '服用時点が合っている' },
+  { key: 'quantity_match', label: '数量が合っている' },
+  { key: 'no_discontinued', label: '中止薬が入っていない' },
+  { key: 'residual_usage_ok', label: '残薬の使い方が合っている' },
+  { key: 'cold_storage_separated', label: '冷所品が分かれている' },
+] as const;
+
+export type SetAuditChecklistKey = (typeof SET_AUDIT_CHECKLIST_ITEMS)[number]['key'];
+
+/** 写真・実物確認(中央ペイン)のスロット定義。photo_asset_ids にまとめて保存する。 */
+export const SET_AUDIT_PHOTO_SLOTS = [
+  { key: 'before', label: 'セット前' },
+  { key: 'after', label: 'セット後' },
+  { key: 'placement', label: '設置予定' },
+] as const;
+
+export type SetAuditPhotoSlotKey = (typeof SET_AUDIT_PHOTO_SLOTS)[number]['key'];
+
+const SET_METHOD_LABELS: Record<string, string> = {
+  facility_calendar: 'お薬カレンダー',
+  four_times_daily: '4回／日(朝昼夕眠前)',
+  bedtime_only: '眠前のみ',
+  custom: 'カスタム',
+};
+
+export type SetInstructionPlan = {
+  set_method: string | null;
+  target_period_start: string | null;
+  target_period_end: string | null;
+  notes: string | null;
+  packaging_method_ref: { name: string | null } | null;
+};
+
+/** セット指示(左ペイン)の箇条書きを SetPlan から組み立てる。 */
+export function buildSetInstructionLines(plan: SetInstructionPlan | null): string[] {
+  if (!plan) return [];
+  const lines: string[] = [];
+
+  const methodLabel = plan.set_method ? (SET_METHOD_LABELS[plan.set_method] ?? plan.set_method) : null;
+  if (methodLabel) {
+    lines.push(`セット方法：${methodLabel}`);
+  }
+  if (plan.packaging_method_ref?.name) {
+    lines.push(`配薬方法：${plan.packaging_method_ref.name}`);
+  }
+  if (plan.target_period_start && plan.target_period_end) {
+    lines.push(`期間：${plan.target_period_start}〜${plan.target_period_end}`);
+  }
+  const notes = plan.notes?.trim();
+  if (notes) {
+    for (const note of notes.split('\n').map((line) => line.trim()).filter(Boolean)) {
+      lines.push(note);
+    }
+  }
+  return lines;
+}
+
+export type SetAuditPaneSubmission =
+  | {
+      kind: 'ready';
+      payload: {
+        result: 'approved' | 'rejected';
+        reject_reason?: string;
+        checklist: Record<string, boolean>;
+        photo_asset_ids: string[];
+      };
+    }
+  | { kind: 'incomplete'; message: string };
+
+/**
+ * 3ペイン(監査OK / 差し戻す)の送信ペイロードを組み立てる。
+ * 監査OK は6項目すべてチェック済みを要求。差し戻すは理由必須。
+ */
+export function buildSetAuditPaneSubmission(args: {
+  decision: 'approved' | 'rejected';
+  checklist: Record<string, boolean>;
+  photoAssetIds: string[];
+  rejectReason?: string;
+}): SetAuditPaneSubmission {
+  const checklist = Object.fromEntries(
+    SET_AUDIT_CHECKLIST_ITEMS.map((item) => [item.key, args.checklist[item.key] === true] as const),
+  );
+
+  if (args.decision === 'approved') {
+    const allChecked = SET_AUDIT_CHECKLIST_ITEMS.every((item) => checklist[item.key] === true);
+    if (!allChecked) {
+      return { kind: 'incomplete', message: '監査OKには全6項目のチェックが必要です' };
+    }
+    return {
+      kind: 'ready',
+      payload: {
+        result: 'approved',
+        checklist,
+        photo_asset_ids: args.photoAssetIds,
+      },
+    };
+  }
+
+  const rejectReason = args.rejectReason?.trim();
+  if (!rejectReason) {
+    return { kind: 'incomplete', message: '差し戻しには理由が必要です' };
+  }
+  return {
+    kind: 'ready',
+    payload: {
+      result: 'rejected',
+      reject_reason: rejectReason,
+      checklist,
+      photo_asset_ids: args.photoAssetIds,
+    },
+  };
+}
+
 export function buildSetAuditHydrationState(args: {
   allSlotKeys: string[];
   latestAudit: SetAuditSnapshot | null;

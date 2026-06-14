@@ -6,7 +6,10 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { communicationChannelSchema } from '@/lib/validations/communication-channel';
+import {
+  communicationChannelSchema,
+  DEFAULT_COMMUNICATION_CHANNEL,
+} from '@/lib/validations/communication-channel';
 import {
   optionalTracingReportStatusSchema,
   type TracingReportStatusValue,
@@ -67,12 +70,15 @@ const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
   acknowledged: [],
 };
 
+// チャネル未指定時は自動送信可能な既定チャネル（ph_os_share）にフォールバックする。
+// かつて存在した暗黙の 'fax' 既定（FAX ゲートウェイ未実装のため実際には送信されない
+// 幻のチャネル）は廃止した。FAX を選ぶ場合は手動送付の記録として明示指定が必要。
 function parseCommunicationChannel(value: unknown) {
-  if (value === undefined || value === null) return 'fax';
+  if (value === undefined || value === null) return DEFAULT_COMMUNICATION_CHANNEL;
   if (typeof value !== 'string') return null;
 
   const trimmed = value.trim();
-  if (trimmed.length === 0) return 'fax';
+  if (trimmed.length === 0) return DEFAULT_COMMUNICATION_CHANNEL;
 
   const parsed = communicationChannelSchema.safeParse(trimmed);
   return parsed.success ? parsed.data : null;

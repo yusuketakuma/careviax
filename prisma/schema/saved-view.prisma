@@ -1,0 +1,19 @@
+// 保存ビュー (p1_01): ユーザー別の名前付きフィルタ組合せを永続化し recall する。
+// org_id でテナント分離 (RLS)、user_id で所有者スコープ。is_shared で org 内共有。
+model SavedView {
+  id         String   @id @default(cuid())
+  org_id     String
+  user_id    String // 所有者 (User ID)
+  name       String // 表示名 例「今日の訪問・未確認のみ」
+  scope      String // 適用先リスト/画面: patients / schedules / notifications / reports など
+  filters    Json // 任意のフィルタ組合せ (画面側が解釈する不透明な構造)
+  sort       Json? // 任意の並び順設定
+  is_shared  Boolean  @default(false) // org 内で他メンバーにも見せる
+  sort_order Int      @default(0) // チップ表示順
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([org_id, user_id, scope, name])
+  @@index([org_id, user_id, scope])
+  @@index([org_id, scope, is_shared])
+}

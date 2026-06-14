@@ -71,6 +71,13 @@ const PROTECTED_ROUTE_PREFIXES = [
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function hasValidServerToServerApiKey(request: NextRequest) {
+  // SAFETY: proxy.ts runs in the Edge runtime, where the AWS SDK (and therefore
+  // the async Secrets Manager resolver in @/lib/config/secrets) is unavailable
+  // and secret resolution cannot be awaited. JOB_API_KEY is therefore read from
+  // process.env here. In Secrets-Manager-configured deployments the value is
+  // surfaced to the Edge runtime as an environment variable (Amplify env), and
+  // the Node-runtime job route (/api/jobs/*) additionally validates it via the
+  // getSecret-backed path. Do NOT introduce an async Secrets Manager call here.
   return (
     request.nextUrl.pathname.startsWith('/api/jobs/') &&
     Boolean(process.env.JOB_API_KEY) &&

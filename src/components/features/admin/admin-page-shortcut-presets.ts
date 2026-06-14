@@ -170,6 +170,14 @@ export function getAdminPerformanceShortcutLinks(): PageShortcutLink[] {
   ];
 }
 
+export function getAdminCapacityShortcutLinks(): PageShortcutLink[] {
+  return [
+    { href: '/admin/performance', label: 'パフォーマンス' },
+    { href: '/admin/realtime', label: 'リアルタイム監視' },
+    { href: '/schedules', label: 'スケジュール' },
+  ];
+}
+
 export function getAdminRealtimeShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/notifications', label: '通知一覧' },

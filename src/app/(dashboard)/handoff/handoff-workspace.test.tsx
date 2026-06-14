@@ -44,6 +44,11 @@ function buildItem(overrides: Partial<HandoffBoardItem>): HandoffBoardItem {
     deadline: null,
     progress_done: null,
     progress_total: null,
+    consult_status: null,
+    resolution_action: null,
+    resolution_note: null,
+    resolved_by: null,
+    resolved_at: null,
     direction: 'outgoing',
     ...overrides,
   };

@@ -1,224 +1,164 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import {
   CheckCircle2,
   XCircle,
-  Info,
+  ImagePlus,
   Loader2,
-  CalendarDays,
-  Package,
+  X,
 } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import {
   ReasonDialog,
   type ReasonSubmission,
 } from '@/components/features/workflow/reason-dialog';
 import {
-  buildSetAuditHydrationState,
-  buildSetAuditSubmission,
-  groupBatchesByDayAndSlot,
-  type DayGroup,
-  type SlotGroup,
+  buildSetAuditPaneSubmission,
+  buildSetInstructionLines,
+  SET_AUDIT_CHECKLIST_ITEMS,
+  SET_AUDIT_PHOTO_SLOTS,
+  type SetAuditChecklistKey,
+  type SetAuditPhotoSlotKey,
 } from './set-audit-content.helpers';
 
 // ── Types ──
 
-type SetBatch = {
+type SetPlanAuditDetail = {
   id: string;
-  plan_id: string;
-  line_id: string;
-  slot: string;
-  day_number: number;
-  quantity: number;
-  carry_type: string;
-  version: number;
-  line: {
-    id: string;
-    drug_name: string;
-    dose: string;
-    frequency: string;
-    unit: string | null;
-  };
-};
-
-type SetPlanAuditDetails = {
+  set_method: string | null;
+  target_period_start: string | null;
+  target_period_end: string | null;
+  notes: string | null;
+  packaging_method_ref: { name: string | null } | null;
   audits: Array<{
     id: string;
-    result: 'approved' | 'partial_approved' | 'rejected' | string;
-    approved_scope: Record<string, unknown> | null;
+    result: string;
     reject_reason: string | null;
+    checklist: Record<string, boolean> | null;
+    photo_asset_ids: string[] | null;
     audited_at: string;
   }>;
-  batches: Array<{
-    id: string;
-    updated_at: string;
-  }>;
+};
+
+type UploadedPhoto = {
+  id: string;
+  slot: SetAuditPhotoSlotKey;
+  fileName: string;
 };
 
 // ── Constants ──
 
-const CARRY_TYPE_LABELS: Record<string, string> = {
-  carry: '持参',
-  facility_deposit: '施設預け',
-  deferred: '後日対応',
-};
+const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 const REJECT_REASON_OPTIONS = [
   { code: 'drug_mismatch', label: '薬剤不一致' },
   { code: 'quantity_error', label: '数量誤り' },
-  { code: 'patient_change', label: '患者状態変化' },
-  { code: 'prescription_expired', label: '処方期限切れ' },
+  { code: 'timing_error', label: '服用時点誤り' },
+  { code: 'discontinued_included', label: '中止薬混入' },
   { code: 'other', label: 'その他' },
 ] as const;
 
-// ── Sub-components ──
-
-function SlotGroupCard({
-  slotGroup,
-  approvalState,
-}: {
-  slotGroup: SlotGroup<SetBatch>;
-  approvalState: boolean | null;
-}) {
-  return (
-    <div className="rounded-md border bg-card">
-      <div className="flex items-center gap-2 border-b bg-muted/20 px-3 py-2">
-        <Package className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        <span className="text-xs font-semibold">{slotGroup.slotLabel}</span>
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs ml-1">
-          一包化
-        </Badge>
-        <span className="ml-auto">
-          {approvalState === true && (
-            <span className="flex items-center gap-1 text-xs text-green-700">
-              <CheckCircle2 className="size-3.5" aria-hidden="true" /> 承認済
-            </span>
-          )}
-          {approvalState === false && (
-            <span className="flex items-center gap-1 text-xs text-red-700">
-              <XCircle className="size-3.5" aria-hidden="true" /> 差戻し
-            </span>
-          )}
-          {approvalState === null && (
-            <span className="text-xs text-muted-foreground">未鑑査</span>
-          )}
-        </span>
-      </div>
-      <ul className="divide-y">
-        {slotGroup.batches.map((batch) => (
-          <li key={batch.id} className="flex items-baseline justify-between px-3 py-2">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium leading-snug">{batch.line.drug_name}</p>
-              <p className="text-xs text-muted-foreground">
-                {batch.line.dose} / {batch.line.frequency}
-              </p>
-              {batch.carry_type !== 'carry' && (
-                <p className="text-xs text-muted-foreground">
-                  持参区分: {CARRY_TYPE_LABELS[batch.carry_type] ?? batch.carry_type}
-                </p>
-              )}
-            </div>
-            <span className="ml-4 shrink-0 tabular-nums text-sm font-semibold">
-              {batch.quantity}
-              {batch.line.unit ?? ''}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+function formatPeriodDate(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return format(parseISO(value), 'M/d');
+  } catch {
+    return value;
+  }
 }
 
-function DayCard({
-  day,
-  localApproval,
-  onApproveDay,
-  onRejectDay,
-  isPending,
+// ── Photo slot tile (center pane) ──
+
+function PhotoSlotTile({
+  label,
+  photos,
+  uploading,
+  disabled,
+  onPick,
+  onRemove,
 }: {
-  day: DayGroup<SetBatch>;
-  localApproval: Map<string, boolean | null>;
-  onApproveDay: (dayNumber: number) => void;
-  onRejectDay: (dayNumber: number) => void;
-  isPending: boolean;
+  label: string;
+  photos: UploadedPhoto[];
+  uploading: boolean;
+  disabled: boolean;
+  onPick: (file: File) => void;
+  onRemove: (id: string) => void;
 }) {
-  const slotKeys = day.slots.map((s) => `${day.dayNumber}-${s.slot}`);
-  const anyPending = slotKeys.some((k) => {
-    const state = localApproval.get(k);
-    return state === undefined || state === null;
-  });
-  const allApproved = slotKeys.every((k) => localApproval.get(k) === true);
-  const anyRejected = slotKeys.some((k) => localApproval.get(k) === false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <Card>
-      <CardHeader className="border-b py-3 px-4">
-        <div className="flex items-center gap-3">
-          <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
-          <CardTitle className="text-sm font-semibold">Day {day.dayNumber}</CardTitle>
-          {allApproved && !anyRejected && (
-            <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">
-              承認済
-            </Badge>
-          )}
-          {anyRejected && (
-            <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
-              差戻しあり
-            </Badge>
-          )}
-          {anyPending && !allApproved && (
-            <Badge variant="outline" className="text-xs">
-              未鑑査
-            </Badge>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 border-green-600 text-green-700 hover:bg-green-50 text-xs"
-              onClick={() => onApproveDay(day.dayNumber)}
-              disabled={isPending || allApproved}
-              aria-label={`Day ${day.dayNumber}を承認`}
+    <div className="flex min-h-[150px] flex-col rounded-lg border border-border bg-muted/20 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        {photos.length > 0 && (
+          <span className="text-xs text-muted-foreground">{photos.length}枚</span>
+        )}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={PHOTO_ACCEPT}
+        capture="environment"
+        disabled={disabled || uploading}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onPick(file);
+          event.target.value = '';
+        }}
+      />
+
+      {photos.length > 0 ? (
+        <ul className="mb-2 space-y-1">
+          {photos.map((photo) => (
+            <li
+              key={photo.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2 py-1.5"
             >
-              <CheckCircle2 className="mr-1 size-3.5" aria-hidden="true" />
-              承認
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 border-red-500 text-red-600 hover:bg-red-50 text-xs"
-              onClick={() => onRejectDay(day.dayNumber)}
-              disabled={isPending}
-              aria-label={`Day ${day.dayNumber}を差戻し`}
-            >
-              <XCircle className="mr-1 size-3.5" aria-hidden="true" />
-              差戻し
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 p-4">
-        {day.slots.map((slotGroup) => {
-          const key = `${day.dayNumber}-${slotGroup.slot}`;
-          const state = localApproval.has(key) ? (localApproval.get(key) ?? null) : null;
-          return (
-            <SlotGroupCard
-              key={key}
-              slotGroup={slotGroup}
-              approvalState={state}
-            />
-          );
-        })}
-      </CardContent>
-    </Card>
+              <span className="truncate text-xs text-foreground">{photo.fileName}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0"
+                disabled={disabled}
+                onClick={() => onRemove(photo.id)}
+                aria-label={`${photo.fileName} を削除`}
+              >
+                <X className="size-3.5" aria-hidden="true" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-auto w-full"
+        disabled={disabled || uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading ? (
+          <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <ImagePlus className="mr-1.5 size-3.5" aria-hidden="true" />
+        )}
+        写真を追加
+      </Button>
+    </div>
   );
 }
 
@@ -228,28 +168,17 @@ export function SetAuditContent({ planId }: { planId: string }) {
   const queryClient = useQueryClient();
   const orgId = useOrgId();
 
-  // local slot-level approval state: key = `${dayNumber}-${slot}`
-  const [draftApproval, setDraftApproval] = useState<Map<string, boolean | null> | null>(null);
-  const [draftRejectReasonsByDay, setDraftRejectReasonsByDay] = useState<Map<number, string> | null>(null);
-  const [isAuditSaved, setIsAuditSaved] = useState(false);
-
-  // reject dialog state
+  const [checklist, setChecklist] = useState<Record<SetAuditChecklistKey, boolean>>(
+    () =>
+      Object.fromEntries(SET_AUDIT_CHECKLIST_ITEMS.map((item) => [item.key, false])) as Record<
+        SetAuditChecklistKey,
+        boolean
+      >,
+  );
+  const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
+  const [uploadingSlot, setUploadingSlot] = useState<SetAuditPhotoSlotKey | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [pendingRejectDayNumber, setPendingRejectDayNumber] = useState<number | null>(null);
-
-  const { data, isLoading, isError } = useRealtimeQuery({
-    queryKey: ['set-batches', planId],
-    queryFn: async () => {
-      const res = await fetch(`/api/set-batches?plan_id=${planId}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('セットバッチの取得に失敗しました');
-      const json = (await res.json()) as { data: SetBatch[] };
-      return json.data;
-    },
-    enabled: Boolean(planId && orgId),
-    invalidateOn: ['cycle_transition', 'workflow_refresh'],
-  });
+  const [isSaved, setIsSaved] = useState(false);
 
   const planQuery = useRealtimeQuery({
     queryKey: ['set-plan-audit', planId],
@@ -258,7 +187,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('セットプランの取得に失敗しました');
-      const json = (await res.json()) as { data: SetPlanAuditDetails };
+      const json = (await res.json()) as { data: SetPlanAuditDetail };
       return json.data;
     },
     enabled: Boolean(planId && orgId),
@@ -267,15 +196,15 @@ export function SetAuditContent({ planId }: { planId: string }) {
 
   const auditMutation = useMutation({
     mutationFn: async (payload: {
-      plan_id: string;
-      result: 'approved' | 'partial_approved' | 'rejected';
-      approved_scope?: Record<string, unknown>;
+      result: 'approved' | 'rejected';
       reject_reason?: string;
+      checklist: Record<string, boolean>;
+      photo_asset_ids: string[];
     }) => {
       const res = await fetch('/api/set-audits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ plan_id: planId, ...payload }),
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
@@ -284,146 +213,118 @@ export function SetAuditContent({ planId }: { planId: string }) {
       return res.json();
     },
     onSuccess: () => {
-      setIsAuditSaved(true);
-      queryClient.invalidateQueries({ queryKey: ['set-batches', planId] });
+      setIsSaved(true);
       queryClient.invalidateQueries({ queryKey: ['set-plan-audit', planId] });
     },
   });
 
-  const rawBatches = data ?? [];
-  const days = groupBatchesByDayAndSlot(rawBatches);
-
-  // Summary counts at slot level
-  const allSlotKeys = days.flatMap((day) =>
-    day.slots.map((s) => `${day.dayNumber}-${s.slot}`)
+  const plan = planQuery.data ?? null;
+  const instructionLines = buildSetInstructionLines(
+    plan
+      ? {
+          set_method: plan.set_method,
+          target_period_start: formatPeriodDate(plan.target_period_start),
+          target_period_end: formatPeriodDate(plan.target_period_end),
+          notes: plan.notes,
+          packaging_method_ref: plan.packaging_method_ref,
+        }
+      : null,
   );
-  const latestAudit = planQuery.data?.audits[0] ?? null;
-  const latestBatchUpdatedAt =
-    planQuery.data?.batches.reduce<string | null>((latest, batch) => {
-      return !latest || batch.updated_at > latest ? batch.updated_at : latest;
-    }, null) ?? null;
-  const allowHydration =
-    !latestAudit ||
-    !latestBatchUpdatedAt ||
-    latestAudit.audited_at >= latestBatchUpdatedAt;
-  const hydratedAuditState = buildSetAuditHydrationState({
-    allSlotKeys,
-    latestAudit,
-    allowHydration,
-  });
-  const localApproval = draftApproval ?? hydratedAuditState.localApproval;
-  const rejectReasonsByDay =
-    draftRejectReasonsByDay ?? hydratedAuditState.rejectReasonsByDay;
-  const approvedCount = allSlotKeys.filter((k) => localApproval.get(k) === true).length;
-  const rejectedCount = allSlotKeys.filter((k) => localApproval.get(k) === false).length;
-  const pendingCount = allSlotKeys.length - approvedCount - rejectedCount;
 
-  // Approve all slots in a day
-  function handleApproveDay(dayNumber: number) {
-    const day = days.find((d) => d.dayNumber === dayNumber);
-    if (!day) return;
+  const isPending = auditMutation.isPending || isSaved;
 
-    const keys = day.slots.map((s) => `${dayNumber}-${s.slot}`);
-    setDraftApproval((prev) => {
-      const next = new Map(prev ?? localApproval);
-      for (const k of keys) next.set(k, true);
-      return next;
-    });
-    setDraftRejectReasonsByDay((prev) => {
-      const next = new Map(prev ?? rejectReasonsByDay);
-      next.delete(dayNumber);
-      return next;
-    });
-    toast.success(`Day ${dayNumber} を承認候補としてマークしました`);
-  }
+  // ── Photo upload: presigned-upload(purpose=set-photo) → PUT → complete ──
+  async function uploadPhoto(slot: SetAuditPhotoSlotKey, file: File) {
+    setUploadingSlot(slot);
+    try {
+      const presignRes = await fetch('/api/files/presigned-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          purpose: 'set-photo',
+          file_name: file.name,
+          mime_type: file.type,
+          size_bytes: file.size,
+        }),
+      });
+      const presignJson = await presignRes.json().catch(() => null);
+      if (!presignRes.ok) {
+        throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
+      }
 
-  // Open reject dialog for a day
-  function handleRejectDayOpen(dayNumber: number) {
-    setPendingRejectDayNumber(dayNumber);
-    setRejectDialogOpen(true);
-  }
+      const uploadRes = await fetch(presignJson.data.uploadUrl, {
+        method: 'PUT',
+        headers: presignJson.data.headers,
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
 
-  // Confirm reject for a day
-  function handleRejectConfirm({ label, note }: ReasonSubmission) {
-    if (pendingRejectDayNumber === null) return;
-    if (isAuditSaved) {
-      toast.error('監査は保存済みのため差戻しできません');
-      return;
+      const completeRes = await fetch('/api/files/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          file_id: presignJson.data.id,
+          etag: uploadRes.headers.get('etag') ?? undefined,
+        }),
+      });
+      if (!completeRes.ok) throw new Error('写真の登録に失敗しました');
+
+      setPhotos((prev) => [
+        ...prev,
+        { id: presignJson.data.id as string, slot, fileName: file.name },
+      ]);
+      toast.success('写真を追加しました');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '写真の追加に失敗しました');
+    } finally {
+      setUploadingSlot(null);
     }
-
-    const day = days.find((d) => d.dayNumber === pendingRejectDayNumber);
-    if (!day) return;
-
-    const keys = day.slots.map((s) => `${pendingRejectDayNumber}-${s.slot}`);
-    setDraftApproval((prev) => {
-      const next = new Map(prev ?? localApproval);
-      for (const k of keys) next.set(k, false);
-      return next;
-    });
-
-    const rejectText = note ? `${label}: ${note}` : label;
-    setDraftRejectReasonsByDay((prev) => {
-      const next = new Map(prev ?? rejectReasonsByDay);
-      next.set(pendingRejectDayNumber, rejectText);
-      return next;
-    });
-    toast.success(`Day ${pendingRejectDayNumber} を差戻し候補としてマークしました`);
-
-    setRejectDialogOpen(false);
-    setPendingRejectDayNumber(null);
   }
 
-  // Approve all pending days
-  function handleApproveAll() {
-    if (allSlotKeys.length === 0) {
-      toast.warning('セットバッチがありません');
-      return;
-    }
-
-    const allKeys = allSlotKeys;
-    setDraftApproval((prev) => {
-      const next = new Map(prev ?? localApproval);
-      for (const k of allKeys) next.set(k, true);
-      return next;
-    });
-    setDraftRejectReasonsByDay(new Map());
-    toast.success('全スロットを承認候補としてマークしました。保存して確定してください。');
+  function handleRemovePhoto(id: string) {
+    setPhotos((prev) => prev.filter((photo) => photo.id !== id));
   }
 
-  function handleSubmitAudit() {
-    const submission = buildSetAuditSubmission({
-      allSlotKeys,
-      localApproval,
-      rejectReasonsByDay,
-    });
+  function toggleChecklist(key: SetAuditChecklistKey) {
+    setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
-    if (submission.kind === 'empty') {
-      toast.warning(submission.message);
-      return;
-    }
-    if (submission.kind === 'pending') {
+  function handleApprove() {
+    const submission = buildSetAuditPaneSubmission({
+      decision: 'approved',
+      checklist,
+      photoAssetIds: photos.map((photo) => photo.id),
+    });
+    if (submission.kind === 'incomplete') {
       toast.error(submission.message);
       return;
     }
-
-    auditMutation.mutate(
-      { plan_id: planId, ...submission.payload },
-      {
-        onSuccess: () => {
-          const label =
-            submission.payload.result === 'approved'
-              ? '全承認'
-              : submission.payload.result === 'partial_approved'
-                ? '部分承認'
-                : '差戻し';
-          toast.success(`セット鑑査を${label}で保存しました`);
-        },
-        onError: (err) => toast.error(err.message),
-      }
-    );
+    auditMutation.mutate(submission.payload, {
+      onSuccess: () => toast.success('セット鑑査を監査OKで保存しました'),
+      onError: (error) => toast.error(error.message),
+    });
   }
 
-  if (!orgId || isLoading || planQuery.isLoading) {
+  function handleRejectConfirm({ label, note }: ReasonSubmission) {
+    const rejectReason = note ? `${label}: ${note}` : label;
+    const submission = buildSetAuditPaneSubmission({
+      decision: 'rejected',
+      checklist,
+      photoAssetIds: photos.map((photo) => photo.id),
+      rejectReason,
+    });
+    if (submission.kind === 'incomplete') {
+      toast.error(submission.message);
+      return;
+    }
+    auditMutation.mutate(submission.payload, {
+      onSuccess: () => toast.success('セット鑑査を差し戻しで保存しました'),
+      onError: (error) => toast.error(error.message),
+    });
+    setRejectDialogOpen(false);
+  }
+
+  if (!orgId || planQuery.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -432,115 +333,130 @@ export function SetAuditContent({ planId }: { planId: string }) {
     );
   }
 
-  if (isError || planQuery.isError) {
+  if (planQuery.isError) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-        セットバッチの取得に失敗しました。ページを再読み込みしてください。
+        セットプランの取得に失敗しました。ページを再読み込みしてください。
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      {/* Plan info banner */}
-      <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <div>
-          <p className="font-medium">セットプラン ID: {planId}</p>
-          <p className="mt-0.5 text-blue-700">
-            {rawBatches.length > 0
-              ? `${days.length}日分 / ${rawBatches.length}件のバッチが登録されています`
-              : 'バッチが登録されていません'}
-          </p>
-        </div>
-      </div>
-
-      {/* Summary badges */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm text-muted-foreground">未鑑査:</span>
-        <Badge variant="outline">{pendingCount}スロット</Badge>
-        <span className="text-sm text-muted-foreground">承認:</span>
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-          {approvedCount}スロット
-        </Badge>
-        <span className="text-sm text-muted-foreground">差戻し:</span>
-        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
-          {rejectedCount}スロット
-        </Badge>
-        {isAuditSaved && (
-          <Badge variant="secondary">保存済み</Badge>
-        )}
-      </div>
-
-      {isAuditSaved && (
+    <div className="space-y-4">
+      {isSaved && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           セット鑑査結果は保存済みです。この画面からの再送信は無効化しました。
         </div>
       )}
 
-      {/* Global action buttons */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          onClick={handleApproveAll}
-          disabled={allSlotKeys.length === 0 || auditMutation.isPending || isAuditSaved}
-          className="bg-green-700 text-white hover:bg-green-800"
-        >
-          <CheckCircle2 className="mr-1.5 size-3.5" aria-hidden="true" />
-          全承認
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleSubmitAudit}
-          disabled={allSlotKeys.length === 0 || auditMutation.isPending || isAuditSaved}
-        >
-          {approvedCount === allSlotKeys.length
-            ? '承認を保存'
-            : approvedCount > 0 && rejectedCount > 0
-              ? '部分承認を保存'
-              : rejectedCount === allSlotKeys.length && rejectedCount > 0
-                ? '差戻しを保存'
-                : '判定を保存'}
-        </Button>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.1fr)]">
+        {/* LEFT: セット指示 */}
+        <Card>
+          <CardHeader className="border-b py-3">
+            <CardTitle className="text-base font-semibold">セット指示</CardTitle>
+          </CardHeader>
+          <CardContent className="py-4">
+            {instructionLines.length > 0 ? (
+              <ul className="space-y-3">
+                {instructionLines.map((line, index) => (
+                  <li key={index} className="text-sm leading-relaxed text-foreground">
+                    ・{line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">セット指示は登録されていません。</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* CENTER: 写真・実物確認 */}
+        <Card>
+          <CardHeader className="border-b py-3">
+            <CardTitle className="text-base font-semibold">写真・実物確認</CardTitle>
+          </CardHeader>
+          <CardContent className="py-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SET_AUDIT_PHOTO_SLOTS.map((slot) => (
+                <PhotoSlotTile
+                  key={slot.key}
+                  label={slot.label}
+                  photos={photos.filter((photo) => photo.slot === slot.key)}
+                  uploading={uploadingSlot === slot.key}
+                  disabled={isPending}
+                  onPick={(file) => void uploadPhoto(slot.key, file)}
+                  onRemove={handleRemovePhoto}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* RIGHT: 監査チェック */}
+        <Card>
+          <CardHeader className="border-b py-3">
+            <CardTitle className="text-base font-semibold">監査チェック</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5 py-4">
+            <ul className="space-y-3">
+              {SET_AUDIT_CHECKLIST_ITEMS.map((item) => (
+                <li key={item.key} className="flex items-center gap-2.5">
+                  <Checkbox
+                    id={`set-audit-check-${item.key}`}
+                    checked={checklist[item.key]}
+                    disabled={isPending}
+                    onCheckedChange={() => toggleChecklist(item.key)}
+                  />
+                  <Label
+                    htmlFor={`set-audit-check-${item.key}`}
+                    className={cn(
+                      'text-sm font-normal leading-snug',
+                      isPending ? 'text-muted-foreground' : 'cursor-pointer text-foreground',
+                    )}
+                  >
+                    {item.label}
+                  </Label>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                className="flex-1 bg-green-700 text-white hover:bg-green-800"
+                disabled={isPending}
+                onClick={handleApprove}
+              >
+                <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+                監査OK
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 border-red-500 text-red-600 hover:bg-red-50"
+                disabled={isPending}
+                onClick={() => setRejectDialogOpen(true)}
+              >
+                <XCircle className="mr-1.5 size-4" aria-hidden="true" />
+                差し戻す
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              差し戻しの理由は「差し戻す」を押すと記録できます（必要な時だけ）。
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
-      <Separator />
-
-      {/* Day cards */}
-      {days.length === 0 ? (
-        <div className="rounded-md border border-muted bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-          バッチが登録されていません。セット計画編集から自動生成してください。
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {days.map((day) => (
-            <DayCard
-              key={day.dayNumber}
-              day={day}
-              localApproval={localApproval}
-              onApproveDay={handleApproveDay}
-              onRejectDay={handleRejectDayOpen}
-              isPending={auditMutation.isPending || isAuditSaved}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Reject dialog — p0_36 共通理由モーダル */}
+      {/* 差し戻し理由 — p0_36 共通理由モーダル */}
       <ReasonDialog
         open={rejectDialogOpen}
-        onOpenChange={(open) => {
-          setRejectDialogOpen(open);
-          if (!open) setPendingRejectDayNumber(null);
-        }}
-        title={
-          pendingRejectDayNumber !== null
-            ? `差し戻し理由を入力 — Day ${pendingRejectDayNumber}`
-            : '差し戻し理由を入力'
-        }
+        onOpenChange={setRejectDialogOpen}
+        title="差し戻し理由を入力"
         options={REJECT_REASON_OPTIONS}
         warning="差戻し後は再計画が必要です。"
+        pending={auditMutation.isPending}
         onSubmit={handleRejectConfirm}
       />
     </div>
