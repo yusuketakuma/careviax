@@ -6,7 +6,11 @@ import { z } from 'zod';
 
 const generateFromVisitSchema = z.object({
   visit_record_id: z.string().min(1, '訪問記録IDは必須です'),
-  report_type: z.enum(['physician_report', 'care_manager_report']).optional(),
+  // p1_04: 主治医/ケアマネに加え、訪問看護(nurse_share)/施設(facility_handoff)の
+  // 宛先別下書きも明示要求で生成できる(report-generator が4宛先を射影する)。
+  report_type: z
+    .enum(['physician_report', 'care_manager_report', 'nurse_share', 'facility_handoff'])
+    .optional(),
 });
 
 export const POST = withAuthContext(
