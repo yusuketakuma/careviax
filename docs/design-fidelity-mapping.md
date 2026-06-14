@@ -120,8 +120,8 @@ pnpm test:e2e:local -- ui-design-fidelity
 | 03  | p1_03_ai_visit_summary_review        | visit-brief(訪問前まとめ)          | 改修 | 未着手 | 既存 visit-brief 接続 |
 | 04  | p1_04_ai_report_draft                | `/reports`(AI 下書き)              | 改修 | 未着手 | |
 | 05  | p1_05_interprofessional_portal       | `/shared/[token]`(外部共有)        | 改修 | 未着手 | |
-| 06  | p1_06_management_analytics_detail    | `/admin/analytics`                   | 改修 | 未着手 | |
-| 07  | p1_07_inventory_linkage_prediction   | pharmacy-drug-stocks 系              | 改修 | 未着手 | |
+| 06  | p1_06_management_analytics_detail    | `/admin/operations-insights`         | 改修 | 実装済 | 在宅業務の動きを見る(月次訪問+工程所要+改善ヒント)。nav=分析・監視 |
+| 07  | p1_07_inventory_linkage_prediction   | `/admin/inventory-forecast`          | 改修 | 実装済 | 在庫と定期処方の予測(来週必要薬+影響患者)。nav=分析・監視 |
 | 08  | p1_08_facility_criteria_dashboard    | `/admin/facility-standards`          | 改修 | 未着手 | |
 | 09  | p1_09_incident_hiyarihatto           | `/admin/incidents`                   | 新規 | 実装済み | IncidentReport モデル+API 新設 |
 | 10  | p1_10_report_template_editor         | `/admin/document-templates`          | 改修 | 未着手 | |

@@ -58,7 +58,9 @@ export const GET = withAuthContext(
     return success({ data });
   },
   {
-    permission: 'canDispense',
+    // コメント閲覧はカード参加（多職種連携）であり、特権的な操作ではない。
+    // 事務（clerk）も参加者として表示・参加するため、組織メンバーレベルの canViewDashboard でゲートする。
+    permission: 'canViewDashboard',
     message: 'コメントの閲覧権限がありません',
   },
 );
@@ -111,7 +113,8 @@ export const POST = withAuthContext(
     return success({ data: created }, 201);
   },
   {
-    permission: 'canDispense',
+    // コメント投稿も多職種連携の参加であり、組織メンバーレベルの canViewDashboard でゲートする。
+    permission: 'canViewDashboard',
     message: 'コメントの投稿権限がありません',
   },
 );

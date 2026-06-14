@@ -984,7 +984,8 @@
 
 ### p1_06_management_analytics_detail
 
-- 種別: 改修 / 工数: M / 対応ルート: `/admin/analytics`
+- 状態: 実装済(`/admin/operations-insights`、見出し「在宅業務の動きを見る」)。nav=分析・監視グループに登録。BFF=`/api/admin/operations-insights`、集計純関数=`src/lib/analytics/operations-insights.ts`。以下は実装前ギャップ調査の参照。
+- 種別: 改修 / 工数: M / 対応ルート: `/admin/operations-insights`(旧記載 `/admin/analytics` から訂正)
 - デザイン: タイトル「在宅業務の動きを見る」。上段にカード 2 枚: 「月ごとの訪問件数」(1〜5月の縦棒グラフ、120→188 件、バーごとに多色)と「時間がかかっている工程」(入力42/監査65/セット88/訪問120/報告70 の縦棒グラフ)。下段に「改善のヒント」カードとして箇条書き 4 件(セット監査が木曜午前に集中/報告書送付待ちが増えている/事務で解消できる未設定が12件/緊急対応余力は平均2.8件)。サイドバーは「レポート」がアクティブ。右パネル無し。
 - 現状: /admin/analytics(analytics-content.tsx)は請求分析(/api/billing-evidence/analytics)+ 地域資源マップで、月次推移は table 描画でありデザインの内容とほぼ別物。/admin/metrics は処方集中率等の KPI カード(月次推移なし)。一方 /capacity(src/phos/ui/capacity/CapacityDashboard.tsx)には「工程別作業分数」見出し + recharts の Bar チャート + ボトルネック表示が既にあり、「時間がかかっている工程」に最も近い。recharts@3.8.1 は導入済み。
 - UI ギャップ:
@@ -1003,7 +1004,8 @@
 
 ### p1_07_inventory_linkage_prediction
 
-- 種別: 新規 / 工数: L / 対応ルート: `(未確定/新規)`
+- 状態: 実装済(`/admin/inventory-forecast`、見出し「在庫と定期処方の予測」)。nav=分析・監視グループに登録。BFF=`/api/admin/inventory-forecast`、集計純関数=`src/lib/analytics/inventory-forecast.ts`。以下は実装前ギャップ調査の参照。
+- 種別: 新規 / 工数: L / 対応ルート: `/admin/inventory-forecast`(旧記載 `(未確定/新規)` から確定)
 - デザイン: 2 カラム構成。左カード「来週必要になりそうな薬」はテーブル(列: 薬剤/必要見込み/在庫/対応)で、アムロジピン 560錠・在庫320錠=発注候補、酸化Mg 900錠・1200錠=余裕あり、トラセミド 280錠・40錠=要発注の 3 行。右カード「影響する患者さん」は患者カード 4 件(田中一郎/佐藤花子/鈴木次郎/施設A 5名、いずれも「次回処方予定あり」)。サイドバーは「レポート」がアクティブ。右パネル無し。
 - 現状: 在庫予測画面は存在しない。在庫データは PharmacyDrugStock(stock_qty / reorder_point / last_dispensed_at)として保持され、/api/pharmacy-drug-stocks(site_id 必須)+ bulk / usage-mismatch / review / safety-follow-up のサブ API があり、UI は /admin/drug-masters の採用薬管理に組み込まれている。需要側の材料は workflow API の refill_upcoming(next_dispense_date / remaining_count)に次回調剤予定として存在するが、薬剤別必要数量の集計・在庫突合は未実装。
 - UI ギャップ:
@@ -1215,7 +1217,7 @@
 - 配色のガイドライン衝突が 2 件: p1_06 のグラフ多色バー(ブルー基調原則と衝突)と p1_04 の緑「薬剤師確認済みにする」(主操作青 1 つ原則と衝突。承認=緑のセマンティクスとも読める)。実装前にデザイン PNG 踏襲かガイドライン優先かの判断が必要
 - p1_01 デザイン内の文言「ブロッカーあり」(管理者用カード)は文言ルールにより実装時は「止まっている理由あり」へ置換する
 - チャートは recharts@3.8.1 導入済みで、src/phos/ui/capacity/CapacityDashboard.tsx に Bar チャートの実装例(工程別作業分数)が既にある。p1_06 はこのパターンを踏襲すれば新規依存なし
-- サイドバーの情報設計: p1_01(保存ビュー)・p1_06/p1_07(レポート配下の新画面)はどのメニュー項目にぶら下げるかが未確定。design-screen-map.ts への route 登録前にナビゲーション位置を決める必要がある
+- サイドバーの情報設計: p1_06(`/admin/operations-insights`)・p1_07(`/admin/inventory-forecast`)は管理シェルの「分析・監視」グループ(`navigation-config.ts` の `SIDEBAR_ADMIN_NAV_GROUPS`)に登録済み。デザインPNGの「レポート」アクティブ表示はメインの14項目サイドバー(`SIDEBAR_MAIN_NAV_GROUPS`)が `navigation-config.test.ts` で凍結されており独立レポート項目を持たないため、`/admin` 配下=「マスター」項目のアクティブ範囲で到達する設計。p1_01(保存ビュー)のメニュー位置のみ未確定
 - 保存ビュー(p1_01)はサーバー保存モデルが全く無い一方、URL クエリでフィルタ状態を持ち回るパターン(workflow-query-state.ts / reports-query-state.ts / schedule-proposals の ?preset=)が複数画面で確立済み。保存ビューの criteria は既存 URL クエリ規約をそのまま JSON 化する設計にすると各一覧画面への適用が容易
 - src/app/(dashboard)/issues が空ディレクトリで /issues は 404。design-screen-map.ts では p0_32 が route '/issues' にマップされており撮影が失敗するはず。p1_09(ヒヤリハット)実装時に正ルート(/incidents 等)を決め、p0_32 のマッピングと併せて更新すべき
 - p1_08(OK/不足/確認中)と p1_14(強く表示/標準)で「項目名+状態チップの行リスト」UI が共通。設定/チェックリスト向けの共通部品(StatusToggleRow 的なもの)に切り出す候補

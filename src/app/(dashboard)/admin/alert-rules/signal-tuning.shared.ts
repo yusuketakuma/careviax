@@ -4,12 +4,15 @@
  * 項目別トグルへ射影し、保存時の差分(作成/有効化/無効化)を計算する。
  */
 
+// 表示ラベルは p1_14 デザインの左リスト/カードタグに合わせる。
+// alertType は drug-alert-rules API の許可値(renal_dose / pim_elderly /
+// high_risk / duplicate / interaction)へ射影する(新規アラート種別は追加しない)。
 export const SIGNAL_TUNING_ITEMS = [
   { alertType: 'renal_dose', label: '腎機能に注意', tagLabel: '腎機能注意', tone: 'red' },
-  { alertType: 'pim_elderly', label: '高齢者の注意薬', tagLabel: '高齢者注意', tone: 'amber' },
+  { alertType: 'pim_elderly', label: '転倒リスク', tagLabel: '転倒注意', tone: 'amber' },
+  { alertType: 'high_risk', label: '低血糖リスク', tagLabel: '低血糖', tone: 'red' },
+  { alertType: 'duplicate', label: '残薬多め', tagLabel: '残薬', tone: 'blue' },
   { alertType: 'interaction', label: '飲み合わせ', tagLabel: '飲み合わせ', tone: 'blue' },
-  { alertType: 'high_risk', label: 'ハイリスク薬', tagLabel: 'ハイリスク', tone: 'red' },
-  { alertType: 'duplicate', label: '重複投薬', tagLabel: '重複', tone: 'amber' },
 ] as const;
 
 export type SignalTuningAlertType = (typeof SIGNAL_TUNING_ITEMS)[number]['alertType'];

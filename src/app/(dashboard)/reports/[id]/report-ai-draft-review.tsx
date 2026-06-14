@@ -6,6 +6,13 @@ import type {
   CareManagerReportContent,
   PhysicianReportContent,
 } from '@/types/care-report-content';
+import type { AudienceReportContent } from '@/server/services/report-templates';
+
+/** p1_04 の宛先別下書きコンテンツ（医師/ケアマネ/訪問看護/施設）。 */
+export type AiDraftContent =
+  | PhysicianReportContent
+  | CareManagerReportContent
+  | AudienceReportContent;
 
 /**
  * p1_04「報告書の下書き」: AI 下書き(自動生成された報告内容)を
@@ -26,10 +33,20 @@ function joinNonEmpty(parts: Array<string | null | undefined>, separator = ' / '
   return filled.join(separator);
 }
 
-/** content(医師向け/ケアマネ向け)を p1_04 の5見出しへ射影する。 */
-export function buildAiDraftSections(
-  content: PhysicianReportContent | CareManagerReportContent | null,
-): AiDraftSection[] {
+/** content(医師向け/ケアマネ向け/訪問看護向け/施設向け)を p1_04 の5見出しへ射影する。 */
+export function buildAiDraftSections(content: AiDraftContent | null): AiDraftSection[] {
+  // 訪問看護向け・施設向け: 既に5見出しへ射影済みのコンテンツをそのまま採用する。
+  const audience = content && 'report_audience' in content ? content : null;
+  if (audience) {
+    return [
+      { key: 'summary', title: '今日の要点', body: audience.summary.trim() || EMPTY_BODY },
+      { key: 'medication', title: '服薬状況', body: audience.medication.trim() || EMPTY_BODY },
+      { key: 'residual', title: '残薬', body: audience.residual.trim() || EMPTY_BODY },
+      { key: 'evaluation', title: '薬剤師の評価', body: audience.evaluation.trim() || EMPTY_BODY },
+      { key: 'requests', title: 'お願いしたいこと', body: audience.requests.trim() || EMPTY_BODY },
+    ];
+  }
+
   const physician = content && 'medication_management' in content ? content : null;
   const careManager = content && 'medication_management_summary' in content ? content : null;
 
@@ -65,15 +82,17 @@ export function buildAiDraftSections(
   ];
 }
 
+// key は CareReport.report_type(Prisma enum ReportType)に対応させ、
+// 読み込んだ報告書の report_type と一致したタブをアクティブ表示する。
 export const AI_DRAFT_AUDIENCES = [
   { key: 'physician_report', label: '医師向け' },
   { key: 'care_manager_report', label: 'ケアマネ向け' },
-  { key: 'nurse_report', label: '訪問看護向け' },
-  { key: 'facility_report', label: '施設向け' },
+  { key: 'nurse_share', label: '訪問看護向け' },
+  { key: 'facility_handoff', label: '施設向け' },
 ] as const;
 
 type ReportAiDraftReviewProps = {
-  content: PhysicianReportContent | CareManagerReportContent | null;
+  content: AiDraftContent | null;
   reportType: string;
   confirmPending: boolean;
   onConfirm: () => void;

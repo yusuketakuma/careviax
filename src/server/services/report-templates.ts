@@ -188,6 +188,30 @@ export type PhysicianReportContext = {
   conferenceContext?: VisitWorkflowConferenceContext[];
 };
 
+// ─── 宛先別 5見出し射影コンテンツ型（訪問看護向け・施設向け） ─────────────────
+// p1_04「報告書の下書き」の5見出し（今日の要点/服薬状況/残薬/薬剤師の評価/お願い
+// したいこと）に直接対応する決定論的射影。LLM は使用しない。
+// 医師向け(PhysicianReportContent)・ケアマネ向け(CareManagerReportContent) と
+// 区別するため report_audience 判別子を持つ。
+
+export type AudienceReportAudience = 'visiting_nurse' | 'facility';
+
+export type AudienceReportContent = {
+  report_audience: AudienceReportAudience;
+  patient: { name: string; birth_date: string };
+  report_date: string;
+  visit_date: string;
+  pharmacist_name: string;
+  /** 5見出し本文（design 準拠） */
+  summary: string;
+  medication: string;
+  residual: string;
+  evaluation: string;
+  requests: string;
+  warnings: string[];
+  baseline_context?: BaselineContext;
+};
+
 // ─── BuildCareManagerReport の入力型 ─────────────────────────────────────────
 
 export type CareManagerReportContext = {
@@ -215,6 +239,35 @@ export type CareManagerReportContext = {
     name: string;
     organization_name?: string | null;
   };
+  pharmacistName: string;
+  /** intake から抽出したベースライン情報（オプション） */
+  intake?: HomeVisitIntake;
+  conferenceContext?: VisitWorkflowConferenceContext[];
+};
+
+// ─── 宛先別射影ビルダーの入力型（訪問看護向け・施設向けで共通） ────────────────
+
+export type AudienceReportContext = {
+  patient: {
+    name: string;
+    birth_date: Date | string;
+  };
+  visitRecord: {
+    visited_at: Date | string;
+  };
+  structuredSoap: StructuredSoap;
+  prescriptionLines: Array<{
+    drug_name: string;
+    dose: string;
+    frequency: string;
+    days_supply: number;
+  }>;
+  residualMedications: Array<{
+    drug_name: string;
+    remaining_quantity: number;
+    excess_days: number;
+    is_reduction_target: boolean;
+  }>;
   pharmacistName: string;
   /** intake から抽出したベースライン情報（オプション） */
   intake?: HomeVisitIntake;
@@ -466,6 +519,224 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
       date: plan.next_visit_date ?? undefined,
       followup_items: followupItems,
     },
+    warnings,
+    baseline_context: intake ? buildBaselineContext(intake) : undefined,
+  };
+}
+
+// ─── 宛先別 5見出し射影の共通ヘルパー ─────────────────────────────────────────
+
+/** null/空文字を除いて区切り文字で結合する。 */
+function joinNonEmptyText(parts: Array<string | null | undefined>, separator: string): string {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => !!part)
+    .join(separator);
+}
+
+/** structured_soap → 5見出しの共通基盤を作る（訪問看護向け・施設向けで共有）。 */
+function buildAudienceBase(ctx: AudienceReportContext) {
+  const { structuredSoap, residualMedications } = ctx;
+  const { subjective, objective, assessment, plan } = structuredSoap;
+
+  // 今日の要点: 薬学的評価サマリー（問題点）+ 患者の訴え
+  const summary =
+    joinNonEmptyText([buildAssessmentText(assessment), subjective.free_text], '。') || '記載なし';
+
+  // 服薬状況: 服薬状況ラベル + アドヒアランス + 自己管理 + カレンダー
+  const adherenceLabel =
+    ADHERENCE_LABELS[objective.adherence_score]?.label ?? `${objective.adherence_score}/5`;
+  const medicationParts = [
+    `服薬状況: ${getSoapLabel(objective.medication_status)}（アドヒアランス: ${adherenceLabel}）`,
+  ];
+  if (objective.self_management_ability) {
+    medicationParts.push(`自己管理: ${getSoapLabel(objective.self_management_ability)}`);
+  }
+  if (objective.medication_calendar_used != null) {
+    medicationParts.push(
+      `服薬カレンダー: ${objective.medication_calendar_used ? '使用中' : '未使用'}`,
+    );
+  }
+  const medication = medicationParts.join('。');
+
+  // 残薬: 残薬一覧（剤名 / 残数 / 超過日数）
+  const reductionTargets = residualMedications.filter((r) => r.is_reduction_target);
+  const residual =
+    residualMedications.length === 0
+      ? '残薬なし'
+      : joinNonEmptyText(
+          [
+            `残薬あり（${residualMedications.length}剤）。`,
+            ...residualMedications.map(
+              (r) =>
+                `${r.drug_name} 残${r.remaining_quantity}（超過${r.excess_days}日）${r.is_reduction_target ? '【減量検討】' : ''}`,
+            ),
+          ],
+          ' / ',
+        );
+
+  return { summary, medication, residual, reductionTargets, objective, plan };
+}
+
+// ─── 訪問看護向け射影ビルダー ─────────────────────────────────────────────────
+// 看護観察に資する医学的・機能的影響を重視（機能評価/有害事象/観察依頼）。
+
+export function buildVisitingNurseReport(ctx: AudienceReportContext): AudienceReportContent {
+  const { patient, visitRecord, structuredSoap, pharmacistName, intake } = ctx;
+  const conferenceContext = ctx.conferenceContext ?? [];
+  const { summary, medication, residual, reductionTargets, objective, plan } =
+    buildAudienceBase(ctx);
+  const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+
+  const warnings: string[] = [];
+  if (ctx.prescriptionLines.length === 0) {
+    warnings.push('処方内容が登録されていません。看護連携には処方情報の入力が必要です。');
+  }
+
+  // 薬剤師の評価: 機能的影響（看護観察ポイント）+ 有害事象
+  const fa = objective.functional_assessment;
+  const evaluationParts: string[] = [];
+  if (fa) {
+    const sleep = buildSleepImpactText(fa.sleep);
+    const cognition = buildCognitionImpactText(fa.cognition);
+    const mobility = buildMobilityImpactText(fa.mobility);
+    const excretion = buildExcretionImpactText(fa.excretion);
+    if (sleep !== '問題なし') evaluationParts.push(`睡眠: ${sleep}`);
+    if (cognition !== '問題なし') evaluationParts.push(`認知: ${cognition}`);
+    if (mobility !== '問題なし') evaluationParts.push(`歩行・運動: ${mobility}`);
+    if (excretion !== '問題なし') evaluationParts.push(`排泄: ${excretion}`);
+  }
+  if (objective.adverse_events?.has_events) {
+    evaluationParts.push(
+      `薬物有害事象: ${objective.adverse_events.events.map(getSoapLabel).join('、')}${objective.adverse_events.details ? `（${objective.adverse_events.details}）` : ''}`,
+    );
+  }
+  const evaluation =
+    evaluationParts.length > 0 ? evaluationParts.join('。') : '服薬・機能面ともに特記事項なし。';
+
+  // お願いしたいこと: 看護師へ依頼したい観察・連携事項
+  const requestItems: string[] = [];
+  if (objective.adherence_score <= 3) {
+    requestItems.push('服薬状況の継続観察と、服薬支援の声かけをお願いします。');
+  }
+  if (reductionTargets.length > 0) {
+    requestItems.push(
+      `残薬調整中の薬剤（${reductionTargets.map((r) => r.drug_name).join('、')}）の服用状況確認をお願いします。`,
+    );
+  }
+  if (objective.adverse_events?.has_events) {
+    requestItems.push('上記の有害事象に関する症状変化の観察をお願いします。');
+  }
+  if (plan.next_visit_date) {
+    requestItems.push(
+      `次回訪問予定: ${plan.next_visit_date}。それまでに変化があればご連絡ください。`,
+    );
+  }
+  requestItems.push(...homeVisit2026Summary);
+  requestItems.push(...buildExternalConferenceReportLines(conferenceContext, 'nurse_share'));
+  const requests =
+    requestItems.length > 0
+      ? requestItems.join('\n')
+      : '気になる体調変化があれば随時ご共有ください。';
+
+  return {
+    report_audience: 'visiting_nurse',
+    patient: { name: patient.name, birth_date: formatDate(patient.birth_date) },
+    report_date: formatDate(new Date()),
+    visit_date: formatDate(visitRecord.visited_at),
+    pharmacist_name: pharmacistName,
+    summary,
+    medication,
+    residual,
+    evaluation,
+    requests,
+    warnings,
+    baseline_context: intake ? buildBaselineContext(intake) : undefined,
+  };
+}
+
+// ─── 施設向け射影ビルダー ─────────────────────────────────────────────────────
+// 介護スタッフの日々の服薬介助に資する運用情報を重視（一包化/カレンダー/服薬介助）。
+
+export function buildFacilityReport(ctx: AudienceReportContext): AudienceReportContent {
+  const { patient, visitRecord, structuredSoap, pharmacistName, intake } = ctx;
+  const conferenceContext = ctx.conferenceContext ?? [];
+  const { summary, medication, residual, reductionTargets, objective, plan } =
+    buildAudienceBase(ctx);
+  const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+
+  const warnings: string[] = [];
+  if (ctx.prescriptionLines.length === 0) {
+    warnings.push('処方内容が登録されていません。服薬介助情報の提供には処方情報が必要です。');
+  }
+
+  // 服薬介助に役立つ運用判断
+  const interventions = plan.intervention_checks ?? [];
+  const unitDoseProposal =
+    interventions.includes('unit_dose_proposal') ||
+    (plan.care_service_coordination?.includes('一包化') ?? false);
+  const calendarProposal =
+    interventions.includes('calendar_proposal') ||
+    (plan.care_service_coordination?.includes('カレンダー') ?? false);
+
+  // 薬剤師の評価: 服薬介助の観点での評価（嚥下・口腔/認知）+ 運用提案
+  const fa = objective.functional_assessment;
+  const evaluationParts: string[] = [];
+  if (fa) {
+    const diet = buildDietImpactText(fa.diet_oral);
+    const cognition = buildCognitionImpactText(fa.cognition);
+    if (diet !== '問題なし') evaluationParts.push(`食事・口腔: ${diet}`);
+    if (cognition !== '問題なし') evaluationParts.push(`認知: ${cognition}`);
+  }
+  if (unitDoseProposal) {
+    evaluationParts.push('一包化により服薬介助の負担軽減が見込めます。');
+  }
+  if (calendarProposal) {
+    evaluationParts.push('服薬カレンダーの運用で飲み忘れ防止が期待できます。');
+  }
+  const evaluation =
+    evaluationParts.length > 0
+      ? evaluationParts.join('。')
+      : '現状の服薬介助方法で問題ありません。';
+
+  // お願いしたいこと: 介護スタッフへの服薬介助・運用依頼
+  const requestItems: string[] = [];
+  if (objective.adherence_score <= 3) {
+    requestItems.push('服薬時の声かけ・見守りをお願いします。');
+  }
+  if (unitDoseProposal) {
+    requestItems.push('一包化したお薬を、日付・タイミングどおりにお渡しください。');
+  }
+  if (calendarProposal) {
+    requestItems.push('服薬カレンダーへのセットと、服用後の確認をお願いします。');
+  }
+  if (reductionTargets.length > 0) {
+    requestItems.push(
+      `残薬が出ている薬剤（${reductionTargets.map((r) => r.drug_name).join('、')}）は次回訪問まで保管してください。`,
+    );
+  }
+  if (plan.care_service_coordination) {
+    requestItems.push(plan.care_service_coordination);
+  }
+  if (plan.next_visit_date) {
+    requestItems.push(`次回訪問予定: ${plan.next_visit_date}。`);
+  }
+  requestItems.push(...homeVisit2026Summary);
+  requestItems.push(...buildExternalConferenceReportLines(conferenceContext, 'facility_handoff'));
+  const requests =
+    requestItems.length > 0 ? requestItems.join('\n') : '服薬で気になる点があればご連絡ください。';
+
+  return {
+    report_audience: 'facility',
+    patient: { name: patient.name, birth_date: formatDate(patient.birth_date) },
+    report_date: formatDate(new Date()),
+    visit_date: formatDate(visitRecord.visited_at),
+    pharmacist_name: pharmacistName,
+    summary,
+    medication,
+    residual,
+    evaluation,
+    requests,
     warnings,
     baseline_context: intake ? buildBaselineContext(intake) : undefined,
   };

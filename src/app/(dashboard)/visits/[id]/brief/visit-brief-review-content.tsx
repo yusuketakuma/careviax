@@ -8,17 +8,22 @@ import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type { VisitBrief } from '@/types/visit-brief';
 import {
+  buildNeedsEditFeedbackInput,
   composeBriefParagraph,
+  CORRECTED_SUMMARY_MAX_LENGTH,
   formatBriefGeneratedAt,
   mapConfirmChoiceToFeedback,
   PHARMACIST_CONFIRM_CHOICES,
   pickVisitPatientId,
   resolveEvidenceLinks,
   selectBriefSummary,
+  validateCorrectedSummary,
+  type BriefFeedbackInput,
   type PharmacistConfirmChoice,
 } from './visit-brief-review.shared';
 
@@ -39,6 +44,10 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   const orgId = useOrgId();
   const [confirmChoice, setConfirmChoice] = useState<PharmacistConfirmChoice | null>(null);
   const [showSource, setShowSource] = useState(false);
+  // 「一部修正する」の編集状態(エディタの開閉・本文・入力エラー)。
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editorValue, setEditorValue] = useState('');
+  const [editorError, setEditorError] = useState<string | null>(null);
 
   // 訪問予定 ID(訪問前の標準導線)→ 見つからなければ訪問記録 ID として患者を解決する。
   const patientQuery = useQuery<{ patientId: string }>({
@@ -75,10 +84,14 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   const brief = briefQuery.data?.data ?? null;
 
   const feedbackMutation = useMutation({
-    mutationFn: async (choice: PharmacistConfirmChoice) => {
+    mutationFn: async ({
+      feedback,
+    }: {
+      choice: PharmacistConfirmChoice;
+      feedback: BriefFeedbackInput;
+    }) => {
       if (!brief) throw new Error('訪問前まとめが未取得です');
       const summary = selectBriefSummary(brief);
-      const feedback = mapConfirmChoiceToFeedback(choice);
       const res = await fetch('/api/visit-brief-feedback', {
         method: 'POST',
         headers: {
@@ -92,6 +105,9 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           summary_kind: summary.kind,
           rating: feedback.rating,
           ...(feedback.comment ? { comment: feedback.comment } : {}),
+          ...(feedback.corrected_summary
+            ? { corrected_summary: feedback.corrected_summary }
+            : {}),
           provider: summary.kind === 'ai' ? brief.ai_summary.provider : 'rule',
           requested_provider:
             summary.kind === 'ai' ? brief.ai_summary.requested_provider : 'rule',
@@ -101,9 +117,15 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       });
       if (!res.ok) throw new Error('確認結果の送信に失敗しました');
     },
-    onSuccess: (_data, choice) => {
+    onSuccess: (_data, { choice, feedback }) => {
       setConfirmChoice(choice);
-      toast.success('薬剤師の確認を記録しました');
+      if (feedback.corrected_summary) {
+        setIsEditingSummary(false);
+        setEditorError(null);
+        toast.success('修正したまとめを記録しました');
+      } else {
+        toast.success('薬剤師の確認を記録しました');
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '確認結果の送信に失敗しました');
@@ -146,6 +168,34 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   const summary = selectBriefSummary(brief);
   const paragraph = composeBriefParagraph(summary);
   const evidenceLinks = resolveEvidenceLinks(patientId);
+
+  // 3 択カードの押下。「一部修正する」は編集エディタを開く(本文を現在の段落で初期化する)。
+  // それ以外は従来どおり即時に確認結果を送信する。
+  const handleChoiceClick = (choice: PharmacistConfirmChoice) => {
+    if (choice === 'needs_edit') {
+      setEditorValue(paragraph);
+      setEditorError(null);
+      setIsEditingSummary(true);
+      return;
+    }
+    setIsEditingSummary(false);
+    setEditorError(null);
+    feedbackMutation.mutate({ choice, feedback: mapConfirmChoiceToFeedback(choice) });
+  };
+
+  // 「一部修正する」エディタの保存。空・上限超過を弾いてから訂正後本文つきで送信する。
+  const handleSaveCorrectedSummary = () => {
+    const { value, error } = validateCorrectedSummary(editorValue);
+    if (error) {
+      setEditorError(error);
+      return;
+    }
+    setEditorError(null);
+    feedbackMutation.mutate({
+      choice: 'needs_edit',
+      feedback: buildNeedsEditFeedbackInput(value),
+    });
+  };
 
   return (
     <div
@@ -234,14 +284,18 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
         <div role="group" aria-labelledby="pharmacist-confirm-heading" className="mt-3 space-y-2.5">
           {PHARMACIST_CONFIRM_CHOICES.map((choice) => {
             const selected = confirmChoice === choice.value;
+            const isEditChoice = choice.value === 'needs_edit';
+            const expanded = isEditChoice && isEditingSummary;
             return (
               <button
                 key={choice.value}
                 type="button"
                 data-testid="pharmacist-confirm-choice"
                 aria-pressed={selected}
+                aria-expanded={isEditChoice ? expanded : undefined}
+                aria-controls={isEditChoice ? 'visit-brief-correction-editor' : undefined}
                 disabled={feedbackMutation.isPending}
-                onClick={() => feedbackMutation.mutate(choice.value)}
+                onClick={() => handleChoiceClick(choice.value)}
                 className={cn(
                   'flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -257,6 +311,72 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
             );
           })}
         </div>
+
+        {/* 「一部修正する」選択時の編集エディタ。本文を編集して保存できるようにする。 */}
+        {isEditingSummary ? (
+          <div
+            id="visit-brief-correction-editor"
+            data-testid="visit-brief-correction-editor"
+            className="mt-3 rounded-lg border border-amber-300 bg-amber-50/60 p-4"
+          >
+            <label
+              htmlFor="visit-brief-correction-textarea"
+              className="block text-sm font-bold text-foreground"
+            >
+              まとめを修正
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              修正したまとめは確認記録として保存されます(元のAI要約は残ります)。
+            </p>
+            <Textarea
+              id="visit-brief-correction-textarea"
+              data-testid="visit-brief-correction-textarea"
+              value={editorValue}
+              maxLength={CORRECTED_SUMMARY_MAX_LENGTH}
+              onChange={(event) => {
+                setEditorValue(event.target.value);
+                if (editorError) setEditorError(null);
+              }}
+              disabled={feedbackMutation.isPending}
+              aria-invalid={editorError ? true : undefined}
+              aria-describedby={editorError ? 'visit-brief-correction-error' : undefined}
+              className="mt-3 min-h-32 bg-background text-sm leading-7"
+              placeholder="修正後のまとめを入力してください"
+            />
+            {editorError ? (
+              <p
+                id="visit-brief-correction-error"
+                role="alert"
+                className="mt-1.5 text-xs font-medium text-destructive"
+              >
+                {editorError}
+              </p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                data-testid="visit-brief-correction-save"
+                disabled={feedbackMutation.isPending}
+                onClick={handleSaveCorrectedSummary}
+                className="min-h-11"
+              >
+                修正を保存
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={feedbackMutation.isPending}
+                onClick={() => {
+                  setIsEditingSummary(false);
+                  setEditorError(null);
+                }}
+                className="min-h-11"
+              >
+                キャンセル
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {/* 右カラム: 次にやること */}

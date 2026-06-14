@@ -11,7 +11,12 @@ import {
   toPrismaJsonInput,
 } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
-import { buildPhysicianReport, buildCareManagerReport } from './report-templates';
+import {
+  buildPhysicianReport,
+  buildCareManagerReport,
+  buildVisitingNurseReport,
+  buildFacilityReport,
+} from './report-templates';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
 import { buildReportableConferenceHighlightsFromStructuredContent } from '@/lib/conferences/conference-report-disclosure';
@@ -20,7 +25,9 @@ import {
   type CareReportAccessContext,
 } from '@/server/services/care-report-access';
 
-type ReportType = 'physician_report' | 'care_manager_report';
+// CareReport.report_type は Prisma enum ReportType に対応する。
+// 訪問看護向け = nurse_share / 施設向け = facility_handoff（schema 既存値を再利用）。
+type ReportType = 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -386,7 +393,7 @@ export async function generateReportsFromVisit(
         ),
         billing_context: billingContext,
       });
-    } else {
+    } else if (type === 'care_manager_report') {
       contentByType.set(type, {
         ...readGeneratedReportContent(
           buildCareManagerReport({
@@ -404,6 +411,26 @@ export async function generateReportsFromVisit(
             conferenceContext,
           }),
         ),
+        billing_context: billingContext,
+      });
+    } else {
+      // 訪問看護向け / 施設向け: design 準拠の決定論的 5見出し射影（LLM 不使用）
+      const audienceContext = {
+        patient: { name: patient.name, birth_date: patient.birth_date },
+        visitRecord: visitRecordInput,
+        structuredSoap,
+        prescriptionLines: prescriptionLinesNormalized,
+        residualMedications: residualMedicationsNormalized,
+        pharmacistName,
+        intake,
+        conferenceContext,
+      };
+      const audienceContent =
+        type === 'nurse_share'
+          ? buildVisitingNurseReport(audienceContext)
+          : buildFacilityReport(audienceContext);
+      contentByType.set(type, {
+        ...readGeneratedReportContent(audienceContent),
         billing_context: billingContext,
       });
     }
