@@ -91,6 +91,50 @@ describe('/api/visit-brief-feedback POST', () => {
     });
   });
 
+  it('records the corrected summary for 一部修正する into the audit changes', async () => {
+    const response = (await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        context: 'patient',
+        generation_id: 'gen_1',
+        summary_kind: 'ai',
+        rating: 'needs_review',
+        comment: '一部修正する',
+        corrected_summary: '夕食後薬の飲み忘れ確認を最優先にしてください。',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_brief_feedback_needs_review',
+        target_type: 'visit_brief_feedback',
+        changes: expect.objectContaining({
+          comment: '一部修正する',
+          corrected_summary: '夕食後薬の飲み忘れ確認を最優先にしてください。',
+        }),
+      }),
+    });
+  });
+
+  it('rejects an empty corrected_summary string', async () => {
+    const response = (await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        context: 'patient',
+        generation_id: 'gen_1',
+        summary_kind: 'ai',
+        rating: 'needs_review',
+        comment: '一部修正する',
+        corrected_summary: '',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object feedback payloads before audit logging', async () => {
     const response = (await POST(createRequest([])))!;
 

@@ -8,7 +8,7 @@ import { ExternalShareContent } from './external-share-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '外部共有 — PH-OS',
+  title: '他職種向け共有 — PH-OS',
 };
 
 export default async function ExternalSharePage({ params }: { params: Promise<{ id: string }> }) {
@@ -20,13 +20,14 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
         backHref={`/patients/${id}`}
         backLabel="患者詳細へ戻る"
         eyebrow="External Sharing"
-        title="外部共有"
-        description="医療情報の一時共有リンクを発行します（JWT + OTP）"
+        title="他職種向け共有ページ"
+        description="相手区分ごとに「相手に見える内容」を確認し、外部共有リンクの発行と返信のタスク化を行います（JWT + OTP）"
         supportingContent={
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">画面の役割</p>
             <p className="text-sm text-muted-foreground">
-              共有先、期限、閲覧状況を患者文脈で管理し、必要な共有だけを安全に発行します。
+              共有する相手・相手に見える内容・返信を 3
+              カラムで管理し、必要な共有だけを安全に発行して、相手からの返信を次回訪問の確認タスクにつなげます。
             </p>
           </div>
         }

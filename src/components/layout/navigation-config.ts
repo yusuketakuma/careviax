@@ -221,6 +221,8 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
       { label: 'ジョブ', href: '/admin/jobs', icon: Cog },
       { label: '経営指標', href: '/admin/metrics', icon: BarChart3 },
       { label: 'KPI分析', href: '/admin/analytics', icon: LineChart },
+      { label: '在宅業務の動き', href: '/admin/operations-insights', icon: LineChart },
+      { label: '在庫予測', href: '/admin/inventory-forecast', icon: Package },
       { label: 'パフォーマンス', href: '/admin/performance', icon: Activity },
       { label: 'キャパシティ', href: '/admin/capacity', icon: Gauge },
       { label: 'リアルタイム監視', href: '/admin/realtime', icon: Activity },

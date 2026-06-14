@@ -19,8 +19,10 @@ const postBodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // プレゼンス登録はカード参加（同じカードを見ている人）であり、特権的な変更操作ではない。
+  // 事務（clerk）も参加者として表示されるため、調剤権限ではなく組織メンバーレベルの canViewDashboard でゲートする。
   const authResult = await requireAuthContext(req, {
-    permission: 'canDispense',
+    permission: 'canViewDashboard',
     message: 'プレゼンス更新の権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -67,8 +69,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // プレゼンス取得もカード参加者の閲覧であり、組織メンバーレベルの canViewDashboard でゲートする。
   const authResult = await requireAuthContext(req, {
-    permission: 'canDispense',
+    permission: 'canViewDashboard',
     message: 'プレゼンス取得の権限がありません',
   });
   if ('response' in authResult) return authResult.response;

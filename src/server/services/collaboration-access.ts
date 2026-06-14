@@ -4,10 +4,25 @@ import type { AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
-import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import {
+  buildMedicationCycleAssignmentWhere,
+  buildSetPlanAssignmentWhere,
+} from '@/server/services/prescription-access';
+import {
+  buildCareReportAccessWhere,
+  getCareReportAccessScope,
+} from '@/server/services/care-report-access';
 
-// patient は P1-13「今だれが見ているか」(患者カード単位の presence)で使う
-export const collaborationEntityTypeSchema = z.enum(['dispense_task', 'visit_record', 'patient']);
+// patient は P1-13「今だれが見ているか」(患者カード単位の presence)で使う。
+// dispense_task/medication_cycle/set_plan/visit_record/care_report はコメント(多職種連携)の対象。
+export const collaborationEntityTypeSchema = z.enum([
+  'dispense_task',
+  'medication_cycle',
+  'set_plan',
+  'visit_record',
+  'care_report',
+  'patient',
+]);
 
 export type CollaborationEntityType = z.infer<typeof collaborationEntityTypeSchema>;
 
@@ -50,6 +65,34 @@ export async function canAccessCollaborationEntity(
       patientId: entityId,
       accessContext: ctx,
     });
+  }
+
+  if (entityType === 'medication_cycle') {
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+    const cycle = await prisma.medicationCycle.findFirst({
+      where: { id: entityId, org_id: ctx.orgId, ...(cycleAssignmentWhere ?? {}) },
+      select: { id: true },
+    });
+    return Boolean(cycle);
+  }
+
+  if (entityType === 'set_plan') {
+    const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
+    const plan = await prisma.setPlan.findFirst({
+      where: { id: entityId, org_id: ctx.orgId, ...(planAssignmentWhere ?? {}) },
+      select: { id: true },
+    });
+    return Boolean(plan);
+  }
+
+  if (entityType === 'care_report') {
+    const scope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
+    const reportWhere = buildCareReportAccessWhere(scope);
+    const report = await prisma.careReport.findFirst({
+      where: { id: entityId, org_id: ctx.orgId, ...(reportWhere ?? {}) },
+      select: { id: true },
+    });
+    return Boolean(report);
   }
 
   const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);

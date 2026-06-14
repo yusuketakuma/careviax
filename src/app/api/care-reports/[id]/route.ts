@@ -22,6 +22,7 @@ import {
   resolveDocumentDeliveryRule,
 } from '@/lib/reports/document-delivery-rules';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 
 function toDateOnlyString(value: Date | null | undefined) {
   return formatNullableDateKey(value);
@@ -204,10 +205,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { content, ...updateData } = parsed.data;
 
-  if (updateData.status && updateData.status !== 'draft') {
-    return conflict('報告書の送信状態は送信APIからのみ更新できます');
-  }
-
   const existing = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
     select: {
@@ -229,6 +226,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return forbiddenResponse('この報告書を更新する権限がありません');
   }
 
+  // p1_04: 薬剤師確認(draft → confirmed)のみステータス遷移を許可する。
+  // confirmed は薬学的判断のトレースなので AuditLog に記録する。
+  // 送信系ステータス(sent/failed/response_waiting)は送信APIの責務。
+  const isDraftConfirmTransition =
+    updateData.status === 'confirmed' && existing.status === 'draft';
+  if (updateData.status && updateData.status !== 'draft' && !isDraftConfirmTransition) {
+    return conflict('報告書の送信状態は送信APIからのみ更新できます');
+  }
+
   if (existing.status !== 'draft' && updateData.status === 'draft') {
     return conflict('送信済みの報告書を下書きへ戻すことはできません');
   }
@@ -236,13 +242,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const report = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      return tx.careReport.update({
+      const updated = await tx.careReport.update({
         where: { id },
         data: {
           ...updateData,
           ...(content !== undefined ? { content: toPrismaJsonInput(content) } : {}),
         },
       });
+
+      if (isDraftConfirmTransition) {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'care_report_confirmed',
+          targetType: 'care_report',
+          targetId: id,
+          changes: { from: 'draft', to: 'confirmed' },
+        });
+      }
+
+      return updated;
     },
     { requestContext: ctx },
   );

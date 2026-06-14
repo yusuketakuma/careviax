@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   careReportFindFirstMock,
   careReportUpdateMock,
+  auditLogCreateMock,
   patientFindFirstMock,
   visitRecordFindFirstMock,
   withOrgContextMock,
@@ -15,6 +16,7 @@ const {
   requireAuthContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   careReportUpdateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -140,8 +142,12 @@ describe('care-reports/[id] route', () => {
         careReport: {
           update: careReportUpdateMock,
         },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
       }),
     );
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue({
       id: 'institution_1',
       name: 'みなとクリニック',
@@ -330,5 +336,59 @@ describe('care-reports/[id] route', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+  });
+
+  it('confirms a draft report and writes a pharmacological-judgement audit log', async () => {
+    careReportUpdateMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: {
+        status: 'confirmed',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'care_report_confirmed',
+        target_type: 'care_report',
+        target_id: 'report_1',
+        changes: { from: 'draft', to: 'confirmed' },
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { status: 'confirmed' },
+    });
+  });
+
+  it('rejects confirming a report that is no longer a draft', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'sent',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

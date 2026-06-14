@@ -85,6 +85,8 @@ export const PHARMACIST_CONFIRM_CHOICES: ReadonlyArray<{
 export type BriefFeedbackInput = {
   rating: 'helpful' | 'needs_review';
   comment?: string;
+  /** 「一部修正する」で薬剤師が編集・保存した訂正後の本文(任意)。 */
+  corrected_summary?: string;
 };
 
 /**
@@ -95,6 +97,44 @@ export function mapConfirmChoiceToFeedback(choice: PharmacistConfirmChoice): Bri
   if (choice === 'correct') return { rating: 'helpful' };
   if (choice === 'needs_edit') return { rating: 'needs_review', comment: '一部修正する' };
   return { rating: 'needs_review', comment: 'このまとめは使わない' };
+}
+
+/** 訂正後本文の最大文字数(AuditLog の changes へ構造化保存する想定の上限)。 */
+export const CORRECTED_SUMMARY_MAX_LENGTH = 2000;
+
+/**
+ * 「一部修正する」の編集本文を検証する純関数。
+ * 空(空白のみ)、または上限超過を弾き、UI に出すエラーメッセージを返す。
+ * 問題なければ trim 済みの本文と error: null を返す。
+ */
+export function validateCorrectedSummary(raw: string): {
+  value: string;
+  error: string | null;
+} {
+  const value = raw.trim();
+  if (!value) {
+    return { value, error: '修正後のまとめを入力してください' };
+  }
+  if (value.length > CORRECTED_SUMMARY_MAX_LENGTH) {
+    return {
+      value,
+      error: `修正後のまとめは${CORRECTED_SUMMARY_MAX_LENGTH}文字以内で入力してください`,
+    };
+  }
+  return { value, error: null };
+}
+
+/**
+ * 「一部修正する」を訂正本文つきで保存するときの feedback 入力を組み立てる。
+ * rating は needs_review、comment は 3 択マーカー(「一部修正する」)を維持しつつ、
+ * 訂正後本文を corrected_summary として付与する(schema-free に AuditLog へ保存)。
+ */
+export function buildNeedsEditFeedbackInput(correctedSummary: string): BriefFeedbackInput {
+  return {
+    rating: 'needs_review',
+    comment: '一部修正する',
+    corrected_summary: correctedSummary,
+  };
 }
 
 export type EvidenceLink = {

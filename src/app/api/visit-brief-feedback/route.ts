@@ -13,6 +13,8 @@ const feedbackSchema = z.object({
   summary_kind: z.enum(['ai', 'rule']),
   rating: z.enum(['helpful', 'needs_review']),
   comment: z.string().max(500).optional(),
+  // 「一部修正する」で薬剤師が編集・保存した訂正後の本文。AuditLog の changes に構造化保存する。
+  corrected_summary: z.string().min(1).max(2000).optional(),
   provider: z.string().optional(),
   requested_provider: z.string().optional(),
   model: z.string().nullable().optional(),
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest) {
           summary_kind: parsed.data.summary_kind,
           rating: parsed.data.rating,
           comment: parsed.data.comment ?? null,
+          corrected_summary: parsed.data.corrected_summary ?? null,
           provider: parsed.data.provider ?? null,
           requested_provider: parsed.data.requested_provider ?? null,
           model: parsed.data.model ?? null,

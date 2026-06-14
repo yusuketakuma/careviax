@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { VisitBriefAiSummary, VisitBriefRuleSummary } from '@/types/visit-brief';
 import {
+  buildNeedsEditFeedbackInput,
   composeBriefParagraph,
+  CORRECTED_SUMMARY_MAX_LENGTH,
   formatBriefGeneratedAt,
   mapConfirmChoiceToFeedback,
   PHARMACIST_CONFIRM_CHOICES,
   pickVisitPatientId,
   resolveEvidenceLinks,
   selectBriefSummary,
+  validateCorrectedSummary,
 } from './visit-brief-review.shared';
 
 function buildAiSummary(overrides: Partial<VisitBriefAiSummary> = {}): VisitBriefAiSummary {
@@ -136,6 +139,45 @@ describe('mapConfirmChoiceToFeedback', () => {
       '一部修正する',
       'このまとめは使わない',
     ]);
+  });
+});
+
+describe('validateCorrectedSummary', () => {
+  it('前後の空白を除いた本文を返し error は null になる', () => {
+    expect(validateCorrectedSummary('  修正後のまとめ  ')).toEqual({
+      value: '修正後のまとめ',
+      error: null,
+    });
+  });
+
+  it('空白のみは入力必須エラーを返す', () => {
+    expect(validateCorrectedSummary('   ')).toEqual({
+      value: '',
+      error: '修正後のまとめを入力してください',
+    });
+  });
+
+  it('上限文字数を超えるとエラーを返す', () => {
+    const tooLong = 'あ'.repeat(CORRECTED_SUMMARY_MAX_LENGTH + 1);
+    const result = validateCorrectedSummary(tooLong);
+    expect(result.error).toBe(
+      `修正後のまとめは${CORRECTED_SUMMARY_MAX_LENGTH}文字以内で入力してください`,
+    );
+  });
+
+  it('上限ちょうどは許容する', () => {
+    const exact = 'あ'.repeat(CORRECTED_SUMMARY_MAX_LENGTH);
+    expect(validateCorrectedSummary(exact).error).toBeNull();
+  });
+});
+
+describe('buildNeedsEditFeedbackInput', () => {
+  it('needs_review + 「一部修正する」マーカー + 訂正後本文を組み立てる', () => {
+    expect(buildNeedsEditFeedbackInput('修正後のまとめ')).toEqual({
+      rating: 'needs_review',
+      comment: '一部修正する',
+      corrected_summary: '修正後のまとめ',
+    });
   });
 });
 

@@ -1,13 +1,20 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import {
+  canAccessCollaborationEntity,
+  collaborationEntityRefSchema,
+  collaborationEntityTypeSchema,
+} from '@/server/services/collaboration-access';
 import { z } from 'zod';
 
 const createCommentSchema = z.object({
-  entity_type: z.string().trim().min(1, 'entity_typeは必須です').max(100),
+  // 担当外の臨床エンティティ(care_report/visit_record 等)への越境コメントを防ぐため、
+  // entity_type は collaboration の許可 enum に限定し、後段で per-entity 認可を行う。
+  entity_type: collaborationEntityTypeSchema,
   entity_id: z.string().trim().min(1, 'entity_idは必須です').max(100),
   content: z.string().trim().min(1, 'コメント内容は必須です').max(4000),
   mentions: z.array(z.string()).default([]),
@@ -24,12 +31,18 @@ const ENTITY_TYPE_LINK_PREFIX: Record<string, string> = {
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const entityType = searchParams.get('entity_type');
-    const entityId = searchParams.get('entity_id');
-
-    if (!entityType || !entityId) {
+    const parsedRef = collaborationEntityRefSchema.safeParse({
+      entity_type: searchParams.get('entity_type'),
+      entity_id: searchParams.get('entity_id'),
+    });
+    if (!parsedRef.success) {
       return validationError('entity_typeとentity_idは必須です');
     }
+    const { entity_type: entityType, entity_id: entityId } = parsedRef.data;
+
+    // 担当外エンティティのコメント(PHIを含み得る)閲覧を防ぐ per-entity 認可。
+    const canAccess = await canAccessCollaborationEntity(ctx, entityType, entityId);
+    if (!canAccess) return notFound('コメント対象が見つかりません');
 
     const comments = await prisma.taskComment.findMany({
       where: {
@@ -58,7 +71,9 @@ export const GET = withAuthContext(
     return success({ data });
   },
   {
-    permission: 'canDispense',
+    // コメント閲覧はカード参加（多職種連携）であり、特権的な操作ではない。
+    // 事務（clerk）も参加者として表示・参加するため、組織メンバーレベルの canViewDashboard でゲートする。
+    permission: 'canViewDashboard',
     message: 'コメントの閲覧権限がありません',
   },
 );
@@ -72,6 +87,14 @@ export const POST = withAuthContext(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
+
+    // 担当外エンティティへの越境コメント投稿を防ぐ per-entity 認可。
+    const canAccess = await canAccessCollaborationEntity(
+      ctx,
+      parsed.data.entity_type,
+      parsed.data.entity_id,
+    );
+    if (!canAccess) return notFound('コメント対象が見つかりません');
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const comment = await tx.taskComment.create({
@@ -111,7 +134,8 @@ export const POST = withAuthContext(
     return success({ data: created }, 201);
   },
   {
-    permission: 'canDispense',
+    // コメント投稿も多職種連携の参加であり、組織メンバーレベルの canViewDashboard でゲートする。
+    permission: 'canViewDashboard',
     message: 'コメントの投稿権限がありません',
   },
 );
