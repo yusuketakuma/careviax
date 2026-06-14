@@ -79,6 +79,7 @@ function makePreviousIntake(overrides: Partial<{
     drug_code: string | null;
     dose: string;
     frequency: string;
+    days?: number | null;
     start_date: Date | null;
     end_date: Date | null;
   }>;
@@ -93,6 +94,7 @@ function makePreviousIntake(overrides: Partial<{
         drug_code: 'YJ001',
         dose: '5mg',
         frequency: '1日1回',
+        days: 28,
         start_date: new Date('2026-03-01'),
         end_date: new Date('2026-03-31'),
       },

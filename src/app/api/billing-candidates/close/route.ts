@@ -84,17 +84,33 @@ async function transmitClaimsExportForClose(args: {
     });
 
     // 3省2 audit-by-default: 要配慮個人情報(レセプト請求)の外部送信を必ず監査ログへ記録する。
-    await withOrgContext(args.orgId, (tx) =>
-      createAuditLogEntry(tx, args.ctx, {
-        action: 'billing.claims_export_transmitted',
-        targetType: 'billing_month',
-        targetId: `${args.billingMonth.toISOString().slice(0, 7)}/${args.billingDomain}`,
-        changes: {
-          billing_domain: args.billingDomain,
-          record_count: result.recordCount,
+    // この時点で PHI は既に外部送信済み。監査書込の失敗で送信成功(transmitted:true)を
+    // 覆してはならない(誤って「送信失敗」と返すと再送で二重送信になる)ため、監査は独自の
+    // try/catch で隔離し、失敗時は専用イベントで記録して別途検知できるようにする。
+    try {
+      await withOrgContext(args.orgId, (tx) =>
+        createAuditLogEntry(tx, args.ctx, {
+          action: 'billing.claims_export_transmitted',
+          targetType: 'billing_month',
+          targetId: `${args.billingMonth.toISOString().slice(0, 7)}/${args.billingDomain}`,
+          changes: {
+            billing_domain: args.billingDomain,
+            record_count: result.recordCount,
+          },
+        }),
+      );
+    } catch (auditCause) {
+      logger.error(
+        {
+          event: 'billing.claims_export_audit_failed',
+          orgId: args.orgId,
+          entityType: 'billing_month',
+          entityId: args.billingMonth.toISOString().slice(0, 7),
+          code: 'CLAIMS_EXPORT_AUDIT_FAILED',
         },
-      }),
-    );
+        auditCause,
+      );
+    }
 
     return { transmitted: true, recordCount: result.recordCount };
   } catch (cause) {

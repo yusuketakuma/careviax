@@ -36,7 +36,7 @@ export interface DispensePrefillLine {
     genericDrugName: string | null;
     genericDrugCode: string | null;
   } | null;
-  changeMarker: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | null;
+  changeMarker: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed' | null;
   changeDetail: { previous: string | null; current: string | null } | null;
 }
 

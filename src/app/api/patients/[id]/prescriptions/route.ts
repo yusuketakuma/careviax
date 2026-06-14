@@ -139,7 +139,10 @@ function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]) {
     setImpacts.push(`中止薬回収が必要: ${removedLines.map((line) => line.drug_name).join('、')}`);
   }
   const hasDoseOrFreqChange = changes.some(
-    (change) => change.change_type === 'dose_changed' || change.change_type === 'frequency_changed',
+    (change) =>
+      change.change_type === 'dose_changed' ||
+      change.change_type === 'frequency_changed' ||
+      change.change_type === 'days_changed',
   );
   if (hasDoseOrFreqChange) {
     setImpacts.push('残薬を今回セットに使う(用量・日数の変化あり)');

@@ -14,7 +14,7 @@ export interface MedicationDiffLine {
 
 export interface MedicationChange {
   drug_name: string;
-  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed';
+  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed';
   /** dose / frequency をまとめたラベル(既存互換) */
   previous: string | null;
   current: string | null;
@@ -78,6 +78,18 @@ export function detectMedicationChanges(
       changes.push({
         drug_name: line.drug_name,
         change_type: 'frequency_changed',
+        previous: formatDoseFrequency(prev),
+        current: formatDoseFrequency(line),
+        previous_frequency: freqOf(prev),
+        current_frequency: freqOf(line),
+        previous_days: daysOf(prev),
+        current_days: daysOf(line),
+      });
+    } else if (daysOf(prev) !== daysOf(line)) {
+      // 用量・用法は同一で投与日数のみ変化(セット数量に影響するため検出する)。
+      changes.push({
+        drug_name: line.drug_name,
+        change_type: 'days_changed',
         previous: formatDoseFrequency(prev),
         current: formatDoseFrequency(line),
         previous_frequency: freqOf(prev),

@@ -190,3 +190,20 @@ export function facilityPacketMemoDisplayItems(
     (field) => ({ key: field.key, label: field.label, value: memo[field.key].trim() }),
   );
 }
+
+/**
+ * notes を「人が読める」テキストへ正規化する(構造化 facility-packet メモを
+ * 別画面に表示する際に、生の JSON 文字列がそのまま出ないようにするためのプロジェクション)。
+ * - 構造化 JSON メモ → 「ラベル：値」の複数行へ。
+ * - 旧自由文 → そのまま返す(表示の後方互換)。
+ */
+export function facilityPacketMemoToDisplayText(
+  notes: string | null | undefined,
+): string | null {
+  if (!notes) return null;
+  if (notes.trim().startsWith('{')) {
+    const items = facilityPacketMemoDisplayItems(parseFacilityPacketMemo(notes));
+    return items.length > 0 ? items.map((item) => `${item.label}：${item.value}`).join('\n') : null;
+  }
+  return notes;
+}

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
+import { facilityPacketMemoToDisplayText } from '@/app/(dashboard)/visits/[id]/facility-packet/facility-packet.shared';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
@@ -952,7 +953,7 @@ export async function GET(
             deriveFacilityLabel(primaryResidence ?? null),
           place_kind: deriveVisitPlaceGroup(primaryResidence ?? null)?.kind ?? null,
           site_name: schedule.site?.name ?? null,
-          common_notes: schedule.facility_batch?.notes ?? null,
+          common_notes: facilityPacketMemoToDisplayText(schedule.facility_batch?.notes ?? null),
           current_schedule_id: schedule.id,
           patients: facilityParallelSchedules.map((item) => {
             const residence = item.case_.patient.residences[0] ?? null;

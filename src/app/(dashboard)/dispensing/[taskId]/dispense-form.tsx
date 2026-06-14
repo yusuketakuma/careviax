@@ -294,6 +294,7 @@ const changeTypeLabel: Record<NonNullable<DispensePrefillLine['changeMarker']>, 
   removed: '削除',
   dose_changed: '用量変更',
   frequency_changed: '用法変更',
+  days_changed: '日数変更',
 };
 
 function formatMaybeDate(value: string | null | undefined) {
