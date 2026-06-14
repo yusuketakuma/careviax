@@ -2,7 +2,10 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import {
+  buildVisitRecordScheduleAssignmentWhere,
+  canBypassVisitScheduleAssignmentAccess,
+} from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
 import {
   buildMedicationCycleAssignmentWhere,
@@ -39,13 +42,25 @@ export function buildCollaborationRoomName(args: {
   return `${args.orgId}:${args.entityType}:${args.entityId}`;
 }
 
+// 事務(clerk)は臨床担当(pharmacist assignment)を持たないため、通常の担当スコープでは
+// すべての連携エンティティで弾かれてしまう。だが p1_13 の多職種連携カードには参加者として
+// 参加する(presence/コメント)。owner/admin と同様、連携サーフェス(comments/presence)に限り
+// 担当割当スコープを外して org 単位でアクセスを許可する。
+// 注意: この緩和は連携サーフェス専用であり、患者臨床詳細など他のゲート(患者ページが通る
+// canAccessPatient 等)は従来どおり厳格なまま — 事務は full clinical record を開けない。
+function usesOrgScopedCollaborationAccess(ctx: AuthContext): boolean {
+  return canBypassVisitScheduleAssignmentAccess(ctx) || ctx.role === 'clerk';
+}
+
 export async function canAccessCollaborationEntity(
   ctx: AuthContext,
   entityType: CollaborationEntityType,
   entityId: string,
 ) {
+  const orgScoped = usesOrgScopedCollaborationAccess(ctx);
+
   if (entityType === 'dispense_task') {
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+    const cycleAssignmentWhere = orgScoped ? null : buildMedicationCycleAssignmentWhere(ctx);
     const where: Prisma.DispenseTaskWhereInput = {
       id: entityId,
       org_id: ctx.orgId,
@@ -59,6 +74,13 @@ export async function canAccessCollaborationEntity(
   }
 
   if (entityType === 'patient') {
+    if (orgScoped) {
+      const patient = await prisma.patient.findFirst({
+        where: { id: entityId, org_id: ctx.orgId },
+        select: { id: true },
+      });
+      return Boolean(patient);
+    }
     return canAccessPatient({
       db: prisma,
       orgId: ctx.orgId,
@@ -68,7 +90,7 @@ export async function canAccessCollaborationEntity(
   }
 
   if (entityType === 'medication_cycle') {
-    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+    const cycleAssignmentWhere = orgScoped ? null : buildMedicationCycleAssignmentWhere(ctx);
     const cycle = await prisma.medicationCycle.findFirst({
       where: { id: entityId, org_id: ctx.orgId, ...(cycleAssignmentWhere ?? {}) },
       select: { id: true },
@@ -77,7 +99,7 @@ export async function canAccessCollaborationEntity(
   }
 
   if (entityType === 'set_plan') {
-    const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
+    const planAssignmentWhere = orgScoped ? null : buildSetPlanAssignmentWhere(ctx);
     const plan = await prisma.setPlan.findFirst({
       where: { id: entityId, org_id: ctx.orgId, ...(planAssignmentWhere ?? {}) },
       select: { id: true },
@@ -86,6 +108,13 @@ export async function canAccessCollaborationEntity(
   }
 
   if (entityType === 'care_report') {
+    if (orgScoped) {
+      const report = await prisma.careReport.findFirst({
+        where: { id: entityId, org_id: ctx.orgId },
+        select: { id: true },
+      });
+      return Boolean(report);
+    }
     const scope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
     const reportWhere = buildCareReportAccessWhere(scope);
     const report = await prisma.careReport.findFirst({
@@ -95,7 +124,9 @@ export async function canAccessCollaborationEntity(
     return Boolean(report);
   }
 
-  const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
+  const visitRecordAssignmentWhere = orgScoped
+    ? null
+    : buildVisitRecordScheduleAssignmentWhere(ctx);
   const where: Prisma.VisitRecordWhereInput = {
     id: entityId,
     org_id: ctx.orgId,

@@ -167,4 +167,54 @@ describe('collaboration-access', () => {
       select: { id: true },
     });
   });
+
+  // p1_13: 事務(clerk)は pharmacist assignment を持たないが、多職種連携カードに参加者として
+  // 参加する。連携サーフェス(presence/コメント)に限り org 単位でアクセスを許可する。
+  it('grants clerk org-scoped patient collaboration access (p1_13)', async () => {
+    patientFindFirstMock.mockResolvedValue({ id: 'pt_1' });
+
+    await expect(
+      canAccessCollaborationEntity({ ...pharmacistCtx, role: 'clerk' }, 'patient', 'pt_1'),
+    ).resolves.toBe(true);
+
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pt_1',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
+  });
+
+  it('uses org-only dispense task lookup for clerk collaboration access', async () => {
+    dispenseTaskFindFirstMock.mockResolvedValue({ id: 'dt_1' });
+
+    await expect(
+      canAccessCollaborationEntity({ ...pharmacistCtx, role: 'clerk' }, 'dispense_task', 'dt_1'),
+    ).resolves.toBe(true);
+
+    expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'dt_1',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
+  });
+
+  it('still denies clerk access to entities outside the org', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    await expect(
+      canAccessCollaborationEntity({ ...pharmacistCtx, role: 'clerk' }, 'patient', 'pt_other_org'),
+    ).resolves.toBe(false);
+
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'pt_other_org',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
+  });
 });
