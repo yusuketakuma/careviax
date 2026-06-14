@@ -139,27 +139,28 @@ type ShareTarget = {
   recipient_contact: string;
 };
 
-// 送付前チェックの4ガバナンス項目(宛先確認 / 記載内容確認 / 同意確認 / 送付方法確認)
+// 送付前チェックの4ガバナンス項目(design p0_28: 薬剤師確認済み / 宛先が設定済み /
+// 添付資料あり / 患者情報の出しすぎなし)。key は内部状態用。
 const PRE_SEND_CHECK_ITEMS = [
   {
-    key: 'recipient',
-    label: '宛先確認',
-    description: '共有先と連絡先が正しいか確認しました',
-  },
-  {
     key: 'content',
-    label: '記載内容確認',
-    description: '報告内容に誤りや過剰な患者情報がないか確認しました',
+    label: '薬剤師確認済み',
+    description: '薬剤師が報告内容を確認しました',
   },
   {
-    key: 'consent',
-    label: '同意確認',
-    description: '患者・家族の情報共有同意を確認しました',
+    key: 'recipient',
+    label: '宛先が設定済み',
+    description: '共有先・連絡先・送付方法が設定されているか確認しました',
   },
   {
     key: 'channel',
-    label: '送付方法確認',
-    description: '各共有先の送付チャネルが適切か確認しました',
+    label: '添付資料あり',
+    description: '必要な添付資料が揃っているか確認しました',
+  },
+  {
+    key: 'consent',
+    label: '患者情報の出しすぎなし',
+    description: '不要な患者情報・同意外の情報を含めていないか確認しました',
   },
 ] as const;
 

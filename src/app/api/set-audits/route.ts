@@ -40,6 +40,18 @@ const createSetAuditSchema = z.object({
   photo_asset_ids: z.array(z.string().min(1)).max(50).optional(),
 });
 
+// 監査OK(approved)に必須の6チェック項目。
+// SSOT: set-audit-content.helpers.ts SET_AUDIT_CHECKLIST_ITEMS（client 専用のため値を複製）。
+// クライアント側 gate だけでは要求改竄でバイパス可能なので、サーバでも完了を必須にする。
+const SET_AUDIT_REQUIRED_CHECKLIST_KEYS = [
+  'date_match',
+  'timing_match',
+  'quantity_match',
+  'no_discontinued',
+  'residual_usage_ok',
+  'cold_storage_separated',
+] as const;
+
 const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
   'planned',
   'in_preparation',
@@ -118,6 +130,18 @@ export const POST = withAuthContext(
 
     const { plan_id, result, approved_scope, reject_reason, audited_at, checklist, photo_asset_ids } =
       parsed.data;
+
+    // 監査OK(3ペインUI)はサーバ側でもチェックリスト完了を必須にする（client gate のバイパス防止）。
+    // checklist を送らない旧UI(medication-sets-content)の承認は後方互換で従来どおり許可し、
+    // checklist を送る新フローでは空/部分チェックでの承認を拒否する。
+    if (result === 'approved' && checklist !== undefined) {
+      const allChecked = SET_AUDIT_REQUIRED_CHECKLIST_KEYS.every(
+        (key) => checklist[key] === true,
+      );
+      if (!allChecked) {
+        return validationError('監査OKには全6項目のチェックが必要です');
+      }
+    }
 
     const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
       const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);

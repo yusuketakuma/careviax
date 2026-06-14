@@ -89,7 +89,13 @@ function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]) {
     let changeType: DiffReviewChangeType;
     if (!prev) {
       changeType = 'added';
-    } else if (prev.dose !== line.dose || prev.frequency !== line.frequency) {
+    } else if (
+      prev.dose !== line.dose ||
+      prev.frequency !== line.frequency ||
+      (prev.days ?? null) !== (line.days ?? null)
+    ) {
+      // 用量・用法に加えて投与日数の変化も「変更」として検出する
+      // (日数のみの変化を薬剤師が見落とさないよう、変化なし扱いにしない)。
       changeType = 'changed';
     } else {
       changeType = 'unchanged';

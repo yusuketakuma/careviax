@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { error, success, validationError } from '@/lib/api/response';
 import { logger } from '@/lib/utils/logger';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
@@ -31,6 +32,7 @@ async function transmitClaimsExportForClose(args: {
   orgId: string;
   billingMonth: Date;
   billingDomain: string;
+  ctx: AuthContext;
 }): Promise<ClaimsExportCloseOutcome> {
   if (!isClaimsExportConsumerConfigured()) {
     return { transmitted: false, reason: 'not_configured' };
@@ -80,6 +82,19 @@ async function transmitClaimsExportForClose(args: {
       billingMonth: args.billingMonth.toISOString().slice(0, 7),
       records,
     });
+
+    // 3省2 audit-by-default: 要配慮個人情報(レセプト請求)の外部送信を必ず監査ログへ記録する。
+    await withOrgContext(args.orgId, (tx) =>
+      createAuditLogEntry(tx, args.ctx, {
+        action: 'billing.claims_export_transmitted',
+        targetType: 'billing_month',
+        targetId: `${args.billingMonth.toISOString().slice(0, 7)}/${args.billingDomain}`,
+        changes: {
+          billing_domain: args.billingDomain,
+          record_count: result.recordCount,
+        },
+      }),
+    );
 
     return { transmitted: true, recordCount: result.recordCount };
   } catch (cause) {
@@ -156,6 +171,7 @@ export async function POST(req: NextRequest) {
     orgId: ctx.orgId,
     billingMonth: parsedBillingMonth.start,
     billingDomain,
+    ctx,
   });
 
   return success({

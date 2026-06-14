@@ -70,6 +70,11 @@ export const POST = withAuthContext<{ id: string }>(
     if (!item || item.board.org_id !== ctx.orgId) {
       return notFound('相談が見つかりません');
     }
+    // consult_status が null の行は従来の引き継ぎ/作業移譲アイテム（相談ではない）。
+    // 相談解決エンドポイントで誤って consult 化しないようガードする。
+    if (item.consult_status === null) {
+      return validationError('この項目は相談ではないため解決できません');
+    }
 
     const resolutionAction = parsed.data.resolution_action;
     const nextConsultStatus = NEXT_CONSULT_STATUS[resolutionAction];
