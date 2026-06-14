@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInCalendarDays, format } from 'date-fns';
@@ -28,6 +29,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -79,6 +88,32 @@ type PrescriptionIntake = {
 };
 
 type PatientInfo = { id: string; name: string; name_kana: string };
+
+// ─── p0_11 処方の変化を確認(差分レビュー)─────────────────────────────────────
+
+type DiffReviewChangeType = 'added' | 'removed' | 'changed' | 'unchanged';
+
+type DiffReviewRow = {
+  key: string;
+  drug_name: string;
+  change_type: DiffReviewChangeType;
+  change_label: string;
+  previous_label: string | null;
+  current_label: string | null;
+  pharmacist_memo: string | null;
+};
+
+type DiffReview = {
+  rows: DiffReviewRow[];
+  set_impacts: string[];
+  patient_checks: string[];
+  change_count: number;
+};
+
+type DiffMeta = {
+  current: { id: string; prescribed_date: string };
+  previous: { id: string; prescribed_date: string };
+};
 
 type DrugMasterInfo = {
   yj_code: string;
@@ -965,6 +1000,160 @@ const METHOD_FILTER_OPTIONS = [
   { value: 'standard', label: '通常' },
 ] as const;
 
+// ─── p0_11 処方の変化を確認(差分レビュー)ビュー ───────────────────────────
+
+const DIFF_CHANGE_TEXT_COLOR: Record<DiffReviewChangeType, string> = {
+  added: 'text-emerald-700',
+  removed: 'text-red-700',
+  changed: 'text-orange-700',
+  unchanged: 'text-muted-foreground',
+};
+
+/** 「5/1処方 → 5/20処方」用の短縮日付 */
+function fmtShortDate(dateStr: string): string {
+  return format(new Date(dateStr), 'M/d', { locale: ja });
+}
+
+function DiffReviewView({
+  patientName,
+  diff,
+  meta,
+}: {
+  patientName: string;
+  diff: DiffReview;
+  meta: DiffMeta | null;
+}) {
+  return (
+    <section className="space-y-4 print:hidden" aria-labelledby="diff-review-heading">
+      <div>
+        <h2 id="diff-review-heading" className="font-heading text-lg font-bold text-foreground">
+          処方の変化を確認
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          前回と今回を並べて、変わったところだけ先に確認します
+        </p>
+        {meta && (
+          <p className="mt-1 text-base font-semibold text-foreground">
+            {patientName} 様　前回 {fmtShortDate(meta.previous.prescribed_date)}処方 → 今回{' '}
+            {fmtShortDate(meta.current.prescribed_date)}処方
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+        {/* 4 列テーブル: 変化 / 前回 / 今回 / 薬剤師メモ */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">変化</TableHead>
+                  <TableHead>前回</TableHead>
+                  <TableHead>今回</TableHead>
+                  <TableHead>薬剤師メモ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {diff.rows.map((row) => (
+                  <TableRow key={row.key}>
+                    <TableCell
+                      className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.change_type]}`}
+                    >
+                      {row.change_label}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.previous_label ?? 'なし'}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium text-foreground">
+                      {row.current_label ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.pharmacist_memo ?? '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* 次にやること + CTA */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <h3 className="font-heading text-base font-semibold text-foreground">次にやること</h3>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm leading-6 text-muted-foreground">
+              処方の変化を確認したら、調剤へ進みます。
+            </p>
+            <Button asChild className="w-full gap-1.5">
+              <Link href="/dispensing">
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+                確認して調剤へ
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* サブカード: セットにも影響する変化 / 患者さんに確認したいこと */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <h3 className="font-heading text-base font-semibold text-foreground">
+              セットにも影響する変化
+            </h3>
+          </CardHeader>
+          <CardContent>
+            {diff.set_impacts.length > 0 ? (
+              <ul className="space-y-2 text-sm leading-6 text-foreground" role="list">
+                {diff.set_impacts.map((item, index) => (
+                  <li key={index} className="flex gap-2">
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      ・
+                    </span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                セット(配薬)に影響する変化はありません。
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <h3 className="font-heading text-base font-semibold text-foreground">
+              患者さんに確認したいこと
+            </h3>
+          </CardHeader>
+          <CardContent>
+            {diff.patient_checks.length > 0 ? (
+              <ul className="space-y-2 text-sm leading-6 text-foreground" role="list">
+                {diff.patient_checks.map((item, index) => (
+                  <li key={index} className="flex gap-2">
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      ・
+                    </span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                追加で確認したい項目はありません。
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function PrescriptionHistoryContent() {
@@ -981,7 +1170,12 @@ export function PrescriptionHistoryContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('処方履歴の取得に失敗しました');
-      return res.json() as Promise<{ patient: PatientInfo; data: PrescriptionIntake[] }>;
+      return res.json() as Promise<{
+        patient: PatientInfo;
+        data: PrescriptionIntake[];
+        diff_review: DiffReview | null;
+        diff_meta: DiffMeta | null;
+      }>;
     },
     enabled: !!orgId && !!patientId,
   });
@@ -1113,6 +1307,15 @@ export function PrescriptionHistoryContent() {
 
   return (
     <div className="space-y-4">
+      {/* p0_11 処方の変化を確認(差分レビュー)。最新 2 件があるときのみ表示 */}
+      {data?.diff_review && data.patient && (
+        <DiffReviewView
+          patientName={data.patient.name}
+          diff={data.diff_review}
+          meta={data.diff_meta}
+        />
+      )}
+
       {/* Header */}
       {data?.patient && (
         <div className="flex items-center justify-between print:justify-start">

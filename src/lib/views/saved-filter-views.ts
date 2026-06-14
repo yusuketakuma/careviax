@@ -112,6 +112,116 @@ export function parseSavedView(raw: unknown): SavedView | null {
   };
 }
 
+/* -------------------------------------------------------------------------- *
+ * 名前付き保存ビュー (SavedView モデル) — W-CB-SAVED-VIEWS-MODEL (p1_01)
+ *
+ * me/preferences の単一 saved_view(「今の絞り込み条件」のクイック保存)とは別に、
+ * ユーザーが任意の名前を付けて複数の絞り込み組合せを保存・呼び出し・共有できる。
+ * filters/sort は「画面側が解釈する不透明な構造」(SavedView.filters Json)で、
+ * ここでは API と FE が共有する型と (de)serialize のみを定義する。
+ * -------------------------------------------------------------------------- */
+
+/** 保存ビューの適用先(リスト/画面)。API の zod スキーマと共有する SSOT。 */
+export const SAVED_VIEW_SCOPES = [
+  'patients',
+  'schedules',
+  'notifications',
+  'reports',
+  'handoffs',
+  'dispense',
+] as const;
+
+export type SavedViewScope = (typeof SAVED_VIEW_SCOPES)[number];
+
+/** scope → 表示名(チップのグルーピング見出しや空状態の文言に使う)。 */
+export const SAVED_VIEW_SCOPE_LABELS: Record<SavedViewScope, string> = {
+  patients: '患者',
+  schedules: 'スケジュール',
+  notifications: '通知',
+  reports: 'レポート',
+  handoffs: '相談・引き継ぎ',
+  dispense: '調剤',
+};
+
+export function isSavedViewScope(value: unknown): value is SavedViewScope {
+  return (
+    typeof value === 'string' && (SAVED_VIEW_SCOPES as readonly string[]).includes(value)
+  );
+}
+
+/** filters/sort の不透明な構造。画面側が解釈するため任意の JSON を許容する。 */
+export type SavedViewFilters = Record<string, unknown>;
+export type SavedViewSort = Record<string, unknown> | null;
+
+/** API 応答(GET/POST/PATCH)で受け取る保存ビュー 1 件の表示射影。 */
+export type SavedViewRecord = {
+  id: string;
+  name: string;
+  scope: SavedViewScope;
+  filters: SavedViewFilters;
+  sort: SavedViewSort;
+  isShared: boolean;
+  sortOrder: number;
+  /** 自分のビューか(false = org 共有された他メンバーのビュー)。 */
+  isOwner: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * filters の不透明 JSON を安全な plain object に正規化する。
+ * 配列・スカラー・null は「フィルタなし」として空オブジェクトに落とす。
+ */
+export function normalizeSavedViewFilters(raw: unknown): SavedViewFilters {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return { ...(raw as SavedViewFilters) };
+}
+
+/** sort の不透明 JSON を正規化する。未設定・不正な形は null。 */
+export function normalizeSavedViewSort(raw: unknown): SavedViewSort {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return { ...(raw as Record<string, unknown>) };
+}
+
+type SavedViewModelRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  scope: string;
+  filters: unknown;
+  sort: unknown;
+  is_shared: boolean;
+  sort_order: number;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+function toIsoString(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+/**
+ * SavedView の Prisma 行 → API 応答用の表示射影。
+ * 未知 scope はそのまま文字列として返す(後方互換: 画面側が無視できる)。
+ */
+export function toSavedViewRecord(
+  row: SavedViewModelRow,
+  currentUserId: string,
+): SavedViewRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    scope: row.scope as SavedViewScope,
+    filters: normalizeSavedViewFilters(row.filters),
+    sort: normalizeSavedViewSort(row.sort),
+    isShared: row.is_shared,
+    sortOrder: row.sort_order,
+    isOwner: row.user_id === currentUserId,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
 export type SavedViewPresetId = 'morning_check' | 'set_team' | 'clerk_check' | 'manager';
 
 export type SavedViewPreset = {

@@ -1,24 +1,34 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { buttonVariants } from '@/components/ui/button';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
+  FACILITY_PACKET_MEMO_FIELDS,
+  facilityPacketMemoDisplayItems,
   facilityPacketStatusLabel,
+  isFacilityPacketMemoEmpty,
+  parseFacilityPacketMemo,
   sortFacilityPacketPatients,
-  splitFacilityPacketNotes,
+  type FacilityPacketMemo,
   type FacilityPacketPatient,
 } from './facility-packet.shared';
 
 /**
  * p0_24「施設モード・訪問パケット」: 施設の本日訪問(部屋カード列)、
- * 施設訪問パケット(入館方法・駐車場などの申し送り)、次にやることの3カラム。
+ * 施設訪問パケット(入館方法・駐車場などの構造化申し送り)、次にやることの3カラム。
  * データは visit-preparations の facility_parallel_context を使う。
+ * 申し送りメモは 5 項目(入館 / 駐車 / ナースステーション / カート / 申し送り)の
+ * 構造化フォームで編集し、facility-visit-batches API へ保存する。
  */
 
 type FacilityParallelContext = {
@@ -40,6 +50,7 @@ type PreparationSnapshot = {
 
 export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
 
   const preparationQuery = useQuery<PreparationSnapshot>({
     queryKey: ['visit-preparation-facility-packet', scheduleId, orgId],
@@ -94,7 +105,6 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
   }
 
   const patients = sortFacilityPacketPatients(context.patients);
-  const packetItems = splitFacilityPacketNotes(context.common_notes);
   const facilityLabel = context.label ?? context.site_name ?? '施設';
   const startScheduleId = context.current_schedule_id || scheduleId;
 
@@ -133,27 +143,12 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
         </ul>
       </section>
 
-      <section
-        aria-labelledby="facility-packet-notes-heading"
-        className="rounded-lg border border-border/70 bg-card p-4"
-      >
-        <h2 id="facility-packet-notes-heading" className="text-base font-bold text-foreground">
-          施設訪問パケット
-        </h2>
-        {packetItems.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            施設メモは未登録です。スケジュールの施設一括設定から追加できます。
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2.5" role="list">
-            {packetItems.map((item) => (
-              <li key={item} className="text-sm leading-6 text-foreground">
-                ・{item}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <FacilityPacketMemoSection
+        orgId={orgId}
+        notes={context.common_notes}
+        orderedScheduleIds={patients.map((patient) => patient.schedule_id)}
+        onSaved={() => void queryClient.invalidateQueries({ queryKey: ['visit-preparation-facility-packet'] })}
+      />
 
       <aside
         aria-label="次にやること"
@@ -178,5 +173,141 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
         </div>
       </aside>
     </div>
+  );
+}
+
+/** 施設訪問パケット(中央カラム): 構造化メモの表示と編集フォーム。 */
+function FacilityPacketMemoSection({
+  orgId,
+  notes,
+  orderedScheduleIds,
+  onSaved,
+}: {
+  orgId: string;
+  notes: string | null;
+  orderedScheduleIds: string[];
+  onSaved: () => void;
+}) {
+  const savedMemo = useMemo(() => parseFacilityPacketMemo(notes), [notes]);
+  const [editing, setEditing] = useState(false);
+  // ドラフトは編集開始時に savedMemo から初期化する(表示は常に savedMemo を使う)。
+  const [draft, setDraft] = useState<FacilityPacketMemo>(savedMemo);
+
+  const saveMutation = useMutation({
+    mutationFn: async (memo: FacilityPacketMemo) => {
+      const res = await fetch('/api/facility-visit-batches', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          schedule_ids: orderedScheduleIds,
+          ordered_schedule_ids: orderedScheduleIds,
+          packet_memo: memo,
+        }),
+      });
+      if (!res.ok) throw new Error('施設訪問パケットの保存に失敗しました');
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('施設訪問パケットを保存しました');
+      setEditing(false);
+      onSaved();
+    },
+    onError: () => {
+      toast.error('施設訪問パケットの保存に失敗しました');
+    },
+  });
+
+  const displayItems = facilityPacketMemoDisplayItems(savedMemo);
+
+  return (
+    <section
+      aria-labelledby="facility-packet-notes-heading"
+      className="rounded-lg border border-border/70 bg-card p-4"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h2 id="facility-packet-notes-heading" className="text-base font-bold text-foreground">
+          施設訪問パケット
+        </h2>
+        {!editing && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-9"
+            onClick={() => {
+              setDraft(savedMemo);
+              setEditing(true);
+            }}
+          >
+            編集
+          </Button>
+        )}
+      </div>
+
+      {editing ? (
+        <form
+          className="mt-3 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveMutation.mutate(draft);
+          }}
+        >
+          {FACILITY_PACKET_MEMO_FIELDS.map((field) => (
+            <div key={field.key} className="space-y-1">
+              <Label htmlFor={`facility-packet-${field.key}`}>{field.label}</Label>
+              <Textarea
+                id={`facility-packet-${field.key}`}
+                value={draft[field.key]}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, [field.key]: event.target.value }))
+                }
+                rows={2}
+                maxLength={2000}
+                className="min-h-11"
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              type="submit"
+              variant="default"
+              className="min-h-11"
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? '保存中…' : '保存'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              disabled={saveMutation.isPending}
+              onClick={() => {
+                setDraft(savedMemo);
+                setEditing(false);
+              }}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </form>
+      ) : isFacilityPacketMemoEmpty(savedMemo) ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          施設メモは未登録です。「編集」から入館方法や駐車場などを登録できます。
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-2.5" role="list">
+          {displayItems.map((item) => (
+            <li key={item.key} className="text-sm leading-6 text-foreground">
+              ・{item.label}：
+              {item.value.split(/\r?\n/).map((line, lineIndex) => (
+                <span key={lineIndex} className={lineIndex > 0 ? 'block pl-[2.5em]' : undefined}>
+                  {line}
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

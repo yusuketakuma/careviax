@@ -4,13 +4,14 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Clock, AlertTriangle } from 'lucide-react';
 import { PageSection } from '@/components/layout/page-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -153,6 +154,52 @@ const DEFAULT_STATUS_REASON_FORM = {
   reason: '',
 };
 
+// フォーカスモードの「返信待ち」: 未完了かつ取消・下書きでない依頼に絞り込む
+const FOLLOWUP_OPEN_STATUSES = new Set([
+  'sent',
+  'received',
+  'in_progress',
+  'responded',
+  'escalated',
+]);
+
+const DEFAULT_FOCUSED_FORM = {
+  // 返信内容（responder_name は宛先名で初期化）
+  responder_name: '',
+  content: '',
+  // 次回カードへ残すこと（運用タスクとして残す任意メモ）
+  followup: '',
+};
+
+type ViewMode = 'table' | 'focused';
+
+// フォーカスモード左ペインの経過/期限バッジ。色だけに依存せずアイコン+テキストを併用。
+function resolveFollowupDueDisplay(item: CommunicationRequestRow): {
+  role: 'hazard' | 'confirm' | 'waiting' | 'done';
+  label: string;
+} {
+  if (item.responses.length > 0) {
+    return { role: 'done', label: '返信あり' };
+  }
+  if (item.due_date) {
+    const days = differenceInCalendarDays(parseISO(item.due_date), new Date());
+    if (days < 0) {
+      return { role: 'hazard', label: `期限${-days}日超過` };
+    }
+    if (days === 0) {
+      return { role: 'hazard', label: '本日期限' };
+    }
+    if (days <= 2) {
+      return { role: 'confirm', label: `期限まで${days}日` };
+    }
+  }
+  const elapsedDays = differenceInCalendarDays(new Date(), parseISO(item.requested_at));
+  return {
+    role: 'waiting',
+    label: elapsedDays <= 0 ? '本日依頼' : `${elapsedDays}日経過`,
+  };
+}
+
 type CommunicationRequestsContentProps = {
   initialStatus?: string | null;
   initialPatientId?: string | null;
@@ -172,6 +219,9 @@ export function CommunicationRequestsContent({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState(initialStatus ?? '');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [focusedSelectedId, setFocusedSelectedId] = useState<string | null>(null);
+  const [focusedForm, setFocusedForm] = useState(DEFAULT_FOCUSED_FORM);
   const [responseDialogOpen, setResponseDialogOpen] = useState(false);
   const [responseTarget, setResponseTarget] = useState<CommunicationRequestRow | null>(null);
   const [responseForm, setResponseForm] = useState(DEFAULT_RESPONSE_FORM);
@@ -278,6 +328,89 @@ export function CommunicationRequestsContent({
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '返信記録の保存に失敗しました');
+    },
+  });
+
+  // フォーカスモードの「対応済みにする」: 返信内容の記録 → 次回カード作成 → 完了化 を順に実行。
+  // 既存ミューテーションの副作用（ダイアログ開閉トースト）と切り離すため API を直接呼ぶ。
+  const resolveFocusedMutation = useMutation({
+    mutationFn: async ({
+      item,
+      responderName,
+      content,
+      followup,
+    }: {
+      item: CommunicationRequestRow;
+      responderName: string;
+      content: string;
+      followup: string;
+    }) => {
+      const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+
+      // 返信内容が入力されていれば返信記録を残す（responded へ自動遷移）
+      if (content) {
+        const res = await fetch(`/api/communication-requests/${item.id}`, {
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            response: {
+              responder_name: responderName || item.recipient_name || '担当者',
+              content,
+              responded_at: new Date().toISOString(),
+            },
+          }),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.message ?? '返信記録の保存に失敗しました');
+        }
+      }
+
+      // 次回カードへ残すことがあれば運用タスク（報告返信待ちフォロー）を作成
+      if (followup) {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            task_type: 'report_response_followup',
+            title: `返信フォロー: ${item.subject}`,
+            description: followup,
+            ...(item.patient_id
+              ? { related_entity_type: 'patient', related_entity_id: item.patient_id }
+              : {}),
+          }),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.message ?? '次回カードの作成に失敗しました');
+        }
+      }
+
+      // 依頼を完了（closed）に遷移。変更理由は監査要件のため文言で記録
+      const closeRes = await fetch(`/api/communication-requests/${item.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          status: 'closed',
+          status_change_reason: followup
+            ? `フォロー対応済み（次回カードへ残す）: ${followup}`
+            : 'フォロー対応済み',
+        }),
+      });
+      if (!closeRes.ok) {
+        const error = await closeRes.json().catch(() => ({}));
+        throw new Error(error.message ?? '依頼の完了に失敗しました');
+      }
+    },
+    onSuccess: async () => {
+      toast.success('対応済みにしました');
+      setFocusedSelectedId(null);
+      setFocusedForm(DEFAULT_FOCUSED_FORM);
+      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '対応の記録に失敗しました');
     },
   });
 
@@ -589,6 +722,29 @@ export function CommunicationRequestsContent({
     [responseMutation.isPending, statusMutation],
   );
 
+  // フォーカスモード: 未完了の返信待ち依頼のみ（期限の近い順）
+  const focusedRequests = useMemo(() => {
+    const rows = (data?.data ?? []).filter((row) => FOLLOWUP_OPEN_STATUSES.has(row.status));
+    return rows.sort((a, b) => {
+      const aDue = a.due_date ? parseISO(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const bDue = b.due_date ? parseISO(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (aDue !== bDue) return aDue - bDue;
+      return parseISO(a.requested_at).getTime() - parseISO(b.requested_at).getTime();
+    });
+  }, [data?.data]);
+
+  const focusedSelected =
+    focusedRequests.find((row) => row.id === focusedSelectedId) ?? focusedRequests[0] ?? null;
+
+  const selectFocusedRequest = (item: CommunicationRequestRow) => {
+    setFocusedSelectedId(item.id);
+    setFocusedForm({
+      responder_name: item.recipient_name ?? '',
+      content: '',
+      followup: '',
+    });
+  };
+
   return (
     <div className="space-y-6">
       {contextSummary ? (
@@ -606,6 +762,28 @@ export function CommunicationRequestsContent({
         tone="subtle"
         actions={
           <ActionRail>
+            <div
+              className="inline-flex rounded-md border border-border bg-muted/40 p-0.5"
+              role="group"
+              aria-label="表示モード"
+            >
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'ghost'}
+                size="sm"
+                aria-pressed={viewMode === 'table'}
+                onClick={() => setViewMode('table')}
+              >
+                一覧
+              </Button>
+              <Button
+                variant={viewMode === 'focused' ? 'default' : 'ghost'}
+                size="sm"
+                aria-pressed={viewMode === 'focused'}
+                onClick={() => setViewMode('focused')}
+              >
+                返信待ち・フォロー
+              </Button>
+            </div>
             <Button variant="outline" size="sm" onClick={handleExport}>
               CSVエクスポート
             </Button>
@@ -671,21 +849,142 @@ export function CommunicationRequestsContent({
         ) : null}
       </PageSection>
 
-      <PageSection
-        title="依頼・照会一覧"
-        description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
-        tone="subtle"
-      >
-        <DataTable
-          columns={columns}
-          data={data?.data ?? []}
-          isLoading={isLoading}
-          caption="依頼・照会一覧"
-        />
-      </PageSection>
+      {viewMode === 'focused' ? (
+        <PageSection
+          title="返信待ち・フォロー"
+          description="返信待ちの依頼を1件ずつ確認し、返信内容と次回カードへ残すことを記録して対応済みにします。"
+          tone="subtle"
+          contentClassName="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]"
+        >
+          {/* 左ペイン: 返信待ちリスト */}
+          <div
+            className="space-y-2"
+            role="listbox"
+            aria-label="返信待ちの依頼"
+            data-testid="reply-followup-list"
+          >
+            <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
+            {isLoading ? (
+              <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
+            ) : focusedRequests.length === 0 ? (
+              <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                返信待ちの依頼はありません。
+              </p>
+            ) : (
+              focusedRequests.map((item) => {
+                const due = resolveFollowupDueDisplay(item);
+                const isSelected = focusedSelected?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => selectFocusedRequest(item)}
+                    className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                        : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-foreground">
+                      {item.recipient_role ? `${item.recipient_role}：` : ''}
+                      {item.recipient_name ?? '宛先未設定'}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.subject}</p>
+                    <div className="mt-2">
+                      <StateBadge role={due.role}>{due.label}</StateBadge>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
 
-      <PageSection
-        title="連携タイムライン"
+          {/* 右ペイン: 返信内容と次の対応 */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            {focusedSelected ? (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {focusedSelected.recipient_role ? `${focusedSelected.recipient_role}：` : ''}
+                    {focusedSelected.recipient_name ?? '宛先未設定'} / {focusedSelected.subject}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="focused_response_content">返信内容</Label>
+                  <Textarea
+                    id="focused_response_content"
+                    rows={5}
+                    placeholder="返信内容を記録します（任意）"
+                    value={focusedForm.content}
+                    onChange={(event) =>
+                      setFocusedForm((current) => ({ ...current, content: event.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="focused_followup">次回カードへ残すこと</Label>
+                  <Textarea
+                    id="focused_followup"
+                    rows={3}
+                    placeholder="例: 夕食後薬の飲み忘れを確認"
+                    aria-describedby="focused_followup_help"
+                    className="bg-state-done/5"
+                    value={focusedForm.followup}
+                    onChange={(event) =>
+                      setFocusedForm((current) => ({ ...current, followup: event.target.value }))
+                    }
+                  />
+                  <p id="focused_followup_help" className="text-xs text-muted-foreground">
+                    入力すると報告返信待ちフォローの運用タスクとして残します。
+                  </p>
+                </div>
+
+                <div className="flex justify-start pt-1">
+                  <Button
+                    className="bg-state-done text-white hover:bg-state-done/90"
+                    onClick={() =>
+                      resolveFocusedMutation.mutate({
+                        item: focusedSelected,
+                        responderName: focusedForm.responder_name.trim(),
+                        content: focusedForm.content.trim(),
+                        followup: focusedForm.followup.trim(),
+                      })
+                    }
+                    disabled={resolveFocusedMutation.isPending}
+                  >
+                    対応済みにする
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                左の返信待ちリストから依頼を選択してください。
+              </p>
+            )}
+          </div>
+        </PageSection>
+      ) : (
+        <>
+          <PageSection
+            title="依頼・照会一覧"
+            description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
+            tone="subtle"
+          >
+            <DataTable
+              columns={columns}
+              data={data?.data ?? []}
+              isLoading={isLoading}
+              caption="依頼・照会一覧"
+            />
+          </PageSection>
+
+          <PageSection
+            title="連携タイムライン"
         description="訪問予定変更、報告送付、送達失敗・再送など主要な連携イベントを時系列で確認します。"
         tone="subtle"
         contentClassName="space-y-3"
@@ -731,13 +1030,15 @@ export function CommunicationRequestsContent({
         description="タイムラインより広い履歴を一覧で確認するための履歴グループです。"
         tone="subtle"
       >
-        <DataTable
-          columns={eventColumns}
-          data={eventData?.data ?? []}
-          isLoading={isEventsLoading}
-          caption="連携ログ一覧"
-        />
-      </PageSection>
+            <DataTable
+              columns={eventColumns}
+              data={eventData?.data ?? []}
+              isLoading={isEventsLoading}
+              caption="連携ログ一覧"
+            />
+          </PageSection>
+        </>
+      )}
 
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <DialogContent>

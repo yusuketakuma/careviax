@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -83,6 +85,11 @@ export type SafetyBoardProps = {
   swallowing?: string;
   /** 自由文の注意。例: ふらつき(6/5〜経過観察) */
   cautions?: string[];
+  /**
+   * 「薬の安全チェック」(/patients/[id]/safety-check)への導線 href。
+   * 患者カードなど患者文脈を持つ呼び出し元が指定すると、ヘッダ右に導線リンクを表示する。
+   */
+  safetyCheckHref?: string;
   className?: string;
 };
 
@@ -92,6 +99,7 @@ export function SafetyBoard({
   handlingTags,
   swallowing,
   cautions,
+  safetyCheckHref,
   className,
 }: SafetyBoardProps) {
   const tags = handlingTags ?? [];
@@ -106,9 +114,19 @@ export function SafetyBoard({
       className={cn('rounded-lg border-2 border-red-300 bg-red-50/50 p-4', className)}
       data-testid="safety-board"
     >
-      <div className="flex flex-wrap items-baseline gap-x-2">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h3 className="text-sm font-bold text-red-700">セーフティボード</h3>
         <span className="text-xs text-red-700/80">どの工程でも常時表示</span>
+        {safetyCheckHref ? (
+          <Link
+            href={safetyCheckHref}
+            className="ml-auto inline-flex items-center gap-0.5 self-center rounded-md px-1.5 py-0.5 text-xs font-medium text-red-700 underline-offset-2 hover:bg-red-100/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            data-testid="safety-board-safety-check-link"
+          >
+            薬の安全チェック
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
       <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
         {allergy ? (

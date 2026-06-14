@@ -39,6 +39,10 @@ vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: vi.fn(),
+}));
+
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {

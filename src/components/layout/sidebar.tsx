@@ -85,7 +85,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
-  const { sidebarOpen, toggleSidebar, workMode } = useUIStore();
+  const { sidebarOpen, toggleSidebar, workMode, sidebarPinned, setSidebarOpen } = useUIStore();
   const currentUserName = useAuthStore((state) => state.currentUser?.name ?? null);
   const currentUserRole = useAuthStore((state) => state.currentUser?.role ?? null);
   const navBadges = useNavBadges();
@@ -183,15 +183,31 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
                 </span>
               ) : null}
               {workMode ? (
-                <span
-                  className="block text-[10px] text-sidebar-foreground/45"
+                <Link
+                  href="/select-mode"
+                  onClick={() => {
+                    if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
+                  }}
+                  className="block text-[10px] text-sidebar-foreground/45 underline-offset-2 hover:text-sidebar-foreground/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
                   data-testid="sidebar-current-user-mode"
                 >
                   {WORK_MODE_LABELS[workMode]}
-                </span>
+                </Link>
               ) : null}
             </span>
           </div>
+        ) : null}
+        {sidebarOpen ? (
+          <Link
+            href="/select-site"
+            onClick={() => {
+              if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
+            }}
+            className="mb-1 block rounded-md px-3 py-1 text-[11px] text-sidebar-foreground/55 underline-offset-2 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            data-testid="sidebar-select-site-link"
+          >
+            薬局を切り替える
+          </Link>
         ) : null}
         <button
           type="button"

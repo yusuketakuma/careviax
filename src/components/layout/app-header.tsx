@@ -61,25 +61,29 @@ function HeaderSyncStatus() {
 
   if (!online) {
     return (
-      <span
-        className="hidden shrink-0 items-center gap-1 text-xs font-medium text-amber-600 sm:flex"
+      <Link
+        href="/offline-sync"
+        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-amber-600 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
         data-testid="app-header-sync-status"
+        aria-label="オフライン — 同期状況を開く"
       >
         <CloudOff className="size-3.5" aria-hidden="true" />
         オフライン
-      </span>
+      </Link>
     );
   }
 
   const syncTime = formatSyncTime(lastSyncedAt);
 
   return (
-    <span
-      className="hidden shrink-0 text-xs font-medium text-emerald-700 sm:inline"
+    <Link
+      href="/offline-sync"
+      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
       data-testid="app-header-sync-status"
+      aria-label="同期状況を開く"
     >
       同期済み{syncTime ? ` ${syncTime}` : ''}
-    </span>
+    </Link>
   );
 }
 

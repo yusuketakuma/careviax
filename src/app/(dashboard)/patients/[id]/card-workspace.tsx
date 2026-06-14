@@ -371,6 +371,7 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
             handlingTags={workspace.safety.handling_tags}
             swallowing={workspace.safety.swallowing ?? undefined}
             cautions={workspace.safety.cautions}
+            safetyCheckHref={`/patients/${patientId}/safety-check`}
           />
 
           {/* 今回の処方: 工程チップ(9 工程)+ 薬剤テーブル(薬剤/用法/数量/安全) */}

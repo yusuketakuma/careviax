@@ -3,7 +3,9 @@ import { withAuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, forbidden, success, validationError } from '@/lib/api/response';
+import { serializeFacilityPacketMemo } from '@/app/(dashboard)/visits/[id]/facility-packet/facility-packet.shared';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
@@ -19,6 +21,16 @@ const upsertFacilityVisitBatchSchema = z
     ordered_schedule_ids: z.array(z.string().trim().min(1)).optional(),
     carry_items_confirmed: z.boolean().optional(),
     allow_mixed_unit: z.boolean().optional(),
+    // 施設訪問パケットの構造化申し送りメモ(5 項目)。指定時は notes へ直列化保存する。
+    packet_memo: z
+      .object({
+        entry: z.string().max(2000).optional(),
+        parking: z.string().max(2000).optional(),
+        nurse_station: z.string().max(2000).optional(),
+        cart: z.string().max(2000).optional(),
+        handoff: z.string().max(2000).optional(),
+      })
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.schedule_ids?.length) {
@@ -329,6 +341,18 @@ export const POST = withAuthContext(
         return { error: 'duplicate_route_order' as const };
       }
 
+      // 施設訪問パケットの構造化メモ(指定時のみ notes を更新する)。
+      const packetNotes =
+        parsed.data.packet_memo !== undefined
+          ? serializeFacilityPacketMemo({
+              entry: parsed.data.packet_memo.entry ?? '',
+              parking: parsed.data.packet_memo.parking ?? '',
+              nurse_station: parsed.data.packet_memo.nurse_station ?? '',
+              cart: parsed.data.packet_memo.cart ?? '',
+              handoff: parsed.data.packet_memo.handoff ?? '',
+            })
+          : undefined;
+
       const batch =
         existingBatchIds.length === 1
           ? await tx.facilityVisitBatch.update({
@@ -339,6 +363,7 @@ export const POST = withAuthContext(
                 scheduled_date: schedules[0].scheduled_date,
                 pharmacist_id: schedules[0].pharmacist_id,
                 patient_ids: orderedSchedules.map((schedule) => schedule.case_.patient.id),
+                ...(packetNotes !== undefined ? { notes: packetNotes } : {}),
               },
             })
           : await tx.facilityVisitBatch.create({
@@ -349,8 +374,18 @@ export const POST = withAuthContext(
                 scheduled_date: schedules[0].scheduled_date,
                 pharmacist_id: schedules[0].pharmacist_id,
                 patient_ids: orderedSchedules.map((schedule) => schedule.case_.patient.id),
+                ...(packetNotes !== undefined ? { notes: packetNotes } : {}),
               },
             });
+
+      if (packetNotes !== undefined) {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'facility_visit_batch.packet_memo.update',
+          targetType: 'FacilityVisitBatch',
+          targetId: batch.id,
+          changes: { notes_updated: true, cleared: packetNotes === null },
+        });
+      }
 
       const updateResults = await Promise.all(
         orderedSchedules.map((schedule, index) =>
@@ -422,6 +457,7 @@ export const POST = withAuthContext(
         facility_label: Array.from(facilityLabels)[0],
         patient_count: orderedSchedules.length,
         carry_items_confirmed: Boolean(parsed.data.carry_items_confirmed),
+        packet_notes: packetNotes !== undefined ? packetNotes : (batch.notes ?? null),
         schedules: orderedSchedules.map((schedule, index) => ({
           schedule_id: schedule.id,
           case_id: schedule.case_id,

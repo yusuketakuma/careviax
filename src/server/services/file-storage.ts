@@ -32,7 +32,7 @@ const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
 const VISIT_ATTACHMENT_MIME_TYPES = new Set([...DOCUMENT_MIME_TYPES]);
 
-export type FilePurpose = 'prescription' | 'visit-photo' | 'report';
+export type FilePurpose = 'prescription' | 'visit-photo' | 'report' | 'set-photo';
 type GeneratedFilePurpose = 'bulk-export';
 type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
@@ -44,6 +44,7 @@ function isAnyFilePurpose(value: unknown): value is AnyFilePurpose {
     value === 'prescription' ||
     value === 'visit-photo' ||
     value === 'report' ||
+    value === 'set-photo' ||
     value === 'bulk-export'
   );
 }
@@ -334,7 +335,9 @@ function buildPrescriptionObjectLockRetention(purpose: FilePurpose) {
 
 function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; sizeBytes: number }) {
   const allowedMimeTypes =
-    args.purpose === 'visit-photo' ? VISIT_ATTACHMENT_MIME_TYPES : DOCUMENT_MIME_TYPES;
+    args.purpose === 'visit-photo' || args.purpose === 'set-photo'
+      ? VISIT_ATTACHMENT_MIME_TYPES
+      : DOCUMENT_MIME_TYPES;
 
   if (!allowedMimeTypes.has(args.mimeType)) {
     throw new FileStorageError('FILE_UPLOAD_INVALID_MIME', '許可されていない MIME タイプです', 400);
@@ -393,6 +396,8 @@ function buildStorageKey(args: {
       return `visit-photos/${args.orgId}/${args.visitRecordId}/${args.fileId}-${safeName}`;
     case 'report':
       return `reports/${args.orgId}/${args.reportId}/${args.fileId}-${safeName}`;
+    case 'set-photo':
+      return `set-audits/${args.orgId}/${args.fileId}-${safeName}`;
     case 'bulk-export':
       return `bulk-exports/${args.orgId}/${args.jobId}/${args.fileId}-${safeName}`;
   }
@@ -511,6 +516,8 @@ function isStoredFileReferenceConsistent(record: {
           `reports/${record.orgId}/${record.reportId}/`,
         )
       );
+    case 'set-photo':
+      return hasExpectedStorageKeyPrefix(record.storageKey, `set-audits/${record.orgId}/`);
     case 'bulk-export':
       return (
         record.jobId !== null &&
@@ -725,6 +732,13 @@ function assertRoleAuthorizedForStoredFile(
   if (record.purpose === 'report') {
     if (!hasPermission(accessContext.role, 'canReport')) {
       throwFileAccessForbidden(mode, '報告書ファイルへのアクセス権限がありません');
+    }
+    return;
+  }
+
+  if (record.purpose === 'set-photo') {
+    if (!hasPermission(accessContext.role, 'canAuditSet')) {
+      throwFileAccessForbidden(mode, 'セット監査写真へのアクセス権限がありません');
     }
     return;
   }
@@ -962,6 +976,10 @@ async function assertStoredFileAccess(args: {
         accessContext: args.accessContext,
         mode: args.mode,
       });
+      return;
+    case 'set-photo':
+      // ロール認可は assertRoleAuthorizedForStoredFile(canAuditSet) で実施済み。
+      // セット監査写真は患者/訪問/報告のような個別参照を持たず org スコープ(RLS)で分離。
       return;
     case 'bulk-export':
       if (
