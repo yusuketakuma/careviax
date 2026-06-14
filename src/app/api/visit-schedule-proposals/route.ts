@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
@@ -13,8 +14,10 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import {
   generateVisitScheduleProposalSchema,
+  patientContactStatusValues,
   proposalStatusSchema,
 } from '@/lib/validations/visit-schedule-proposal';
+import { visitPriorityValues, visitTypeValues } from '@/lib/validations/visit-schedule';
 import {
   omitProposalRejectReason,
   omitProposalRejectReasons,
@@ -656,5 +659,219 @@ export const POST = withAuthContext(
   {
     permission: 'canVisit',
     message: '訪問候補の生成権限がありません',
+  },
+);
+
+// ── 単一レコードの「予定を作成・編集」ドロワー用 (p0_18) ──
+// 既存の VisitProposalStatus を使い、下書き = proposed / 確認待ち = patient_contact_pending を表現する。
+// スキーマフィールドは追加しない。
+const draftProposalTimeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時刻形式が不正です（HH:mm）');
+
+const upsertDraftProposalSchema = z
+  .object({
+    id: z.string().trim().min(1).optional(),
+    case_id: z.string().min(1, 'ケースは必須です'),
+    visit_type: z.enum(visitTypeValues).default('regular'),
+    priority: z.enum(visitPriorityValues).default('normal'),
+    proposed_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
+    time_window_start: draftProposalTimeSchema.optional(),
+    time_window_end: draftProposalTimeSchema.optional(),
+    proposed_pharmacist_id: z.string().min(1, '担当薬剤師は必須です'),
+    vehicle_resource_id: z.string().trim().min(1).optional(),
+    travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).default('DRIVE'),
+    proposal_reason: z.string().trim().max(500).optional(),
+    patient_contact_status: z.enum(patientContactStatusValues).optional(),
+    // true: 確認待ち (patient_contact_pending) へ遷移 / false: 下書き (proposed) のまま
+    submit_for_contact: z.boolean().default(false),
+  })
+  .superRefine((data, ctx) => {
+    if (data.time_window_start && data.time_window_end) {
+      if (data.time_window_end <= data.time_window_start) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['time_window_end'],
+          message: '終了時刻は開始時刻より後にしてください',
+        });
+      }
+    }
+  });
+
+function toProposalTimeDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  return new Date(`1970-01-01T${value}:00`);
+}
+
+/**
+ * 単一の訪問予定を下書き保存 / 確認待ちにする。
+ *
+ * - id 未指定: 新規作成（下書き or 確認待ち）
+ * - id 指定: 既存の下書き / 確認待ち提案を更新（confirmed 以降は不可）
+ *
+ * 下書き = proposal_status 'proposed' / 確認待ち = 'patient_contact_pending' を
+ * 既存の enum で表現し、スキーマフィールドは追加しない。
+ */
+export const PUT = withAuthContext(
+  async (req: NextRequest, ctx: AuthContext) => {
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = upsertDraftProposalSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const input = parsed.data;
+
+    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(
+      ctx,
+      input.proposed_pharmacist_id,
+    );
+    const accessibleCase = await prisma.careCase.findFirst({
+      where: {
+        id: input.case_id,
+        org_id: ctx.orgId,
+        ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
+      },
+      select: { id: true },
+    });
+    if (!accessibleCase) return notFound('ケースが見つかりません');
+
+    const refResult = await validateOrgReferences(ctx.orgId, {
+      case_id: input.case_id,
+      pharmacist_id: input.proposed_pharmacist_id,
+    });
+    if (!refResult.ok) return refResult.response;
+
+    // 担当薬剤師の所属拠点を訪問先拠点として継承（任意項目）
+    const pharmacistMembership = await prisma.membership.findFirst({
+      where: {
+        user_id: input.proposed_pharmacist_id,
+        org_id: ctx.orgId,
+        is_active: true,
+      },
+      select: { site_id: true },
+    });
+
+    let vehicleResource: { id: string; site_id: string | null } | null = null;
+    if (input.vehicle_resource_id) {
+      vehicleResource = await prisma.visitVehicleResource.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          id: input.vehicle_resource_id,
+          available: true,
+        },
+        select: { id: true, site_id: true },
+      });
+      if (!vehicleResource) {
+        return validationError('選択した車両リソースが見つからないか利用できません');
+      }
+    }
+
+    const targetStatus = input.submit_for_contact ? 'patient_contact_pending' : 'proposed';
+    const resolvedSiteId = vehicleResource?.site_id ?? pharmacistMembership?.site_id ?? null;
+
+    const existing = input.id
+      ? await prisma.visitScheduleProposal.findFirst({
+          where: { id: input.id, org_id: ctx.orgId },
+          select: {
+            id: true,
+            proposal_status: true,
+            patient_contact_status: true,
+            proposed_pharmacist_id: true,
+            proposed_date: true,
+          },
+        })
+      : null;
+    if (input.id && !existing) {
+      return notFound('訪問予定が見つかりません');
+    }
+    if (existing && !['proposed', 'patient_contact_pending'].includes(existing.proposal_status)) {
+      return validationError('下書き / 確認待ちの予定のみ編集できます');
+    }
+
+    const proposal = await withOrgContext(ctx.orgId, async (tx) => {
+      if (existing) {
+        const updated = await tx.visitScheduleProposal.update({
+          where: { id: existing.id },
+          data: {
+            case_id: input.case_id,
+            site_id: resolvedSiteId,
+            visit_type: input.visit_type,
+            priority: input.priority,
+            proposal_status: targetStatus,
+            ...(input.patient_contact_status
+              ? { patient_contact_status: input.patient_contact_status }
+              : {}),
+            proposed_date: new Date(input.proposed_date),
+            time_window_start: toProposalTimeDate(input.time_window_start),
+            time_window_end: toProposalTimeDate(input.time_window_end),
+            proposed_pharmacist_id: input.proposed_pharmacist_id,
+            vehicle_resource_id: vehicleResource?.id ?? null,
+            ...(input.proposal_reason !== undefined
+              ? { proposal_reason: input.proposal_reason }
+              : {}),
+          },
+        });
+
+        await createAuditLogEntry(tx, ctx, {
+          action: 'visit_schedule_proposal_draft_updated',
+          targetType: 'VisitScheduleProposal',
+          targetId: updated.id,
+          changes: {
+            proposalStatusFrom: existing.proposal_status,
+            proposalStatusTo: targetStatus,
+            submittedForContact: input.submit_for_contact,
+          },
+        });
+
+        return updated;
+      }
+
+      const created = await tx.visitScheduleProposal.create({
+        data: {
+          org_id: ctx.orgId,
+          case_id: input.case_id,
+          site_id: resolvedSiteId,
+          visit_type: input.visit_type,
+          priority: input.priority,
+          proposal_status: targetStatus,
+          ...(input.patient_contact_status
+            ? { patient_contact_status: input.patient_contact_status }
+            : {}),
+          proposed_date: new Date(input.proposed_date),
+          time_window_start: toProposalTimeDate(input.time_window_start),
+          time_window_end: toProposalTimeDate(input.time_window_end),
+          proposed_pharmacist_id: input.proposed_pharmacist_id,
+          vehicle_resource_id: vehicleResource?.id ?? null,
+          proposal_reason: input.proposal_reason ?? '手動作成（予定を作成・編集）',
+        },
+      });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_proposal_draft_created',
+        targetType: 'VisitScheduleProposal',
+        targetId: created.id,
+        changes: {
+          proposalStatusTo: targetStatus,
+          submittedForContact: input.submit_for_contact,
+        },
+      });
+
+      return created;
+    });
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedule_proposals_create', case_id: input.case_id },
+    });
+
+    return success({ data: omitProposalRejectReason(proposal) }, input.id ? 200 : 201);
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問予定の作成・編集権限がありません',
   },
 );

@@ -191,8 +191,7 @@ export function computeTimePreferenceTravelMinutes(ordered: RouteCompareVisitInp
       current.startMinutes != null && next.startMinutes != null
         ? next.startMinutes - (current.startMinutes + visitDurationMinutes(current))
         : 0;
-    total +=
-      idleGap > IDLE_RETURN_THRESHOLD_MINUTES ? PHARMACY_LEG_MINUTES * 2 : BASE_LEG_MINUTES;
+    total += idleGap > IDLE_RETURN_THRESHOLD_MINUTES ? PHARMACY_LEG_MINUTES * 2 : BASE_LEG_MINUTES;
   }
   return total;
 }
@@ -360,6 +359,194 @@ export function buildScenarioRouteOrderUpdates(args: {
     });
   }
   return updates;
+}
+
+/**
+ * p0_21「ルート最適化詳細 + 守る条件」: 3 案比較とは別に、推奨案 1 本を主役にした詳細ビュー
+ * (順番付きの訪問パケット + 候補1/候補2 サマリー + 守る条件チェックリスト)を組み立てる純関数群。
+ * 余力・移動の算出は上の buildRouteScenarios の結果をそのまま再利用する。
+ */
+
+/** 詳細ビューの「訪問パケット」1 行分。希望時間の有無と所要分を持つ */
+export type RouteDetailStop = {
+  scheduleId: string;
+  patientName: string;
+  /** 1 始まりの訪問順 */
+  order: number;
+  /** 希望時間帯がある場合の表示用ラベル(例: 10:30 - 11:00)。無ければ null */
+  timeWindowLabel: string | null;
+  /** 訪問 1 件の所要時間の近似(分) */
+  durationMinutes: number;
+};
+
+/** 候補1/候補2 のサマリー行。recommended が候補1(主役) */
+export type RouteDetailCandidate = {
+  scenarioId: RouteScenarioId;
+  /** 例: 候補1 / 候補2 */
+  rankLabel: string;
+  /** 移動分 */
+  travelMinutes: number;
+  /** 全訪問の所要分合計 */
+  visitMinutes: number;
+  /** 余力件数 */
+  spareCount: number;
+  recommended: boolean;
+  /** 例: 移動92分 / 訪問130分 / 余力2件(候補1) または 移動105分 / 余力1件(候補2) */
+  summary: string;
+};
+
+/** 守る条件チェックリスト 1 項目。満たしていれば checked */
+export type RouteDetailConstraint = {
+  id: string;
+  label: string;
+  checked: boolean;
+};
+
+/** 推奨案 1 本を主役にした詳細ビューのモデル */
+export type RouteDetail = {
+  /** 主役(候補1)の案 ID */
+  recommendedScenarioId: RouteScenarioId;
+  stops: RouteDetailStop[];
+  /** 主役チャート用(候補1 の訪問順) */
+  chartStops: RouteScenarioStop[];
+  /** 候補1(主役)・候補2(次点)のサマリー */
+  candidates: RouteDetailCandidate[];
+  constraints: RouteDetailConstraint[];
+};
+
+/** 訪問予定の付帯情報(守る条件の判定に使う任意フラグ)。未指定でも詳細は組み立てられる */
+export type RouteDetailVisitMeta = {
+  /** 正式決定済み(confirmed_at あり)の訪問が含まれるか */
+  hasConfirmedVisit?: boolean;
+  /** 冷所品など要冷蔵の持参物がある訪問が含まれるか */
+  hasColdChainItem?: boolean;
+  /** 使用車両のラベル(例: 車両A)。割当があれば表示する */
+  vehicleLabel?: string | null;
+  /** 施設一括訪問(受付時間の制約あり)が本日含まれるか */
+  hasFacilityVisit?: boolean;
+};
+
+/** 全訪問の所要分合計(訪問時間のみ。移動は含まない) */
+function totalVisitMinutes(visits: RouteCompareVisitInput[]) {
+  return visits.reduce((sum, visit) => sum + visitDurationMinutes(visit), 0);
+}
+
+function toDetailStops(ordered: RouteCompareVisitInput[]): RouteDetailStop[] {
+  return ordered.map((visit, index) => ({
+    scheduleId: visit.scheduleId,
+    patientName: visit.patientName,
+    order: index + 1,
+    timeWindowLabel:
+      visit.startMinutes != null ? formatMinutesRange(visit.startMinutes, visit.endMinutes) : null,
+    durationMinutes: visitDurationMinutes(visit),
+  }));
+}
+
+/** 0 時からの分を HH:mm に整形(終了が無ければ開始のみ) */
+function formatMinutesRange(startMinutes: number, endMinutes: number | null): string {
+  const left = formatMinutesOfDay(startMinutes);
+  if (endMinutes == null || endMinutes <= startMinutes) return left;
+  return `${left} - ${formatMinutesOfDay(endMinutes)}`;
+}
+
+function formatMinutesOfDay(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
+/**
+ * 推奨案(候補1)を主役にした詳細ビューを組み立てる。
+ * 候補1 は buildRouteScenarios の推奨案(案A 移動少なめ)、候補2 はその次点(案B 希望時間優先)。
+ * 移動・余力・並び順はすべて既存の scenario 計算を再利用する。
+ */
+export function buildRecommendedRouteDetail(
+  visits: RouteCompareVisitInput[],
+  meta: RouteDetailVisitMeta = {},
+): RouteDetail | null {
+  if (visits.length === 0) return null;
+
+  const scenarios = buildRouteScenarios(visits);
+  const recommended = scenarios.find((scenario) => scenario.recommended) ?? scenarios[0];
+  const runnerUp = scenarios.find((scenario) => scenario.id !== recommended.id) ?? null;
+
+  // 訪問パケットは候補1(主役)の並び順を再利用する
+  const orderedById = new Map(visits.map((visit) => [visit.scheduleId, visit]));
+  const orderedVisits = recommended.stops
+    .map((stop) => orderedById.get(stop.scheduleId))
+    .filter((visit): visit is RouteCompareVisitInput => visit != null);
+
+  const recommendedSpare = computeSpareVisitCapacity(orderedVisits);
+  const visitTotal = totalVisitMinutes(orderedVisits);
+
+  const candidates: RouteDetailCandidate[] = [];
+  candidates.push({
+    scenarioId: recommended.id,
+    rankLabel: '候補1',
+    travelMinutes: recommended.travelMinutes,
+    visitMinutes: visitTotal,
+    spareCount: recommendedSpare,
+    recommended: true,
+    summary: `移動${recommended.travelMinutes}分 / 訪問${visitTotal}分 / 余力${recommendedSpare}件`,
+  });
+  if (runnerUp) {
+    const runnerUpVisits = runnerUp.stops
+      .map((stop) => orderedById.get(stop.scheduleId))
+      .filter((visit): visit is RouteCompareVisitInput => visit != null);
+    const runnerUpSpare = computeSpareVisitCapacity(runnerUpVisits);
+    candidates.push({
+      scenarioId: runnerUp.id,
+      rankLabel: '候補2',
+      travelMinutes: runnerUp.travelMinutes,
+      visitMinutes: totalVisitMinutes(runnerUpVisits),
+      spareCount: runnerUpSpare,
+      recommended: false,
+      summary: `移動${runnerUp.travelMinutes}分 / 余力${runnerUpSpare}件`,
+    });
+  }
+
+  const hasTimeWindow = visits.some((visit) => visit.startMinutes != null);
+
+  const constraints: RouteDetailConstraint[] = [
+    {
+      id: 'patient_preferred_time',
+      label: '患者希望時間を守る',
+      checked: hasTimeWindow,
+    },
+    {
+      id: 'facility_reception_time',
+      label: '施設の受付時間を守る',
+      checked: meta.hasFacilityVisit ?? false,
+    },
+    {
+      id: 'keep_finalized_fixed',
+      label: '正式決定済みは動かさない',
+      checked: meta.hasConfirmedVisit ?? false,
+    },
+    {
+      id: 'cold_chain',
+      label: '冷所品を温度管理する',
+      checked: meta.hasColdChainItem ?? false,
+    },
+    {
+      id: 'assigned_vehicle',
+      label: meta.vehicleLabel ? `${meta.vehicleLabel}を使用` : '担当車両を使用',
+      checked: Boolean(meta.vehicleLabel),
+    },
+    {
+      id: 'emergency_slack',
+      label: '緊急対応余力を残す',
+      checked: recommendedSpare > 0,
+    },
+  ];
+
+  return {
+    recommendedScenarioId: recommended.id,
+    stops: toDetailStops(orderedVisits),
+    chartStops: recommended.stops,
+    candidates,
+    constraints,
+  };
 }
 
 export type ScenarioChartPoint = {

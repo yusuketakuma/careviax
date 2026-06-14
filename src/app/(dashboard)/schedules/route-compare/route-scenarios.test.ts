@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildRecommendedRouteDetail,
   buildRouteScenarios,
   buildScenarioChartPoints,
   buildScenarioRouteOrderUpdates,
@@ -302,6 +303,77 @@ describe('buildScenarioRouteOrderUpdates', () => {
       (visit) => `${visit.pharmacistId}:${orderByScheduleId.get(visit.scheduleId)}`,
     );
     expect(new Set(cellKeys).size).toBe(cellKeys.length);
+  });
+});
+
+describe('buildRecommendedRouteDetail', () => {
+  it('推奨案(案A)を候補1、次点(案B)を候補2にした詳細を組み立てる', () => {
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+
+    // 主役は推奨案(案A 移動少なめ)
+    expect(detail.recommendedScenarioId).toBe('min_travel');
+    expect(detail.candidates).toHaveLength(2);
+
+    const [candidate1, candidate2] = detail.candidates;
+    expect(candidate1.rankLabel).toBe('候補1');
+    expect(candidate1.recommended).toBe(true);
+    // 案A: 移動92分 / 訪問は 30+30+60+60 = 180 分 / 余力3件
+    expect(candidate1.summary).toBe('移動92分 / 訪問180分 / 余力3件');
+
+    expect(candidate2.rankLabel).toBe('候補2');
+    expect(candidate2.scenarioId).toBe('time_preference');
+    expect(candidate2.recommended).toBe(false);
+    expect(candidate2.summary.startsWith('移動104分 / 余力')).toBe(true);
+  });
+
+  it('訪問パケットは候補1の訪問順で番号・希望時間・所要分を持つ', () => {
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    if (!detail) throw new Error('detail should not be null');
+
+    expect(detail.stops.map((stop) => stop.order)).toEqual([1, 2, 3, 4]);
+    // 案A は時間帯の早いグループから回るため伊藤(10:30)が先頭
+    expect(detail.stops[0]).toMatchObject({
+      patientName: '伊藤 キヨ',
+      order: 1,
+      timeWindowLabel: '10:30 - 11:00',
+      durationMinutes: 30,
+    });
+  });
+
+  it('守る条件は付帯情報(施設/正式決定/車両)とデータから充足を判定する', () => {
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits(), {
+      hasConfirmedVisit: true,
+      hasFacilityVisit: false,
+      vehicleLabel: '車両A',
+    });
+    if (!detail) throw new Error('detail should not be null');
+
+    const byId = new Map(detail.constraints.map((c) => [c.id, c]));
+    // 希望時間ありの患者がいるので患者希望時間は充足
+    expect(byId.get('patient_preferred_time')?.checked).toBe(true);
+    // 施設訪問なし
+    expect(byId.get('facility_reception_time')?.checked).toBe(false);
+    // 正式決定済みあり
+    expect(byId.get('keep_finalized_fixed')?.checked).toBe(true);
+    // 車両ラベルがラベルに反映され充足
+    expect(byId.get('assigned_vehicle')?.label).toBe('車両Aを使用');
+    expect(byId.get('assigned_vehicle')?.checked).toBe(true);
+    // 余力3件あるので緊急余力は充足
+    expect(byId.get('emergency_slack')?.checked).toBe(true);
+  });
+
+  it('車両ラベル未指定なら担当車両ラベル・未充足になる', () => {
+    const detail = buildRecommendedRouteDetail(buildSeedLikeVisits());
+    if (!detail) throw new Error('detail should not be null');
+    const vehicle = detail.constraints.find((c) => c.id === 'assigned_vehicle');
+    expect(vehicle?.label).toBe('担当車両を使用');
+    expect(vehicle?.checked).toBe(false);
+  });
+
+  it('訪問 0 件では null を返す', () => {
+    expect(buildRecommendedRouteDetail([])).toBeNull();
   });
 });
 

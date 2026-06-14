@@ -122,6 +122,7 @@ import {
   resolveScheduleDayPlannerVehicleRouteTravelMode,
 } from './schedule-day-planner';
 import { useScheduleDayPlannerQueries } from './schedule-day-planner-hooks';
+import { ScheduleCreateEditDrawer } from './schedule-create-edit-drawer';
 import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
 import { buildOrderedFacilityScheduleIds, formatMinutesLabel } from './calendar-view.helpers';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
@@ -347,6 +348,8 @@ export function ScheduleDayView({
   const [routePreviewTravelMode, setRoutePreviewTravelMode] = useState<RouteTravelMode>('DRIVE');
   const [plannerRouteTravelMode, setPlannerRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
   const [routeOrderConfirmOpen, setRouteOrderConfirmOpen] = useState(false);
+  // p0_18: 単一レコードの「予定を作成・編集」ドロワー
+  const [createEditDrawerOpen, setCreateEditDrawerOpen] = useState(false);
   const preparationRequestSeqRef = useRef(0);
   const preparationFormDirtyRef = useRef(false);
   const isOffline = useOfflineStore((state) => state.isOffline);
@@ -1802,6 +1805,16 @@ export function ScheduleDayView({
         cachedVisitBriefs={visibleCachedVisitBriefs}
       />
 
+      {/* p0_18: 単一レコードの予定を作成・編集ドロワー */}
+      <ScheduleCreateEditDrawer
+        open={createEditDrawerOpen}
+        onOpenChange={setCreateEditDrawerOpen}
+        orgId={orgId}
+        cases={cases}
+        pharmacists={pharmacists}
+        defaultDate={selectedDate}
+      />
+
       <section
         aria-labelledby="schedule-day-main-work-heading"
         className="space-y-4 rounded-lg border border-border/70 bg-card p-4 sm:p-5"
@@ -1823,6 +1836,16 @@ export function ScheduleDayView({
               description="システムが候補を提案し、承認後に患者へ架電します"
               contentClassName="space-y-4"
               headingLevel={3}
+              actions={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCreateEditDrawerOpen(true)}
+                >
+                  予定を作成・編集
+                </Button>
+              }
             >
               <div className="space-y-1.5">
                 <Label htmlFor="planner-case">対象ケース</Label>

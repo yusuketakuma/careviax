@@ -108,6 +108,8 @@ import {
   type VisitVehicleResourceSummary,
   type VisitScheduleBillingPreview,
   buildProposalFlowSteps,
+  proposalCandidateRankLabel,
+  proposalCandidateRankReason,
 } from '../day-view.shared';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
@@ -2429,38 +2431,6 @@ export function ScheduleProposalsContent({
                     <Badge variant="outline">{PRIORITY_LABELS[detail.priority]}</Badge>
                   </div>
                   <ProposalDecisionBadges proposal={detail} />
-                  {/* p0_17: 正式決定までの流れ(5ステップの現在地) */}
-                  <ol
-                    className="space-y-1.5"
-                    aria-label="正式決定までの流れ"
-                    data-testid="proposal-flow-steps"
-                  >
-                    {buildProposalFlowSteps(detail).map((step, index) => (
-                      <li
-                        key={step.label}
-                        data-state={step.state}
-                        className={cn(
-                          'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
-                          step.state === 'current'
-                            ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
-                            : step.state === 'done'
-                              ? 'border-emerald-200 bg-emerald-50/60 text-foreground'
-                              : 'border-border bg-muted/30 text-muted-foreground',
-                        )}
-                      >
-                        <span>
-                          {index + 1} {step.label}
-                        </span>
-                        <span className="shrink-0 text-xs">
-                          {step.state === 'done'
-                            ? '完了'
-                            : step.state === 'current'
-                              ? 'いまここ'
-                              : '未'}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
                   <div className="flex flex-wrap gap-2">
                     {detail.proposal_status !== 'patient_contact_pending' &&
                     ['proposed', 'reschedule_pending'].includes(detail.proposal_status) ? (
@@ -2553,6 +2523,157 @@ export function ScheduleProposalsContent({
                       </p>
                     </div>
                   ) : null}
+                </CardContent>
+              </Card>
+
+              {/* p0_17: 候補日時カード列 + 正式決定までの流れ + 患者さんへの確認メモ */}
+              <Card data-testid="proposal-confirmation-flow">
+                <CardHeader className="pb-3">
+                  <h3 className="font-heading text-base leading-snug font-medium">
+                    正式決定までの流れ
+                  </h3>
+                  <CardDescription>
+                    候補日時を比較し、患者さんへの確認内容を残してから了承へ進めます。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                    {/* 候補日時 */}
+                    <section aria-label="候補日時" className="space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground">候補日時</h4>
+                      <ol className="space-y-2.5" data-testid="proposal-candidate-cards">
+                        {rankedCandidates.slice(0, 3).map((candidate, index) => {
+                          const isActive = candidate.id === detail.id;
+                          return (
+                            <li key={candidate.id}>
+                              <div
+                                aria-current={isActive ? 'true' : undefined}
+                                className={cn(
+                                  'rounded-xl border px-3.5 py-3',
+                                  isActive
+                                    ? 'border-primary/50 bg-primary/5'
+                                    : 'border-border/70 bg-background',
+                                )}
+                              >
+                                <p
+                                  className={cn(
+                                    'text-sm font-semibold',
+                                    isActive ? 'text-primary' : 'text-foreground',
+                                  )}
+                                >
+                                  {proposalCandidateRankLabel(index + 1)}：
+                                  {formatNullableDateLabel(candidate.proposed_date)}{' '}
+                                  {timeLabel(candidate.time_window_start, candidate.time_window_end)}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {proposalCandidateRankReason(candidate)}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </section>
+
+                    {/* 正式決定までの流れ(5ステップ) */}
+                    <section aria-label="正式決定までの流れ ステップ" className="space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground">正式決定までの流れ</h4>
+                      <ol className="space-y-1.5" data-testid="proposal-flow-steps">
+                        {buildProposalFlowSteps(detail).map((step, index) => (
+                          <li
+                            key={step.label}
+                            data-state={step.state}
+                            className={cn(
+                              'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
+                              step.state === 'current'
+                                ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
+                                : step.state === 'done'
+                                  ? 'border-emerald-200 bg-emerald-50/60 text-foreground'
+                                  : 'border-border bg-muted/30 text-muted-foreground',
+                            )}
+                          >
+                            <span>
+                              {index + 1} {step.label}
+                            </span>
+                            <span className="shrink-0 text-xs">
+                              {step.state === 'done'
+                                ? '完了'
+                                : step.state === 'current'
+                                  ? 'いまここ'
+                                  : '未'}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+
+                    {/* 患者さんへの確認メモ */}
+                    <section aria-label="患者さんへの確認メモ" className="space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground">
+                        患者さんへの確認メモ
+                      </h4>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="proposal-confirmation-memo">電話で確認した内容</Label>
+                        <Textarea
+                          id="proposal-confirmation-memo"
+                          rows={4}
+                          value={contactForm.note}
+                          onChange={(event) =>
+                            setContactFormDraft((current) => ({
+                              ...(current ?? contactForm),
+                              note: event.target.value,
+                            }))
+                          }
+                          placeholder="例: 第1候補で了承。家族も在宅予定。"
+                          disabled={detail.proposal_status !== 'patient_contact_pending'}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
+                          onClick={() =>
+                            proposalActionMutation.mutate({
+                              id: detail.id,
+                              payload: {
+                                action: 'contact_attempt',
+                                outcome: 'confirmed',
+                                contact_method: contactForm.contact_method,
+                                contact_name: contactForm.contact_name || undefined,
+                                contact_phone: contactForm.contact_phone || undefined,
+                                note: contactForm.note || undefined,
+                              },
+                            })
+                          }
+                          disabled={
+                            proposalActionMutation.isPending ||
+                            detail.proposal_status !== 'patient_contact_pending'
+                          }
+                          aria-label={
+                            detailTargetLabel
+                              ? `${detailTargetLabel} を了承済みにする`
+                              : undefined
+                          }
+                        >
+                          <CheckCircle2 className="mr-1 size-4" aria-hidden="true" />
+                          了承済みにする
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
+                          asChild
+                        >
+                          <a href="#schedule-proposal-reproposal">別候補</a>
+                        </Button>
+                      </div>
+                      {detail.proposal_status !== 'patient_contact_pending' ? (
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          患者連絡待ちの候補で了承を記録できます。
+                        </p>
+                      ) : null}
+                    </section>
+                  </div>
                 </CardContent>
               </Card>
 

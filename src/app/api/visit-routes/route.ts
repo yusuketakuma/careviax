@@ -17,6 +17,9 @@ const computeVisitRouteSchema = z
   .object({
     schedule_ids: z.array(z.string().trim().min(1)).max(50).default([]),
     proposal_ids: z.array(z.string().trim().min(1)).max(50).default([]),
+    // 緊急割込時に「移動させない」確定済み訪問の route_id 群(任意)。
+    // schedule は id、proposal は `proposal:<id>` を指定する。p0_20「案1: 確定患者の移動なし」用。
+    locked_schedule_ids: z.array(z.string().trim().min(1)).max(50).default([]),
     vehicle_resource_id: z.string().trim().min(1).optional(),
     vehicle_resource: z
       .object({
@@ -315,6 +318,13 @@ export const POST = withAuthContext(
           return item.residence?.lat != null && item.residence.lng != null;
         });
 
+        // 「移動させない」確定済み訪問。route_id(schedule の id / proposal:<id>)で照合し、
+        // ルート可能な対象だけに限定する。1件以上あればヒューリスティック経路で先頭に固定される。
+        const requestedLockedIds = new Set(parsed.data.locked_schedule_ids);
+        const lockedScheduleIds = routableItems
+          .map((item) => item.route_id)
+          .filter((routeId) => requestedLockedIds.has(routeId));
+
         const plan = await computeOptimizedVisitRoute({
           origin,
           travelMode: effectiveTravelMode,
@@ -329,6 +339,7 @@ export const POST = withAuthContext(
               priority: item.priority,
             };
           }),
+          ...(lockedScheduleIds.length > 0 ? { lockedScheduleIds } : {}),
         });
 
         const vehicleResource = effectiveVehicleResource;
