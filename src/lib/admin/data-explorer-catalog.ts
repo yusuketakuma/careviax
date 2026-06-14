@@ -11,6 +11,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
   frontend_api: [
     'BillingRule',
     'Notification',
+    'SavedView',
     'AuditLog',
     'Template',
     'DocumentDeliveryRule',

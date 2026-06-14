@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import type { MemberRole, Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
@@ -41,6 +41,12 @@ function maskRecipientContact(channel: string, contact: string) {
   return contact ? '***' : '';
 }
 
+type SendRecipient = {
+  channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
+  recipient_name: string;
+  recipient_contact: string;
+};
+
 function buildDeliveryAttemptAuditChanges(args: {
   deliveryRecordId: string;
   report: {
@@ -50,12 +56,7 @@ function buildDeliveryAttemptAuditChanges(args: {
     report_type: string;
     status: string;
   };
-  request: {
-    channel: string;
-    recipient_name: string;
-    recipient_contact: string;
-    safety_ack: true;
-  };
+  request: SendRecipient & { safety_ack: true };
 }) {
   return {
     delivery_record_id: args.deliveryRecordId,
@@ -74,12 +75,11 @@ function buildDeliveryAttemptAuditChanges(args: {
   } satisfies Prisma.InputJsonValue;
 }
 
-const sendCareReportSchema = z
+const recipientSchema = z
   .object({
-    channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses']),
+    channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses', 'ph_os_share']),
     recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
     recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
-    safety_ack: z.literal(true),
   })
   .superRefine((value, ctx) => {
     if (
@@ -93,6 +93,41 @@ const sendCareReportSchema = z
       });
     }
   });
+
+// 単一送付(従来)。一括送付は recipients を持つ別スキーマで受ける。
+// 単一送付は recipients が 1 件のサブセットとして扱う。
+const singleSendSchema = recipientSchema.and(z.object({ safety_ack: z.literal(true) }));
+
+const bulkSendSchema = z.object({
+  recipients: z.array(recipientSchema).min(1, '送付先を1件以上選択してください'),
+  safety_ack: z.literal(true),
+});
+
+function normalizeSendPayload(
+  payload: Record<string, unknown>,
+):
+  | { ok: true; recipients: SendRecipient[] }
+  | { ok: false; details: Record<string, string[] | undefined> } {
+  // recipients フィールドがあれば一括送付として扱う。
+  if ('recipients' in payload) {
+    const parsed = bulkSendSchema.safeParse(payload);
+    if (!parsed.success) {
+      return { ok: false, details: parsed.error.flatten().fieldErrors };
+    }
+    return { ok: true, recipients: parsed.data.recipients };
+  }
+
+  const parsed = singleSendSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false, details: parsed.error.flatten().fieldErrors };
+  }
+  const recipient: SendRecipient = {
+    channel: parsed.data.channel,
+    recipient_name: parsed.data.recipient_name,
+    recipient_contact: parsed.data.recipient_contact,
+  };
+  return { ok: true, recipients: [recipient] };
+}
 
 async function canAccessCareReport(args: {
   orgId: string;
@@ -180,51 +215,35 @@ async function canAccessCareReport(args: {
   return Boolean(accessibleCase);
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canSendCareReport',
-    message: '報告書送信の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+type ReportRecord = {
+  id: string;
+  patient_id: string;
+  case_id: string | null;
+  status: string;
+  visit_record_id: string | null;
+  content: Prisma.JsonValue;
+  report_type: string;
+  pdf_url: string | null;
+};
 
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('報告書IDが不正です');
+type DeliveryOutcome = {
+  recipient: SendRecipient;
+  deliveryRecordId: string;
+  failureReason: string | null;
+};
 
-  const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
-
-  const parsed = sendCareReportSchema.safeParse(payload);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
-
-  const existing = await prisma.careReport.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: {
-      id: true,
-      patient_id: true,
-      case_id: true,
-      status: true,
-      visit_record_id: true,
-      content: true,
-      report_type: true,
-      pdf_url: true,
-    },
-  });
-  if (!existing) return notFound('報告書が見つかりません');
-  if (
-    !canBypassVisitScheduleAssignmentAccess(ctx) &&
-    !(await canAccessCareReport({
-      orgId: ctx.orgId,
-      userId: ctx.userId,
-      role: ctx.role,
-      report: existing,
-    }))
-  ) {
-    return forbiddenResponse('この報告書を送信する権限がありません');
-  }
+/**
+ * 1 件の送付先について、送達レコード作成・監査ログ・(必要なら)メール送信・
+ * 状態更新・連携イベント・連絡先プロファイル学習までを実行する。
+ * メール送信は外部 I/O のためトランザクション外で行い、結果に応じて記録する。
+ */
+async function processRecipient(args: {
+  ctx: AuthContext;
+  reportId: string;
+  report: ReportRecord;
+  recipient: SendRecipient;
+}): Promise<DeliveryOutcome> {
+  const { ctx, reportId, report, recipient } = args;
 
   const attemptedDeliveryRecord = await withOrgContext(
     ctx.orgId,
@@ -232,10 +251,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const deliveryRecord = await tx.deliveryRecord.create({
         data: {
           org_id: ctx.orgId,
-          report_id: id,
-          channel: parsed.data.channel,
-          recipient_name: parsed.data.recipient_name,
-          recipient_contact: parsed.data.recipient_contact,
+          report_id: reportId,
+          channel: recipient.channel,
+          recipient_name: recipient.recipient_name,
+          recipient_contact: recipient.recipient_contact,
           status: 'draft',
         },
       });
@@ -243,11 +262,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await createAuditLogEntry(tx, ctx, {
         action: 'care_report_delivery_attempted',
         targetType: 'care_report',
-        targetId: id,
+        targetId: reportId,
         changes: buildDeliveryAttemptAuditChanges({
           deliveryRecordId: deliveryRecord.id,
-          report: existing,
-          request: parsed.data,
+          report: { ...report, id: reportId },
+          request: { ...recipient, safety_ack: true },
         }),
       });
 
@@ -256,14 +275,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     { requestContext: ctx },
   );
 
-  if (parsed.data.channel === 'email' || parsed.data.channel === 'ses') {
+  if (recipient.channel === 'email' || recipient.channel === 'ses') {
     try {
       await sendCareReportEmail({
-        to: parsed.data.recipient_contact,
-        recipientName: parsed.data.recipient_name,
-        reportType: existing.report_type,
-        reportId: existing.id,
-        pdfUrl: existing.pdf_url,
+        to: recipient.recipient_contact,
+        recipientName: recipient.recipient_name,
+        reportType: report.report_type,
+        reportId: report.id,
+        pdfUrl: report.pdf_url,
       });
     } catch (cause) {
       const failureReason =
@@ -280,31 +299,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           });
 
-          await tx.careReport.update({
-            where: { id },
-            data: { status: 'failed' },
-          });
-
           await tx.communicationEvent.create({
             data: {
               org_id: ctx.orgId,
-              patient_id: existing.patient_id,
-              case_id: existing.case_id,
+              patient_id: report.patient_id,
+              case_id: report.case_id,
               event_type: 'delivery_failure',
-              channel: parsed.data.channel,
+              channel: recipient.channel,
               direction: 'outbound',
-              counterpart_name: parsed.data.recipient_name,
-              counterpart_contact: parsed.data.recipient_contact,
-              subject: existing.report_type,
+              counterpart_name: recipient.recipient_name,
+              counterpart_contact: recipient.recipient_contact,
+              subject: report.report_type,
               content: failureReason,
             },
           });
 
           await learnContactProfileFromCommunication(tx, {
             orgId: ctx.orgId,
-            counterpartName: parsed.data.recipient_name,
-            counterpartContact: parsed.data.recipient_contact,
-            channel: parsed.data.channel,
+            counterpartName: recipient.recipient_name,
+            counterpartContact: recipient.recipient_contact,
+            channel: recipient.channel,
             occurredAt: new Date(),
             markSuccess: false,
           });
@@ -312,18 +326,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { requestContext: ctx },
       );
 
-      return error('EXTERNAL_EMAIL_SEND_FAILED', 'メール送信に失敗しました', 502, {
-        provider: 'ses',
-      });
+      return {
+        recipient,
+        deliveryRecordId: attemptedDeliveryRecord.id,
+        failureReason,
+      };
     }
   }
 
-  const result = await withOrgContext(
+  await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const primaryEventType = toPrimaryCommunicationEventType(existing.report_type);
+      const primaryEventType = toPrimaryCommunicationEventType(report.report_type);
 
-      const deliveryRecord = await tx.deliveryRecord.update({
+      await tx.deliveryRecord.update({
         where: { id: attemptedDeliveryRecord.id },
         data: {
           status: 'sent',
@@ -332,45 +348,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
 
-      const report = await tx.careReport.update({
-        where: { id },
-        data: { status: 'sent' },
-      });
-
-      const eventType = existing.status === 'draft' ? primaryEventType : 'resend';
+      const eventType = report.status === 'draft' ? primaryEventType : 'resend';
       if (eventType) {
         await tx.communicationEvent.create({
           data: {
             org_id: ctx.orgId,
-            patient_id: existing.patient_id,
-            case_id: existing.case_id,
+            patient_id: report.patient_id,
+            case_id: report.case_id,
             event_type: eventType,
-            channel: parsed.data.channel,
+            channel: recipient.channel,
             direction: 'outbound',
-            counterpart_name: parsed.data.recipient_name,
-            counterpart_contact: parsed.data.recipient_contact,
-            subject: existing.report_type,
+            counterpart_name: recipient.recipient_name,
+            counterpart_contact: recipient.recipient_contact,
+            subject: report.report_type,
             content:
-              existing.status === 'draft'
-                ? `${parsed.data.recipient_name} へ送付`
-                : `${parsed.data.recipient_name} へ再送`,
+              report.status === 'draft'
+                ? `${recipient.recipient_name} へ送付`
+                : `${recipient.recipient_name} へ再送`,
           },
         });
       }
 
       await learnContactProfileFromCommunication(tx, {
         orgId: ctx.orgId,
-        counterpartName: parsed.data.recipient_name,
-        counterpartContact: parsed.data.recipient_contact,
-        channel: parsed.data.channel,
+        counterpartName: recipient.recipient_name,
+        counterpartContact: recipient.recipient_contact,
+        channel: recipient.channel,
         occurredAt: new Date(),
         markSuccess: true,
       });
+    },
+    { requestContext: ctx },
+  );
 
-      if (existing.visit_record_id) {
+  return { recipient, deliveryRecordId: attemptedDeliveryRecord.id, failureReason: null };
+}
+
+/**
+ * すべての送付先処理後、報告書状態・服薬サイクル遷移・算定エビデンスを 1 回だけ更新する。
+ * 単一送付はこの処理の n=1 サブセットとして同じ挙動になる。
+ */
+async function finalizeReportDelivery(args: {
+  ctx: AuthContext;
+  reportId: string;
+  report: ReportRecord;
+}) {
+  const { ctx, reportId, report } = args;
+
+  return withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const updatedReport = await tx.careReport.update({
+        where: { id: reportId },
+        data: { status: 'sent' },
+      });
+
+      if (report.visit_record_id) {
         const schedule = await tx.visitRecord.findFirst({
           where: {
-            id: existing.visit_record_id,
+            id: report.visit_record_id,
             org_id: ctx.orgId,
           },
           select: {
@@ -386,7 +422,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const siblingReports = await tx.careReport.findMany({
             where: {
               org_id: ctx.orgId,
-              visit_record_id: existing.visit_record_id,
+              visit_record_id: report.visit_record_id,
             },
             select: { status: true },
           });
@@ -422,23 +458,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
             await resolveOperationalTasks(tx, {
               orgId: ctx.orgId,
-              dedupeKey: `care-report-followup:${existing.visit_record_id}`,
+              dedupeKey: `care-report-followup:${report.visit_record_id}`,
               status: 'completed',
             });
 
             await upsertBillingEvidenceForVisit(tx, {
               orgId: ctx.orgId,
-              visitRecordId: existing.visit_record_id,
+              visitRecordId: report.visit_record_id,
             });
           }
         }
       } else {
         const conferenceNoteId =
-          existing.content &&
-          typeof existing.content === 'object' &&
-          !Array.isArray(existing.content) &&
-          typeof existing.content.conference_note_id === 'string'
-            ? existing.content.conference_note_id
+          report.content &&
+          typeof report.content === 'object' &&
+          !Array.isArray(report.content) &&
+          typeof report.content.conference_note_id === 'string'
+            ? report.content.conference_note_id
             : null;
 
         if (conferenceNoteId) {
@@ -471,7 +507,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             const relatedVisitRecords = await tx.visitRecord.findMany({
               where: {
                 org_id: ctx.orgId,
-                patient_id: existing.patient_id,
+                patient_id: report.patient_id,
                 visit_date: {
                   gte: monthStart,
                   lte: monthEnd,
@@ -495,10 +531,110 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
-      return { report, deliveryRecord };
+      return updatedReport;
     },
     { requestContext: ctx },
   );
+}
 
-  return success({ data: result });
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canSendCareReport',
+    message: '報告書送信の権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('報告書IDが不正です');
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const normalized = normalizeSendPayload(payload);
+  if (!normalized.ok) {
+    return validationError('入力値が不正です', normalized.details);
+  }
+
+  const existing = await prisma.careReport.findFirst({
+    where: { id, org_id: ctx.orgId },
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      status: true,
+      visit_record_id: true,
+      content: true,
+      report_type: true,
+      pdf_url: true,
+    },
+  });
+  if (!existing) return notFound('報告書が見つかりません');
+  if (
+    !canBypassVisitScheduleAssignmentAccess(ctx) &&
+    !(await canAccessCareReport({
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      role: ctx.role,
+      report: existing,
+    }))
+  ) {
+    return forbiddenResponse('この報告書を送信する権限がありません');
+  }
+
+  const recipients = normalized.recipients;
+
+  // 各送付先を順次処理(監査・送達は送付先単位)。
+  const outcomes: DeliveryOutcome[] = [];
+  for (const recipient of recipients) {
+    const outcome = await processRecipient({
+      ctx,
+      reportId: id,
+      report: existing,
+      recipient,
+    });
+    outcomes.push(outcome);
+  }
+
+  const failures = outcomes.filter((outcome) => outcome.failureReason !== null);
+  const successes = outcomes.filter((outcome) => outcome.failureReason === null);
+
+  // 単一送付でメール送信が失敗した場合は、従来どおり報告書を failed にして 502 を返す。
+  if (successes.length === 0) {
+    await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        await tx.careReport.update({
+          where: { id },
+          data: { status: 'failed' },
+        });
+      },
+      { requestContext: ctx },
+    );
+
+    return error('EXTERNAL_EMAIL_SEND_FAILED', 'メール送信に失敗しました', 502, {
+      provider: 'ses',
+      failed_recipients: failures.length,
+    });
+  }
+
+  const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing });
+
+  const deliveries = outcomes.map((outcome) => ({
+    delivery_record_id: outcome.deliveryRecordId,
+    channel: outcome.recipient.channel,
+    recipient_name: outcome.recipient.recipient_name,
+    status: outcome.failureReason ? 'failed' : 'sent',
+    failure_reason: outcome.failureReason,
+  }));
+
+  return success({
+    data: {
+      report,
+      deliveries,
+      sent_count: successes.length,
+      failed_count: failures.length,
+    },
+  });
 }

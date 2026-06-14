@@ -88,6 +88,10 @@ vi.mock('@/lib/dispensing/prefill-generator', () => ({
   generateDispensePrefill: generateDispensePrefillMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: vi.fn(),
+}));
+
 import { GET, PATCH } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
