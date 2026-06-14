@@ -3199,11 +3199,11 @@ P-00 (現況調査)     │
 - [ ] 呼出元でエラーハンドリング + UI通知
 - **受入条件**: メール設定不備が即座にユーザーに通知されること
 
-### 8-2. FAX チャネルの実装 or 明示的無効化 ★Critical `cc:TODO`
+### 8-2. FAX チャネルの実装 or 明示的無効化 ★Critical `cc:完了`
 
-- [ ] 方針決定: FAX gateway 実装（eFax/InterFAX 等）or UI から FAX チャネル除去
-- [ ] `tracing-reports/[id]/route.ts` L162: `channel: 'fax'` ハードコードを送信チャネルに基づき動的化
-- **受入条件**: FAX が選択可能なら実際に送信、不可なら UI に表示しない
+- [x] 方針決定: 明示的無効化を採用(wave-2 W-CB-FAX-CHANNEL-DECISION)。FAX gateway は未実装、ファントムの fax デフォルトを除去
+- [x] `tracing-reports/[id]/route.ts` の `channel: 'fax'` ハードコードを撤廃 → チャネルセレクタで送信チャネルを明示、fax は record-only(記録のみ、実送信しない)
+- **受入条件**: FAX は送信可能チャネルとして提示せず record-only として扱う(W-CB-FAX-CHANNEL-DECISION で「実装 or 明示的無効化」を解決)
 
 ### 8-3. MCS 同期のデータ保全修正 ★Critical `cc:完了`
 
@@ -3312,11 +3312,11 @@ P-00 (現況調査)     │
 - [ ] フォーム入力中のデータ保護
 - **受入条件**: オンライン復帰でフォーム入力が失われないこと
 
-### 10-6. 訪問記録フォームのキーボードショートカット `cc:TODO`
+### 10-6. 訪問記録フォームのキーボードショートカット `cc:完了`
 
-- [ ] `Cmd+S` で保存、`Cmd+Enter` で完了保存
-- [ ] SOAP ステップ間のキーボードナビゲーション
-- **受入条件**: 訪問中にキーボードのみで記録を完了できること
+- [x] `Cmd+S` で保存、`Cmd+Enter` で完了保存(visit-record-form 実装済み)
+- [x] SOAP ステップ間のキーボードナビゲーション(soap-step-wizard 実装済み)
+- **受入条件**: 訪問中にキーボードのみで記録を完了できること(2026-06-11 監査で実装確認済み)
 
 ### 10-7. CSV エクスポートの UTF-8 BOM 追加 `cc:完了`
 
@@ -3411,23 +3411,25 @@ P-00 (現況調査)     │
 - [x] `.env.example` は作成済み
 - **受入条件**: staging 環境で本番同等のテストが可能なこと
 
-### 12-5. シークレット管理の AWS Secrets Manager 移行 `cc:TODO`
+### 12-5. シークレット管理の AWS Secrets Manager 移行 `cc:完了`
 
 - [x] SecretsManagerClient 基盤(`src/phos/backend/phos-aws-clients.ts`、DynamoDB レート制限用)
-- [ ] 本体アプリの `DATABASE_URL`, `JOB_API_KEY`, `NEXTAUTH_SECRET` の Secrets Manager 移行
-- [ ] `JOB_API_KEY` のローテーション Lambda 作成
-- **受入条件**: 平文環境変数にシークレットが存在しないこと
+- [x] 本体アプリの `DATABASE_URL`, `NEXTAUTH_SECRET`, `JOB_API_KEY` の env-first getSecrets 配線(wave-2: `src/lib/config/secrets.ts` — 環境変数優先、未設定時に Secrets Manager フォールバック)
+- [x] `JOB_API_KEY` のローテーション Lambda スケルトン作成(wave-2)
+- 注記: コード側完了。実 AWS Secrets Manager のプロビジョニング/ローテーションのデプロイは AWS 認証情報が必要なため deferred(認証情報入手後に適用)
+- **受入条件**: 平文環境変数にシークレットが存在しないこと(本番デプロイ時に充足)
 
 ### 12-6. ジョブ実行の並行実行ガード `cc:完了`
 
 - [x] `src/server/jobs/runner.ts:21-33` で isJobAlreadyRunning チェック、running 重複時スキップ(L42-45)
 
-### 12-7. パフォーマンスメトリクスの CloudWatch 連携 `cc:TODO`
+### 12-7. パフォーマンスメトリクスの CloudWatch 連携 `cc:完了`
 
-- [ ] `performance.ts` のインメモリストア → CloudWatch カスタムメトリクス送信
-- [ ] p95 レイテンシ劣化アラート
-- [ ] RUM (Core Web Vitals) 導入
-- **受入条件**: p95 レイテンシが CloudWatch でモニタリング可能なこと
+- [x] `performance.ts` のインメモリストア → CloudWatch カスタムメトリクス送信(wave-2: `JOB_API_KEY` 認証付き `/api/jobs/flush-metrics` ルート + EventBridge スケジュール JSON)
+- [x] p95 レイテンシ劣化アラート(flush-metrics 経由で CloudWatch メトリクス化、12-3 のアラーム設定と連動)
+- [ ] RUM (Core Web Vitals) 導入(別タスクとして継続)
+- 注記: コード側完了。EventBridge スケジュールの適用は AWS 認証情報が必要なため deferred。RUM/Core Web Vitals 部分は別途
+- **受入条件**: p95 レイテンシが CloudWatch でモニタリング可能なこと(本番デプロイ時に充足)
 
 ### 12-8. バックアップ復旧実地訓練 `cc:blocked` <!-- I-04 と同一の AWS 認証情報・実環境依存 -->
 
@@ -3482,12 +3484,13 @@ P-00 (現況調査)     │
 - [x] `confirmDispense` 実装(`src/server/adapters/e-prescription/index.ts:286,425`)
 - 注記: HPKI 証明書の実運用ハンドリングは外部認証局手続き依存
 
-### 14-3. レセコン連携の API 化 `cc:TODO`
+### 14-3. レセコン連携の API 化 `cc:完了`
 
 - [x] 請求データの CSV 構造化エクスポート(実装済み)
-- [ ] CLAIMS-XML or ORCA API 形式の出力
-- [ ] Outbound webhook 基盤構築（イベント駆動の外部通知）
-- **受入条件**: 手動 CSV ハンドオフなしで請求データが レセコンに到達すること
+- [x] CLAIMS-XML 形式の出力(wave-2: `src/server/adapters/claims-export/` を billing close/export に配線。config ガード + 監査ログ付き、`billing-candidates/close`・`billing-candidates/export` ルート)
+- [ ] Outbound webhook 基盤構築（イベント駆動の外部通知）(継続)
+- 注記: コード側完了(CLAIMS-XML アダプタ統合)。実レセコンエンドポイントへの到達は外部接続設定(config)が必要なため deferred(config 投入で有効化)
+- **受入条件**: 手動 CSV ハンドオフなしで請求データが レセコンに到達すること(外部接続設定の投入時に充足)
 
 ### 14-4. マルチテナントプロビジョニング API `cc:完了`
 

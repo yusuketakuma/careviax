@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, CircleHelp, CloudOff, Menu, Search } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
+import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
 import {
   useKeyboardShortcuts,
   type ShortcutDefinition,
@@ -85,6 +86,20 @@ function HeaderSyncStatus() {
       同期済み{syncTime ? ` ${syncTime}` : ''}
     </Link>
   );
+}
+
+/**
+ * 同期待ちドラフトが 1 件以上あるときだけ件数バッジ付きの導線を出す。
+ * 件数は持たない HeaderSyncStatus(同期済み/オフラインの状態表示)と役割が
+ * 重複しないよう、pendingSyncCount > 0 のときのみマウントする。
+ */
+function HeaderOfflineDrafts() {
+  const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+  const hydrated = useHydrated();
+
+  if (!hydrated || !pendingSyncCount) return null;
+
+  return <OfflineDraftIndicator pendingCount={pendingSyncCount} />;
 }
 
 export function AppHeader() {
@@ -205,6 +220,7 @@ export function AppHeader() {
           >
             <Search className="size-4" aria-hidden="true" />
           </Button>
+          <HeaderOfflineDrafts />
           <HeaderSyncStatus />
           <NotificationBell />
           <Button

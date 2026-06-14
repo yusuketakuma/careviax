@@ -50,9 +50,10 @@ test.describe('prescription intake flow', () => {
   test('prescription intake form pre-fills patient from URL params', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
 
-    // First get a patient ID from the patient list
+    // First get a patient ID from the patient list.
+    // 新デザインの患者一覧はカード起点(patient-board-card-link)で旧 tbody テーブルは無い。
     await openStableRoute(page, '/patients');
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page.getByTestId('patient-board-card-link').first();
     const href = await firstPatientLink.getAttribute('href');
     const patientId = href?.replace('/patients/', '') ?? '';
     expect(patientId).toBeTruthy();
@@ -96,7 +97,9 @@ test.describe('prescription intake flow', () => {
       main.getByRole('link', { name: '調剤キュー' }).first().click(),
     );
 
-    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
+    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
+    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
+    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -111,13 +114,15 @@ test.describe('dispensing queue', () => {
     await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
-    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
+    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
+    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
+    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
     await expect(
       main.getByText('緊急度、訪問先、疑義照会状況を上から確認し、調剤入力へ進みます。'),
     ).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
-    await expect(main.getByRole('link', { name: '鑑査' })).toBeVisible();
+    await expect(main.getByRole('link', { name: '監査', exact: true })).toBeVisible();
     await expect(main.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -142,10 +147,14 @@ test.describe('dispensing queue', () => {
 
     const main = page.locator('main');
     await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      main.getByRole('link', { name: '鑑査' }).first().click(),
+      main.getByRole('link', { name: '監査', exact: true }).first().click(),
     );
 
-    await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
+    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称
+    // (旧 <h1>調剤鑑査</h1> は /auditing/[taskId] 詳細側へ移動済み)。
+    await expect(
+      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
+    ).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -160,9 +169,12 @@ test.describe('auditing queue', () => {
     await openStableRoute(page, '/auditing');
 
     const main = page.locator('main');
-    await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
+    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称。
     await expect(
-      main.getByText('差異、疑義照会、未承認件数を先に把握し、差戻しと承認の判断を揃えます。'),
+      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
+    ).toBeVisible();
+    await expect(
+      main.getByText('差異、疑義照会、未承認件数を先に把握し、差戻しと合格の判断を揃えます。'),
     ).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
@@ -202,20 +214,25 @@ test.describe('workflow cross-navigation', () => {
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
+    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
+    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
+    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
 
     // Navigate to auditing via shortcut (scope to main to avoid sidebar duplicate)
     const main = page.locator('main');
     await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      main.getByRole('link', { name: '鑑査' }).first().click(),
+      main.getByRole('link', { name: '監査', exact: true }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
+    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称。
+    await expect(
+      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
+    ).toBeVisible();
 
     // Navigate back to dispensing via shortcut (scope to main)
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
       main.getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
 
     // Full round trip should have no errors
     expect(errors).toEqual([]);

@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { getAdminCapacityShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -166,9 +168,12 @@ export function CapacityContent() {
 
   return (
     <div className="space-y-5" data-testid="capacity-page">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">
-        今日あとどれだけ対応できる?
-      </h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          今日あとどれだけ対応できる?
+        </h1>
+        <PageShortcutLinks links={getAdminCapacityShortcutLinks()} />
+      </div>
 
       {/* KPI 4 枚: 訪問枠 / 調剤・セット / スタッフ稼働 / 緊急余力 */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
