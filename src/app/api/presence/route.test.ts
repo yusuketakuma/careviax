@@ -296,8 +296,9 @@ describe('/api/presence', () => {
     });
 
     it('returns 400 for unsupported entity types before reading presence', async () => {
+      // care_report 等はコメント連携で許可されたため、真に未対応な値で検証する。
       const req = createRequest(
-        'http://localhost/api/presence?entity_type=care_report&entity_id=cr_1',
+        'http://localhost/api/presence?entity_type=unsupported_entity&entity_id=x_1',
       );
       const res = await GET(req);
       expect(res!.status).toBe(400);

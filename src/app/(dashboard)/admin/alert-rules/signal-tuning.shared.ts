@@ -4,14 +4,15 @@
  * 項目別トグルへ射影し、保存時の差分(作成/有効化/無効化)を計算する。
  */
 
-// 表示ラベルは p1_14 デザインの左リスト/カードタグに合わせる。
-// alertType は drug-alert-rules API の許可値(renal_dose / pim_elderly /
-// high_risk / duplicate / interaction)へ射影する(新規アラート種別は追加しない)。
+// 表示ラベルは制御対象の alert_type(drug-alert-rules API の許可値)の臨床的意味と
+// 一致させる。デザイン(p1_14)の例示タグ(転倒/残薬/低血糖)は対応する alert_type が
+// 存在しないため、安全アラートの誤ラベル(例: pim_elderly を「転倒リスク」と表示)を避け、
+// 各 alert_type の正しい意味でラベルする(トグルと実ルールの意味を一致させる)。
 export const SIGNAL_TUNING_ITEMS = [
   { alertType: 'renal_dose', label: '腎機能に注意', tagLabel: '腎機能注意', tone: 'red' },
-  { alertType: 'pim_elderly', label: '転倒リスク', tagLabel: '転倒注意', tone: 'amber' },
-  { alertType: 'high_risk', label: '低血糖リスク', tagLabel: '低血糖', tone: 'red' },
-  { alertType: 'duplicate', label: '残薬多め', tagLabel: '残薬', tone: 'blue' },
+  { alertType: 'pim_elderly', label: '高齢者の注意薬', tagLabel: '高齢者注意', tone: 'amber' },
+  { alertType: 'high_risk', label: 'ハイリスク薬', tagLabel: 'ハイリスク', tone: 'red' },
+  { alertType: 'duplicate', label: '重複投与', tagLabel: '重複', tone: 'blue' },
   { alertType: 'interaction', label: '飲み合わせ', tagLabel: '飲み合わせ', tone: 'blue' },
 ] as const;
 

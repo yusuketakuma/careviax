@@ -6,11 +6,13 @@ const {
   userFindManyMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
+  canAccessCollaborationEntityMock,
 } = vi.hoisted(() => ({
   taskCommentFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
+  canAccessCollaborationEntityMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -41,6 +43,12 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
+}));
+
+// per-entity 認可だけ stub し、entity_type の zod schema は実物を保持する。
+vi.mock('@/server/services/collaboration-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/services/collaboration-access')>()),
+  canAccessCollaborationEntity: canAccessCollaborationEntityMock,
 }));
 
 import { GET, POST } from './route';
@@ -91,6 +99,34 @@ describe('/api/comments', () => {
       }),
     );
     dispatchNotificationEventMock.mockResolvedValue(undefined);
+    canAccessCollaborationEntityMock.mockResolvedValue(true);
+  });
+
+  describe('per-entity authorization', () => {
+    it('GET returns 404 when the caller cannot access the entity', async () => {
+      canAccessCollaborationEntityMock.mockResolvedValue(false);
+      const response = (await GET(
+        createGetRequest('entity_type=care_report&entity_id=cr_1'),
+        emptyRouteContext,
+      ))!;
+      expect(response.status).toBe(404);
+      expect(taskCommentFindManyMock).not.toHaveBeenCalled();
+    });
+
+    it('POST returns 404 when the caller cannot access the entity', async () => {
+      canAccessCollaborationEntityMock.mockResolvedValue(false);
+      const response = (await POST(
+        createPostRequest({
+          entity_type: 'care_report',
+          entity_id: 'cr_1',
+          content: 'cross-assignment attempt',
+          mentions: [],
+        }),
+        emptyRouteContext,
+      ))!;
+      expect(response.status).toBe(404);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET', () => {

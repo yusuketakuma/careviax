@@ -180,8 +180,9 @@ describe('/api/collaboration/room-token', () => {
   it('rejects unsupported entity types before access or token side effects', async () => {
     const res = await POST(
       createRequest({
-        entity_type: 'care_report',
-        entity_id: 'cr_1',
+        // care_report 等はコメント連携で許可されたため、真に未対応な値で検証する。
+        entity_type: 'unsupported_entity',
+        entity_id: 'x_1',
       }),
     );
 
