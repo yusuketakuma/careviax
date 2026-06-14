@@ -337,6 +337,7 @@ export function audienceKeyFromRecipientRole(role: string | null): ShareAudience
     doctor: 'physician',
     主治医: 'physician',
     医師: 'physician',
+    処方元医療機関: 'physician',
     care_manager: 'care_manager',
     ケアマネ: 'care_manager',
     ケアマネジャー: 'care_manager',
@@ -349,6 +350,14 @@ export function audienceKeyFromRecipientRole(role: string | null): ShareAudience
     施設: 'facility',
     family: 'family',
     家族: 'family',
+    // 後方互換: 旧 visit-schedule-communication 等が永続化した ReportType 由来の
+    // suffixed タクソノミー。新規データは正規値(上記)を書き込むが、既存行も宛先列に
+    // 突合できるよう正規区分へマップする(意図は template_key/request_type 側が保持)。
+    // mcs_collaboration / internal は返信を表示しない区分のため意図的に未登録(=null)。
+    family_share: 'family',
+    facility_handoff: 'facility',
+    nurse_share: 'visiting_nurse',
+    care_manager_report: 'care_manager',
   };
   return table[normalized] ?? null;
 }

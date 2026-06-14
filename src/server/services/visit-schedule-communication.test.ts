@@ -96,34 +96,36 @@ describe('visit-schedule-communication', () => {
       },
     });
 
+    // recipient_role は正規タクソノミー(physician/care_manager/visiting_nurse/facility/family/mcs)。
+    // 旧 suffixed 値(family_share 等)は廃止し、返信フローの正規化と突合できる値を書き込む。
     expect(targets).toEqual([
       {
         key: 'family',
-        recipientRole: 'family_share',
+        recipientRole: 'family',
         recipientName: '家族A',
         contact: 'family-primary@example.com',
       },
       {
         key: 'facility',
-        recipientRole: 'facility_handoff',
+        recipientRole: 'facility',
         recipientName: '施設担当',
         contact: '090-0000-0002',
       },
       {
         key: 'nurse',
-        recipientRole: 'nurse_share',
+        recipientRole: 'visiting_nurse',
         recipientName: '看護師B',
         contact: 'nurse@example.com',
       },
       {
         key: 'care_manager',
-        recipientRole: 'care_manager_report',
+        recipientRole: 'care_manager',
         recipientName: 'ケアマネC',
         contact: '090-0000-0004',
       },
       {
         key: 'mcs',
-        recipientRole: 'mcs_collaboration',
+        recipientRole: 'mcs',
         recipientName: 'MCS連携',
         contact: null,
       },

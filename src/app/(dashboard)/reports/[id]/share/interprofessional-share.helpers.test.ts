@@ -204,8 +204,28 @@ describe('audienceKeyFromRecipientRole', () => {
     expect(audienceKeyFromRecipientRole('nurse')).toBe('visiting_nurse');
     expect(audienceKeyFromRecipientRole('facility_staff')).toBe('facility');
     expect(audienceKeyFromRecipientRole('家族')).toBe('family');
-    expect(audienceKeyFromRecipientRole('処方元医療機関')).toBeNull();
+    // 処方元医療機関(連絡依頼の自動補完)は主治医列に突合する。
+    expect(audienceKeyFromRecipientRole('処方元医療機関')).toBe('physician');
     expect(audienceKeyFromRecipientRole(null)).toBeNull();
+  });
+
+  it('旧 suffixed タクソノミー(永続化済み)も正規区分へ後方互換マップする', () => {
+    // visit-schedule-communication 等が過去に書き込んだ ReportType 由来の値。
+    expect(audienceKeyFromRecipientRole('family_share')).toBe('family');
+    expect(audienceKeyFromRecipientRole('facility_handoff')).toBe('facility');
+    expect(audienceKeyFromRecipientRole('nurse_share')).toBe('visiting_nurse');
+    expect(audienceKeyFromRecipientRole('care_manager_report')).toBe('care_manager');
+    // mcs_collaboration / internal は返信非表示区分のため null のまま。
+    expect(audienceKeyFromRecipientRole('mcs_collaboration')).toBeNull();
+    expect(audienceKeyFromRecipientRole('internal')).toBeNull();
+  });
+
+  it('正規 writer(buildVisitScheduleCommunicationTargets)の recipientRole は全て突合可能', () => {
+    // 回帰防止: writer が emit する正規値が返信フローで必ず非 null に正規化されること
+    // (mcs を除く。mcs は返信非表示区分)。
+    for (const role of ['family', 'facility', 'visiting_nurse', 'care_manager']) {
+      expect(audienceKeyFromRecipientRole(role)).not.toBeNull();
+    }
   });
 });
 

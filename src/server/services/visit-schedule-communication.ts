@@ -137,10 +137,14 @@ export function buildVisitScheduleCommunicationTargets(args: {
     sortedContacts.find((contact) => contact.relation === 'care_manager');
 
   const targets: Array<VisitScheduleCommunicationTarget | null> = [
+    // recipient_role は宛先区分の正規タクソノミー(physician/care_manager/visiting_nurse/
+    // facility/family/mcs)で統一する。報告/引継/共有といった意図は template_key/request_type
+    // 側で表現されるため、ここを正規値にしても情報は失われない。これにより返信フロー側の
+    // 正規化(audienceKeyFromRecipientRole)と突合でき、返信が宛先列に表示される。
     familyContact
       ? {
           key: 'family',
-          recipientRole: 'family_share',
+          recipientRole: 'family',
           recipientName: familyContact.name,
           contact: firstValue(familyContact[contactField], familyContact.phone),
         }
@@ -148,7 +152,7 @@ export function buildVisitScheduleCommunicationTargets(args: {
     facilityContact
       ? {
           key: 'facility',
-          recipientRole: 'facility_handoff',
+          recipientRole: 'facility',
           recipientName: facilityContact.name,
           contact: firstValue(facilityContact[contactField], facilityContact.phone),
         }
@@ -156,7 +160,7 @@ export function buildVisitScheduleCommunicationTargets(args: {
     nurseContact
       ? {
           key: 'nurse',
-          recipientRole: 'nurse_share',
+          recipientRole: 'visiting_nurse',
           recipientName: nurseContact.name,
           contact: firstValue(nurseContact[contactField], nurseContact.phone),
         }
@@ -164,7 +168,7 @@ export function buildVisitScheduleCommunicationTargets(args: {
     careManagerContact
       ? {
           key: 'care_manager',
-          recipientRole: 'care_manager_report',
+          recipientRole: 'care_manager',
           recipientName: careManagerContact.name,
           contact: firstValue(careManagerContact[contactField], careManagerContact.phone),
         }
@@ -174,7 +178,7 @@ export function buildVisitScheduleCommunicationTargets(args: {
   if (args.schedulingPreference.mcsLinked) {
     targets.push({
       key: 'mcs',
-      recipientRole: 'mcs_collaboration',
+      recipientRole: 'mcs',
       recipientName: 'MCS連携',
       contact: null,
     });
