@@ -225,3 +225,31 @@ export function createClaimsExportAdapter(
     }
   }
 }
+
+/**
+ * 環境変数からレセコン連携設定を解決する。
+ *
+ * `RECECOM_CLAIMS_BASE_URL` が設定されている場合のみ実レセコン consumer
+ * （rececom provider）を返す。未設定の場合は stub にフォールバックし、
+ * 「レセコン連携先が未構成」であることを呼び出し側が判定できるようにする。
+ */
+export function resolveClaimsExportConfig(): ClaimsExportAdapterConfig {
+  const baseUrl = process.env.RECECOM_CLAIMS_BASE_URL?.trim();
+  if (baseUrl) {
+    return {
+      provider: 'rececom',
+      baseUrl,
+      apiKey: process.env.RECECOM_CLAIMS_API_KEY?.trim() || undefined,
+      accessToken: process.env.RECECOM_CLAIMS_ACCESS_TOKEN?.trim() || undefined,
+    };
+  }
+  return { provider: 'stub' };
+}
+
+/**
+ * 実レセコン consumer（送信先エンドポイント）が構成済みかどうかを返す。
+ * close フローでの送信を任意・副作用安全にするためのガードに使用する。
+ */
+export function isClaimsExportConsumerConfigured(): boolean {
+  return resolveClaimsExportConfig().provider !== 'stub';
+}

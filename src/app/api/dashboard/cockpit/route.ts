@@ -8,6 +8,7 @@ import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
@@ -43,56 +44,6 @@ const HANDLING_TAG_ORDER = [
   'staple_required',
   'label_required',
 ];
-
-type ExceptionPresentation = {
-  category: string;
-  actionLabel: string;
-  actionHref: string;
-};
-
-/** WorkflowException.exception_type → 止まっている理由のカテゴリ/個別アクション。 */
-const EXCEPTION_PRESENTATIONS: Record<string, ExceptionPresentation> = {
-  consent_revoked: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  missing_visit_consent: { category: '患者', actionLabel: '再連絡する →', actionHref: '/patients' },
-  family_consent_pending: {
-    category: '患者',
-    actionLabel: '再連絡する →',
-    actionHref: '/patients',
-  },
-  medication_gap: { category: '患者', actionLabel: '状況を見る →', actionHref: '/patients' },
-  prescription_structuring_block: {
-    category: '医療機関',
-    actionLabel: '状況を見る →',
-    actionHref: '/prescriptions',
-  },
-  reduction_prohibited_drug: {
-    category: '医療機関',
-    actionLabel: '状況を見る →',
-    actionHref: '/workflow',
-  },
-  outpatient_injection_eligibility_block: {
-    category: '医療機関',
-    actionLabel: '状況を見る →',
-    actionHref: '/workflow',
-  },
-  dispense_audit_rejected: {
-    category: '調剤',
-    actionLabel: '状況を見る →',
-    actionHref: '/dispensing',
-  },
-  partial_dispense: { category: '調剤', actionLabel: '状況を見る →', actionHref: '/dispensing' },
-  set_audit_rejected: {
-    category: '調剤',
-    actionLabel: '状況を見る →',
-    actionHref: '/medication-sets',
-  },
-};
-
-const EXCEPTION_PRESENTATION_FALLBACK: ExceptionPresentation = {
-  category: '事務',
-  actionLabel: '状況を見る →',
-  actionHref: '/workflow',
-};
 
 type AuditTaskLine = {
   packaging_instruction_tags: string[];
@@ -331,22 +282,7 @@ export const GET = withAuthContext(
       facility_batch_id: schedule.facility_batch_id,
     }));
 
-    const blockedReasons: CockpitBlockedReason[] = openExceptions.map((exception) => {
-      const presentation =
-        EXCEPTION_PRESENTATIONS[exception.exception_type] ?? EXCEPTION_PRESENTATION_FALLBACK;
-      return {
-        id: exception.id,
-        label: exception.description,
-        severity: exception.severity === 'critical' ? 'critical' : 'warning',
-        category: presentation.category,
-        age_minutes: Math.max(
-          0,
-          Math.floor((now.getTime() - exception.created_at.getTime()) / 60_000),
-        ),
-        action_label: presentation.actionLabel,
-        action_href: presentation.actionHref,
-      } satisfies CockpitBlockedReason;
-    });
+    const blockedReasons: CockpitBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
     const responseData: DashboardCockpitResponse = {
       generated_at: now.toISOString(),

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -6,6 +7,17 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { updateVisitVehicleResourceSchema } from '@/lib/validations/visit-vehicle-resource';
+
+/**
+ * 次回点検期限(next_inspection_date / @db.Date)用の任意フィールド。
+ * 空文字は null(クリア)に正規化する。日付のみ(UTC 深夜保存)。
+ */
+const nextInspectionDateSchema = z
+  .preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    z.string().date().nullable(),
+  )
+  .optional();
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx, routeContext) => {
@@ -21,6 +33,14 @@ export const PATCH = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
+    // next_inspection_date は共有スキーマ外の専用カラムなので個別に検証する。
+    const parsedInspectionDate = nextInspectionDateSchema.safeParse(payload.next_inspection_date);
+    if (!parsedInspectionDate.success) {
+      return validationError('入力値が不正です', {
+        next_inspection_date: parsedInspectionDate.error.flatten().formErrors,
+      });
+    }
+
     // 指定されたフィールドのみ更新対象にする(undefined は据え置き、null はクリア)。
     const data = {
       ...(parsed.data.label !== undefined ? { label: parsed.data.label } : {}),
@@ -32,6 +52,14 @@ export const PATCH = withAuthContext<{ id: string }>(
         : {}),
       ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
       ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+      // 日付のみ文字列は UTC 深夜の Date として保存(@db.Date 規約)。null はクリア。
+      ...(parsedInspectionDate.data !== undefined
+        ? {
+            next_inspection_date: parsedInspectionDate.data
+              ? new Date(parsedInspectionDate.data)
+              : null,
+          }
+        : {}),
     };
 
     const updated = await withOrgContext(ctx.orgId, async (tx) => {

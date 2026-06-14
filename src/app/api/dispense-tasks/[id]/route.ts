@@ -1,7 +1,9 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -442,6 +444,10 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
 });
 
 export const PATCH = withAuthContext(async (req, ctx, { params }) => {
+  if (!hasPermission(ctx.role, 'canDispense')) {
+    return forbidden('調剤タスクの更新権限がありません');
+  }
+
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('調剤タスクIDが不正です');
@@ -487,8 +493,10 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
     }
   }
 
+  const statusChanged = status !== undefined && status !== existing.status;
+
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.dispenseTask.update({
+    const result = await tx.dispenseTask.update({
       where: { id },
       data: {
         ...(resolvedAssignedTo !== undefined ? { assigned_to: resolvedAssignedTo } : {}),
@@ -520,6 +528,17 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
         },
       },
     });
+
+    if (statusChanged) {
+      await createAuditLogEntry(tx, ctx, {
+        action: 'dispense_task_status_changed',
+        targetType: 'DispenseTask',
+        targetId: id,
+        changes: { from: existing.status, to: status },
+      });
+    }
+
+    return result;
   });
 
   await notifyWorkflowMutation({

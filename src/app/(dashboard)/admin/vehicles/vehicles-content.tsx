@@ -167,10 +167,22 @@ function VehicleListColumn({
   );
 }
 
+/**
+ * next_inspection_date(@db.Date)は ISO 文字列で返るため、date input 用に
+ * 日付部分(YYYY-MM-DD)だけ取り出す。未設定は空文字。
+ */
+function toInspectionDateInput(vehicle: VehicleResource): string {
+  const raw = (vehicle as { next_inspection_date?: string | null }).next_inspection_date;
+  return raw ? raw.slice(0, 10) : '';
+}
+
 /** 右カラム「詳細を編集」: 選択中車両のフォーム。保存は PATCH。 */
 function VehicleEditor({ vehicle, orgId }: { vehicle: VehicleResource; orgId: string }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<VehicleFormState>(() => toVehicleFormState(vehicle));
+  const [nextInspectionDate, setNextInspectionDate] = useState<string>(() =>
+    toInspectionDateInput(vehicle),
+  );
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -183,7 +195,8 @@ function VehicleEditor({ vehicle, orgId }: { vehicle: VehicleResource; orgId: st
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify(result.payload),
+        // 空文字はサーバー側で null(クリア)に正規化される。
+        body: JSON.stringify({ ...result.payload, next_inspection_date: nextInspectionDate }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -251,8 +264,17 @@ function VehicleEditor({ vehicle, orgId }: { vehicle: VehicleResource; orgId: st
           id="vehicle-notes"
           rows={2}
           value={form.notes}
-          placeholder="点検期限 6/21 など(マスター鮮度の判定に使用)"
+          placeholder="雨天時は利用不可 など"
           onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+        />
+      </div>
+      <div className={fieldRowClass}>
+        <Label htmlFor="vehicle-next-inspection-date">次回点検期限</Label>
+        <Input
+          id="vehicle-next-inspection-date"
+          type="date"
+          value={nextInspectionDate}
+          onChange={(event) => setNextInspectionDate(event.target.value)}
         />
       </div>
       <div className={fieldRowClass}>
