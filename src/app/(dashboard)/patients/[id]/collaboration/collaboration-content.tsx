@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { CommentThread } from '@/components/features/comments/comment-thread';
 import type { PresenceUser } from '@/components/features/collaboration/presence-avatars';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
@@ -14,7 +15,6 @@ import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import type { PatientOverview } from '../patient-detail.types';
 import {
-  buildCollaborationComments,
   buildCollaborationDemoData,
   buildPresenceViews,
   PATIENT_PRESENCE_ENTITY_TYPE,
@@ -23,7 +23,8 @@ import {
 
 /**
  * p1_13 今だれが見ているか(design/images/P1/p1_13_realtime_collaboration_presence.png)。
- * 3 カラム構成: 左「同じカードを見ている人」(presence)→ 中央「コメント・確認」(直近の動き)→
+ * 3 カラム構成: 左「同じカードを見ている人」(presence)→ 中央「コメント・確認」(書き込み可能な
+ * 双方向スレッド = CommentThread, /api/comments の entity_type='patient')→
  * 右「重複を防ぐ」(最新を読み込む = presence と overview の refetch)。
  * presence は既存基盤(/api/presence + ポーリング + SSE invalidate)へ patient エンティティで接続する。
  */
@@ -87,7 +88,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
     },
   });
 
-  // コメント・確認の元データ: カードの直近の動き(card-workspace とキャッシュ共有)
+  // 患者名・ローディング/エラー表示と「最新を読み込む」の refetch 対象(card-workspace とキャッシュ共有)
   const overviewQueryKey = ['patient-overview', patientId, orgId];
   const overviewQuery = useQuery<PatientOverview>({
     queryKey: overviewQueryKey,
@@ -131,9 +132,6 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
 
   const presenceViews =
     demoData?.presence ?? buildPresenceViews(presenceQuery.data ?? [], selfUserId);
-  const comments =
-    demoData?.comments ??
-    buildCollaborationComments(overviewQuery.data?.workspace?.recent_activities ?? []);
 
   const isLoading = !orgId || overviewQuery.isLoading;
   const patientName = overviewQuery.data?.name;
@@ -215,25 +213,17 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
               >
                 コメント・確認
               </h3>
-              {comments.length === 0 ? (
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  直近の作業コメントはまだありません。
-                </p>
-              ) : (
-                <ul className="mt-4 space-y-4" role="list">
-                  {comments.map((comment) => (
-                    <li
-                      key={comment.id}
-                      className="rounded-lg border border-border/70 bg-card p-4"
-                      data-testid="collaboration-comment"
-                    >
-                      <p className="text-sm leading-6 text-foreground">
-                        {comment.author}:{comment.text}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {/*
+                書き込み可能な双方向スレッド(/api/comments, entity_type='patient')。
+                列側が既に枠と見出しを持つため variant='bare' で素のまま埋め込む。
+              */}
+              <div className="mt-4">
+                <CommentThread
+                  entityType={PATIENT_PRESENCE_ENTITY_TYPE}
+                  entityId={patientId}
+                  variant="bare"
+                />
+              </div>
             </section>
 
             <section

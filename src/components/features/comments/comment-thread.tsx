@@ -21,9 +21,15 @@ type Comment = {
 type CommentThreadProps = {
   entityType: string;
   entityId: string;
+  /**
+   * 'card'(既定): 自前の Card + 「コメント」見出しで囲む単独配置用。
+   * 'bare': 外側の Card/見出しを描画せず、呼び出し側のセクション内へ素のまま埋め込む。
+   *   p1_13「コメント・確認」列のように、列側が既に枠と見出しを持つ場合に使う。
+   */
+  variant?: 'card' | 'bare';
 };
 
-export function CommentThread({ entityType, entityId }: CommentThreadProps) {
+export function CommentThread({ entityType, entityId, variant = 'card' }: CommentThreadProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
@@ -104,21 +110,9 @@ export function CommentThread({ entityType, entityId }: CommentThreadProps) {
     createMutation.mutate();
   }
 
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <MessageSquare className="size-4" aria-hidden="true" />
-          コメント
-          {comments.length > 0 && (
-            <span className="text-sm font-normal text-muted-foreground">
-              ({comments.length})
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="max-h-80 space-y-3 overflow-y-auto">
+  const body = (
+    <div className="space-y-4">
+      <div className="max-h-80 space-y-3 overflow-y-auto">
           {isLoading && (
             <p className="text-sm text-muted-foreground">読み込み中...</p>
           )}
@@ -181,7 +175,27 @@ export function CommentThread({ entityType, entityId }: CommentThreadProps) {
             </Button>
           </div>
         </form>
-      </CardContent>
+    </div>
+  );
+
+  if (variant === 'bare') {
+    return body;
+  }
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MessageSquare className="size-4" aria-hidden="true" />
+          コメント
+          {comments.length > 0 && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({comments.length})
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }
