@@ -154,13 +154,6 @@ describe('/api/management-plans/[id]', () => {
       where: {
         id: 'plan_1',
         org_id: 'org_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
     });
     await expect(response.json()).resolves.toMatchObject({
@@ -481,13 +474,6 @@ describe('/api/management-plans/[id]', () => {
         id: 'plan_1',
         org_id: 'org_1',
         status: 'draft',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
     });
     expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
@@ -495,13 +481,6 @@ describe('/api/management-plans/[id]', () => {
         id: 'plan_1',
         org_id: 'org_1',
         status: 'draft',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       data: {
         title: '更新版計画書',
@@ -540,13 +519,6 @@ describe('/api/management-plans/[id]', () => {
       where: {
         id: 'plan_1',
         org_id: 'org_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       data: {
         status: 'archived',

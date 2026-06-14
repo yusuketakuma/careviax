@@ -257,7 +257,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a pharmacist reads a schedule they are not assigned to', async () => {
+  it('allows an org-wide pharmacist to read a schedule regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -279,11 +279,11 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(careCaseFindFirstMock).toHaveBeenCalled();
   });
 
-  it('returns 403 when a pharmacist patches a schedule they are not assigned to', async () => {
+  it('allows an org-wide pharmacist to patch a schedule regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       confirmed_at: null,
@@ -299,12 +299,11 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).toHaveBeenCalled();
   });
 
-  it('does not evaluate ready blockers before assignment access passes', async () => {
+  it('evaluates ready blockers for an org-wide pharmacist regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       confirmed_at: null,
@@ -320,10 +319,9 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(evaluateReadyTransitionMock).not.toHaveBeenCalled();
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(evaluateReadyTransitionMock).toHaveBeenCalled();
+    expect(validateOrgReferencesMock).toHaveBeenCalled();
   });
 
   it('allows an assigned pharmacist to patch a schedule', async () => {
@@ -886,7 +884,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when an assigned pharmacist attempts to reassign case or pharmacist', async () => {
+  it('allows an org-wide pharmacist to reassign case or pharmacist', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -906,9 +904,8 @@ describe('/api/visit-schedules/[id] GET', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).toHaveBeenCalled();
   });
 
   it('rejects reversed time windows before loading or mutating the schedule', async () => {
@@ -1362,7 +1359,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a trainee deletes a schedule they are not assigned to', async () => {
+  it('allows an org-wide trainee to delete a schedule regardless of assignment', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
@@ -1379,8 +1376,11 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      data: { schedule_status: 'cancelled', version: { increment: 1 } },
+    });
   });
 
   it('rejects blank schedule ids before deleting the schedule', async () => {

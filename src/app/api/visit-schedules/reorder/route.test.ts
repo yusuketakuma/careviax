@@ -268,7 +268,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
-  it('denies batches containing unassigned schedules before update, audit, or notify', async () => {
+  it('denies batches containing schedules missing in-org before update, audit, or notify', async () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {
         id: 'schedule_1',
@@ -305,15 +305,6 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       where: {
         org_id: 'org_1',
         id: { in: ['schedule_1', 'schedule_unassigned'] },
-        AND: [
-          {
-            OR: [
-              { pharmacist_id: 'user_1' },
-              { case_: { primary_pharmacist_id: 'user_1' } },
-              { case_: { backup_pharmacist_id: 'user_1' } },
-            ],
-          },
-        ],
       },
       select: {
         id: true,
@@ -605,7 +596,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('denies non-bypass assigned users from reassigning to another pharmacist before side effects', async () => {
+  it('allows org-wide users to reassign to another pharmacist', async () => {
     scheduleFindManyMock.mockResolvedValueOnce([
       {
         id: 'schedule_1',
@@ -615,6 +606,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        version: 1,
       },
     ]);
 
@@ -630,15 +622,9 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-      message: '訪問予定のケースまたは担当薬剤師を変更する権限がありません',
-    });
-    expect(membershipFindManyMock).not.toHaveBeenCalled();
-    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
-    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
-    expectNoWriteAuditOrNotify();
+    expect(response.status).toBe(200);
+    expect(membershipFindManyMock).toHaveBeenCalled();
+    expect(scheduleUpdateManyMock).toHaveBeenCalled();
   });
 
   it('updates multiple schedules in one batch', async () => {

@@ -205,14 +205,7 @@ describe('/api/care-reports GET', () => {
           org_id: 'org_1',
           visit_record_id: 'visit_1',
           report_type: 'physician_report',
-          AND: [
-            {
-              OR: [
-                { case_id: { in: ['case_1'] } },
-                { case_id: null, patient_id: { in: ['patient_1'] } },
-              ],
-            },
-          ],
+          patient_id: { in: ['patient_1'] },
           delivery_records: {
             some: expect.objectContaining({
               status: 'response_waiting',
@@ -316,7 +309,7 @@ describe('/api/care-reports GET', () => {
     });
   });
 
-  it('returns an empty scoped result without reading reports when a non-admin has no assigned cases', async () => {
+  it('reads org-wide reports for an org-wide role regardless of case assignment', async () => {
     careCaseFindManyMock.mockResolvedValueOnce([]);
     careReportFindManyMock.mockResolvedValueOnce([]);
 
@@ -334,10 +327,10 @@ describe('/api/care-reports GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
-          AND: [{ id: { in: [] } }],
         }),
       }),
     );
+    expect(careReportFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
     await expect(response.json()).resolves.toMatchObject({
       data: [],
       hasMore: false,
@@ -531,7 +524,7 @@ describe('/api/care-reports POST', () => {
     );
   });
 
-  it('rejects report creation from an unassigned visit record before writing', async () => {
+  it('allows org-wide roles to create reports from any in-org visit record', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       schedule: {
@@ -554,9 +547,9 @@ describe('/api/care-reports POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(careReportCreateMock).toHaveBeenCalled();
   });
 
   it('rejects reports for a case that does not belong to the patient', async () => {

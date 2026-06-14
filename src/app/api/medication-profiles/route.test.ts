@@ -103,19 +103,6 @@ describe('/api/medication-profiles', () => {
       where: expect.objectContaining({
         id: 'patient_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: expect.arrayContaining([
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ]),
-              },
-            },
-          },
-        ],
       }),
       select: { id: true },
     });
@@ -125,17 +112,6 @@ describe('/api/medication-profiles', () => {
           org_id: 'org_1',
           patient_id: 'patient_1',
           is_current: true,
-          patient: {
-            cases: {
-              some: expect.objectContaining({
-                OR: expect.arrayContaining([
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ]),
-              }),
-            },
-          },
         }),
       }),
     );

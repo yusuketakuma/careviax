@@ -257,8 +257,7 @@ describe('pdf-bulk-export', () => {
     expect(auditLogCreateMock).toHaveBeenCalledOnce();
   });
 
-  it('queues a non-admin bulk export when every patient is assigned or case-controlled', async () => {
-    visitScheduleFindManyMock.mockResolvedValue([{ case_: { patient_id: 'patient_1' } }]);
+  it('queues an org-wide bulk export without per-patient assignment scoping', async () => {
     careCaseFindManyMock.mockResolvedValue([
       {
         patient_id: 'patient_2',
@@ -282,39 +281,28 @@ describe('pdf-bulk-export', () => {
       patientCount: 2,
     });
     expect(integrationJobCreateMock).toHaveBeenCalledOnce();
-    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          case_: {
-            patient_id: {
-              in: ['patient_1', 'patient_2'],
-            },
-          },
-        }),
-      }),
-    );
+    // 組織内フルアクセスロールは担当割当スキャンを行わない。
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('rejects non-admin bulk exports containing unassigned same-org patients', async () => {
-    visitScheduleFindManyMock.mockResolvedValue([{ case_: { patient_id: 'patient_1' } }]);
+  it('queues an org-wide bulk export for same-org patients regardless of assignment', async () => {
     careCaseFindManyMock.mockResolvedValue([]);
 
-    await expect(
-      queueMedicationHistoryBulkExport({
-        orgId: 'org_1',
-        requestedBy: 'user_1',
-        patientIds: ['patient_1', 'patient_2'],
-        accessContext: {
-          userId: 'user_1',
-          role: 'pharmacist',
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: 'AUTHORIZATION_ERROR',
-      status: 403,
+    const result = await queueMedicationHistoryBulkExport({
+      orgId: 'org_1',
+      requestedBy: 'user_1',
+      patientIds: ['patient_1', 'patient_2'],
+      accessContext: {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
     });
-    expect(integrationJobCreateMock).not.toHaveBeenCalled();
+
+    expect(result).toMatchObject({
+      jobId: 'job_1',
+      patientCount: 2,
+    });
+    expect(integrationJobCreateMock).toHaveBeenCalledOnce();
   });
 
   it('rejects bulk export queue requests when the caller lacks visit permission', async () => {

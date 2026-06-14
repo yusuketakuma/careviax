@@ -111,17 +111,14 @@ describe('/api/dispense-queue', () => {
         }),
       ],
     });
+    // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
+    // WHERE は org-only になり、cycle の担当割当 OR 句は付与されない。
     expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          cycle: expect.objectContaining({
-            case_: expect.objectContaining({
-              OR: expect.arrayContaining([
-                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
-              ]),
-            }),
-          }),
-        }),
+        where: {
+          org_id: 'org_1',
+          status: { in: ['pending', 'in_progress'] },
+        },
       }),
     );
   });

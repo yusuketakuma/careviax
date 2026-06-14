@@ -87,32 +87,14 @@ describe('/api/patients/export GET', () => {
           org_id: 'org_1',
           cases: {
             some: {
-              AND: [
-                { status: 'active' },
-                {
-                  OR: [
-                    { primary_pharmacist_id: 'user_1' },
-                    { backup_pharmacist_id: 'user_1' },
-                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                  ],
-                },
-              ],
+              status: 'active',
             },
           },
         },
         include: expect.objectContaining({
           cases: {
             where: {
-              AND: [
-                { status: 'active' },
-                {
-                  OR: [
-                    { primary_pharmacist_id: 'user_1' },
-                    { backup_pharmacist_id: 'user_1' },
-                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                  ],
-                },
-              ],
+              AND: [{ status: 'active' }],
             },
             orderBy: { created_at: 'desc' },
             select: { status: true },

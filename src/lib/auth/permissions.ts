@@ -8,6 +8,10 @@ type Permission = {
   canAuditSet: boolean;
   canVisit: boolean;
   canReport: boolean;
+  // canAuthorReport: 臨床報告書の「作成・編集・生成」など薬剤師の専門的記載を伴う書き込み。
+  // canReport（閲覧 + 連携/事務系の書き込み）から分離し、事務(clerk)は参照は可能だが
+  // 臨床報告書の authoring はできない、という新ポリシーを表現する。
+  canAuthorReport: boolean;
   canSendCareReport: boolean;
   canManageBilling: boolean;
   canViewDashboard: boolean;
@@ -25,6 +29,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
     canViewDashboard: true,
@@ -37,6 +42,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
     canViewDashboard: true,
@@ -49,6 +55,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
     canViewDashboard: true,
@@ -61,6 +68,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: true,
     canReport: true,
+    canAuthorReport: true,
     canSendCareReport: false,
     canManageBilling: false,
     canViewDashboard: true,
@@ -72,7 +80,10 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: false,
     canAuditSet: false,
     canVisit: false,
+    // clerk(事務)は参照と連携/事務系の書き込み(canReport)は可能だが、
+    // 臨床報告書の作成・編集・生成(canAuthorReport)は薬剤師業務のため不可。
     canReport: true,
+    canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
     canViewDashboard: true,
@@ -85,6 +96,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
     canViewDashboard: false,
@@ -97,6 +109,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
     canViewDashboard: false,

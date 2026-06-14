@@ -111,19 +111,12 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
+    // ケースアクセスは org_id ベースの組織内検索のみ(AND 担当割当句なし)。
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
         org_id: 'org_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });

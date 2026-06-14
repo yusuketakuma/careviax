@@ -197,7 +197,7 @@ export const POST = withAuthContext(
     return success({ data: report }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: 'トレーシングレポートの作成権限がありません',
   },
 );

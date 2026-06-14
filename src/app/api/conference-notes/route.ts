@@ -334,7 +334,7 @@ export const POST = withAuthContext(
     return success({ data: result.note, sync: result.sync }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: 'カンファレンス記録の作成権限がありません',
   },
 );

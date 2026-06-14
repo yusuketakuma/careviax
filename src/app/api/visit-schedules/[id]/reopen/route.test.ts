@@ -157,7 +157,9 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a trainee reopens a schedule they are not assigned to', async () => {
+  it('allows a trainee to reopen any in-org schedule (org-wide access)', async () => {
+    // 新アクセスポリシー: pharmacist_trainee は組織内フルアクセスを持ち、
+    // 担当割当に関わらず組織内の訪問予定を再開できる。
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
@@ -175,8 +177,11 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'schedule_1', org_id: 'org_1', version: 1 },
+      data: { schedule_status: 'planned', version: { increment: 1 } },
+    });
   });
 
   it('returns conflict when reopen loses a version race', async () => {

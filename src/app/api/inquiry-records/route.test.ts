@@ -72,16 +72,6 @@ function createMalformedPostRequest() {
   } satisfies NextRequestInit);
 }
 
-const expectedCycleAssignmentWhere = {
-  case_: {
-    OR: [
-      { primary_pharmacist_id: 'user_1' },
-      { backup_pharmacist_id: 'user_1' },
-      { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-    ],
-  },
-};
-
 describe('/api/inquiry-records GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,7 +90,7 @@ describe('/api/inquiry-records GET', () => {
         where: {
           org_id: 'org_1',
           cycle: {
-            AND: [{ patient_id: 'patient_1' }, expectedCycleAssignmentWhere],
+            patient_id: 'patient_1',
           },
         },
         orderBy: { inquired_at: 'desc' },
@@ -186,7 +176,6 @@ describe('/api/inquiry-records POST', () => {
       where: {
         id: 'cycle_unassigned',
         org_id: 'org_1',
-        AND: [expectedCycleAssignmentWhere],
       },
       select: {
         id: true,

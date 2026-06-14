@@ -105,17 +105,6 @@ describe('/api/residual-medications', () => {
       where: {
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            schedule: {
-              OR: expect.arrayContaining([
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ]),
-            },
-          },
-        ],
       },
       select: { id: true },
     });
@@ -236,17 +225,6 @@ describe('/api/residual-medications', () => {
       where: {
         id: 'visit_1',
         org_id: 'org_1',
-        AND: [
-          {
-            schedule: {
-              OR: expect.arrayContaining([
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ]),
-            },
-          },
-        ],
       },
       select: { id: true },
     });

@@ -440,24 +440,14 @@ describe('/api/visit-records GET', () => {
     });
   });
 
-  it('restricts pharmacist list reads to assigned schedules', async () => {
+  it('does not restrict pharmacist list reads by schedule assignment', async () => {
     const response = await GET(createGetRequest());
 
     expect(response.status).toBe(200);
     expect(visitRecordFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          AND: [
-            {
-              schedule: {
-                OR: [
-                  { pharmacist_id: 'user_1' },
-                  { case_: { primary_pharmacist_id: 'user_1' } },
-                  { case_: { backup_pharmacist_id: 'user_1' } },
-                ],
-              },
-            },
-          ],
+        where: expect.not.objectContaining({
+          AND: expect.any(Array),
         }),
       }),
     );
@@ -1060,13 +1050,14 @@ describe('/api/visit-records POST', () => {
   });
 
   it.each(['pharmacist', 'pharmacist_trainee'] as const)(
-    'returns 403 when a %s is not assigned to the scheduled visit',
+    'allows a %s with org-wide access to create a record on a schedule assigned to another user',
     async (role) => {
       membershipFindFirstMock.mockResolvedValue({ role });
       visitScheduleFindFirstMock.mockResolvedValue({
         id: 'schedule_1',
         case_id: 'case_1',
         schedule_status: 'ready',
+        carry_items_status: 'ready',
         recurrence_rule: null,
         cycle_id: 'cycle_1',
         visit_type: 'regular',
@@ -1089,20 +1080,16 @@ describe('/api/visit-records POST', () => {
             patient_id: 'patient_1',
             visit_date: '2026-03-26',
             outcome_status: 'completed',
-            soap_subjective: '服薬状況問題なし',
+            structured_soap: completedVisitStructuredSoap,
           },
           { 'x-org-id': 'org_1' },
         ),
       );
 
       if (!response) throw new Error('response is required');
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTH_FORBIDDEN',
-        message: 'この訪問予定の記録を作成する権限がありません',
-      });
-      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-      expect(visitRecordCreateMock).not.toHaveBeenCalled();
+      expect(response.status).toBe(201);
+      expect(careCaseFindFirstMock).toHaveBeenCalled();
+      expect(visitRecordCreateMock).toHaveBeenCalled();
     },
   );
 

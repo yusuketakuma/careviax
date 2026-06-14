@@ -398,7 +398,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
-  it('returns 403 before sending email when a non-admin caller cannot access the report assignment', async () => {
+  it('lets an org-wide pharmacist send a report for a case assigned to other pharmacists', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -432,12 +432,9 @@ describe('/api/care-reports/[id]/send POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
-    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(sendCareReportEmailMock).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
   });
 
   it('advances the medication cycle to reported through transition logging when all visit reports are delivered', async () => {

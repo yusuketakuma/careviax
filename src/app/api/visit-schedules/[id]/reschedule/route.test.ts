@@ -511,30 +511,12 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           notIn: ['cancelled', 'rescheduled'],
         },
         id: { not: 'schedule_1' },
-        AND: [
-          {
-            OR: [
-              { pharmacist_id: 'user_1' },
-              { case_: { primary_pharmacist_id: 'user_1' } },
-              { case_: { backup_pharmacist_id: 'user_1' } },
-            ],
-          },
-        ],
       },
     });
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           pharmacist_id: 'user_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
         }),
       }),
     );
@@ -889,15 +871,6 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         where: {
           id: 'schedule_unassigned',
           org_id: 'org_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
         },
       }),
     );

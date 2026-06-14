@@ -18,7 +18,7 @@ import { canAccessCaseScopedPatientResource } from '@/server/services/patient-ac
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: 'トレーシングレポートの削除権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -92,7 +92,7 @@ function parseStatusChangeReason(value: unknown) {
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: 'トレーシングレポートの更新権限がありません',
   });
   if ('response' in authResult) return authResult.response;

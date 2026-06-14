@@ -267,19 +267,15 @@ describe('/api/visit-schedule-proposals', () => {
     expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            {
-              OR: [
-                { proposed_pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
-              ],
-            },
-          ],
+          org_id: 'org_1',
+          case_id: 'case_1',
         }),
       }),
     );
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
+    // 提案クエリに AND/OR 担当割当句が付与されないことを確認する。
+    const [listCall] = visitScheduleProposalFindManyMock.mock.calls;
+    expect(listCall?.[0]?.where).not.toHaveProperty('AND');
   });
 
   it('filters proposals by patient_id when provided', async () => {
@@ -345,19 +341,13 @@ describe('/api/visit-schedule-proposals', () => {
         where: expect.objectContaining({
           id: 'case_1',
           org_id: 'org_1',
-          AND: [
-            {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
-          ],
         }),
         select: { id: true },
       }),
     );
+    // 組織横断アクセスロール(pharmacist)はケースアクセススコープが撤廃され、
+    // 担当割当の AND 句が付与されないことを確認する。
+    expect(careCaseFindFirstMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();

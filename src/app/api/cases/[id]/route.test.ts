@@ -108,15 +108,6 @@ describe('/api/cases/[id]', () => {
       where: {
         id: 'case_1',
         org_id: 'org_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       include: {
         patient: {
@@ -182,15 +173,6 @@ describe('/api/cases/[id]', () => {
       where: {
         id: 'case_1',
         org_id: 'org_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
     });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {

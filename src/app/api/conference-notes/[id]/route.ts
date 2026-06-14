@@ -241,7 +241,7 @@ export const PATCH = withAuthContext<{ id: string }>(
     });
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: 'カンファレンス記録の更新権限がありません',
   },
 );

@@ -32,7 +32,7 @@ describe('getManagementPlanRecord', () => {
     });
   });
 
-  it('applies case assignment scope and returns the normalized PDF record', async () => {
+  it('grants org-wide access and returns the normalized PDF record', async () => {
     const updatedAt = new Date(2026, 3, 1);
     const patient = {
       id: 'patient_1',
@@ -74,13 +74,6 @@ describe('getManagementPlanRecord', () => {
       where: {
         id: 'plan_1',
         org_id: 'org_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'pharmacist_1' },
-            { backup_pharmacist_id: 'pharmacist_1' },
-            { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-          ],
-        },
       },
       select: {
         id: true,

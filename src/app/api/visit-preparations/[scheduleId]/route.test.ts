@@ -891,7 +891,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     });
   });
 
-  it('rejects users who are not assigned to the visit or case', async () => {
+  it('allows an org-wide pharmacist who is not assigned to the visit or case but withholds parallel-visit context', async () => {
     visitScheduleFindFirstMock.mockResolvedValueOnce({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -941,9 +941,10 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
+    // 並行訪問コンテキストは担当者(または owner/admin)に限定されるため、未担当の組織内薬剤師には公開しない。
     expect(peerVisitScheduleFindManyMock).not.toHaveBeenCalled();
-    expect(patientHomeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(patientHomeCareFeatureSummaryMock).toHaveBeenCalled();
   });
 
   it('builds the same grouped-visit context for same-home private visits', async () => {
@@ -1221,7 +1222,8 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 and does not upsert for an unassigned pharmacist', async () => {
+  it('allows an org-wide pharmacist to upsert preparation even when not assigned to the schedule', async () => {
+    // 新ポリシー: 薬剤師は組織内フルアクセス。担当外の予定でも準備の upsert が許可される。
     visitScheduleFindFirstMock.mockResolvedValueOnce({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -1239,11 +1241,9 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
-    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
-    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).toHaveBeenCalled();
   });
 
   it('allows the backup pharmacist to mark previous issues as reviewed', async () => {

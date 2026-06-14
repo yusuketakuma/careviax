@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { canBypassVisitScheduleAssignmentAccess } from '@/lib/auth/visit-schedule-access';
-import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
+import { buildPersonalCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 
 type DashboardAssignmentScopeDb = {
@@ -24,7 +24,7 @@ export async function resolveDashboardAssignmentScope(args: {
   orgId: string;
   accessContext: VisitScheduleAccessContext;
 }): Promise<DashboardAssignmentScope> {
-  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
+  if (canViewAllDashboardWork(args.accessContext)) {
     return {
       caseIds: undefined,
       patientIds: undefined,
@@ -33,11 +33,13 @@ export async function resolveDashboardAssignmentScope(args: {
     };
   }
 
-  const assignmentWhere = buildCareCaseAssignmentWhere(args.accessContext);
+  // フルアクセス対象ロール(薬剤師等)でも、ダッシュボードは個人の担当を既定表示する。
+  // アクセス bypass に依存しない buildPersonalCareCaseAssignmentWhere で厳密に絞る。
+  const assignmentWhere = buildPersonalCareCaseAssignmentWhere(args.accessContext);
   const careCases = await args.db.careCase.findMany({
     where: {
       org_id: args.orgId,
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      AND: [assignmentWhere],
     },
     select: { id: true, patient_id: true },
   });

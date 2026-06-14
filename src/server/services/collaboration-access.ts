@@ -42,14 +42,11 @@ export function buildCollaborationRoomName(args: {
   return `${args.orgId}:${args.entityType}:${args.entityId}`;
 }
 
-// 事務(clerk)は臨床担当(pharmacist assignment)を持たないため、通常の担当スコープでは
-// すべての連携エンティティで弾かれてしまう。だが p1_13 の多職種連携カードには参加者として
-// 参加する(presence/コメント)。owner/admin と同様、連携サーフェス(comments/presence)に限り
-// 担当割当スコープを外して org 単位でアクセスを許可する。
-// 注意: この緩和は連携サーフェス専用であり、患者臨床詳細など他のゲート(患者ページが通る
-// canAccessPatient 等)は従来どおり厳格なまま — 事務は full clinical record を開けない。
+// org-wide アクセスを持つロール(owner/admin/薬剤師/事務)は、連携エンティティの
+// 認可も担当割当スコープを外して org 単位で判定する。これらのロールは
+// canBypassVisitScheduleAssignmentAccess に集約済み（事務もここに含まれる）。
 function usesOrgScopedCollaborationAccess(ctx: AuthContext): boolean {
-  return canBypassVisitScheduleAssignmentAccess(ctx) || ctx.role === 'clerk';
+  return canBypassVisitScheduleAssignmentAccess(ctx);
 }
 
 export async function canAccessCollaborationEntity(

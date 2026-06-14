@@ -940,7 +940,7 @@ describe('file-storage', () => {
     });
   });
 
-  it('rejects bulk export downloads when the caller is not the requester', async () => {
+  it('allows org-wide roles to download bulk exports requested by another user', async () => {
     settingFindFirstMock.mockResolvedValue({
       id: 'setting_1',
       value: {
@@ -961,20 +961,17 @@ describe('file-storage', () => {
       },
     });
 
-    await expect(
-      createPresignedDownload({
-        orgId: 'org_1',
-        fileId: 'file_1',
-        accessContext: {
-          userId: 'user_2',
-          role: 'pharmacist',
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: 'FILE_DOWNLOAD_FORBIDDEN',
-      status: 403,
+    const result = await createPresignedDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: {
+        userId: 'user_2',
+        role: 'pharmacist',
+      },
     });
-    expect(getSignedUrlMock).not.toHaveBeenCalled();
+
+    expect(result.downloadUrl).toBe('https://example.com/upload');
+    expect(getSignedUrlMock).toHaveBeenCalledOnce();
   });
 
   it('allows admins to download bulk exports requested by another user', async () => {
@@ -1083,28 +1080,39 @@ describe('file-storage', () => {
   });
 
   it.each(fileAccessCases)(
-    'rejects completion for an unassigned pharmacist on $purpose files',
+    'allows completion for an org-wide pharmacist regardless of assignment on $purpose files',
     async ({ record, deny }) => {
       mockStoredFile({
         ...record,
         status: 'pending_upload',
         completedAt: null,
       });
+      // assignment 上は未割当でも、組織内フルアクセスロールは許可される。
       deny();
-
-      await expect(
-        completeUploadedFile({
-          orgId: 'org_1',
-          fileId: 'file_1',
-          uploadedBy: 'user_unassigned',
-          accessContext: unassignedAccessContext,
-        }),
-      ).rejects.toMatchObject({
-        code: 'FILE_COMPLETE_FORBIDDEN',
-        status: 403,
+      s3SendMock.mockResolvedValueOnce({
+        ETag: '"etag-123"',
+        ContentLength: 2048,
+        ContentType: 'application/pdf',
       });
-      expect(s3SendMock).not.toHaveBeenCalled();
-      expect(settingUpdateMock).not.toHaveBeenCalled();
+
+      const result = await completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_unassigned',
+        accessContext: unassignedAccessContext,
+      });
+
+      expect(result.status).toBe('uploaded');
+      expect(settingUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            value: expect.objectContaining({
+              status: 'uploaded',
+              uploadedBy: 'user_unassigned',
+            }),
+          },
+        }),
+      );
     },
   );
 
@@ -1145,25 +1153,23 @@ describe('file-storage', () => {
   );
 
   it.each(fileAccessCases)(
-    'rejects presigned downloads for an unassigned pharmacist on $purpose files',
+    'allows presigned downloads for an org-wide pharmacist regardless of assignment on $purpose files',
     async ({ record, deny }) => {
       mockStoredFile({
         ...record,
         status: 'uploaded',
       });
+      // assignment 上は未割当でも、組織内フルアクセスロールは許可される。
       deny();
 
-      await expect(
-        createPresignedDownload({
-          orgId: 'org_1',
-          fileId: 'file_1',
-          accessContext: unassignedAccessContext,
-        }),
-      ).rejects.toMatchObject({
-        code: 'FILE_DOWNLOAD_FORBIDDEN',
-        status: 403,
+      const result = await createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: unassignedAccessContext,
       });
-      expect(getSignedUrlMock).not.toHaveBeenCalled();
+
+      expect(result.downloadUrl).toBe('https://example.com/upload');
+      expect(getSignedUrlMock).toHaveBeenCalledOnce();
     },
   );
 

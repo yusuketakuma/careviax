@@ -151,15 +151,6 @@ describe('/api/inquiry-records/[id] PATCH', () => {
       where: {
         id: 'inquiry_unassigned',
         org_id: 'org_1',
-        cycle: {
-          case_: {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        },
       },
       select: {
         id: true,

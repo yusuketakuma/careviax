@@ -83,16 +83,6 @@ function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
   return new NextRequest(url);
 }
 
-const expectedCycleAssignmentWhere = {
-  case_: {
-    OR: [
-      { primary_pharmacist_id: 'user_1' },
-      { backup_pharmacist_id: 'user_1' },
-      { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-    ],
-  },
-};
-
 describe('/api/dispense-tasks GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,7 +102,6 @@ describe('/api/dispense-tasks GET', () => {
           org_id: 'org_1',
           status: 'pending',
           cycle_id: 'cycle_1',
-          cycle: expectedCycleAssignmentWhere,
         },
       }),
     );
@@ -268,7 +257,6 @@ describe('/api/dispense-tasks POST', () => {
       where: {
         id: 'cycle_unassigned',
         org_id: 'org_1',
-        AND: [expectedCycleAssignmentWhere],
       },
       select: {
         id: true,

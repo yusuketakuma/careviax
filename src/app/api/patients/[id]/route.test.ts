@@ -406,19 +406,6 @@ describe('/api/patients/[id]', () => {
       where: {
         id: 'patient_1',
         org_id: 'corg1234567890123456789012',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       include: expect.objectContaining({
         residences: true,
@@ -1084,9 +1071,11 @@ describe('/api/patients/[id]', () => {
     ).toBeUndefined();
   });
 
-  it('updates requester and intake fields only on an assigned care case when the latest case is unassigned', async () => {
+  it('updates requester and intake fields on the latest in-org care case for org-wide roles regardless of assignment', async () => {
     careCaseFindFirstMock.mockImplementation(
       async (args: { where: { AND?: unknown }; select: unknown }) => {
+        // 新ポリシー: pharmacist は組織内フルアクセス。担当割当(AND)は付与されないため、
+        // org 内の最新ケース(未割当でも)が解決・更新される。
         if (args.where.AND) {
           return {
             id: 'case_assigned_old',
@@ -1133,15 +1122,6 @@ describe('/api/patients/[id]', () => {
       where: {
         org_id: 'corg1234567890123456789012',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
         status: { in: ['referral_received', 'assessment', 'active', 'on_hold'] },
       },
       orderBy: [{ updated_at: 'desc' }],
@@ -1151,7 +1131,7 @@ describe('/api/patients/[id]', () => {
       },
     });
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'case_assigned_old' },
+      where: { id: 'case_unassigned_latest' },
       data: {
         referral_source: '新しい紹介元',
         required_visit_support: {
@@ -1166,7 +1146,7 @@ describe('/api/patients/[id]', () => {
     });
     expect(careCaseUpdateMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'case_unassigned_latest' },
+        where: { id: 'case_assigned_old' },
       }),
     );
   });

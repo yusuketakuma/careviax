@@ -74,19 +74,9 @@ function createMalformedJsonPatchRequest(id = 'result_1') {
   });
 }
 
-const expectedResultAssignmentWhere = {
-  task: {
-    cycle: {
-      case_: {
-        OR: [
-          { primary_pharmacist_id: 'user_1' },
-          { backup_pharmacist_id: 'user_1' },
-          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-        ],
-      },
-    },
-  },
-};
+// 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
+// org-only の WHERE になる。担当割当の OR 句は付与されない。
+const expectedResultAssignmentWhere = {};
 
 describe('/api/dispense-results/[id]', () => {
   beforeEach(() => {

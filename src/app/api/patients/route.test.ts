@@ -350,19 +350,6 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
-          AND: [
-            {
-              cases: {
-                some: {
-                  OR: [
-                    { primary_pharmacist_id: 'user_1' },
-                    { backup_pharmacist_id: 'user_1' },
-                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                  ],
-                },
-              },
-            },
-          ],
         }),
       }),
     );

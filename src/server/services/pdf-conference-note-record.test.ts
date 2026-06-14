@@ -84,7 +84,9 @@ describe('getConferenceNoteRecord', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
   });
 
-  it('rejects unscoped notes for non-bypass users', async () => {
+  it('rejects unscoped notes for non-bypass (scoped) users', async () => {
+    // 新ポリシー: driver / external_viewer のみが assignment スコープ対象。
+    // case_id も patient_id も無いノートはスコープを満たせないため拒否される。
     conferenceNoteFindFirstMock.mockResolvedValue({
       ...baseNote,
       case_id: null,
@@ -93,8 +95,8 @@ describe('getConferenceNoteRecord', () => {
 
     await expect(
       getConferenceNoteRecord('org_1', 'note_1', {
-        userId: 'pharmacist_1',
-        role: 'pharmacist',
+        userId: 'driver_1',
+        role: 'driver',
       }),
     ).rejects.toBeInstanceOf(PdfNotFoundError);
 
@@ -102,7 +104,7 @@ describe('getConferenceNoteRecord', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
   });
 
-  it('applies patient and case assignment scope before returning a note', async () => {
+  it('grants org-wide access (no assignment scope) before returning a note', async () => {
     await expect(
       getConferenceNoteRecord('org_1', 'note_1', {
         userId: 'pharmacist_1',
@@ -135,19 +137,6 @@ describe('getConferenceNoteRecord', () => {
       where: {
         id: 'patient_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'pharmacist_1' },
-                  { backup_pharmacist_id: 'pharmacist_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       select: { id: true },
     });
@@ -155,15 +144,6 @@ describe('getConferenceNoteRecord', () => {
       where: {
         id: 'case_1',
         org_id: 'org_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'pharmacist_1' },
-              { backup_pharmacist_id: 'pharmacist_1' },
-              { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-            ],
-          },
-        ],
       },
       select: expect.any(Object),
     });

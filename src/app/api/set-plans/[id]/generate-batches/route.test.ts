@@ -229,19 +229,6 @@ describe('set-plans/[id]/generate-batches POST', () => {
       where: {
         id: 'plan_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cycle: {
-              case_: expect.objectContaining({
-                OR: expect.arrayContaining([
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ]),
-              }),
-            },
-          },
-        ],
       },
       select: expect.any(Object),
     });

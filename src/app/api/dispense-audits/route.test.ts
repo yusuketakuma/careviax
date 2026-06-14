@@ -82,15 +82,8 @@ function createGetRequest() {
   return new NextRequest('http://localhost/api/dispense-audits');
 }
 
-const expectedCycleAssignmentWhere = {
-  case_: {
-    OR: [
-      { primary_pharmacist_id: 'user_1' },
-      { backup_pharmacist_id: 'user_1' },
-      { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-    ],
-  },
-};
+// 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
+// buildMedicationCycleAssignmentWhere が null を返し、WHERE に cycle 句は付与されない。
 
 describe('/api/dispense-audits GET', () => {
   beforeEach(() => {
@@ -174,7 +167,6 @@ describe('/api/dispense-audits GET', () => {
         where: {
           org_id: 'org_1',
           status: 'completed',
-          cycle: expectedCycleAssignmentWhere,
         },
       }),
     );
@@ -352,7 +344,6 @@ describe('/api/dispense-audits POST', () => {
         where: {
           id: 'task_unassigned',
           org_id: 'org_1',
-          cycle: expectedCycleAssignmentWhere,
         },
       }),
     );

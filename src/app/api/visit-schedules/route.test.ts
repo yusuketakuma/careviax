@@ -285,15 +285,6 @@ describe('/api/visit-schedules', () => {
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
         }),
       }),
     );
@@ -559,7 +550,7 @@ describe('/api/visit-schedules', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects visit schedule creation for an unassigned non-admin user', async () => {
+  it('allows org-wide pharmacist visit schedule creation even when not assigned to the case', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'primary_user',
@@ -582,11 +573,8 @@ describe('/api/visit-schedules', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalled();
   });
 
   it('allows admin visit schedule creation even when not assigned to the case', async () => {

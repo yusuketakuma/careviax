@@ -256,16 +256,10 @@ describe('/api/dispense-tasks/[id]', () => {
     expect(generateDispensePrefillMock).toHaveBeenCalledWith('cycle_1', 'org_1', 'site_1');
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           id: 'task_1',
-          cycle: expect.objectContaining({
-            case_: expect.objectContaining({
-              OR: expect.arrayContaining([
-                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
-              ]),
-            }),
-          }),
-        }),
+          org_id: 'org_1',
+        },
       }),
     );
   });
@@ -497,16 +491,10 @@ describe('/api/dispense-tasks/[id]', () => {
     expect(response.status).toBe(200);
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           id: 'task_1',
-          cycle: expect.objectContaining({
-            case_: expect.objectContaining({
-              OR: expect.arrayContaining([
-                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
-              ]),
-            }),
-          }),
-        }),
+          org_id: 'org_1',
+        },
       }),
     );
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith(

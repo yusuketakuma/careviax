@@ -58,16 +58,6 @@ const baseLabBody = {
   unit: 'mL/min/1.73m2',
 };
 
-const expectedVisitRecordAssignmentWhere = {
-  schedule: {
-    OR: [
-      { pharmacist_id: 'pharmacist_1' },
-      { case_: { primary_pharmacist_id: 'pharmacist_1' } },
-      { case_: { backup_pharmacist_id: 'pharmacist_1' } },
-    ],
-  },
-};
-
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patients/patient_1/labs', {
     method: 'POST',
@@ -265,7 +255,6 @@ describe('/api/patients/[id]/labs POST', () => {
         id: 'visit_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [expectedVisitRecordAssignmentWhere],
       },
       select: { id: true },
     });
@@ -339,7 +328,7 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
   });
 
-  it('denies before write when the source visit record is not assigned to the pharmacist', async () => {
+  it('denies before write when the source visit record is not found in the org/patient scope', async () => {
     visitRecordFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -353,10 +342,11 @@ describe('/api/patients/[id]/labs POST', () => {
 
     expect(response.status).toBe(400);
     expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+      where: {
         id: 'visit_unassigned',
-        AND: [expectedVisitRecordAssignmentWhere],
-      }),
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+      },
       select: { id: true },
     });
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();

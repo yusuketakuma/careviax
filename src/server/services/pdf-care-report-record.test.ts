@@ -80,17 +80,6 @@ describe('getCareReportRecord', () => {
         id: 'visit_record_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            schedule: {
-              OR: [
-                { pharmacist_id: 'pharmacist_1' },
-                { case_: { primary_pharmacist_id: 'pharmacist_1' } },
-                { case_: { backup_pharmacist_id: 'pharmacist_1' } },
-              ],
-            },
-          },
-        ],
         schedule: {
           case_id: 'case_1',
           case_: {

@@ -156,22 +156,17 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
       }),
       data: { route_order: 2 },
     });
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
+    // 提案ルックアップは org_id + id の組織内検索のみ(AND 担当割当句なし)。
     expect(proposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            {
-              OR: [
-                { proposed_pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
-              ],
-            },
-          ],
+          org_id: 'org_1',
+          id: { in: ['proposal_2', 'proposal_1'] },
         }),
       }),
     );
+    expect(proposalFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
   });
 
   it('rejects non-object reorder payloads before transaction side effects', async () => {

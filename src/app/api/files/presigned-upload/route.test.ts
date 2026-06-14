@@ -378,7 +378,7 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
-  it('returns 403 when the caller cannot access the visit record assignment', async () => {
+  it('allows visit-photo upload for org-wide roles regardless of visit record assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -408,11 +408,13 @@ describe('/api/files/presigned-upload POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(createPresignedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'visit-photo',
+        visitRecordId: 'visit_1',
+      }),
+    );
   });
 
   it('returns a presigned upload url when the prescription patient is accessible', async () => {
@@ -443,20 +445,8 @@ describe('/api/files/presigned-upload POST', () => {
       },
       select: { id: true },
     });
-    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        case_: {
-          patient_id: 'patient_1',
-        },
-        OR: [
-          { pharmacist_id: 'user_1' },
-          { case_: { primary_pharmacist_id: 'user_1' } },
-          { case_: { backup_pharmacist_id: 'user_1' } },
-        ],
-      },
-      select: { id: true },
-    });
+    // org-wide ロール(pharmacist)は担当割当チェックをバイパスするため visitSchedule 照会は行われない
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       purpose: 'prescription',
@@ -469,7 +459,7 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
-  it('returns 403 when the caller cannot access the prescription patient assignment', async () => {
+  it('allows prescription upload for org-wide roles without patient assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -491,14 +481,19 @@ describe('/api/files/presigned-upload POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // org-wide ロールは担当割当をバイパスするため割当照会は行われない
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'prescription',
+        patientId: 'patient_1',
+      }),
+    );
   });
 
-  it('allows prescription upload when the caller is assigned through the care case', async () => {
+  it('allows prescription upload for org-wide roles bypassing care case assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -521,14 +516,14 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        patient_id: 'patient_1',
-        OR: [{ primary_pharmacist_id: 'user_1' }, { backup_pharmacist_id: 'user_1' }],
-      },
-      select: { id: true },
-    });
+    // org-wide ロールは担当割当をバイパスするため careCase 照会は行われない
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'prescription',
+        patientId: 'patient_1',
+      }),
+    );
   });
 
   it('allows admin prescription upload without patient assignment checks', async () => {
@@ -573,7 +568,7 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
-  it('returns 403 when the caller cannot access the report assignment', async () => {
+  it('allows report upload for org-wide roles regardless of report case assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -603,14 +598,18 @@ describe('/api/files/presigned-upload POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // org-wide ロールは担当割当をバイパスするため report の case 照会は行われない
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'report',
+        reportId: 'report_1',
+      }),
+    );
   });
 
-  it('allows report upload when the caller is assigned through the report care case', async () => {
+  it('allows report upload for org-wide roles bypassing report care case assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
@@ -641,16 +640,8 @@ describe('/api/files/presigned-upload POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'case_1',
-        org_id: 'org_1',
-      },
-      select: {
-        primary_pharmacist_id: true,
-        backup_pharmacist_id: true,
-      },
-    });
+    // org-wide ロールは担当割当をバイパスするため report の case 照会は行われない
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       purpose: 'report',

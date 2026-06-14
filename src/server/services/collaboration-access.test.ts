@@ -50,15 +50,6 @@ describe('collaboration-access', () => {
       where: {
         id: 'dt_1',
         org_id: 'org_1',
-        cycle: {
-          case_: {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        },
       },
       select: { id: true },
     });
@@ -83,17 +74,6 @@ describe('collaboration-access', () => {
       where: {
         id: 'vr_1',
         org_id: 'org_1',
-        AND: [
-          {
-            schedule: {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          },
-        ],
       },
       select: { id: true },
     });
@@ -110,19 +90,6 @@ describe('collaboration-access', () => {
       where: {
         id: 'pt_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       select: { id: true },
     });

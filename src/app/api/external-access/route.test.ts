@@ -136,52 +136,20 @@ function createGetRequest(url = 'http://localhost/api/external-access') {
   return new NextRequest(url);
 }
 
+// 新ポリシー: org-wide ロール(pharmacist 等)は担当割当スコープを撤廃。
+// canAccessPatient / listAccessiblePatientCaseIds は org_id(+id/patient_id)のみで照合する。
 function expectPharmacistPatientAssignmentWhere(patientId?: string) {
-  return expect.objectContaining({
+  return {
     ...(patientId ? { id: patientId } : {}),
     org_id: 'org_1',
-    AND: [
-      {
-        cases: {
-          some: {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        },
-      },
-    ],
-  });
+  };
 }
 
 function expectPharmacistCareCaseAssignmentWhere(patientId: string) {
   return {
     org_id: 'org_1',
     patient_id: patientId,
-    AND: [
-      {
-        OR: [
-          { primary_pharmacist_id: 'user_1' },
-          { backup_pharmacist_id: 'user_1' },
-          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-        ],
-      },
-    ],
   };
-}
-
-function expectGrantVisibilityForCase(caseId: string) {
-  return expect.objectContaining({
-    OR: expect.arrayContaining([
-      expect.objectContaining({
-        AND: expect.arrayContaining([
-          { scope: { path: ['allowed_case_ids'], array_contains: [caseId] } },
-        ]),
-      }),
-    ]),
-  });
 }
 
 describe('/api/external-access GET', () => {
@@ -270,14 +238,15 @@ describe('/api/external-access GET', () => {
 
     expect(response.status).toBe(200);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    // 新ポリシー: 組織内フルアクセスのため担当割当スコープ(grant visibility OR)は付かず、
+    // org_id + patient_id の単純なリスト取得になる。
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+      where: {
         org_id: 'org_1',
         revoked_at: null,
         patient_id: 'patient_1',
-        OR: expect.any(Array),
-      }),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      },
+      orderBy: { created_at: 'desc' },
       select: {
         id: true,
         org_id: true,
@@ -291,18 +260,14 @@ describe('/api/external-access GET', () => {
       },
       take: 200,
     });
-    expect(externalAccessGrantFindManyMock.mock.calls[0][0].where).toEqual(
-      expectGrantVisibilityForCase('case_1'),
-    );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    // canAccessPatient は org-wide ロールでは担当割当を付けず org_id + id だけで照合する。
     expect(patientFindFirstMock).toHaveBeenCalledWith({
-      where: expectPharmacistPatientAssignmentWhere('patient_1'),
+      where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
     });
-    expect(careCaseFindManyMock).toHaveBeenCalledWith({
-      where: expectPharmacistCareCaseAssignmentWhere('patient_1'),
-      select: { id: true },
-    });
+    // bypass 経路では visibleCaseIds を求めないため careCase.findMany は呼ばれない。
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -373,17 +338,16 @@ describe('/api/external-access GET', () => {
 
     expect(response.status).toBe(200);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    // 新ポリシー: org-wide ロールは grant visibility の OR を付けず患者単位で全件取得する。
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          revoked_at: null,
           patient_id: 'patient_1',
-          OR: expect.any(Array),
-        }),
+        },
         take: 200,
       }),
-    );
-    expect(externalAccessGrantFindManyMock.mock.calls[0][0].where).toEqual(
-      expectGrantVisibilityForCase('case_1'),
     );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
     await expect(response.json()).resolves.toMatchObject({
@@ -418,17 +382,14 @@ describe('/api/external-access GET', () => {
 
     expect(response.status).toBe(200);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    // 新ポリシー: org-wide ロールは patient_id 未指定時に組織内の grant を全件取得する。
+    // 担当割当による per-patient の OR 分岐は付かない。
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+      where: {
         org_id: 'org_1',
         revoked_at: null,
-        OR: expect.arrayContaining([
-          {
-            AND: [{ patient_id: 'patient_1' }, expectGrantVisibilityForCase('case_1')],
-          },
-        ]),
-      }),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      },
+      orderBy: { created_at: 'desc' },
       select: {
         id: true,
         org_id: true,
@@ -443,21 +404,8 @@ describe('/api/external-access GET', () => {
       take: 200,
     });
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
-    expect(careCaseFindManyMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
-      },
-      select: { id: true, patient_id: true },
-    });
+    // bypass 経路では候補ケースを集める careCase.findMany は実行されない。
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -496,15 +444,13 @@ describe('/api/external-access GET', () => {
 
     expect(response.status).toBe(200);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    // 新ポリシー: org-wide ロールは patient ごとの OR 分岐ではなく組織内全件取得になる。
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        where: expect.objectContaining({
-          OR: expect.arrayContaining([
-            {
-              AND: [{ patient_id: 'patient_1' }, expectGrantVisibilityForCase('case_1')],
-            },
-          ]),
-        }),
+        where: {
+          org_id: 'org_1',
+          revoked_at: null,
+        },
         take: 200,
       }),
     );

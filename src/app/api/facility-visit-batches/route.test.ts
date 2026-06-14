@@ -1045,43 +1045,74 @@ describe('/api/facility-visit-batches POST', () => {
     );
   });
 
-  it('denies requested schedules outside assignment before batch, schedule, preparation, or notify side effects', async () => {
-    const batchCreateMock = vi.fn();
+  it('does not assignment-scope requested schedule lookups for org-wide roles', async () => {
+    const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_org_wide' });
     const batchUpdateMock = vi.fn();
-    const scheduleUpdateMock = vi.fn();
+    const scheduleUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
     const preparationUpsertMock = vi.fn();
-    visitScheduleCountMock.mockResolvedValue(2);
+    const scheduleFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'schedule_1',
+        site_id: 'site_1',
+        pharmacist_id: 'other_user',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
+        facility_batch_id: null,
+        version: 1,
+        case_id: 'case_1',
+        carry_items_status: 'ready',
+        preparation: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            residences: [
+              {
+                facility_id: 'facility_a',
+                building_id: 'facility_a',
+                address: '東京都港区1-1-1',
+                unit_name: '201',
+              },
+            ],
+          },
+        },
+      },
+      {
+        id: 'schedule_2',
+        site_id: 'site_1',
+        pharmacist_id: 'other_user',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
+        facility_batch_id: null,
+        version: 1,
+        case_id: 'case_2',
+        carry_items_status: 'ready',
+        preparation: null,
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '山田 花子',
+            residences: [
+              {
+                facility_id: 'facility_a',
+                building_id: 'facility_a',
+                address: '東京都港区1-1-1',
+                unit_name: '105',
+              },
+            ],
+          },
+        },
+      },
+    ]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
-          findMany: vi.fn().mockResolvedValue([
-            {
-              id: 'schedule_1',
-              site_id: 'site_1',
-              pharmacist_id: 'user_1',
-              scheduled_date: new Date('2026-03-28T00:00:00Z'),
-              facility_batch_id: null,
-              case_id: 'case_1',
-              preparation: null,
-              case_: {
-                patient: {
-                  id: 'patient_1',
-                  name: '山田 太郎',
-                  residences: [
-                    {
-                      facility_id: 'facility_a',
-                      building_id: 'facility_a',
-                      address: '東京都港区1-1-1',
-                      unit_name: '201',
-                    },
-                  ],
-                },
-              },
-            },
-          ]),
+          findFirst: vi.fn().mockResolvedValue(null),
+          findMany: scheduleFindManyMock,
           count: visitScheduleCountMock,
           updateMany: scheduleUpdateMock,
+        },
+        visitScheduleProposal: {
+          findFirst: vi.fn().mockResolvedValue(null),
         },
         facilityVisitBatch: {
           create: batchCreateMock,
@@ -1101,82 +1132,88 @@ describe('/api/facility-visit-batches POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-      message: '施設一括訪問に含まれる訪問予定へのアクセス権限がありません',
-    });
-    expect(visitScheduleCountMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        id: { in: ['schedule_1', 'schedule_2'] },
-      },
-    });
-    expect(batchCreateMock).not.toHaveBeenCalled();
-    expect(batchUpdateMock).not.toHaveBeenCalled();
-    expect(scheduleUpdateMock).not.toHaveBeenCalled();
-    expect(preparationUpsertMock).not.toHaveBeenCalled();
-    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // org-wide ロール(pharmacist)は担当割当をバイパスするため、
+    // 取得 where に AND の割当条件は付かず、件数突合のための count も行われない。
+    expect(scheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          id: { in: ['schedule_1', 'schedule_2'] },
+        },
+      }),
+    );
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(batchCreateMock).toHaveBeenCalledTimes(1);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
   });
 
-  it('denies auto-loaded facility schedules outside assignment before side effects', async () => {
-    const batchCreateMock = vi.fn();
-    const scheduleUpdateMock = vi.fn();
-    visitScheduleCountMock.mockResolvedValue(3);
+  it('does not assignment-scope auto-loaded facility schedules for org-wide roles', async () => {
+    const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_auto_org_wide' });
+    const scheduleUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const scheduleFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'schedule_auto_1',
+        site_id: 'site_1',
+        pharmacist_id: 'ph_1',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
+        facility_batch_id: null,
+        version: 1,
+        case_id: 'case_1',
+        carry_items_status: 'ready',
+        preparation: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            residences: [
+              {
+                facility_id: 'facility_a',
+                building_id: 'facility_a',
+                address: '東京都港区1-1-1',
+                unit_name: '201',
+              },
+            ],
+          },
+        },
+      },
+      {
+        id: 'schedule_auto_2',
+        site_id: 'site_1',
+        pharmacist_id: 'ph_1',
+        scheduled_date: new Date('2026-03-28T00:00:00Z'),
+        facility_batch_id: null,
+        version: 1,
+        case_id: 'case_2',
+        carry_items_status: 'ready',
+        preparation: null,
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '山田 花子',
+            residences: [
+              {
+                facility_id: 'facility_a',
+                building_id: 'facility_a',
+                address: '東京都港区1-1-1',
+                unit_name: '105',
+              },
+            ],
+          },
+        },
+      },
+    ]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
-          findMany: vi.fn().mockResolvedValue([
-            {
-              id: 'schedule_auto_1',
-              site_id: 'site_1',
-              pharmacist_id: 'ph_1',
-              scheduled_date: new Date('2026-03-28T00:00:00Z'),
-              facility_batch_id: null,
-              case_id: 'case_1',
-              preparation: null,
-              case_: {
-                patient: {
-                  id: 'patient_1',
-                  name: '山田 太郎',
-                  residences: [
-                    {
-                      facility_id: 'facility_a',
-                      building_id: 'facility_a',
-                      address: '東京都港区1-1-1',
-                      unit_name: '201',
-                    },
-                  ],
-                },
-              },
-            },
-            {
-              id: 'schedule_auto_2',
-              site_id: 'site_1',
-              pharmacist_id: 'ph_1',
-              scheduled_date: new Date('2026-03-28T00:00:00Z'),
-              facility_batch_id: null,
-              case_id: 'case_2',
-              preparation: null,
-              case_: {
-                patient: {
-                  id: 'patient_2',
-                  name: '山田 花子',
-                  residences: [
-                    {
-                      facility_id: 'facility_a',
-                      building_id: 'facility_a',
-                      address: '東京都港区1-1-1',
-                      unit_name: '105',
-                    },
-                  ],
-                },
-              },
-            },
-          ]),
+          findFirst: vi.fn().mockResolvedValue(null),
+          findMany: scheduleFindManyMock,
           count: visitScheduleCountMock,
           updateMany: scheduleUpdateMock,
+        },
+        visitScheduleProposal: {
+          findFirst: vi.fn().mockResolvedValue(null),
         },
         facilityVisitBatch: {
           create: batchCreateMock,
@@ -1197,24 +1234,23 @@ describe('/api/facility-visit-batches POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(batchCreateMock).not.toHaveBeenCalled();
-    expect(scheduleUpdateMock).not.toHaveBeenCalled();
-    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // org-wide ロールは担当割当の件数突合を行わないため count は呼ばれない
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(batchCreateMock).toHaveBeenCalledTimes(1);
+    expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
   });
 
-  it('denies existing batches with inaccessible stale child schedules before side effects', async () => {
-    const batchUpdateMock = vi.fn();
-    const scheduleUpdateMock = vi.fn();
-    const preparationUpsertMock = vi.fn();
-    visitScheduleCountMock
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(2);
+  it('does not run stale-batch access counts for org-wide roles on existing batches', async () => {
+    const batchUpdateMock = vi.fn().mockResolvedValue({ id: 'batch_stale', notes: null });
+    const scheduleUpdateMock = vi.fn().mockResolvedValue({ count: 1 });
+    const preparationUpsertMock = vi.fn().mockResolvedValue({});
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
+          findFirst: vi.fn().mockResolvedValue(null),
           findMany: vi.fn().mockResolvedValue([
             {
               id: 'schedule_1',
@@ -1222,7 +1258,9 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'user_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: 'batch_stale',
+              version: 1,
               case_id: 'case_1',
+              carry_items_status: 'ready',
               preparation: null,
               case_: {
                 patient: {
@@ -1245,7 +1283,9 @@ describe('/api/facility-visit-batches POST', () => {
               pharmacist_id: 'user_1',
               scheduled_date: new Date('2026-03-28T00:00:00Z'),
               facility_batch_id: 'batch_stale',
+              version: 1,
               case_id: 'case_2',
+              carry_items_status: 'ready',
               preparation: null,
               case_: {
                 patient: {
@@ -1266,6 +1306,9 @@ describe('/api/facility-visit-batches POST', () => {
           count: visitScheduleCountMock,
           updateMany: scheduleUpdateMock,
         },
+        visitScheduleProposal: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
         facilityVisitBatch: {
           create: vi.fn(),
           update: batchUpdateMock,
@@ -1284,28 +1327,11 @@ describe('/api/facility-visit-batches POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
-      where: { org_id: 'org_1', facility_batch_id: 'batch_stale' },
-    });
-    expect(visitScheduleCountMock).toHaveBeenNthCalledWith(3, {
-      where: {
-        org_id: 'org_1',
-        facility_batch_id: 'batch_stale',
-        AND: [
-          {
-            OR: [
-              { pharmacist_id: 'user_1' },
-              { case_: { primary_pharmacist_id: 'user_1' } },
-              { case_: { backup_pharmacist_id: 'user_1' } },
-            ],
-          },
-        ],
-      },
-    });
-    expect(batchUpdateMock).not.toHaveBeenCalled();
-    expect(scheduleUpdateMock).not.toHaveBeenCalled();
-    expect(preparationUpsertMock).not.toHaveBeenCalled();
-    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // org-wide ロールは既存バッチの担当アクセス突合(count)を一切行わない
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+    expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
   });
 });

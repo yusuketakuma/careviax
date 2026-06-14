@@ -173,12 +173,21 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
   });
 
-  it('returns not found for unassigned requests before loading communication content', async () => {
-    communicationRequestFindFirstMock.mockResolvedValueOnce({
-      id: 'request_1',
-      patient_id: 'patient_1',
-      case_id: 'case_1',
-    });
+  it('loads communication content for an org-wide role regardless of case assignment', async () => {
+    communicationRequestFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      })
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+        responses: [],
+      });
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = await GET(createGetRequest(), {
@@ -186,13 +195,12 @@ describe('/api/communication-requests/[id] GET', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_NOT_FOUND',
-      message: '依頼が見つかりません',
+      data: { id: 'request_1', subject: '確認事項' },
     });
-    expect(communicationRequestFindFirstMock).toHaveBeenCalledOnce();
-    expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(1, {
       where: { id: 'request_1', org_id: 'org_1' },
       select: {
         id: true,
@@ -200,7 +208,7 @@ describe('/api/communication-requests/[id] GET', () => {
         case_id: true,
       },
     });
-    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+    expect(fetchEmergencyContactsMock).toHaveBeenCalled();
   });
 });
 
@@ -588,7 +596,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('returns not found for an inaccessible linked tracing report before side effects', async () => {
+  it('lets an org-wide role respond through a linked tracing report in any in-org case', async () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
       patient_id: 'patient_1',
@@ -623,15 +631,13 @@ describe('/api/communication-requests/[id] PATCH', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(404);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
-    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
-    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(communicationResponseCreateMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).toHaveBeenCalled();
   });
 
-  it('returns not found and skips side effects for an unassigned request', async () => {
+  it('lets an org-wide role respond regardless of case assignment', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = await PATCH(
@@ -648,9 +654,8 @@ describe('/api/communication-requests/[id] PATCH', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(404);
-    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
-    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(communicationResponseCreateMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).toHaveBeenCalled();
   });
 });

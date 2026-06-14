@@ -246,7 +246,7 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('does not create a response for an unassigned communication request', async () => {
+  it('lets an org-wide role create a response without assignment scoping', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -260,8 +260,8 @@ describe('/api/communication-requests/[id]/responses', () => {
       },
     ))!;
 
-    expect(response.status).toBe(404);
-    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(communicationResponseCreateMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).toHaveBeenCalled();
   });
 });

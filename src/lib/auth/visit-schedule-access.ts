@@ -13,9 +13,32 @@ type VisitScheduleAssignmentSubject = {
   } | null;
 };
 
+// アクセス（need-to-know）ポリシー:
+// 薬剤師(pharmacist / pharmacist_trainee)は組織内の全患者・全業務にフルアクセスでき、
+// 事務(clerk)も組織内の全臨床データを参照できる。よって担当割当(assignment)による
+// 行スコープは owner/admin と同様にこれらのロールでも撤廃する（org 単位アクセス）。
+// 書き込みの可否はこの述語ではなく権限マトリクス(permissions.ts)で制御するため、
+// clerk が薬剤師専門業務を書き込めるわけではない（canDispense 等が false）。
+// driver / external_viewer は canViewDashboard を持たずこの経路に到達しない。
+const ORG_WIDE_ACCESS_ROLES: ReadonlySet<MemberRole> = new Set([
+  'owner',
+  'admin',
+  'pharmacist',
+  'pharmacist_trainee',
+  'clerk',
+]);
+
 export function canBypassVisitScheduleAssignmentAccess(
   ctx: Pick<VisitScheduleAccessContext, 'role'>,
 ) {
+  return ORG_WIDE_ACCESS_ROLES.has(ctx.role);
+}
+
+// ダッシュボードの「自分の担当」既定表示は上記アクセス境界とは別概念。
+// フルアクセスでも個人の作業キューは担当中心に保つため、ダッシュボードの
+// 無スコープ表示は従来どおり owner/admin のみとする（薬剤師は担当を既定表示しつつ
+// 任意の患者へアクセス可能）。
+export function canViewAllDashboardWork(ctx: Pick<VisitScheduleAccessContext, 'role'>) {
   return ctx.role === 'owner' || ctx.role === 'admin';
 }
 
@@ -47,11 +70,12 @@ export function buildVisitScheduleAssignmentWhere(
   };
 }
 
-export function buildCareCaseAssignmentWhere(
+// 担当割当(自分が primary/backup/訪問担当の case)を表す素の where。
+// アクセス bypass の有無に関係なく「自分の担当」を厳密に絞るため、
+// ダッシュボードの個人作業キューなど "mine" 表示で使う。
+export function buildPersonalCareCaseAssignmentWhere(
   ctx: VisitScheduleAccessContext,
-): Prisma.CareCaseWhereInput | null {
-  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
-
+): Prisma.CareCaseWhereInput {
   return {
     OR: [
       { primary_pharmacist_id: ctx.userId },
@@ -59,6 +83,14 @@ export function buildCareCaseAssignmentWhere(
       { visit_schedules: { some: { pharmacist_id: ctx.userId } } },
     ],
   };
+}
+
+export function buildCareCaseAssignmentWhere(
+  ctx: VisitScheduleAccessContext,
+): Prisma.CareCaseWhereInput | null {
+  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
+
+  return buildPersonalCareCaseAssignmentWhere(ctx);
 }
 
 export function buildVisitScheduleProposalAssignmentWhere(

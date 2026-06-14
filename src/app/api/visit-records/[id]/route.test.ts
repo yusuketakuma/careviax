@@ -245,7 +245,7 @@ describe('/api/visit-records/[id]', () => {
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a pharmacist reads another schedule assignment visit record', async () => {
+  it('allows an org-wide pharmacist to read a visit record on another schedule assignment', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       org_id: 'org_1',
@@ -291,11 +291,12 @@ describe('/api/visit-records/[id]', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ id: 'visit_1' });
+    expect(auditLogFindFirstMock).toHaveBeenCalled();
   });
 
-  it('returns 403 before attachment validation when a pharmacist patches another schedule assignment visit record', async () => {
+  it('allows an org-wide pharmacist to patch a visit record on another schedule assignment', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitRecord: {
@@ -320,6 +321,26 @@ describe('/api/visit-records/[id]', () => {
         },
       }),
     );
+    getStoredFileRecordMock.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      orgId: 'org_1',
+      purpose: 'visit-photo',
+      storageKey: 'visit-photos/org_1/visit_1/file-1-photo.png',
+      originalName: 'visit-photo.png',
+      mimeType: 'image/png',
+      sizeBytes: 1024,
+      status: 'uploaded',
+      visitRecordId: 'visit_1',
+      createdAt: '2026-03-28T00:00:00.000Z',
+      updatedAt: '2026-03-28T00:00:00.000Z',
+      completedAt: '2026-03-28T00:00:00.000Z',
+      downloadDisposition: 'inline',
+    });
+    visitRecordUpdateMock.mockResolvedValue({
+      id: 'visit_1',
+      version: 2,
+      attachments: [],
+    });
 
     const response = await PATCH(
       createRequest({
@@ -332,9 +353,9 @@ describe('/api/visit-records/[id]', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(getStoredFileRecordMock).toHaveBeenCalled();
+    expect(visitRecordUpdateMock).toHaveBeenCalled();
   });
 
   it('stores validated attachment metadata on PATCH', async () => {

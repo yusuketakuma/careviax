@@ -42,7 +42,7 @@ describe('getMedicationHistoryRecord', () => {
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns current medications after scoped patient lookup succeeds', async () => {
+  it('returns current medications after org-wide patient lookup succeeds', async () => {
     const patient = {
       id: 'patient_1',
       name: '山田 太郎',
@@ -78,19 +78,6 @@ describe('getMedicationHistoryRecord', () => {
       where: {
         id: 'patient_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'pharmacist_1' },
-                  { backup_pharmacist_id: 'pharmacist_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       select: {
         id: true,

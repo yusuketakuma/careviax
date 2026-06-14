@@ -78,15 +78,6 @@ describe('/api/visit-schedules/today', () => {
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
         }),
       }),
     );

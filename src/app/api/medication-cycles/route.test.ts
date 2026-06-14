@@ -109,9 +109,6 @@ describe('/api/medication-cycles', () => {
           overall_status: 'dispensing',
           case_id: 'case_1',
           patient_id: 'patient_1',
-          case_: expect.objectContaining({
-            OR: expect.any(Array),
-          }),
         }),
       }),
     );

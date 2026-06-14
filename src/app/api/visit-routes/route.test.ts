@@ -189,7 +189,7 @@ describe('/api/visit-routes POST', () => {
     expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 without route calculation when a selected schedule is outside assignment scope', async () => {
+  it('returns 404 without route calculation when a selected schedule is not found in-org', async () => {
     mockRouteContext();
     scheduleFindManyMock.mockResolvedValue([]);
 
@@ -207,7 +207,13 @@ describe('/api/visit-routes POST', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           id: { in: ['schedule_1'] },
-          AND: [expect.objectContaining({ OR: expect.any(Array) })],
+        }),
+      }),
+    );
+    expect(scheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          AND: expect.anything(),
         }),
       }),
     );

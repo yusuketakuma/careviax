@@ -258,74 +258,45 @@ describe('/api/facility-visit-batches/[id]', () => {
       });
     });
 
-    it('denies assigned-out batches before schedule unlink, batch delete, or notify', async () => {
+    it('allows org-wide roles to delete batches owned by another pharmacist without access counts', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
         pharmacist_id: 'other_user',
       });
-      visitScheduleCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
 
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTH_FORBIDDEN',
-        message: '施設一括訪問バッチへのアクセス権限がありません',
-      });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ deleted: true });
+      // org-wide ロールは担当アクセス突合(count)を一切行わずに削除できる
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
         where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
+        data: { facility_batch_id: null, route_order: null },
       });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
-        where: {
-          org_id: 'org_1',
-          facility_batch_id: 'batch_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
-        },
+      expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
+        where: { id: 'batch_1' },
       });
-      expectNoMutationSideEffects();
+      expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+        orgId: 'org_1',
+        payload: { source: 'facility_visit_batch_delete' },
+      });
     });
 
-    it('denies stale owned batches with inaccessible child schedules before unlink, delete, or notify', async () => {
+    it('does not run child-schedule access counts for org-wide roles on owned batches', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
         pharmacist_id: 'user_1',
       });
-      visitScheduleCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
 
       const response = await DELETE(createRequest(), routeContext('batch_1'));
 
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTH_FORBIDDEN',
-        message: '施設一括訪問バッチへのアクセス権限がありません',
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ deleted: true });
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expect(facilityVisitBatchDeleteMock).toHaveBeenCalledWith({
+        where: { id: 'batch_1' },
       });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
-        where: { org_id: 'org_1', facility_batch_id: 'batch_1' },
-      });
-      expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
-        where: {
-          org_id: 'org_1',
-          facility_batch_id: 'batch_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
-        },
-      });
-      expectNoMutationSideEffects();
     });
   });
 
@@ -475,74 +446,47 @@ describe('/api/facility-visit-batches/[id]', () => {
       expectNoMutationSideEffects();
     });
 
-    it('denies assigned-out batches before route reorder or notify', async () => {
+    it('allows org-wide roles to reorder batches owned by another pharmacist without access counts', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
         pharmacist_id: 'other_user',
       });
-      visitScheduleCountMock.mockResolvedValue(1);
+      visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
 
       const response = await PATCH(
-        createRequest({ ordered_schedule_ids: ['schedule_1'] }),
+        createRequest({ ordered_schedule_ids: ['schedule_2', 'schedule_1'] }),
         routeContext('batch_1'),
       );
 
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTH_FORBIDDEN',
-        message: '施設一括訪問バッチへのアクセス権限がありません',
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        updated: true,
+        order: ['schedule_2', 'schedule_1'],
       });
-      expect(visitScheduleCountMock).toHaveBeenCalledWith({
-        where: {
-          org_id: 'org_1',
-          facility_batch_id: 'batch_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
-        },
+      // org-wide ロールは担当アクセス突合(count)を行わずに並び替えできる
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
+      expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+        orgId: 'org_1',
+        payload: { source: 'facility_visit_batch_reorder' },
       });
-      expectNoMutationSideEffects();
     });
 
-    it('denies stale owned batches with inaccessible child schedules before route reorder or notify', async () => {
+    it('does not run child-schedule access counts for org-wide roles when reordering owned batches', async () => {
       facilityVisitBatchFindFirstMock.mockResolvedValue({
         id: 'batch_1',
         pharmacist_id: 'user_1',
       });
-      visitScheduleCountMock.mockResolvedValue(1);
+      visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
 
       const response = await PATCH(
-        createRequest({ ordered_schedule_ids: ['schedule_1'] }),
+        createRequest({ ordered_schedule_ids: ['schedule_2', 'schedule_1'] }),
         routeContext('batch_1'),
       );
 
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toMatchObject({
-        code: 'AUTH_FORBIDDEN',
-        message: '施設一括訪問バッチへのアクセス権限がありません',
-      });
-      expect(visitScheduleCountMock).toHaveBeenCalledWith({
-        where: {
-          org_id: 'org_1',
-          facility_batch_id: 'batch_1',
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
-        },
-      });
-      expectNoMutationSideEffects();
+      expect(response.status).toBe(200);
+      expect(visitScheduleCountMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
     });
 
     it('rejects duplicate schedule ids before batch lookup, route reorder, or notify', async () => {

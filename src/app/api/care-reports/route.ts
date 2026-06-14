@@ -469,7 +469,7 @@ export const POST = withAuthContext(
     return success({ data: report }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: '報告書の作成権限がありません',
   },
 );

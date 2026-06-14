@@ -65,16 +65,6 @@ function createMalformedJsonPatchRequest() {
   });
 }
 
-const expectedVisitRecordAssignmentWhere = {
-  schedule: {
-    OR: [
-      { pharmacist_id: 'pharmacist_1' },
-      { case_: { primary_pharmacist_id: 'pharmacist_1' } },
-      { case_: { backup_pharmacist_id: 'pharmacist_1' } },
-    ],
-  },
-};
-
 describe('/api/patients/[id]/labs/[labId] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,7 +138,7 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('folds assignment-scope into the lab resource lookup before updating', async () => {
+  it('looks up the lab resource by org and patient scope before updating', async () => {
     const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
       params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
     }))!;
@@ -159,17 +149,6 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
         id: 'lab_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        patient: {
-          cases: {
-            some: {
-              OR: [
-                { primary_pharmacist_id: 'pharmacist_1' },
-                { backup_pharmacist_id: 'pharmacist_1' },
-                { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-              ],
-            },
-          },
-        },
       },
     });
     expect(patientLabObservationUpdateMock).toHaveBeenCalledWith({
@@ -209,7 +188,6 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
         id: 'visit_unassigned',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [expectedVisitRecordAssignmentWhere],
       },
       select: { id: true },
     });

@@ -185,7 +185,7 @@ export const POST = withAuthContext<{ id: string }>(
     return success({ data: result }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: '報告書生成の権限がありません',
   },
 );

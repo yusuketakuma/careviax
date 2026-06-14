@@ -19,19 +19,6 @@ describe('patient-detail-scope', () => {
     ).toEqual({
       id: 'patient_1',
       org_id: 'org_1',
-      AND: [
-        {
-          cases: {
-            some: {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
-          },
-        },
-      ],
     });
   });
 
@@ -50,23 +37,14 @@ describe('patient-detail-scope', () => {
     expect(buildAssignedCareCaseWhere({ role: 'owner', userId: 'owner_1' })).toBeUndefined();
   });
 
-  it('combines base care-case filters with assignment visibility', () => {
+  it('passes base care-case filters through unchanged for org-wide roles', () => {
     expect(
       buildAssignedCareCaseWhere(
         { role: 'pharmacist', userId: 'user_1' },
         { status: { in: ['active', 'assessment'] } },
       ),
     ).toEqual({
-      AND: [
-        { status: { in: ['active', 'assessment'] } },
-        {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
-      ],
+      status: { in: ['active', 'assessment'] },
     });
   });
 

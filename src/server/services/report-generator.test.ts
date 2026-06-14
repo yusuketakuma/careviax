@@ -121,7 +121,9 @@ describe('generateReportsFromVisit', () => {
     );
   });
 
-  it('throws before creating reports when the access context cannot use the visit assignment', async () => {
+  it('allows org-wide roles to use any in-org visit assignment regardless of who is assigned', async () => {
+    // 新ポリシー: pharmacist は組織全体アクセス。割当が別薬剤師(pharm-other)でも
+    // 組織内であればアクセスを拒否しない。assignment による行スコープは撤廃された。
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',
       org_id: 'org-1',
@@ -136,14 +138,41 @@ describe('generateReportsFromVisit', () => {
       cycle_id: null,
       org_id: 'org-1',
     });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue(null);
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
 
-    await expect(
-      generateReportsFromVisit('org-1', 'user-1', 'vr-1', undefined, {
-        userId: 'user-1',
-        role: 'pharmacist',
-      }),
-    ).rejects.toThrow('VisitRecord not accessible');
-    expect(careReportCreateMock).not.toHaveBeenCalled();
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
+          },
+        }),
+    );
+
+    const result = await generateReportsFromVisit('org-1', 'user-1', 'vr-1', undefined, {
+      userId: 'user-1',
+      role: 'pharmacist',
+    });
+
+    expect(result.reports).toHaveLength(1);
+    expect(result.reports[0].report_type).toBe('physician_report');
   });
 
   it('returns existing reports without creating new ones', async () => {

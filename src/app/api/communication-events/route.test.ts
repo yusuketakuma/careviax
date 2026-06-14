@@ -118,20 +118,15 @@ describe('/api/communication-events', () => {
     expect(communicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            expect.objectContaining({
-              OR: expect.arrayContaining([
-                { case_id: { in: ['case_1'] } },
-                { AND: [{ case_id: null }, { patient_id: { in: ['patient_1'] } }] },
-              ]),
-            }),
-          ],
+          org_id: 'org_1',
+          patient_id: 'patient_1',
         }),
       }),
     );
+    expect(communicationEventFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
   });
 
-  it('rejects an unassigned case before create and contact-learning side effects', async () => {
+  it('lets an org-wide role create an event for any in-org case without assignment scoping', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -144,9 +139,9 @@ describe('/api/communication-events', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(400);
-    expect(communicationEventCreateMock).not.toHaveBeenCalled();
-    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(communicationEventCreateMock).toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before assignment checks or create side effects', async () => {

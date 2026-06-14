@@ -123,10 +123,13 @@ describe('/api/tracing-reports', () => {
         where: expect.objectContaining({
           patient_id: 'patient_1',
           status: 'draft',
-          OR: [
-            { case_id: 'case_1', patient_id: 'patient_1' },
-            { case_id: null, patient_id: { in: ['patient_1'] } },
-          ],
+        }),
+      }),
+    );
+    expect(tracingReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          OR: expect.anything(),
         }),
       }),
     );

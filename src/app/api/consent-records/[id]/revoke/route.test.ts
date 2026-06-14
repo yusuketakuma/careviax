@@ -176,19 +176,6 @@ describe('/api/consent-records/[id]/revoke', () => {
       where: {
         id: 'patient_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       select: { id: true },
     });
@@ -277,15 +264,6 @@ describe('/api/consent-records/[id]/revoke', () => {
         id: 'case_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });
@@ -294,15 +272,6 @@ describe('/api/consent-records/[id]/revoke', () => {
         id: 'case_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });
@@ -359,15 +328,6 @@ describe('/api/consent-records/[id]/revoke', () => {
       where: {
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       orderBy: { updated_at: 'desc' },
       select: {

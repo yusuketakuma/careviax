@@ -102,28 +102,16 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(200);
-      expect(careCaseFindManyMock).toHaveBeenCalledWith({
-        where: {
-          org_id: 'org_1',
-          patient_id: 'patient_1',
-          AND: [
-            {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
-          ],
-        },
-        select: { id: true },
-      });
+      // org-wide ロール(pharmacist)は担当割当をバイパスするため、
+      // アクセス可能ケースの絞り込み(careCase.findMany)は行われず、
+      // 取得 where には case_id フィルタが付かない(org + patient のみ)。
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
       expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
+          where: {
+            org_id: 'org_1',
             patient_id: 'patient_1',
-            case_id: { in: ['case_1'] },
-          }),
+          },
         }),
       );
       const body = await response.json();
@@ -187,15 +175,6 @@ describe('/api/first-visit-documents', () => {
           id: 'case_1',
           org_id: 'org_1',
           patient_id: 'patient_1',
-          AND: [
-            {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
-          ],
         },
         select: { id: true },
       });

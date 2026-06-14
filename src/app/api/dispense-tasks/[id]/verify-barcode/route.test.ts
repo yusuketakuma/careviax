@@ -105,15 +105,6 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
       where: {
         id: 'task_1',
         org_id: 'org_1',
-        cycle: {
-          case_: {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        },
       },
       select: { id: true, cycle_id: true },
     });

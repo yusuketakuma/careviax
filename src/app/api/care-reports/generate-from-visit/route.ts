@@ -45,7 +45,7 @@ export const POST = withAuthContext(
     return success({ data: result.reports }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: '報告書生成の権限がありません',
   },
 );

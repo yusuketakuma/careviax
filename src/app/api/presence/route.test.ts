@@ -96,17 +96,6 @@ describe('/api/presence', () => {
         where: {
           id: 'vr_1',
           org_id: 'org_1',
-          AND: [
-            {
-              schedule: {
-                OR: [
-                  { pharmacist_id: 'user_1' },
-                  { case_: { primary_pharmacist_id: 'user_1' } },
-                  { case_: { backup_pharmacist_id: 'user_1' } },
-                ],
-              },
-            },
-          ],
         },
         select: { id: true },
       });
@@ -178,7 +167,7 @@ describe('/api/presence', () => {
       expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
     });
 
-    it('authorizes dispense task presence through medication-cycle assignment scope', async () => {
+    it('authorizes dispense task presence org-wide for org-wide roles', async () => {
       userFindUniqueMock.mockResolvedValue({ name: 'Taro' });
       broadcastStatusUpdateMock.mockResolvedValue(undefined);
 
@@ -194,15 +183,6 @@ describe('/api/presence', () => {
         where: {
           id: 'dt_1',
           org_id: 'org_1',
-          cycle: {
-            case_: {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
-          },
         },
         select: { id: true },
       });
@@ -272,17 +252,6 @@ describe('/api/presence', () => {
         where: {
           id: 'vr_1',
           org_id: 'org_1',
-          AND: [
-            {
-              schedule: {
-                OR: [
-                  { pharmacist_id: 'user_1' },
-                  { case_: { primary_pharmacist_id: 'user_1' } },
-                  { case_: { backup_pharmacist_id: 'user_1' } },
-                ],
-              },
-            },
-          ],
         },
         select: { id: true },
       });

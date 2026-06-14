@@ -104,13 +104,6 @@ describe('/api/management-plans', () => {
       where: {
         org_id: 'org_1',
         case_id: 'case_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       orderBy: [{ updated_at: 'desc' }],
     });
@@ -129,7 +122,7 @@ describe('/api/management-plans', () => {
     expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('denies management plan creation for an unassigned case before write', async () => {
+  it('denies management plan creation for a case not in the org before write', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -145,11 +138,6 @@ describe('/api/management-plans', () => {
       where: {
         id: 'case_unassigned',
         org_id: 'org_1',
-        OR: [
-          { primary_pharmacist_id: 'user_1' },
-          { backup_pharmacist_id: 'user_1' },
-          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-        ],
       },
       select: {
         id: true,
@@ -291,13 +279,6 @@ describe('/api/management-plans', () => {
         id: 'plan_unassigned',
         org_id: 'org_1',
         case_id: 'case_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       select: { id: true },
     });
@@ -375,11 +356,6 @@ describe('/api/management-plans', () => {
       where: {
         id: 'case_1',
         org_id: 'org_1',
-        OR: [
-          { primary_pharmacist_id: 'user_1' },
-          { backup_pharmacist_id: 'user_1' },
-          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-        ],
       },
       select: {
         id: true,
@@ -390,13 +366,6 @@ describe('/api/management-plans', () => {
         id: 'source_plan_1',
         org_id: 'org_1',
         case_id: 'case_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       select: { id: true },
     });

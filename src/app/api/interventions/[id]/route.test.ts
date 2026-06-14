@@ -83,30 +83,12 @@ describe('/api/interventions/[id]', () => {
       const req = createRequest('http://localhost/api/interventions/int_1');
       const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
       expect(res!.status).toBe(200);
-      expect(patientFindManyMock).toHaveBeenCalledWith({
-        where: {
-          org_id: 'org_1',
-          AND: [
-            {
-              cases: {
-                some: {
-                  OR: [
-                    { primary_pharmacist_id: 'user_1' },
-                    { backup_pharmacist_id: 'user_1' },
-                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                  ],
-                },
-              },
-            },
-          ],
-        },
-        select: { id: true },
-      });
+      // org-wide role (pharmacist) bypasses assignment scoping: no patient-assignment lookup.
+      expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(interventionFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'int_1',
           org_id: 'org_1',
-          AND: [{ patient_id: { in: ['patient_1'] } }],
         },
       });
       const json = await res!.json();
@@ -121,7 +103,7 @@ describe('/api/interventions/[id]', () => {
       expect(res!.status).toBe(404);
     });
 
-    it('returns 404 when the user has no assigned patients', async () => {
+    it('returns 404 for an org-wide role when the intervention is not in the org', async () => {
       patientFindManyMock.mockResolvedValue([]);
       interventionFindFirstMock.mockResolvedValue(null);
 
@@ -129,11 +111,12 @@ describe('/api/interventions/[id]', () => {
       const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
 
       expect(res!.status).toBe(404);
+      // org-wide role (pharmacist) bypasses assignment scoping: org-only lookup, no patient filter.
+      expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(interventionFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'int_1',
           org_id: 'org_1',
-          AND: [{ patient_id: { in: [] } }],
         },
       });
     });

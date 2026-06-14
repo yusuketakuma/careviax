@@ -26,19 +26,6 @@ describe('patient access helpers', () => {
       where: {
         id: 'patient_1',
         org_id: 'org_1',
-        AND: [
-          {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'user_1' },
-                  { backup_pharmacist_id: 'user_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                ],
-              },
-            },
-          },
-        ],
       },
       select: { id: true },
     });
@@ -68,15 +55,6 @@ describe('patient access helpers', () => {
         id: 'case_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });
@@ -162,15 +140,6 @@ describe('patient access helpers', () => {
       where: {
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });

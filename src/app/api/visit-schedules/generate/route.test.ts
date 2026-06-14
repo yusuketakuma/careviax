@@ -463,7 +463,7 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects generation for an unassigned non-admin user', async () => {
+  it('allows org-wide pharmacist generation even when not assigned to the case', async () => {
     careCaseFindFirstMock.mockResolvedValue(
       buildCareCase({
         primary_pharmacist_id: 'primary_user',
@@ -492,11 +492,8 @@ describe('/api/visit-schedules/generate POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'AUTH_FORBIDDEN',
-    });
-    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalled();
   });
 
   it('rejects generation when the visit workflow gate is not satisfied', async () => {

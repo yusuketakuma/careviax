@@ -485,62 +485,40 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 
-  it('scopes proposal detail, related proposals, and day schedules to assignment predicates', async () => {
+  it('grants org-wide roles unscoped org-only access to proposal detail, related proposals, and day schedules', async () => {
     const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'proposal_1' }),
     });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
+    // どのクエリにも AND/OR 担当割当句が付与されない(組織内フルアクセス)。
     expect(proposalFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           id: 'proposal_1',
           org_id: 'org_1',
-          AND: [
-            {
-              OR: [
-                { proposed_pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
-              ],
-            },
-          ],
         }),
       }),
     );
+    expect(proposalFindFirstMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
     expect(proposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            {
-              OR: [
-                { proposed_pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
-              ],
-            },
-          ],
+          org_id: 'org_1',
         }),
       }),
     );
+    expect(proposalFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
     expect(scheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
-            {
-              OR: [
-                { pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-              ],
-            },
-          ],
+          org_id: 'org_1',
         }),
       }),
     );
+    expect(scheduleFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
   });
 
   it('rejects blank proposal ids before detail lookups or route preview side effects', async () => {
@@ -897,24 +875,18 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
+    // 提案ルックアップは org_id ベースの組織内検索のみ(AND 担当割当句なし)。
+    // ここでは提案自体が存在しないため 404 となる(クロス組織/担当外による拒否ではない)。
     expect(proposalFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           id: 'proposal_1',
           org_id: 'org_1',
-          AND: [
-            {
-              OR: [
-                { proposed_pharmacist_id: 'user_1' },
-                { case_: { primary_pharmacist_id: 'user_1' } },
-                { case_: { backup_pharmacist_id: 'user_1' } },
-                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
-              ],
-            },
-          ],
         }),
       }),
     );
+    expect(proposalFindFirstMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(proposalUpdateMock).not.toHaveBeenCalled();
     expect(contactLogCreateMock).not.toHaveBeenCalled();

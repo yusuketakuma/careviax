@@ -84,7 +84,6 @@ describe('/api/patients/[id]/visit-brief', () => {
       where: expect.objectContaining({
         id: 'patient_1',
         org_id: 'org_1',
-        AND: expect.any(Array),
       }),
       select: { id: true },
     });

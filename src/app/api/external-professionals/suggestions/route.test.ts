@@ -88,15 +88,6 @@ describe('/api/external-professionals/suggestions', () => {
         id: 'case_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
-        AND: [
-          {
-            OR: [
-              { primary_pharmacist_id: 'user_1' },
-              { backup_pharmacist_id: 'user_1' },
-              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-            ],
-          },
-        ],
       },
       select: { id: true },
     });

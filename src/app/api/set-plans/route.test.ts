@@ -121,32 +121,19 @@ describe('/api/set-plans', () => {
     );
   });
 
-  it('returns an empty list for trainee users when the cycle belongs to an unassigned case', async () => {
+  it('lists set plans org-wide for trainee users without assignment scoping', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
-    setPlanFindManyMock.mockResolvedValue([]);
+    setPlanFindManyMock.mockResolvedValue([{ id: 'plan_1' }]);
 
     const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ data: [] });
+    await expect(response.json()).resolves.toMatchObject({ data: [{ id: 'plan_1' }] });
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           org_id: 'org_1',
           cycle_id: 'cycle_1',
-          AND: [
-            {
-              cycle: {
-                case_: expect.objectContaining({
-                  OR: expect.arrayContaining([
-                    { primary_pharmacist_id: 'user_1' },
-                    { backup_pharmacist_id: 'user_1' },
-                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-                  ]),
-                }),
-              },
-            },
-          ],
         },
       }),
     );
@@ -198,7 +185,7 @@ describe('/api/set-plans', () => {
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects unassigned pharmacist set-plan creation before writes or cycle transition', async () => {
+  it('rejects pharmacist set-plan creation when the cycle is not found in-org before writes or cycle transition', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     medicationCycleFindFirstMock.mockResolvedValue(null);
 
@@ -216,17 +203,6 @@ describe('/api/set-plans', () => {
       where: {
         id: 'cycle_1',
         org_id: 'org_1',
-        AND: [
-          {
-            case_: expect.objectContaining({
-              OR: expect.arrayContaining([
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ]),
-            }),
-          },
-        ],
       },
       select: expect.any(Object),
     });

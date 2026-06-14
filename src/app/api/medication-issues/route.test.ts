@@ -120,14 +120,6 @@ describe('/api/medication-issues', () => {
           org_id: 'org_1',
           patient_id: 'patient_1',
           status: 'open',
-          AND: [
-            {
-              OR: expect.arrayContaining([
-                { case_id: { in: ['case_1'] } },
-                { AND: [{ case_id: null }, { patient_id: { in: ['patient_1'] } }] },
-              ]),
-            },
-          ],
         },
       }),
     );

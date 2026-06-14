@@ -124,21 +124,17 @@ describe('/api/communication-requests', () => {
     const response = (await GET(createGetRequest('?status=draft')))!;
 
     expect(response.status).toBe(200);
+    // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
+    // buildCommunicationRequestAssignmentWhere が null を返し、WHERE に AND の担当割当句は付与されない。
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
-          AND: [
-            expect.objectContaining({
-              OR: expect.arrayContaining([
-                { case_id: { in: ['case_1'] } },
-                { AND: [{ case_id: null }, { patient_id: { in: ['patient_1'] } }] },
-              ]),
-            }),
-          ],
+          status: 'draft',
         }),
       }),
     );
+    expect(communicationRequestFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
   });
 
   it('trims scoped search filters before listing communication requests', async () => {
@@ -309,7 +305,9 @@ describe('/api/communication-requests', () => {
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects an unassigned case before recipient suggestion or create side effects', async () => {
+  it('allows an in-org case for org-wide roles even without a per-assignment match', async () => {
+    // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)。
+    // 担当割当が無くても、同一組織内のケース/患者であれば作成は許可される。
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -322,10 +320,15 @@ describe('/api/communication-requests', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(400);
-    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
-    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
-    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+        request_type: '疑義照会',
+        requested_by: 'user_1',
+      }),
+    });
   });
 
   it('derives patient and case from an accessible linked tracing report', async () => {
@@ -390,7 +393,9 @@ describe('/api/communication-requests', () => {
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
-  it('returns not found for an inaccessible linked tracing report before side effects', async () => {
+  it('allows a linked in-org tracing report for org-wide roles regardless of assignment', async () => {
+    // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)。
+    // 同一組織内のトレーシングレポートは担当割当の有無に関わらずアクセス可能。
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -403,10 +408,15 @@ describe('/api/communication-requests', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(404);
-    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
-    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
-    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+      }),
+    });
   });
 
   it('fills the recipient from the latest prescriber institution when missing', async () => {

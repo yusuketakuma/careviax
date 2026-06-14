@@ -63,19 +63,6 @@ const patientAssignmentLookup = {
   where: {
     id: 'patient_1',
     org_id: 'org_1',
-    AND: [
-      {
-        cases: {
-          some: {
-            OR: [
-              { primary_pharmacist_id: 'pharmacist_1' },
-              { backup_pharmacist_id: 'pharmacist_1' },
-              { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
-            ],
-          },
-        },
-      },
-    ],
   },
   select: { id: true },
 };

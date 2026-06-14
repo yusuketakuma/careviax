@@ -62,13 +62,6 @@ describe('/api/medication-cycles/[id]/history', () => {
       where: {
         id: 'cycle_1',
         org_id: 'org_1',
-        case_: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
       },
       select: { id: true },
     });

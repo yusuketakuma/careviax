@@ -185,7 +185,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canAuthorReport',
     message: '報告書の更新権限がありません',
   });
   if ('response' in authResult) return authResult.response;

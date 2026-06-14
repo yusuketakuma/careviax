@@ -196,14 +196,6 @@ describe('/api/medication-issues/[id]', () => {
       where: {
         id: 'issue_1',
         org_id: 'org_1',
-        AND: [
-          {
-            OR: expect.arrayContaining([
-              { case_id: { in: ['case_1'] } },
-              { AND: [{ case_id: null }, { patient_id: { in: ['patient_1'] } }] },
-            ]),
-          },
-        ],
       },
       select: {
         id: true,
