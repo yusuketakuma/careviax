@@ -1,4 +1,5 @@
 enum CommunicationChannel {
+  ph_os_share // PH-OS 内共有（アプリ内連携。送付方法の既定・推奨）
   email
   fax
   phone
@@ -347,9 +348,17 @@ model HandoffItem {
   deadline          DateTime? // ③いつまで(期限)
   progress_done     Int? // 作業中 9/12 の 9
   progress_total    Int? // 作業中 9/12 の 12
+  // --- 薬剤師に相談 / 事務へ戻す 相談解決フロー (p0_27) ---
+  // 全 nullable。consult_status が NULL の行は従来の引き継ぎ/作業移譲アイテム。
+  consult_status    String? // 相談の状態: open / checking / returned_to_clerk / resolved
+  resolution_action String? // 薬剤師の対応: acknowledged / escalated_to_physician / returned_to_clerk
+  resolution_note   String? // 対応メモ（事務へ戻す際の指示等）
+  resolved_by       String? // 対応した User ID
+  resolved_at       DateTime?
   created_by        String
   created_at        DateTime     @default(now())
 
   @@index([board_id])
   @@index([recipient_user_id])
+  @@index([consult_status])
 }

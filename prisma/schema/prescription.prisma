@@ -341,17 +341,21 @@ model SetBatch {
 }
 
 model SetAudit {
-  id             String         @id @default(cuid())
-  org_id         String
-  plan_id        String
-  plan           SetPlan        @relation(fields: [plan_id], references: [id])
-  result         SetAuditResult
-  approved_scope Json? // 部分承認の範囲
-  reject_reason  String?
-  audited_by     String // User ID
-  audited_at     DateTime
-  created_at     DateTime       @default(now())
-  updated_at     DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  org_id          String
+  plan_id         String
+  plan            SetPlan        @relation(fields: [plan_id], references: [id])
+  result          SetAuditResult
+  approved_scope  Json? // 部分承認の範囲
+  reject_reason   String?
+  // --- セット監査 3ペイン再構築 (p0_15): 写真確認 + 6項目チェックリスト ---
+  // 既存行は NULL/空配列で後方互換。
+  checklist       Json? // 6項目チェックリストの結果 [{ key, label, checked }]
+  photo_asset_ids String[]       @default([]) // 確認した写真 (FileAsset.id, purpose=set-photo)
+  audited_by      String // User ID
+  audited_at      DateTime
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
 
   @@index([org_id])
   @@index([plan_id])
