@@ -644,6 +644,14 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     reports: careReports,
     conferenceContext: visitPreparationPack?.conference_context,
   });
+  // 報告書の宛先別下書きを明示生成する選択肢。バックエンド(generate-from-visit)が
+  // 受け付ける4宛先(主治医/ケアマネ/訪問看護/施設)をすべて提示する。
+  const reportAudienceItems: Array<{ type: string; label: string }> = [
+    { type: 'physician_report', label: '医師向け報告書を作成' },
+    { type: 'care_manager_report', label: 'ケアマネ向け情報提供書を作成' },
+    { type: 'nurse_share', label: '看護師向け共有メモを作成' },
+    { type: 'facility_handoff', label: '施設向け引継書を作成' },
+  ];
   const reportGenerationActions = (
     <div className="relative" ref={menuRef}>
       <Button
@@ -662,20 +670,16 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           role="menu"
           className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
         >
-          <button
-            role="menuitem"
-            className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-            onClick={() => handleGenerateReport('physician_report')}
-          >
-            医師向け報告書を作成
-          </button>
-          <button
-            role="menuitem"
-            className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-            onClick={() => handleGenerateReport('care_manager_report')}
-          >
-            ケアマネ向け情報提供書を作成
-          </button>
+          {reportAudienceItems.map((item) => (
+            <button
+              key={item.type}
+              role="menuitem"
+              className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+              onClick={() => handleGenerateReport(item.type)}
+            >
+              {item.label}
+            </button>
+          ))}
           <div className="border-t border-border" />
           <button
             role="menuitem"
