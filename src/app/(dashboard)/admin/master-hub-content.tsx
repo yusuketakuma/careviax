@@ -26,7 +26,7 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 export async function fetchMasterHub(orgId: string): Promise<MasterHubResponse> {
   const res = await fetch('/api/admin/master-hub', {
-    headers: { 'x-org-id': orgId },
+    headers: orgId ? { 'x-org-id': orgId } : undefined,
   });
   if (!res.ok) throw new Error('マスター鮮度集計の取得に失敗しました');
   const json = await res.json();
@@ -132,7 +132,7 @@ function MasterHubSkeleton() {
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 5 }).map((_, index) => (
+          {Array.from({ length: 10 }).map((_, index) => (
             <Skeleton key={index} className="h-36 w-full rounded-lg" />
           ))}
         </div>
@@ -149,13 +149,11 @@ function MasterHubSkeleton() {
 
 export function MasterHubContent() {
   const orgId = useOrgId();
-  const isBootstrappingOrg = !orgId;
 
   const hubQuery = useQuery({
-    queryKey: ['admin', 'master-hub', orgId],
+    queryKey: ['admin', 'master-hub', orgId || 'session-org'],
     queryFn: () => fetchMasterHub(orgId),
     staleTime: 30_000,
-    enabled: !isBootstrappingOrg,
   });
 
   const data = hubQuery.data ?? null;
@@ -192,7 +190,7 @@ export function MasterHubContent() {
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">マスター</h1>
           <p className="text-sm text-muted-foreground">
-            · {data ? data.masters.length : 5}マスター — 鮮度がすべて
+            · {data ? data.masters.length : 10}マスター — 鮮度がすべて
           </p>
         </div>
         <Button asChild variant="outline" size="sm" className="rounded-full">
@@ -204,7 +202,7 @@ export function MasterHubContent() {
       </div>
 
       <div className="mt-4 xl:min-h-[920px]">
-        {isBootstrappingOrg || hubQuery.isLoading ? (
+        {hubQuery.isLoading ? (
           <MasterHubSkeleton />
         ) : hubQuery.isError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
@@ -239,7 +237,9 @@ export function MasterHubContent() {
                       <p className="mt-1 text-lg font-bold text-foreground">
                         {summary.issueCount.toLocaleString('ja-JP')}件
                       </p>
-                      <p className="text-xs text-muted-foreground">FAX確認・点検予約・取込の残件</p>
+                      <p className="text-xs text-muted-foreground">
+                        送付先確認・点検予約・取込の残件
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs font-bold text-muted-foreground">最初に見る項目</p>

@@ -9,13 +9,14 @@ setupDomTestEnv();
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const refetchMock = vi.hoisted(() => vi.fn());
+const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: useOrgIdMock,
 }));
 
 import { MasterHubContent, formatLastUpdatedLabel } from './master-hub-content';
@@ -30,7 +31,7 @@ function buildFixture(): MasterHubResponse {
     masters: [
       {
         key: 'drugs',
-        title: '薬剤マスター',
+        title: '医薬品マスター',
         count: 1248,
         count_unit: '件',
         last_updated_at: localIso(6, 10),
@@ -43,9 +44,9 @@ function buildFixture(): MasterHubResponse {
         action_href: '/admin/drug-masters',
       },
       {
-        key: 'professionals',
-        title: '医療者マスター',
-        count: 86,
+        key: 'institutions',
+        title: '医療機関マスター',
+        count: 42,
         count_unit: '件',
         last_updated_at: localIso(6, 11, 9, 12),
         status: 'checking',
@@ -53,8 +54,22 @@ function buildFixture(): MasterHubResponse {
         note: 'やまもと内科の送付先FAXを事務が確認中 — 完了まで同院宛の送付はブロックされます',
         issue_count: 1,
         next_action_hint: 'やまもと内科の送付先FAXを確認する',
-        action_label: '→ ハンドオフへ',
-        action_href: '/handoff',
+        action_label: '→ 医療機関へ',
+        action_href: '/admin/institutions',
+      },
+      {
+        key: 'professionals',
+        title: '他職種マスター',
+        count: 44,
+        count_unit: '件',
+        last_updated_at: localIso(6, 10, 15, 0),
+        status: 'healthy',
+        status_count: null,
+        note: 'ケアマネ、訪問看護、施設職員など患者支援に関わる連携先を管理します',
+        issue_count: 0,
+        next_action_hint: '職種・所属・送付チャネルを点検する',
+        action_label: '→ 他職種へ',
+        action_href: '/admin/external-professionals',
       },
       {
         key: 'facilities',
@@ -85,6 +100,20 @@ function buildFixture(): MasterHubResponse {
         action_href: '/schedules',
       },
       {
+        key: 'equipment',
+        title: '備品マスター',
+        count: 4,
+        count_unit: '台',
+        last_updated_at: localIso(6, 8),
+        status: 'healthy',
+        status_count: null,
+        note: 'PCAポンプなど貸出機器の資産番号、状態、保守期限を管理します',
+        issue_count: 0,
+        next_action_hint: '貸出機器と保守期限を点検する',
+        action_label: '→ 備品へ',
+        action_href: '/admin/pca-pumps',
+      },
+      {
         key: 'vehicles',
         title: '車両マスター',
         count: 3,
@@ -97,6 +126,48 @@ function buildFixture(): MasterHubResponse {
         next_action_hint: '軽バン2号の点検を予約する',
         action_label: '点検を予約',
         action_href: '/schedules',
+      },
+      {
+        key: 'pharmacy_sites',
+        title: '薬局拠点マスター',
+        count: 2,
+        count_unit: '拠点',
+        last_updated_at: localIso(6, 8),
+        status: 'healthy',
+        status_count: null,
+        note: '本店と訪問エリア 3件を管理しています',
+        issue_count: 0,
+        next_action_hint: '拠点情報と訪問範囲を点検する',
+        action_label: '→ 薬局拠点へ',
+        action_href: '/admin/pharmacy-sites',
+      },
+      {
+        key: 'dispensing',
+        title: '配薬・帳票マスター',
+        count: 7,
+        count_unit: '件',
+        last_updated_at: localIso(6, 9),
+        status: 'healthy',
+        status_count: null,
+        note: '配薬方法 3件 / 帳票テンプレート 4件を管理しています',
+        issue_count: 0,
+        next_action_hint: '配薬方法と帳票テンプレートを点検する',
+        action_label: '→ 帳票へ',
+        action_href: '/admin/document-templates',
+      },
+      {
+        key: 'billing',
+        title: '請求ルールマスター',
+        count: 18,
+        count_unit: '件',
+        last_updated_at: localIso(6, 7),
+        status: 'healthy',
+        status_count: null,
+        note: '在宅算定、加算、減算、保険別の根拠ルールを管理します',
+        issue_count: 0,
+        next_action_hint: '改定年度と有効ルールを点検する',
+        action_label: '→ 請求ルールへ',
+        action_href: '/admin/billing-rules',
       },
     ],
     change_log_month_count: 18,
@@ -135,6 +206,7 @@ describe('MasterHubContent', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 11, 9, 42));
     refetchMock.mockClear();
+    useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
       data: buildFixture(),
       isLoading: false,
@@ -153,20 +225,32 @@ describe('MasterHubContent', () => {
     render(<MasterHubContent />);
 
     expect(screen.getByRole('heading', { name: 'マスター' })).toBeTruthy();
-    expect(screen.getByText('· 5マスター — 鮮度がすべて')).toBeTruthy();
+    expect(screen.getByText('· 10マスター — 鮮度がすべて')).toBeTruthy();
 
     const searchLink = screen.getByRole('link', { name: 'マスター横断検索' });
     expect(searchLink.getAttribute('href')).toBe('/admin/data-explorer');
   });
 
-  it('renders the 5 master cards with freshness badges, meta, narrative, and outline actions', () => {
+  it('starts the master hub query even before the org store is hydrated', () => {
+    useOrgIdMock.mockReturnValue('');
+
+    render(<MasterHubContent />);
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['admin', 'master-hub', 'session-org'],
+      }),
+    );
+  });
+
+  it('renders master cards with freshness badges, meta, narrative, and outline actions', () => {
     render(<MasterHubContent />);
 
     const cards = screen.getAllByTestId('master-hub-card');
-    expect(cards).toHaveLength(5);
+    expect(cards).toHaveLength(10);
 
-    // 薬剤マスター(健全)
-    expect(within(cards[0]).getByText('薬剤マスター')).toBeTruthy();
+    // 医薬品マスター(健全)
+    expect(within(cards[0]).getByText('医薬品マスター')).toBeTruthy();
     expect(within(cards[0]).getByText('健全')).toBeTruthy();
     expect(within(cards[0]).getByText('1,248件')).toBeTruthy();
     expect(within(cards[0]).getByText(/最終更新 6\/10/)).toBeTruthy();
@@ -176,7 +260,7 @@ describe('MasterHubContent', () => {
       '/admin/drug-masters',
     );
 
-    // 医療者マスター(確認中 1 + ブロック文言を隠さない)
+    // 医療機関マスター(確認中 1 + ブロック文言を隠さない)
     expect(within(cards[1]).getByText('確認中 1')).toBeTruthy();
     expect(within(cards[1]).getByText(/最終更新 6\/11 09:12/)).toBeTruthy();
     expect(
@@ -186,17 +270,27 @@ describe('MasterHubContent', () => {
     ).toBeTruthy();
     expect(within(cards[1]).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
     expect(within(cards[1]).getByText('未処理 1件')).toBeTruthy();
-    expect(within(cards[1]).getByRole('link', { name: '→ ハンドオフへ' })).toBeTruthy();
+    expect(within(cards[1]).getByRole('link', { name: '→ 医療機関へ' })).toBeTruthy();
+
+    // 他職種・備品・薬局拠点・配薬帳票・請求ルールをハブに含める
+    expect(within(cards[2]).getByText('他職種マスター')).toBeTruthy();
+    expect(within(cards[5]).getByText('備品マスター')).toBeTruthy();
+    expect(within(cards[7]).getByText('薬局拠点マスター')).toBeTruthy();
+    expect(within(cards[8]).getByText('配薬・帳票マスター')).toBeTruthy();
+    expect(within(cards[9]).getByText('請求ルールマスター')).toBeTruthy();
+    expect(within(cards[5]).getByRole('link', { name: '→ 備品へ' }).getAttribute('href')).toBe(
+      '/admin/pca-pumps',
+    );
 
     // 車両マスター(期限接近)
-    expect(within(cards[4]).getByText('期限接近')).toBeTruthy();
+    expect(within(cards[6]).getByText('期限接近')).toBeTruthy();
     expect(
-      within(cards[4]).getByText(
+      within(cards[6]).getByText(
         '軽バン2号の点検期限 6/20(あと9日) — 期限切れで配車候補から自動除外されます',
       ),
     ).toBeTruthy();
-    expect(within(cards[4]).getByText('軽バン2号の点検を予約する')).toBeTruthy();
-    expect(within(cards[4]).getByRole('link', { name: '点検を予約' })).toBeTruthy();
+    expect(within(cards[6]).getByText('軽バン2号の点検を予約する')).toBeTruthy();
+    expect(within(cards[6]).getByRole('link', { name: '点検を予約' })).toBeTruthy();
 
     expect(screen.getByTestId('master-hub-freshness-note').textContent).toContain(
       'マスターは鮮度の画面',
@@ -212,7 +306,7 @@ describe('MasterHubContent', () => {
     expect(within(summary).getByText('2マスターに注意')).toBeTruthy();
     expect(within(summary).getByText('未処理')).toBeTruthy();
     expect(within(summary).getByText('2件')).toBeTruthy();
-    expect(within(summary).getByText('医療者マスター')).toBeTruthy();
+    expect(within(summary).getByText('医療機関マスター')).toBeTruthy();
     expect(within(summary).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
   });
 

@@ -7,7 +7,7 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 /**
  * 13_master(マスター鮮度ハブ)用 BFF。
- * 5 マスター(薬剤/医療者/施設/スタッフ・権限/車両)の件数・最終更新・鮮度ステータス・
+ * 10 マスター(医薬品/医療機関/他職種/施設/スタッフ/備品/社用車/薬局拠点/配薬・帳票/請求)の件数・最終更新・鮮度ステータス・
  * 現場語ナラティブと、右レール(次にやること / 止まっている理由)・変更履歴件数を
  * 1 リクエストで返す読み取り専用集計(docs/design-gap-analysis-new.md 13_master)。
  */
@@ -91,6 +91,8 @@ export const GET = withAuthContext(
         drugCount,
         drugLatest,
         externalProfessionalCount,
+        pendingExternalProfessionals,
+        missingExternalContactCount,
         institutionCount,
         pendingInstitutions,
         professionalLatest,
@@ -99,7 +101,19 @@ export const GET = withAuthContext(
         facilityLatest,
         staffCount,
         staffLatest,
+        pcaPumpCount,
+        unavailablePcaPumps,
+        pcaPumpLatest,
         vehicles,
+        pharmacySiteCount,
+        pharmacySiteLatest,
+        serviceAreaCount,
+        packagingMethodCount,
+        packagingMethodLatest,
+        templateCount,
+        templateLatest,
+        billingRuleCount,
+        billingRuleLatest,
         changeLogMonthCount,
         rail,
       ] = await Promise.all([
@@ -109,6 +123,21 @@ export const GET = withAuthContext(
           select: { updated_at: true },
         }),
         tx.externalProfessional.count({ where: { org_id: ctx.orgId } }),
+        tx.externalProfessional.findMany({
+          where: {
+            org_id: ctx.orgId,
+            OR: [{ phone: null }, { email: null, fax: null }],
+          },
+          orderBy: { updated_at: 'desc' },
+          select: { name: true },
+          take: 5,
+        }),
+        tx.externalProfessional.count({
+          where: {
+            org_id: ctx.orgId,
+            OR: [{ phone: null }, { email: null, fax: null }],
+          },
+        }),
         tx.prescriberInstitution.count({ where: { org_id: ctx.orgId } }),
         tx.prescriberInstitution.findMany({
           where: { org_id: ctx.orgId, fax: null },
@@ -138,6 +167,18 @@ export const GET = withAuthContext(
           orderBy: { updated_at: 'desc' },
           select: { updated_at: true },
         }),
+        tx.pcaPump.count({ where: { org_id: ctx.orgId } }),
+        tx.pcaPump.findMany({
+          where: { org_id: ctx.orgId, status: { not: 'available' } },
+          orderBy: { updated_at: 'desc' },
+          select: { asset_code: true, status: true },
+          take: 5,
+        }),
+        tx.pcaPump.findFirst({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          select: { updated_at: true },
+        }),
         tx.visitVehicleResource.findMany({
           where: { org_id: ctx.orgId },
           orderBy: { updated_at: 'desc' },
@@ -149,6 +190,31 @@ export const GET = withAuthContext(
             updated_at: true,
           },
         }),
+        tx.pharmacySite.count({ where: { org_id: ctx.orgId } }),
+        tx.pharmacySite.findFirst({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          select: { name: true, updated_at: true },
+        }),
+        tx.serviceArea.count({ where: { org_id: ctx.orgId } }),
+        tx.packagingMethodMaster.count({ where: { org_id: ctx.orgId, is_active: true } }),
+        tx.packagingMethodMaster.findFirst({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          select: { updated_at: true },
+        }),
+        tx.template.count({ where: { org_id: ctx.orgId } }),
+        tx.template.findFirst({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          select: { updated_at: true },
+        }),
+        tx.billingRule.count({ where: { org_id: ctx.orgId, is_active: true } }),
+        tx.billingRule.findFirst({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          select: { updated_at: true },
+        }),
         tx.auditLog.count({
           where: {
             org_id: ctx.orgId,
@@ -159,10 +225,10 @@ export const GET = withAuthContext(
         buildTodayOpsRail(tx, ctx.orgId, now),
       ]);
 
-      // ── 薬剤マスター ────────────────────────────────────────────────
+      // ── 医薬品マスター ──────────────────────────────────────────────
       const drugsCard: MasterHubCard = {
         key: 'drugs',
-        title: '薬剤マスター',
+        title: '医薬品マスター',
         count: drugCount,
         count_unit: '件',
         last_updated_at: drugLatest?.updated_at?.toISOString() ?? null,
@@ -178,29 +244,49 @@ export const GET = withAuthContext(
         action_href: '/admin/drug-masters',
       };
 
-      // ── 医療者マスター ──────────────────────────────────────────────
+      // ── 医療機関マスター ────────────────────────────────────────────
       const pendingInstitutionCount = pendingInstitutions.length;
-      const professionalsCard: MasterHubCard = {
-        key: 'professionals',
-        title: '医療者マスター',
-        count: externalProfessionalCount + institutionCount,
+      const institutionsCard: MasterHubCard = {
+        key: 'institutions',
+        title: '医療機関マスター',
+        count: institutionCount,
         count_unit: '件',
-        last_updated_at:
-          maxDate(professionalLatest?.updated_at, institutionLatest?.updated_at)?.toISOString() ??
-          null,
+        last_updated_at: institutionLatest?.updated_at?.toISOString() ?? null,
         status: pendingInstitutionCount > 0 ? 'checking' : 'healthy',
         status_count: pendingInstitutionCount > 0 ? pendingInstitutionCount : null,
         note:
           pendingInstitutionCount > 0
             ? `${pendingInstitutions[0].name}の送付先FAXを事務が確認中 — 完了まで同院宛の送付はブロックされます`
-            : '処方医・医療機関・他職種の連絡先と送付先を管理します',
+            : '処方元・報告先の医療機関コード、送付先、連絡方法を管理します',
         issue_count: pendingInstitutionCount,
         next_action_hint:
           pendingInstitutionCount > 0
             ? `${pendingInstitutions[0].name}の送付先FAXを確認する`
-            : '送付先と職種リンクを点検する',
-        action_label: '→ ハンドオフへ',
-        action_href: '/handoff',
+            : '処方元コードと送付先を点検する',
+        action_label: '→ 医療機関へ',
+        action_href: '/admin/institutions',
+      };
+
+      // ── 他職種マスター ──────────────────────────────────────────────
+      const professionalsCard: MasterHubCard = {
+        key: 'professionals',
+        title: '他職種マスター',
+        count: externalProfessionalCount,
+        count_unit: '件',
+        last_updated_at: professionalLatest?.updated_at?.toISOString() ?? null,
+        status: missingExternalContactCount > 0 ? 'checking' : 'healthy',
+        status_count: missingExternalContactCount > 0 ? missingExternalContactCount : null,
+        note:
+          missingExternalContactCount > 0 && pendingExternalProfessionals[0]
+            ? `${pendingExternalProfessionals[0].name}の連絡先が不足しています — 報告・相談の送付候補から外れる可能性があります`
+            : 'ケアマネ、訪問看護、施設職員など患者支援に関わる連携先を管理します',
+        issue_count: missingExternalContactCount,
+        next_action_hint:
+          missingExternalContactCount > 0
+            ? `${pendingExternalProfessionals[0]?.name ?? '他職種'}の連絡先を確認する`
+            : '職種・所属・送付チャネルを点検する',
+        action_label: '→ 他職種へ',
+        action_href: '/admin/external-professionals',
       };
 
       // ── 施設マスター ────────────────────────────────────────────────
@@ -237,6 +323,28 @@ export const GET = withAuthContext(
         next_action_hint: '本日のシフトと権限を確認する',
         action_label: '→ スケジュールへ',
         action_href: '/schedules',
+      };
+
+      // ── 備品マスター ────────────────────────────────────────────────
+      const equipmentCard: MasterHubCard = {
+        key: 'equipment',
+        title: '備品マスター',
+        count: pcaPumpCount,
+        count_unit: '台',
+        last_updated_at: pcaPumpLatest?.updated_at?.toISOString() ?? null,
+        status: unavailablePcaPumps.length > 0 ? 'checking' : 'healthy',
+        status_count: unavailablePcaPumps.length > 0 ? unavailablePcaPumps.length : null,
+        note:
+          unavailablePcaPumps.length > 0
+            ? `${unavailablePcaPumps[0].asset_code}が${unavailablePcaPumps[0].status}です — 貸出候補と返却検品を確認してください`
+            : 'PCAポンプなど貸出機器の資産番号、状態、保守期限を管理します',
+        issue_count: unavailablePcaPumps.length,
+        next_action_hint:
+          unavailablePcaPumps.length > 0
+            ? `${unavailablePcaPumps[0].asset_code}の状態を確認する`
+            : '貸出機器と保守期限を点検する',
+        action_label: '→ 備品へ',
+        action_href: '/admin/pca-pumps',
       };
 
       // ── 車両マスター ────────────────────────────────────────────────
@@ -310,9 +418,97 @@ export const GET = withAuthContext(
         };
       }
 
+      // ── 薬局拠点マスター ────────────────────────────────────────────
+      const pharmacySitesCard: MasterHubCard = {
+        key: 'pharmacy_sites',
+        title: '薬局拠点マスター',
+        count: pharmacySiteCount,
+        count_unit: '拠点',
+        last_updated_at: pharmacySiteLatest?.updated_at?.toISOString() ?? null,
+        status: pharmacySiteCount > 0 && serviceAreaCount > 0 ? 'healthy' : 'checking',
+        status_count: pharmacySiteCount === 0 ? 1 : serviceAreaCount === 0 ? 1 : null,
+        note:
+          pharmacySiteCount === 0
+            ? '薬局拠点が未登録です — 担当者・在庫・訪問エリアの基準が作れません'
+            : serviceAreaCount === 0
+              ? `${pharmacySiteLatest?.name ?? '薬局拠点'}の訪問エリアが未登録です — 訪問候補生成に影響します`
+              : `${pharmacySiteLatest?.name ?? '薬局拠点'}と訪問エリア ${serviceAreaCount}件を管理しています`,
+        issue_count: pharmacySiteCount === 0 || serviceAreaCount === 0 ? 1 : 0,
+        next_action_hint:
+          pharmacySiteCount === 0
+            ? '薬局拠点を登録する'
+            : serviceAreaCount === 0
+              ? '訪問エリアを登録する'
+              : '拠点情報と訪問範囲を点検する',
+        action_label: '→ 薬局拠点へ',
+        action_href: '/admin/pharmacy-sites',
+      };
+
+      // ── 配薬・帳票マスター ──────────────────────────────────────────
+      const dispensingCount = packagingMethodCount + templateCount;
+      const dispensingCard: MasterHubCard = {
+        key: 'dispensing',
+        title: '配薬・帳票マスター',
+        count: dispensingCount,
+        count_unit: '件',
+        last_updated_at:
+          maxDate(packagingMethodLatest?.updated_at, templateLatest?.updated_at)?.toISOString() ??
+          null,
+        status: packagingMethodCount > 0 && templateCount > 0 ? 'healthy' : 'checking',
+        status_count:
+          [packagingMethodCount === 0, templateCount === 0].filter(Boolean).length || null,
+        note:
+          packagingMethodCount === 0
+            ? '配薬方法が未登録です — セット作成時の包材・配薬単位が選べません'
+            : templateCount === 0
+              ? '帳票テンプレートが未登録です — 報告書・同意書の作成に影響します'
+              : `配薬方法 ${packagingMethodCount}件 / 帳票テンプレート ${templateCount}件を管理しています`,
+        issue_count: [packagingMethodCount === 0, templateCount === 0].filter(Boolean).length,
+        next_action_hint:
+          packagingMethodCount === 0
+            ? '配薬方法を登録する'
+            : templateCount === 0
+              ? '帳票テンプレートを登録する'
+              : '配薬方法と帳票テンプレートを点検する',
+        action_label: packagingMethodCount === 0 ? '→ 配薬方法へ' : '→ 帳票へ',
+        action_href:
+          packagingMethodCount === 0 ? '/admin/packaging-methods' : '/admin/document-templates',
+      };
+
+      // ── 請求ルールマスター ──────────────────────────────────────────
+      const billingCard: MasterHubCard = {
+        key: 'billing',
+        title: '請求ルールマスター',
+        count: billingRuleCount,
+        count_unit: '件',
+        last_updated_at: billingRuleLatest?.updated_at?.toISOString() ?? null,
+        status: billingRuleCount > 0 ? 'healthy' : 'checking',
+        status_count: billingRuleCount > 0 ? null : 1,
+        note:
+          billingRuleCount > 0
+            ? '在宅算定、加算、減算、保険別の根拠ルールを管理します'
+            : '請求ルールが未登録です — 算定候補と証跡判定に影響します',
+        issue_count: billingRuleCount > 0 ? 0 : 1,
+        next_action_hint:
+          billingRuleCount > 0 ? '改定年度と有効ルールを点検する' : '請求ルールを登録する',
+        action_label: '→ 請求ルールへ',
+        action_href: '/admin/billing-rules',
+      };
+
       return {
         generated_at: now.toISOString(),
-        masters: [drugsCard, professionalsCard, facilitiesCard, staffCard, vehiclesCard],
+        masters: [
+          drugsCard,
+          institutionsCard,
+          professionalsCard,
+          facilitiesCard,
+          staffCard,
+          equipmentCard,
+          vehiclesCard,
+          pharmacySitesCard,
+          dispensingCard,
+          billingCard,
+        ],
         change_log_month_count: changeLogMonthCount,
         rail,
       } satisfies MasterHubResponse;

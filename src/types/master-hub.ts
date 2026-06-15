@@ -10,7 +10,17 @@ import type { TodayOpsRail } from '@/types/today-ops-rail';
 export type MasterHubStatus = 'healthy' | 'checking' | 'due_soon';
 
 export type MasterHubCard = {
-  key: 'drugs' | 'professionals' | 'facilities' | 'staff' | 'vehicles';
+  key:
+    | 'drugs'
+    | 'institutions'
+    | 'professionals'
+    | 'facilities'
+    | 'staff'
+    | 'equipment'
+    | 'vehicles'
+    | 'pharmacy_sites'
+    | 'dispensing'
+    | 'billing';
   title: string;
   count: number;
   /** 件 / 名 / 台 */
