@@ -167,34 +167,47 @@ function VisitMedicationCarryForwardBlock({
   if (!medicationPeriod && !prescriptionChanges && !previousVisitSummary) return null;
 
   return (
-    <section className="grid gap-3 lg:grid-cols-3">
-      <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-        <p className="text-xs font-medium text-muted-foreground">服用期間</p>
-        <p className="mt-1 text-sm font-semibold text-foreground">
-          {formatDateLabel(startDate)} - {formatDateLabel(endDate)}
-        </p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          訪問予定の服用期間を優先し、未設定時は最新処方の開始・終了日を表示します。
-        </p>
+    <section className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-cyan-950">今日の聞き取りブリーフ</h3>
+          <p className="text-xs leading-5 text-cyan-900/80">
+            患者へ向き合う前に、前回から変わった点と今日拾うべき話題だけを確認します。
+          </p>
+        </div>
+        <Badge variant="outline" className="w-fit border-cyan-300 bg-white text-cyan-900">
+          現地確認
+        </Badge>
       </div>
-      <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-        <p className="text-xs font-medium text-muted-foreground">薬剤変更内容</p>
-        <p className="mt-1 text-sm font-semibold text-foreground">
-          {prescriptionChangeSummary(prescriptionChanges)}
-        </p>
-        {changeLines.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
-            {changeLines.slice(0, 4).map((line, index) => (
-              <li key={`${line}-${index}`}>・{line}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-      <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-        <p className="text-xs font-medium text-muted-foreground">前回までの要約</p>
-        <p className="mt-1 text-sm leading-6 text-foreground">
-          {previousVisitSummary ?? '前回記録なし'}
-        </p>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+          <p className="text-xs font-medium text-muted-foreground">服用期間</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {formatDateLabel(startDate)} - {formatDateLabel(endDate)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            訪問予定の服用期間を優先し、未設定時は最新処方の開始・終了日を表示します。
+          </p>
+        </div>
+        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+          <p className="text-xs font-medium text-muted-foreground">薬剤変更内容</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {prescriptionChangeSummary(prescriptionChanges)}
+          </p>
+          {changeLines.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+              {changeLines.slice(0, 4).map((line, index) => (
+                <li key={`${line}-${index}`}>・{line}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+          <p className="text-xs font-medium text-muted-foreground">前回までの要約</p>
+          <p className="mt-1 text-sm leading-6 text-foreground">
+            {previousVisitSummary ?? '前回記録なし'}
+          </p>
+        </div>
       </div>
     </section>
   );
