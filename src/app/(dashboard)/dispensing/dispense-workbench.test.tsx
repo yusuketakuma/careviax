@@ -276,7 +276,7 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('20mg 朝夕')).toBeTruthy();
     expect(screen.getByText('10mg 朝夕')).toBeTruthy();
     expect(screen.getByText('減量')).toBeTruthy();
-    expect(screen.getByText('照会回答')).toBeTruthy();
+    expect(screen.getAllByText('照会回答').length).toBeGreaterThanOrEqual(1);
 
     // 確認チェックリスト
     expect(screen.getByText('変更薬剤を口頭読み上げで確認(減量: ファモチジン)')).toBeTruthy();
@@ -304,7 +304,7 @@ describe('DispenseWorkbench', () => {
     ).toBeTruthy();
     expect(screen.getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
     expect(screen.getByText('1日')).toBeTruthy();
-    expect(screen.getByText('照会回答')).toBeTruthy();
+    expect(screen.getAllByText('照会回答').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('09:31 やまもと内科')).toBeTruthy();
     expect(screen.getByText('前回の調剤記録')).toBeTruthy();
     expect(screen.getByText('5/14')).toBeTruthy();
