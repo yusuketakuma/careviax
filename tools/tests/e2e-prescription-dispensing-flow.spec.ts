@@ -174,7 +174,7 @@ test.describe('dispensing → auditing flow', () => {
       { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '監査キュー(全件一覧)' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible({
       timeout: 45_000,
     });
 
@@ -185,7 +185,7 @@ test.describe('dispensing → auditing flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/auditing');
 
-    await expect(page.getByRole('heading', { name: '監査キュー(全件一覧)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -219,7 +219,7 @@ test.describe('dispensing → auditing flow', () => {
         }),
       { timeout: 90_000 },
     );
-    await expect(page.getByRole('heading', { name: '監査キュー(全件一覧)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
 
     // → back to dispensing
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>

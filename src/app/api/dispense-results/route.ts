@@ -505,7 +505,7 @@ export const POST = withAuthContext(
           type: 'business',
           title: '調剤鑑査待ちの処方があります',
           message: `${task.cycle.case_.patient.name} の調剤結果が鑑査待ちになりました`,
-          link: `/auditing/${task_id}`,
+          link: `/auditing?taskId=${encodeURIComponent(task_id)}`,
           metadata: {
             task_id,
             cycle_id: task.cycle_id,

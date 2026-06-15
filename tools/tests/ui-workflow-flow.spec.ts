@@ -143,11 +143,7 @@ test.describe('dispensing queue', () => {
       main.getByRole('link', { name: '監査', exact: true }).first().click(),
     );
 
-    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称
-    // (旧 <h1>調剤鑑査</h1> は /auditing/[taskId] 詳細側へ移動済み)。
-    await expect(
-      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -162,17 +158,13 @@ test.describe('auditing queue', () => {
     await openStableRoute(page, '/auditing');
 
     const main = page.locator('main');
-    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称。
-    await expect(
-      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
-    ).toBeVisible();
-    await expect(
-      main.getByText('差異、疑義照会、未承認件数を先に把握し、差戻しと合格の判断を揃えます。'),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
+    await expect(main.getByTestId('audit-workbench')).toBeVisible();
+    await expect(main.getByTestId('main-workflow-compact-nav')).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
     await expect(main.getByRole('link', { name: '調剤', exact: true }).first()).toBeVisible();
-    await expect(main.getByRole('link', { name: 'セット管理' })).toBeVisible();
+    await expect(main.getByRole('link', { name: 'セット', exact: true }).first()).toBeVisible();
     await expect(main.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -214,10 +206,7 @@ test.describe('workflow cross-navigation', () => {
     await clickAndWaitForStableRoute(page, /\/auditing/, () =>
       main.getByRole('link', { name: '監査', exact: true }).first().click(),
     );
-    // /auditing のページ見出しは新デザインで <h1>監査キュー(全件一覧)</h1> に改称。
-    await expect(
-      page.getByRole('heading', { name: '監査キュー(全件一覧)', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
 
     // Navigate back to dispensing via shortcut (scope to main)
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>

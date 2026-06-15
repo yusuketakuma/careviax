@@ -148,7 +148,7 @@ export function labelForSegment(segment: string, previous?: string): string {
   if (previous === 'visits') return '訪問詳細';
   if (previous === 'reports') return '報告詳細';
   if (previous === 'dispensing') return '調剤';
-  if (previous === 'auditing') return '鑑査詳細';
+  if (previous === 'auditing') return '監査';
   if (previous === 'medication-sets') return 'セット詳細';
   return '詳細';
 }

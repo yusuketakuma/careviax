@@ -10,6 +10,7 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
+const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -25,6 +26,16 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: useQueryClientMock,
 }));
 vi.mock('sonner', () => ({ toast: toastMock }));
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: React.ComponentProps<'a'> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock('next/navigation', () => ({
+  useSearchParams: useSearchParamsMock,
+}));
 
 import { AuditWorkbench } from './audit-workbench';
 
@@ -202,6 +213,7 @@ describe('AuditWorkbench', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
+    useSearchParamsMock.mockReturnValue(new URLSearchParams());
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
     useRealtimeQueryMock.mockReturnValue({ data: { data: QUEUE_ROWS }, isLoading: false });
@@ -261,6 +273,10 @@ describe('AuditWorkbench', () => {
     expect(approveButton.textContent).toContain('差異ゼロを確認して合格 — セットへ');
     expect(approveButton.disabled).toBe(true);
     expect(screen.getByTestId('audit-reject-button').textContent).toContain('差戻し(理由必須)');
+    expect(screen.getByTestId('audit-hold-button').textContent).toContain('保留(理由必須)');
+    expect(screen.getByTestId('audit-emergency-button').textContent).toContain(
+      '緊急例外承認(管理者)',
+    );
     expect(screen.getByText('麻薬は2回目の計数が終わるまで合格できません')).toBeTruthy();
 
     // 右レール
@@ -306,5 +322,58 @@ describe('AuditWorkbench', () => {
 
     expect(screen.getByText('不一致')).toBeTruthy();
     expect((screen.getByTestId('audit-approve-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('taskId クエリがある場合はその監査タスクを初期表示する', () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('taskId=task-ito'));
+
+    render(<AuditWorkbench />);
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['dispense-workbench', 'task-ito', 'org_1'],
+      }),
+    );
+  });
+
+  it('保留理由を選ぶと hold と理由を送信する', () => {
+    render(<AuditWorkbench />);
+
+    fireEvent.click(screen.getByTestId('audit-hold-button'));
+    fireEvent.click(screen.getByRole('button', { name: '処方医確認待ち' }));
+    fireEvent.change(screen.getByPlaceholderText('メモ(必要な時だけ)'), {
+      target: { value: '  医師へ減量根拠を確認中 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保留する' }));
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      result: 'hold',
+      reject_reason: '処方医確認待ち',
+      reject_reason_code: 'waiting_prescriber',
+      reject_detail: '医師へ減量根拠を確認中',
+    });
+  });
+
+  it('緊急例外承認は管理者限定の理由記録つきで送信する', () => {
+    render(<AuditWorkbench />);
+
+    fireEvent.click(screen.getByTestId('audit-emergency-button'));
+    expect(
+      screen.getByText(
+        '管理者のみ実行できます。通常の合格条件を満たせない理由と確認済み事項を残してください。',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '訪問時刻が迫っている' }));
+    fireEvent.change(screen.getByPlaceholderText('メモ(必要な時だけ)'), {
+      target: { value: '  管理者確認済み。訪問出発時刻まで15分 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '緊急例外承認する' }));
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      result: 'emergency_approved',
+      reject_reason: '訪問時刻が迫っている',
+      reject_reason_code: 'visit_deadline',
+      reject_detail: '訪問時刻が迫っている: 管理者確認済み。訪問出発時刻まで15分',
+    });
   });
 });

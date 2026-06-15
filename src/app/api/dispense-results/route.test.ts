@@ -787,7 +787,7 @@ describe('/api/dispense-results POST', () => {
       expect.anything(),
       expect.objectContaining({
         eventType: 'dispense_audit_pending',
-        link: '/auditing/task_1',
+        link: '/auditing?taskId=task_1',
         explicitUserIds: ['auditor_1'],
       }),
     );

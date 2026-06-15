@@ -335,6 +335,15 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p0_13_dispensing_audit',
     targetImage: 'images/P0/p0_13_dispensing_audit.png',
     route: '/auditing',
+    setup: async (page) => {
+      await page.getByTestId('audit-queue-row').first().click();
+      await page
+        .waitForSelector('[data-testid="audit-count-table"], [data-testid="two-person-banner"]', {
+          timeout: 90_000,
+        })
+        .catch(() => {});
+      await page.waitForTimeout(400);
+    },
   },
   {
     screenId: 'p0_14_set_preparation',

@@ -1,12 +1,14 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import {
@@ -18,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ReasonDialog } from '@/components/features/workflow/reason-dialog';
+import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import {
   getHandlingTagBadgeClass,
   getHandlingTagLabel,
@@ -53,7 +56,6 @@ import {
  * - 二人制: 調剤実施者と監査者(ログインユーザー)の同一人監査はサーバー側でも拒否される。
  * - 麻薬ダブルカウント: 計数 1 回目 / 2 回目がすべて調剤実績量と一致(差異ゼロ)で合格可能。
  *   計数値は承認/差戻し時に AuditLog(dispense_audit_double_count)として記録する。
- * 旧 DataTable キューと詳細ページ(/auditing/[taskId]: 保留・緊急例外承認)は下部・別ページに温存。
  */
 
 // ── Queue types(/api/dispense-audits)──
@@ -114,6 +116,20 @@ const REJECT_OPTIONS = [
   { code: 'missing_photo', label: '写真が足りない' },
   { code: 'patient_reason', label: '患者都合' },
   { code: 'input_error', label: '入力間違い' },
+  { code: 'other', label: 'その他' },
+] as const;
+
+const HOLD_OPTIONS = [
+  { code: 'waiting_prescriber', label: '処方医確認待ち' },
+  { code: 'waiting_family', label: '家族確認待ち' },
+  { code: 'waiting_stock', label: '在庫・麻薬帳簿確認待ち' },
+  { code: 'other', label: 'その他' },
+] as const;
+
+const EMERGENCY_OPTIONS = [
+  { code: 'visit_deadline', label: '訪問時刻が迫っている' },
+  { code: 'continuity_risk', label: '服薬継続リスクが高い' },
+  { code: 'doctor_instruction', label: '医師指示を確認済み' },
   { code: 'other', label: 'その他' },
 ] as const;
 
@@ -350,10 +366,14 @@ function CountTable({
 export function AuditWorkbench() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const focusedTaskId = searchParams.get('taskId');
 
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [counts, setCounts] = React.useState<CountEntryState>({});
   const [rejectOpen, setRejectOpen] = React.useState(false);
+  const [holdOpen, setHoldOpen] = React.useState(false);
+  const [emergencyOpen, setEmergencyOpen] = React.useState(false);
   const inputRefs = React.useRef(new Map<string, HTMLInputElement>());
 
   const queueQuery = useRealtimeQuery({
@@ -369,7 +389,7 @@ export function AuditWorkbench() {
   });
 
   const queueRows = React.useMemo(() => queueQuery.data?.data ?? [], [queueQuery.data]);
-  const activeTaskId = selectedTaskId ?? queueRows[0]?.id ?? null;
+  const activeTaskId = selectedTaskId ?? focusedTaskId ?? queueRows[0]?.id ?? null;
 
   const workbenchQuery = useQuery({
     queryKey: ['dispense-workbench', activeTaskId, orgId],
@@ -406,7 +426,7 @@ export function AuditWorkbench() {
 
   const auditMutation = useMutation({
     mutationFn: async (payload: {
-      result: 'approved' | 'rejected';
+      result: 'approved' | 'rejected' | 'hold' | 'emergency_approved';
       reject_reason?: string;
       reject_reason_code?: string;
       reject_detail?: string;
@@ -435,8 +455,18 @@ export function AuditWorkbench() {
       return res.json();
     },
     onSuccess: (_data, variables) => {
-      toast.success(variables.result === 'approved' ? '合格 — セットへ送りました' : '差戻しました');
+      const successMessage =
+        variables.result === 'approved'
+          ? '合格 — セットへ送りました'
+          : variables.result === 'hold'
+            ? '保留にしました'
+            : variables.result === 'emergency_approved'
+              ? '緊急例外承認を記録しました'
+              : '差戻しました';
+      toast.success(successMessage);
       setRejectOpen(false);
+      setHoldOpen(false);
+      setEmergencyOpen(false);
       setSelectedTaskId(null);
       void queryClient.invalidateQueries({ queryKey: ['dispense-audits', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['dispense-workbench'] });
@@ -573,11 +603,34 @@ export function AuditWorkbench() {
 
   return (
     <section aria-label="監査ワークベンチ" data-testid="audit-workbench">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="text-xl font-bold text-foreground">監査</h2>
-        <p className="text-sm text-muted-foreground">
-          {dateLabel} — 止める勇気の画面・合格か差戻しの二択
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-xl font-bold text-foreground">監査</h1>
+          <p className="text-sm text-muted-foreground">
+            {dateLabel} — 止める勇気の画面・合格か差戻しの二択
+          </p>
+        </div>
+        <nav className="flex flex-wrap gap-2" aria-label="監査関連導線">
+          <Link href="/dispensing" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            調剤
+          </Link>
+          <Link
+            href="/medication-sets"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            セット
+          </Link>
+          <Link href="/workflow" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            ワークフロー
+          </Link>
+        </nav>
+      </div>
+
+      <div className="mt-4">
+        <MainWorkflowCompactNav
+          currentSteps={['auditing']}
+          description="調剤済み処方の差異確認、二人制監査、セット送りまでを現行ワークベンチ上で完結します。"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">
@@ -712,7 +765,7 @@ export function AuditWorkbench() {
                 </span>
               </div>
 
-              {/* アクション行: 合格 / 差戻しの二択 */}
+              {/* アクション行: 合格 / 差戻し / 保留 / 緊急例外 */}
               <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
                 <Button
                   type="button"
@@ -732,6 +785,26 @@ export function AuditWorkbench() {
                   data-testid="audit-reject-button"
                 >
                   差戻し(理由必須)
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  onClick={() => setHoldOpen(true)}
+                  disabled={auditMutation.isPending}
+                  data-testid="audit-hold-button"
+                >
+                  保留(理由必須)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-[44px] border-amber-300 text-amber-700 hover:bg-amber-50"
+                  onClick={() => setEmergencyOpen(true)}
+                  disabled={auditMutation.isPending}
+                  data-testid="audit-emergency-button"
+                >
+                  緊急例外承認(管理者)
                 </Button>
                 {!approvable ? (
                   <span className="ml-auto text-xs text-muted-foreground">{guardText}</span>
@@ -766,6 +839,42 @@ export function AuditWorkbench() {
             reject_reason: label,
             reject_reason_code: code,
             reject_detail: note || undefined,
+          })
+        }
+      />
+      <ReasonDialog
+        open={holdOpen}
+        onOpenChange={setHoldOpen}
+        title="監査を保留する理由を入力"
+        description="保留理由を残すと、再開時に確認すべき論点が分かります。"
+        options={HOLD_OPTIONS}
+        warning="保留するとこの薬剤サイクルは on_hold になり、再開判断が必要になります。"
+        submitLabel="保留する"
+        pending={auditMutation.isPending}
+        onSubmit={({ code, label, note }) =>
+          auditMutation.mutate({
+            result: 'hold',
+            reject_reason: label,
+            reject_reason_code: code,
+            reject_detail: note || undefined,
+          })
+        }
+      />
+      <ReasonDialog
+        open={emergencyOpen}
+        onOpenChange={setEmergencyOpen}
+        title="緊急例外承認の理由を入力"
+        description="管理者のみ実行できます。通常の合格条件を満たせない理由と確認済み事項を残してください。"
+        options={EMERGENCY_OPTIONS}
+        warning="緊急例外承認は監査証跡に残り、API 側でも管理者権限と理由記録が必須です。"
+        submitLabel="緊急例外承認する"
+        pending={auditMutation.isPending}
+        onSubmit={({ code, label, note }) =>
+          auditMutation.mutate({
+            result: 'emergency_approved',
+            reject_reason: label,
+            reject_reason_code: code,
+            reject_detail: note ? `${label}: ${note}` : label,
           })
         }
       />
