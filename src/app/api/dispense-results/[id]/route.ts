@@ -111,6 +111,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         discrepancy_reason: parsed.data.discrepancy_reason,
         carry_type: parsed.data.carry_type,
         special_notes: parsed.data.special_notes,
+        version: { increment: 1 },
       },
     });
 

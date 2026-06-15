@@ -62,6 +62,16 @@ export type DispenseWorkbenchData = {
   stock_check_date_label: string | null;
 };
 
+export type DispenseSafetySummary = {
+  changedCount: number;
+  inquiryChangeCount: number;
+  inquiryResponseNeedsCheck: boolean;
+  unresolvedPrescriptionQuantityCount: number;
+  missingActualQuantityCount: number;
+  specialHandlingLabels: string[];
+  nextCheckLabel: string;
+};
+
 // ── ラベル合成 ──
 
 /** 姓のみ(例 '佐藤 花子' → '佐藤')。空白区切りがなければそのまま。 */
@@ -85,7 +95,9 @@ export function formatRemainingLabel(dueIso: string | null, now: Date = new Date
   const minutes = differenceInMinutes(due, now);
   if (minutes < 0) {
     const overdue = Math.abs(minutes);
-    return overdue >= 60 ? `超過${Math.floor(overdue / 60)}時間${overdue % 60}分` : `超過${overdue}分`;
+    return overdue >= 60
+      ? `超過${Math.floor(overdue / 60)}時間${overdue % 60}分`
+      : `超過${overdue}分`;
   }
   if (minutes >= 60) return `あと${Math.floor(minutes / 60)}時間${minutes % 60}分`;
   return `あと${minutes}分`;
@@ -136,6 +148,59 @@ export function buildChangeBadge(row: {
     default:
       return null;
   }
+}
+
+const HANDLING_TAG_LABELS: Record<string, string> = {
+  narcotic: '麻薬',
+  cold_storage: '冷所',
+  high_risk: 'ハイリスク',
+  lasa: 'LASA',
+  unit_dose: '一包化',
+};
+
+export function buildDispenseSafetySummary(
+  workbench: DispenseWorkbenchData,
+): DispenseSafetySummary {
+  const changedRows = workbench.comparison.filter((row) => row.change_type != null);
+  const directInquiryChangeCount = changedRows.filter((row) => row.inquiry_origin).length;
+  const inquiryResponseNeedsCheck =
+    directInquiryChangeCount > 0 || Boolean(workbench.resolved_inquiry?.change_detail?.trim());
+  const unresolvedPrescriptionQuantityCount = workbench.count_rows.filter(
+    (row) => row.prescribed_quantity == null,
+  ).length;
+  const missingActualQuantityCount = workbench.count_rows.filter(
+    (row) => row.dispensed_quantity == null,
+  ).length;
+  const specialHandlingLabels = [
+    ...new Set(
+      [
+        ...workbench.safety.handling_tags,
+        ...workbench.count_rows.flatMap((row) => row.tags),
+        ...(workbench.has_narcotic ? ['narcotic'] : []),
+      ]
+        .map((tag) => HANDLING_TAG_LABELS[tag] ?? tag)
+        .filter((label) => label.length > 0),
+    ),
+  ];
+
+  let nextCheckLabel = '変更点と計数を確認';
+  if (unresolvedPrescriptionQuantityCount > 0) {
+    nextCheckLabel = '処方数量未確定を処方取込で確認';
+  } else if (inquiryResponseNeedsCheck) {
+    nextCheckLabel = '照会回答の変更点を読み上げ確認';
+  } else if (specialHandlingLabels.length > 0) {
+    nextCheckLabel = `${specialHandlingLabels[0]}の取扱いを先に確認`;
+  }
+
+  return {
+    changedCount: changedRows.length,
+    inquiryChangeCount: Math.max(directInquiryChangeCount, inquiryResponseNeedsCheck ? 1 : 0),
+    inquiryResponseNeedsCheck,
+    unresolvedPrescriptionQuantityCount,
+    missingActualQuantityCount,
+    specialHandlingLabels,
+    nextCheckLabel,
+  };
 }
 
 /** 経過分 → 『1日』『2時間』『30分』。 */

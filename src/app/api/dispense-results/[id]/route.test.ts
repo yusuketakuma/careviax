@@ -87,6 +87,7 @@ describe('/api/dispense-results/[id]', () => {
       id: 'result_1',
       org_id: 'org_1',
       task_id: 'task_1',
+      version: 1,
       line: { id: 'line_1' },
     });
     dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
@@ -188,7 +189,13 @@ describe('/api/dispense-results/[id]', () => {
         version: true,
       },
     });
-    expect(dispenseResultUpdateMock).toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'result_1' },
+      data: expect.objectContaining({
+        actual_drug_name: 'Drug B',
+        version: { increment: 1 },
+      }),
+    });
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith({
       where: { id: 'task_1' },
       data: { status: 'completed' },

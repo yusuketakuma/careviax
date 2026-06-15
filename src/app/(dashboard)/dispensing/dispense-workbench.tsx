@@ -43,12 +43,14 @@ import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   buildChangeBadge,
+  buildDispenseSafetySummary,
   buildDispenseQueueSubline,
   buildPausedLabel,
   familyName,
   formatAgeMinutesLabel,
   formatDueTime,
   type DispenseWorkbenchData,
+  type DispenseSafetySummary,
 } from './dispense-workbench.shared';
 
 /**
@@ -187,14 +189,17 @@ function DispenseQueuePanel({
 type ChecklistItem = { id: string; label: string };
 
 function buildChecklistItems(workbench: DispenseWorkbenchData | null): ChecklistItem[] {
-  const changedRow = workbench?.comparison.find((row) => row.change_type != null) ?? null;
-  const changeBadge = changedRow ? buildChangeBadge(changedRow) : null;
-  const changeSuffix =
-    changedRow && changeBadge
-      ? `(${changeBadge.label}: ${changedRow.drug_name.split(/\s+/)[0]})`
-      : '';
+  const changedRows = workbench?.comparison.filter((row) => row.change_type != null) ?? [];
+  const firstChangedRow = changedRows[0] ?? null;
+  const changeBadge = firstChangedRow ? buildChangeBadge(firstChangedRow) : null;
+  let changeSuffix = '';
+  if (changedRows.length > 1) {
+    changeSuffix = `(${changedRows.length}件)`;
+  } else if (firstChangedRow && changeBadge) {
+    changeSuffix = `(${changeBadge.label}: ${firstChangedRow.drug_name.split(/\s+/)[0]})`;
+  }
   return [
-    { id: 'readback', label: `変更点を口頭読み上げで確認${changeSuffix}` },
+    { id: 'readback', label: `変更薬剤を口頭読み上げで確認${changeSuffix}` },
     { id: 'renal', label: '腎機能と用量の整合を確認' },
     { id: 'count_first', label: '計数 — 1回目(自分)' },
     { id: 'unit_dose_print', label: '一包化の印字(氏名・用法・日付)を確認' },
@@ -256,6 +261,71 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
         })}
       </TableBody>
     </Table>
+  );
+}
+
+function SafetySummaryPanel({ summary }: { summary: DispenseSafetySummary }) {
+  return (
+    <section
+      className="mt-3 rounded-lg border border-border/70 bg-muted/25 p-3"
+      aria-label="調剤安全サマリー"
+      data-testid="dispense-safety-summary"
+    >
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <h4 className="text-sm font-bold text-foreground">調剤安全サマリー</h4>
+        <p className="text-xs font-medium text-muted-foreground">{summary.nextCheckLabel}</p>
+      </div>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-4">
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">変更薬剤</dt>
+          <dd className="mt-1 text-base font-bold text-foreground">{summary.changedCount}件</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">疑義照会回答由来の変更</dt>
+          <dd className="mt-1 text-base font-bold text-foreground">
+            {summary.inquiryChangeCount}件
+          </dd>
+        </div>
+        <div
+          className={cn(
+            'rounded-md border px-3 py-2',
+            summary.unresolvedPrescriptionQuantityCount > 0
+              ? 'border-red-200 bg-red-50 text-red-900'
+              : 'border-border/60 bg-card',
+          )}
+        >
+          <dt className="text-xs text-muted-foreground">処方数量未確定</dt>
+          <dd className="mt-1 text-base font-bold">
+            {summary.unresolvedPrescriptionQuantityCount}件
+          </dd>
+          <dd className="mt-0.5 text-xs text-muted-foreground">
+            実数量未入力 {summary.missingActualQuantityCount}件
+          </dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">取扱い注意</dt>
+          <dd className="mt-1 flex flex-wrap gap-1.5 text-sm font-bold text-foreground">
+            {summary.specialHandlingLabels.length > 0
+              ? summary.specialHandlingLabels.map((label) => (
+                  <span
+                    key={label}
+                    className={cn(
+                      'inline-flex rounded-full border px-2 py-0.5 text-xs font-bold',
+                      label === '麻薬'
+                        ? 'border-red-200 bg-red-50 text-red-800'
+                        : label === '冷所'
+                          ? 'border-cyan-200 bg-cyan-50 text-cyan-800'
+                          : 'border-amber-200 bg-amber-50 text-amber-800',
+                    )}
+                  >
+                    {label}
+                  </span>
+                ))
+              : '該当なし'}
+          </dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
@@ -385,6 +455,8 @@ export function DispenseWorkbench() {
 
   const checklistItems = buildChecklistItems(workbench);
   const allChecked = checklistItems.every((item) => checked[item.id]);
+  const safetySummary = workbench ? buildDispenseSafetySummary(workbench) : null;
+  const hasUnresolvedQuantities = (safetySummary?.unresolvedPrescriptionQuantityCount ?? 0) > 0;
   const hasInquiryChange =
     workbench?.comparison.some((row) => row.inquiry_origin && row.change_type != null) ?? false;
 
@@ -530,6 +602,8 @@ export function DispenseWorkbench() {
                   </button>
                 </div>
 
+                {safetySummary ? <SafetySummaryPanel summary={safetySummary} /> : null}
+
                 {/* セーフティボード(危険タグは隠さない) */}
                 <SafetyBoard
                   className="mt-3"
@@ -577,10 +651,14 @@ export function DispenseWorkbench() {
                       }
                       completeMutation.mutate();
                     }}
-                    disabled={completeMutation.isPending}
+                    disabled={completeMutation.isPending || hasUnresolvedQuantities}
                     data-testid="dispense-complete-button"
                   >
-                    {completeMutation.isPending ? '送信中...' : '調剤を完了して監査へ送る'}
+                    {completeMutation.isPending
+                      ? '送信中...'
+                      : hasUnresolvedQuantities
+                        ? '処方数量未確定のため完了不可'
+                        : '調剤を完了して監査へ送る'}
                   </Button>
                   <Button
                     type="button"

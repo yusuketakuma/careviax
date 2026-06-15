@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildChangeBadge,
+  buildDispenseSafetySummary,
   buildDispenseQueueSubline,
   buildPausedLabel,
   canApproveCounts,
@@ -11,6 +12,7 @@ import {
   formatRemainingLabel,
   judgeCountRow,
   type WorkbenchCountRow,
+  type DispenseWorkbenchData,
 } from './dispense-workbench.shared';
 
 function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow {
@@ -25,6 +27,53 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
     dispensed_label: '14錠',
     dispensed_quantity: 14,
     unit: '錠',
+    ...overrides,
+  };
+}
+
+function workbench(overrides: Partial<DispenseWorkbenchData> = {}): DispenseWorkbenchData {
+  return {
+    task: { id: 'task_1', status: 'pending', priority: 'normal', due_date: null },
+    cycle: { id: 'cycle_1', overall_status: 'inquiry_resolved' },
+    patient: { id: 'patient_1', name: '佐々木 ハル' },
+    intake: { id: 'intake_1', prescribed_date: '2026-06-11' },
+    previous_intake: { prescribed_date: '2026-05-14' },
+    safety: {
+      allergy: null,
+      renal: null,
+      handling_tags: ['cold_storage'],
+      swallowing: null,
+      cautions: [],
+    },
+    comparison: [
+      {
+        key: 'line_1',
+        drug_name: 'ファモチジン',
+        previous_label: '20mg 朝夕',
+        current_label: '10mg 朝夕',
+        change_type: 'dose_changed',
+        direction: 'decrease',
+        inquiry_origin: true,
+      },
+      {
+        key: 'line_2',
+        drug_name: 'マグミット',
+        previous_label: '毎食後',
+        current_label: '毎食後',
+        change_type: null,
+        direction: null,
+        inquiry_origin: false,
+      },
+    ],
+    count_rows: [countRow({ line_id: 'line_1', tags: ['narcotic'] })],
+    dispenser: null,
+    auditor: { id: 'user_1', name: '山田 花子' },
+    is_self_audit: false,
+    has_narcotic: true,
+    visit_time_label: null,
+    resolved_inquiry: null,
+    team_audit_total: 0,
+    stock_check_date_label: null,
     ...overrides,
   };
 }
@@ -62,7 +111,9 @@ describe('dispense-workbench.shared', () => {
       buildDispenseQueueSubline({ overallStatus: 'inquiry_resolved', hasInquiryChange: true }),
     ).toBe('照会回答の反映 — 用量変更あり');
     expect(buildDispenseQueueSubline({ overallStatus: 'inquiry_resolved' })).toBe('照会回答の反映');
-    expect(buildDispenseQueueSubline({ overallStatus: 'ready_to_dispense' })).toBe('定期・変更なし');
+    expect(buildDispenseQueueSubline({ overallStatus: 'ready_to_dispense' })).toBe(
+      '定期・変更なし',
+    );
   });
 
   it('buildChangeBadge は減量/増量/新規/中止を返す', () => {
@@ -76,6 +127,60 @@ describe('dispense-workbench.shared', () => {
     expect(buildChangeBadge({ change_type: 'added', direction: null })?.label).toBe('新規');
     expect(buildChangeBadge({ change_type: 'removed', direction: null })?.label).toBe('中止');
     expect(buildChangeBadge({ change_type: null, direction: null })).toBeNull();
+  });
+
+  it('buildDispenseSafetySummary は変更・照会反映・数量未確定・取扱い注意を集約する', () => {
+    expect(buildDispenseSafetySummary(workbench())).toEqual({
+      changedCount: 1,
+      inquiryChangeCount: 1,
+      inquiryResponseNeedsCheck: true,
+      unresolvedPrescriptionQuantityCount: 0,
+      missingActualQuantityCount: 0,
+      specialHandlingLabels: ['冷所', '麻薬'],
+      nextCheckLabel: '照会回答の変更点を読み上げ確認',
+    });
+
+    expect(
+      buildDispenseSafetySummary(
+        workbench({
+          count_rows: [countRow({ prescribed_quantity: null, tags: [] })],
+          has_narcotic: false,
+        }),
+      ),
+    ).toMatchObject({
+      unresolvedPrescriptionQuantityCount: 1,
+      missingActualQuantityCount: 0,
+      specialHandlingLabels: ['冷所'],
+      nextCheckLabel: '処方数量未確定を処方取込で確認',
+    });
+
+    expect(
+      buildDispenseSafetySummary(
+        workbench({
+          comparison: [
+            {
+              key: 'line_1',
+              drug_name: 'ファモチジン',
+              previous_label: '20mg 朝夕',
+              current_label: '10mg 朝夕',
+              change_type: 'dose_changed',
+              direction: 'decrease',
+              inquiry_origin: false,
+            },
+          ],
+          resolved_inquiry: {
+            inquired_at: '2026-06-11T07:31:00',
+            resolved_at: '2026-06-11T09:31:00',
+            institution: 'やまもと内科',
+            change_detail: '照会回答により減量',
+          },
+        }),
+      ),
+    ).toMatchObject({
+      inquiryChangeCount: 1,
+      inquiryResponseNeedsCheck: true,
+      nextCheckLabel: '照会回答の変更点を読み上げ確認',
+    });
   });
 
   it('formatAgeMinutesLabel は日/時間/分に丸める', () => {

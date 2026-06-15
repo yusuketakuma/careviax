@@ -236,6 +236,19 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('2時間止まっていた件 — 09:31に解除')).toBeTruthy();
     expect(screen.getByText('割り込み防護 ON')).toBeTruthy();
 
+    // 調剤安全サマリー
+    expect(screen.getByTestId('dispense-safety-summary')).toBeTruthy();
+    expect(screen.getByText('調剤安全サマリー')).toBeTruthy();
+    expect(screen.getByText('照会回答の変更点を読み上げ確認')).toBeTruthy();
+    expect(screen.getByText('変更薬剤')).toBeTruthy();
+    expect(screen.getByText('疑義照会回答由来の変更')).toBeTruthy();
+    expect(screen.getByText('処方数量未確定')).toBeTruthy();
+    expect(screen.getByText('取扱い注意')).toBeTruthy();
+    expect(screen.getAllByText('1件').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('0件')).toBeTruthy();
+    expect(screen.getByText('実数量未入力 1件')).toBeTruthy();
+    expect(screen.getByText('該当なし')).toBeTruthy();
+
     // セーフティボード
     expect(screen.getByTestId('safety-board')).toBeTruthy();
     expect(screen.getByText('eGFR 41 — 用量に注意')).toBeTruthy();
@@ -250,7 +263,7 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('照会回答による変更')).toBeTruthy();
 
     // 確認チェックリスト
-    expect(screen.getByText('変更点を口頭読み上げで確認(減量: ファモチジン)')).toBeTruthy();
+    expect(screen.getByText('変更薬剤を口頭読み上げで確認(減量: ファモチジン)')).toBeTruthy();
     expect(screen.getByText('腎機能と用量の整合を確認')).toBeTruthy();
     expect(screen.getByText('計数 — 1回目(自分)')).toBeTruthy();
     expect(screen.getByText('一包化の印字(氏名・用法・日付)を確認')).toBeTruthy();
@@ -258,6 +271,9 @@ describe('DispenseWorkbench', () => {
     // アクション行(主操作は 1 つ)+ 注記バー
     expect(screen.getByTestId('dispense-complete-button').textContent).toContain(
       '調剤を完了して監査へ送る',
+    );
+    expect((screen.getByTestId('dispense-complete-button') as HTMLButtonElement).disabled).toBe(
+      false,
     );
     expect(screen.getByRole('button', { name: '中断(理由必須)' })).toBeTruthy();
     expect(screen.getByText('→ カードへ')).toBeTruthy();
@@ -285,6 +301,38 @@ describe('DispenseWorkbench', () => {
 
     expect(toastMock.warning).toHaveBeenCalledWith('確認チェックリストを全て確認してください');
     expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it('数量未確定の明細があると安全サマリーで警告し、完了送信を止める', () => {
+    const unresolvedWorkbench: DispenseWorkbenchData = {
+      ...WORKBENCH,
+      count_rows: [
+        {
+          ...WORKBENCH.count_rows[0],
+          prescribed_label: '未確定',
+          prescribed_quantity: null,
+        },
+      ],
+    };
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'dispense-workbench') {
+        return { data: unresolvedWorkbench, isLoading: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: COCKPIT, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<DispenseWorkbench />);
+
+    expect(screen.getByText('処方数量未確定を処方取込で確認')).toBeTruthy();
+    expect(screen.getByTestId('dispense-complete-button').textContent).toContain(
+      '処方数量未確定のため完了不可',
+    );
+    expect((screen.getByTestId('dispense-complete-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('チェックリスト 4 項目を確認すると主操作で送信できる', () => {
