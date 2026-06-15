@@ -133,7 +133,9 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   const presenceViews =
     demoData?.presence ?? buildPresenceViews(presenceQuery.data ?? [], selfUserId);
 
-  const isLoading = !orgId || overviewQuery.isLoading;
+  // デモ注入時(撮影・動作確認の __phosSeedPresenceDemo)は overview の読み込みを
+  // 待たずに presence を表示する。本番では demoData は常に null のため挙動は不変。
+  const isLoading = !demoData && (!orgId || overviewQuery.isLoading);
   const patientName = overviewQuery.data?.name;
 
   return (
@@ -218,11 +220,29 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
                 列側が既に枠と見出しを持つため variant='bare' で素のまま埋め込む。
               */}
               <div className="mt-4">
-                <CommentThread
-                  entityType={PATIENT_PRESENCE_ENTITY_TYPE}
-                  entityId={patientId}
-                  variant="bare"
-                />
+                {demoData ? (
+                  <div className="space-y-3" data-testid="collaboration-demo-comments">
+                    {demoData.comments.map((comment) => (
+                      <div key={comment.id} className="flex gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                          {comment.author.charAt(0)}
+                        </span>
+                        <div className="flex-1 space-y-1">
+                          <p className="text-sm font-medium text-foreground">{comment.author}</p>
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                            {comment.text}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <CommentThread
+                    entityType={PATIENT_PRESENCE_ENTITY_TYPE}
+                    entityId={patientId}
+                    variant="bare"
+                  />
+                )}
               </div>
             </section>
 

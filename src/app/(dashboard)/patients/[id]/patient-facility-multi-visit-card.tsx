@@ -200,10 +200,10 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
             訪問条件を編集
           </a>
           <Link
-            href="?tab=communications"
+            href={`/patients/${patient.id}/collaboration`}
             className={buttonVariants({ size: 'sm', variant: 'outline' })}
           >
-            連携タブで編集
+            連携で編集
           </Link>
           <Link href="/schedules" className={buttonVariants({ size: 'sm' })}>
             スケジュールで確認

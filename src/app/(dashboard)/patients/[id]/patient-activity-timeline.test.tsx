@@ -74,7 +74,7 @@ const selfReportTimelineEvent = {
   occurred_at: '2026-04-03T09:00:00.000Z',
   title: '患者から自己申告を受信',
   summary: '夕食後の飲み忘れ / adherence / 夕食後薬を2日続けて飲み忘れています。',
-  href: '/patients/patient_1?tab=communications',
+  href: '/patients/patient_1/collaboration',
   action_label: '連携を確認',
   status: 'submitted',
   status_label: '未対応',
@@ -140,7 +140,7 @@ describe('PatientActivityTimeline', () => {
     expect(screen.getByText('折返し希望')).toBeTruthy();
     expect(screen.getByText('希望時間 18時以降')).toBeTruthy();
     expect(screen.getByRole('link', { name: /連携を確認/ }).getAttribute('href')).toBe(
-      '/patients/patient_1?tab=communications',
+      '/patients/patient_1/collaboration',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /共有・連絡/ }));

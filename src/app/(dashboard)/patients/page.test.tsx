@@ -16,10 +16,10 @@ vi.mock('@/components/layout/page-scaffold', () => ({
 }));
 
 describe('PatientsPage', () => {
-  it('renders the card-first patient board without the legacy table section', () => {
+  it('renders the current patient board only', () => {
     render(<PatientsPage />);
 
     expect(screen.getByTestId('patients-board')).toBeTruthy();
-    expect(screen.queryByText('patients-table')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 });

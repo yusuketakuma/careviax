@@ -183,8 +183,8 @@ describe('PatientFacilityMultiVisitCard', () => {
     expect(screen.getByRole('link', { name: '施設・ユニットを編集' }).getAttribute('href')).toBe(
       '#patient-facility-section',
     );
-    expect(screen.getByRole('link', { name: '連携タブで編集' }).getAttribute('href')).toBe(
-      '?tab=communications',
+    expect(screen.getByRole('link', { name: '連携で編集' }).getAttribute('href')).toBe(
+      '/patients/patient_1/collaboration',
     );
   });
 

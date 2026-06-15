@@ -26,7 +26,7 @@ function getHistoryLinks(patientId: string, showTimeline: boolean) {
     },
     {
       key: 'visits',
-      href: `/patients/${patientId}?tab=visits`,
+      href: `/patients/${patientId}#card-recent-activities`,
       label: '訪問歴',
       description: '訪問記録・次回提案',
       icon: History,
@@ -35,7 +35,7 @@ function getHistoryLinks(patientId: string, showTimeline: boolean) {
       ? [
           {
             key: 'timeline',
-            href: `/patients/${patientId}?tab=timeline`,
+            href: `/patients/${patientId}#card-recent-activities`,
             label: '統合履歴',
             description: '処方・訪問・連携の時系列',
             icon: Activity,

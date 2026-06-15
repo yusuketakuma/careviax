@@ -196,15 +196,16 @@ describe('home-schedule-board helpers', () => {
       buildSchedule({ id: 'other', pharmacist_id: 'pharmacist_2' }),
     ];
 
-    expect(filterSchedulesByScope(schedules, 'pharmacy', 'pharmacist_1').map((item) => item.id)).toEqual([
-      'mine',
-      'other',
-    ]);
-    expect(filterSchedulesByScope(schedules, 'mine', 'pharmacist_1').map((item) => item.id)).toEqual([
-      'mine',
-    ]);
     expect(
-      filterSchedulesByScope(schedules, 'user', 'pharmacist_1', 'pharmacist_2').map((item) => item.id),
+      filterSchedulesByScope(schedules, 'pharmacy', 'pharmacist_1').map((item) => item.id),
+    ).toEqual(['mine', 'other']);
+    expect(
+      filterSchedulesByScope(schedules, 'mine', 'pharmacist_1').map((item) => item.id),
+    ).toEqual(['mine']);
+    expect(
+      filterSchedulesByScope(schedules, 'user', 'pharmacist_1', 'pharmacist_2').map(
+        (item) => item.id,
+      ),
     ).toEqual(['other']);
     expect(filterSchedulesByScope(schedules, 'mine', null).map((item) => item.id)).toEqual([]);
   });
@@ -233,7 +234,9 @@ describe('home-schedule-board helpers', () => {
     expect(
       buildHomeScheduleStaffOptions(schedules, [
         { id: 'pharmacist_1', name: '薬剤師A', siteName: '本店' },
-      ]).map((staff) => staff.id).sort(),
+      ])
+        .map((staff) => staff.id)
+        .sort(),
     ).toEqual(['pharmacist_1', 'pharmacist_2']);
 
     expect(
@@ -281,14 +284,32 @@ describe('home-schedule-board helpers', () => {
 
   it('filters coordination proposals by follow-up mode', () => {
     const proposals = [
-      buildProposal({ id: 'pending', proposal_status: 'patient_contact_pending', patient_contact_status: 'pending' }),
-      buildProposal({ id: 'change', proposal_status: 'confirmed', patient_contact_status: 'change_requested' }),
-      buildProposal({ id: 'reschedule', proposal_status: 'reschedule_pending', patient_contact_status: 'unreachable' }),
+      buildProposal({
+        id: 'pending',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      }),
+      buildProposal({
+        id: 'change',
+        proposal_status: 'confirmed',
+        patient_contact_status: 'change_requested',
+      }),
+      buildProposal({
+        id: 'reschedule',
+        proposal_status: 'reschedule_pending',
+        patient_contact_status: 'unreachable',
+      }),
     ];
 
-    expect(filterCoordinationProposals(proposals, 'pending').map((item) => item.id)).toEqual(['pending']);
-    expect(filterCoordinationProposals(proposals, 'change_requested').map((item) => item.id)).toEqual(['change']);
-    expect(filterCoordinationProposals(proposals, 'reschedule').map((item) => item.id)).toEqual(['reschedule']);
+    expect(filterCoordinationProposals(proposals, 'pending').map((item) => item.id)).toEqual([
+      'pending',
+    ]);
+    expect(
+      filterCoordinationProposals(proposals, 'change_requested').map((item) => item.id),
+    ).toEqual(['change']);
+    expect(filterCoordinationProposals(proposals, 'reschedule').map((item) => item.id)).toEqual([
+      'reschedule',
+    ]);
     expect(countCoordinationProposalsByFilter(proposals, 'all')).toBe(3);
     expect(filterProposalsByReason(proposals, 'change_requested').map((item) => item.id)).toEqual([
       'change',
@@ -349,24 +370,24 @@ describe('home-schedule-board helpers', () => {
     expect(buildScheduleBoardHref(buildSchedule())).toBe(
       '/schedules?date=2026-04-10&tab=confirmed&schedule=schedule_1#schedule-schedule_1',
     );
-    expect(buildSchedulePatientHref(buildSchedule())).toBe('/patients/patient_1?tab=visits');
+    expect(buildSchedulePatientHref(buildSchedule())).toBe(
+      '/patients/patient_1#card-recent-activities',
+    );
     expect(resolveSchedulePrimaryAction(buildSchedule({ schedule_status: 'ready' }))).toEqual({
       href: '/visits/schedule_1/record',
       label: '出発確認',
       emphasis: 'primary',
     });
-    expect(
-      resolveSchedulePrimaryAction(buildSchedule({ schedule_status: 'in_progress' })),
-    ).toEqual({
-      href: '/visits/schedule_1/record',
-      label: '記録を再開',
-      emphasis: 'primary',
-    });
+    expect(resolveSchedulePrimaryAction(buildSchedule({ schedule_status: 'in_progress' }))).toEqual(
+      {
+        href: '/visits/schedule_1/record',
+        label: '記録を再開',
+        emphasis: 'primary',
+      },
+    );
 
     expect(resolveScheduleSecondaryAction(buildSchedule()).label).toBe('訪問記録');
-    expect(
-      resolveScheduleSecondaryAction(buildSchedule({ schedule_status: 'departed' })),
-    ).toEqual({
+    expect(resolveScheduleSecondaryAction(buildSchedule({ schedule_status: 'departed' }))).toEqual({
       href: '/schedules?date=2026-04-10&tab=confirmed&schedule=schedule_1#schedule-schedule_1',
       label: 'スケジュールで確認',
       emphasis: 'secondary',
@@ -422,6 +443,8 @@ describe('home-schedule-board helpers', () => {
   });
 
   it('builds patient detail links for proposal follow-up continuity', () => {
-    expect(buildProposalPatientHref(buildProposal())).toBe('/patients/patient_1?tab=visits');
+    expect(buildProposalPatientHref(buildProposal())).toBe(
+      '/patients/patient_1#card-recent-activities',
+    );
   });
 });

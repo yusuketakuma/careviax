@@ -198,7 +198,7 @@ export function PatientHistorySummary({
           処方履歴をすべて見る
         </Link>
         <Link
-          href={`/patients/${patientId}?tab=visits`}
+          href={`/patients/${patientId}#card-recent-activities`}
           className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
         >
           <History className="size-3" aria-hidden="true" />

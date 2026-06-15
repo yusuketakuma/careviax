@@ -190,7 +190,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasPrimaryResidence
         ? '訪問先住所、施設、または個人宅グループが登録されています。'
         : '訪問先住所、施設、または個人宅グループを登録してください。',
-      action_href: `/patients/${args.patientId}?tab=basic#patient-facility-section`,
+      action_href: `/patients/${args.patientId}/edit`,
       action_label: '訪問先を編集',
       severity: 'high' as const,
     },
@@ -201,7 +201,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasInsurance
         ? '医療保険または介護保険情報が登録されています。'
         : '医療保険または介護保険情報を登録してください。',
-      action_href: `/patients/${args.patientId}?tab=basic`,
+      action_href: `/patients/${args.patientId}#patient-profile-summary`,
       action_label: '保険を確認',
       severity: 'high' as const,
     },
@@ -212,7 +212,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasVisitPreferences
         ? '訪問希望曜日・時間帯・連絡条件のいずれかが登録されています。'
         : '訪問希望曜日、時間帯、連絡条件を登録してください。',
-      action_href: `/patients/${args.patientId}?tab=basic#patient-visit-constraints-section`,
+      action_href: `/patients/${args.patientId}/edit`,
       action_label: '訪問条件を編集',
       severity: 'normal' as const,
     },
@@ -224,7 +224,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
         hasPrimaryPhysician && hasNurse && hasCareManager
           ? 'クリニック・訪問看護・ケアマネジャーが患者情報に登録されています。'
           : 'クリニック・訪問看護・ケアマネジャーを患者情報のケアチームに登録してください。',
-      action_href: `/patients/${args.patientId}?tab=communications`,
+      action_href: `/patients/${args.patientId}/collaboration`,
       action_label: '連携先を編集',
       severity: 'normal' as const,
     },

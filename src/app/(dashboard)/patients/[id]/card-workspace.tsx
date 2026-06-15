@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { format, formatDistanceToNowStrict, isSameDay, parseISO } from 'date-fns';
+import {
+  differenceInYears,
+  format,
+  formatDistanceToNowStrict,
+  isSameDay,
+  parseISO,
+} from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileQuestion } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
@@ -50,7 +56,7 @@ import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
  * design/images/new 06_card: カード = 1 処方サイクル(1 RX 番号)の作業台。
  * タブなしの単一スクロール構成: ヘッダー → セーフティボード → 今回の処方(工程チップ+薬剤テーブル)
  * → 直近の動き、右レール(xl〜)に「このカードに紐づく今日」+ 3 点セット(次にやること/止まっている理由/根拠・記録)。
- * 旧タブ構成(患者プロフィール)へは右上「→ 患者プロフィール」(?view=profile)から到達する。
+ * 患者プロフィール情報はこのカード内に統合し、旧 profile/tabs 画面へ分岐しない。
  */
 
 /** 直近の動き: 種別 → 行頭バッジ表示 */
@@ -134,6 +140,105 @@ function SectionCard({ children, className, ...props }: React.ComponentProps<'se
   );
 }
 
+function formatGenderLabel(gender: string): string {
+  if (gender === 'male') return '男性';
+  if (gender === 'female') return '女性';
+  return 'その他';
+}
+
+function formatResidenceLabel(patient: PatientOverview): string {
+  const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
+  if (!primaryResidence) return '住所未設定';
+  const residenceType = primaryResidence.facility_id ? '施設' : '自宅';
+  return primaryResidence.unit_name
+    ? `${residenceType} / ${primaryResidence.unit_name}`
+    : residenceType;
+}
+
+function formatParkingLabel(patient: PatientOverview): string {
+  const parking = patient.scheduling_preference?.parking_available;
+  if (parking === true) return '駐車場あり';
+  if (parking === false) return '駐車場なし';
+  return '未確認';
+}
+
+function formatPreferredContact(patient: PatientOverview): string {
+  const preference = patient.scheduling_preference;
+  if (preference?.preferred_contact_name) return preference.preferred_contact_name;
+  if (preference?.preferred_contact_phone) return preference.preferred_contact_phone;
+  if (patient.phone) return patient.phone;
+  return '未設定';
+}
+
+function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
+  const age = differenceInYears(new Date(), new Date(patient.birth_date));
+  const genderLabel = formatGenderLabel(patient.gender);
+  const residenceLabel = formatResidenceLabel(patient);
+  const preference = patient.scheduling_preference;
+  const swallowing =
+    preference?.swallowing_route ?? patient.workspace?.safety.swallowing ?? '未確認';
+  const careLevel = preference?.care_level ?? '未設定';
+  const notes = patient.notes?.trim();
+  const latestCondition =
+    patient.conditions.find((condition) => condition.is_primary && condition.is_active) ??
+    patient.conditions.find((condition) => condition.is_active) ??
+    null;
+
+  return (
+    <SectionCard
+      id="patient-profile-summary"
+      aria-label="患者プロフィール"
+      data-testid="patient-profile-summary"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">患者プロフィール</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            訪問・服薬支援で毎回確認する基本条件を、このカード内で確認します。
+          </p>
+        </div>
+        <Link
+          href={`/patients/${patient.id}/edit`}
+          className={buttonVariants({ variant: 'outline', size: 'sm', className: 'min-h-11' })}
+        >
+          基本情報を編集
+        </Link>
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">本人</dt>
+          <dd className="mt-1 font-semibold text-foreground">
+            {age}歳 / {genderLabel} / {residenceLabel}
+          </dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">連絡先</dt>
+          <dd className="mt-1 font-semibold text-foreground">{formatPreferredContact(patient)}</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">駐車場</dt>
+          <dd className="mt-1 font-semibold text-foreground">{formatParkingLabel(patient)}</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">嚥下・服薬経路</dt>
+          <dd className="mt-1 font-semibold text-foreground">{swallowing}</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">介護度</dt>
+          <dd className="mt-1 font-semibold text-foreground">{careLevel}</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <dt className="text-xs text-muted-foreground">主な病名・課題</dt>
+          <dd className="mt-1 font-semibold text-foreground">
+            {latestCondition?.name ?? '未設定'}
+          </dd>
+        </div>
+      </dl>
+      {notes ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{notes}</p> : null}
+    </SectionCard>
+  );
+}
+
 function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
   return (
     <SectionCard aria-label="このカードに紐づく今日" data-testid="card-today-panel">
@@ -173,12 +278,24 @@ function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
   );
 }
 
-export function CardWorkspace({ patientId }: { patientId: string }) {
+export function CardWorkspace({
+  patientId,
+  initialPatient = null,
+}: {
+  patientId: string;
+  initialPatient?: PatientOverview | null;
+}) {
   const orgId = useOrgId();
   const router = useRouter();
 
   // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
-  usePresenceHeartbeat({ entityType: 'patient', entityId: patientId, activeField: 'card' });
+  usePresenceHeartbeat({
+    entityType: 'patient',
+    entityId: patientId,
+    activeField: 'card',
+    enabled: Boolean(orgId),
+    initialDelayMs: 3_000,
+  });
 
   const {
     data: patient,
@@ -194,6 +311,7 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
       return res.json();
     },
     enabled: Boolean(orgId),
+    initialData: initialPatient ?? undefined,
   });
 
   if (!orgId || isLoading) return <Loading />;
@@ -208,7 +326,6 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
   }
 
   const workspace = patient.workspace;
-  const profileHref = `/patients/${patientId}?view=profile`;
   const rxNumber = workspace?.current_intake
     ? formatPrescriptionCardNumber(
         workspace.current_intake.id,
@@ -237,13 +354,13 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
         >
           いま見ている人
         </Link>
-        <Link
-          href={profileHref}
+        <a
+          href="#patient-profile-summary"
           className={buttonVariants({ variant: 'outline' })}
           data-testid="card-open-profile"
         >
-          → 患者プロフィール
-        </Link>
+          プロフィールを確認
+        </a>
         <Link
           href={`/patients/compare?patients=${patientId}`}
           className={buttonVariants({ variant: 'outline' })}
@@ -259,6 +376,7 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
     return (
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
+        <PatientProfilePanel patient={patient} />
         <EmptyState
           icon={FileQuestion}
           title="進行中のカードがありません"
@@ -336,7 +454,7 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
     {
       id: 'medication-notebook',
       label: 'お薬手帳(最新)',
-      href: `/patients/${patientId}?view=profile&tab=medications`,
+      href: `/patients/${patientId}#patient-profile-summary`,
     },
     ...(latestInquiryActivity
       ? [
@@ -352,7 +470,7 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
       id: 'lab-trend',
       label: '検査値の推移',
       meta: hasEgfr ? 'eGFR' : undefined,
-      href: `/patients/${patientId}?view=profile&tab=basic`,
+      href: `/patients/${patientId}#patient-profile-summary`,
     },
   ];
 
@@ -364,6 +482,8 @@ export function CardWorkspace({ patientId }: { patientId: string }) {
           xl 帯で 3 カラムにすると中央が潰れるため、xl は右カラム縦積みの 2 カラムに留める */}
       <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
         <div className="min-w-0 space-y-4">
+          <PatientProfilePanel patient={patient} />
+
           {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
           <SafetyBoard
             allergy={workspace.safety.allergy ?? undefined}

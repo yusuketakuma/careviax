@@ -200,10 +200,12 @@ describe('CardWorkspace', () => {
     // ヘッダー行: カード見出し + RX 番号 + サブ + 右上 2 ボタン
     expect(screen.getByRole('heading', { name: 'カード — 田中 一郎 様' })).toBeTruthy();
     expect(screen.getByText('RX-2026-0500 / 1枚で患者のいまが全部わかる作業台')).toBeTruthy();
-    const profileLink = screen.getByRole('link', { name: '→ 患者プロフィール' });
-    expect(profileLink.getAttribute('href')).toBe('/patients/patient_1?view=profile');
+    const profileLink = screen.getByRole('link', { name: 'プロフィールを確認' });
+    expect(profileLink.getAttribute('href')).toBe('#patient-profile-summary');
     const compareLink = screen.getByRole('link', { name: 'カードを分割表示' });
     expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
+    expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '患者プロフィール' })).toBeTruthy();
 
     // タブ UI は廃止(単一スクロール構成)
     expect(screen.queryByRole('tab')).toBeNull();
@@ -277,7 +279,7 @@ describe('CardWorkspace', () => {
 
     expect(screen.getByRole('heading', { name: 'カード — 田中 一郎 様' })).toBeTruthy();
     expect(screen.getByText('進行中のカードがありません')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '→ 患者プロフィール' })).toBeTruthy();
+    expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
   });
 });

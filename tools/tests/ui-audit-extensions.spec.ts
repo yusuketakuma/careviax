@@ -76,21 +76,15 @@ async function analyzeMainAccessibility(page: Page) {
   throw new Error('Axe analysis did not complete');
 }
 
-async function openFirstPatientDetail(page: Page, options: { view?: 'card' | 'profile' } = {}) {
+async function openFirstPatientDetail(page: Page) {
   await openStableRoute(page, '/patients');
 
   const patientLink = page.getByTestId('patient-board-card-link').first();
   await expect(patientLink).toBeVisible({ timeout: 60_000 });
   const href = (await patientLink.getAttribute('href')) ?? FALLBACK_PATIENT_PATH;
   expect(href).toBeTruthy();
-  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
-  if (options.view === 'profile') {
-    await openStableRoute(page, `${href}?view=profile`);
-    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 60_000 });
-  } else {
-    await openStableRoute(page, href!);
-    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
-  }
+  await openStableRoute(page, href!);
+  await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 60_000 });
   return href!;
 }
 
@@ -130,7 +124,7 @@ test('patients accessibility has no critical or serious violations', async ({
     ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
-  const searchInput = page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ });
+  const searchInput = page.getByRole('searchbox', { name: '氏名・住所で検索' });
   await expect(searchInput).toBeVisible();
   await writeScreenshot(page, 'patients-a11y');
   await writeElementScreenshot(searchInput, 'patients-search-input');
@@ -192,7 +186,7 @@ test('mobile patients screen preserves search usability without horizontal overf
   const { page, errors } = await createInstrumentedPage(context);
   await openStableRoute(page, '/patients');
 
-  const searchInput = page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ });
+  const searchInput = page.getByRole('searchbox', { name: '氏名・住所で検索' });
   await expect(searchInput).toBeVisible();
 
   const overflowWidth = await page.evaluate(() => {
@@ -305,7 +299,7 @@ test.describe('ARIA and keyboard contracts', () => {
       () => page.getByTestId('sidebar-nav-patients').click(),
       { timeout: 20_000 },
     );
-    await expect(page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: '氏名・住所で検索' })).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -401,7 +395,7 @@ test.describe('ARIA and keyboard contracts', () => {
       { timeout: 20_000 },
     );
     await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByRole('searchbox', { name: /患者検索|氏名・住所で検索/ })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: '氏名・住所で検索' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -427,7 +421,7 @@ test.describe('ARIA and keyboard contracts', () => {
     expect(errors).toEqual([]);
   });
 
-  test('patient detail mobile tabs keep aria structure and arrow-key navigation', async ({
+  test('patient detail mobile card keeps profile and primary actions reachable', async ({
     context,
   }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
@@ -435,30 +429,15 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await openFirstPatientDetail(page, { view: 'profile' });
+    await openFirstPatientDetail(page);
 
-    const tablist = page.getByTestId('patient-detail-tablist');
-    const memoTab = tablist.getByRole('tab', { name: '薬剤師メモ' });
-    const processTab = tablist.getByRole('tab', { name: '工程' });
-
-    await expect(tablist).toBeVisible();
-    await expect(tablist).toMatchAriaSnapshot(`
-      - tablist "患者詳細タブ":
-        - tab "薬剤師メモ" [selected]
-        - tab "工程"
-        - tab "処方・監査"
-        - tab "セット"
-        - tab "訪問"
-        - tab "報告"
-        - tab "履歴"
-    `);
-
-    await memoTab.focus();
-    await expect(memoTab).toBeFocused();
-    await page.keyboard.press('ArrowRight');
-    await expect(processTab).toBeFocused();
-    await page.keyboard.press('Space');
-    await expect(processTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
+    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
+    const profileJump = page.getByTestId('card-open-profile');
+    await expect(profileJump).toHaveAttribute('href', '#patient-profile-summary');
+    await profileJump.focus();
+    await expect(profileJump).toBeFocused();
 
     expect(errors).toEqual([]);
   });

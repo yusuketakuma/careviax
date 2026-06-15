@@ -254,9 +254,9 @@ export function buildPostVisitWorkflowActions(args: {
       primary_action: {
         operation: 'review_share',
         label: '共有先を確認',
-        href: `/patients/${args.patientId}?tab=communications`,
+        href: `/patients/${args.patientId}/collaboration`,
       },
-      href: `/patients/${args.patientId}?tab=communications`,
+      href: `/patients/${args.patientId}/collaboration`,
       action_label: '連携を確認',
       evidence: [
         args.careTeamContactCount > 0 ? `共有先 ${args.careTeamContactCount}件` : '共有先未登録',

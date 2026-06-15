@@ -10,37 +10,28 @@ import {
 
 test.setTimeout(60_000);
 
-async function openFirstPatientDetail(
-  page: Page,
-  options: { view?: 'card' | 'profile'; tab?: string } = {},
-) {
+async function openFirstPatientDetail(page: Page, options: { mode?: 'click' | 'open' } = {}) {
   // 遷移の起点は /patients 最上部の patients-board カード(氏名リンク)。
   // board カードは全ビューポートで表示される。
   const firstPatientLink = page.getByTestId('patient-board-card-link').first();
   await expect(firstPatientLink).toBeVisible({ timeout: 30_000 });
-  const href = await firstPatientLink.getAttribute('href');
+  const href = (await firstPatientLink.getAttribute('href')) ?? '';
   expect(href).toBeTruthy();
 
-  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
-  if (options.view === 'profile') {
-    const params = new URLSearchParams({ view: 'profile' });
-    if (options.tab) params.set('tab', options.tab);
-    await openStableRoute(page, `${href}?${params.toString()}`);
-    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 30_000 });
+  if (options.mode === 'open') {
+    await openStableRoute(page, href);
   } else {
     await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
       firstPatientLink.click({ noWaitAfter: true }),
     );
-    await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 30_000 });
   }
+  await expect(page.getByTestId('card-workspace')).toBeVisible({ timeout: 30_000 });
   return href!;
 }
 
 async function openNewPatientFormFromList(page: Page) {
-  await openStableRoute(page, '/patients');
-  await clickAndWaitForStableRoute(page, /\/patients\/new$/, () =>
-    page.getByRole('link', { name: '新規登録' }).click(),
-  );
+  await openStableRoute(page, '/patients/new');
+  await expect(page.getByRole('heading', { name: '患者新規登録' })).toBeVisible();
 }
 
 test.describe('patient list and navigation flow', () => {
@@ -58,10 +49,6 @@ test.describe('patient list and navigation flow', () => {
 
     // Page header should show title
     await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
-
-    // New patient registration link should be accessible
-    const newPatientLink = page.getByRole('link', { name: '新規登録' });
-    await expect(newPatientLink).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -95,81 +82,45 @@ test.describe('patient list and navigation flow', () => {
     await expect(page.getByTestId('card-workspace')).toBeVisible();
     await expect(page.getByRole('heading', { name: /カード — / })).toBeVisible();
 
-    // Link to the legacy profile view should be available
-    await expect(page.getByTestId('card-open-profile')).toBeVisible();
+    const profileJump = page.getByTestId('card-open-profile');
+    await expect(profileJump).toBeVisible();
+    await expect(profileJump).toHaveAttribute('href', '#patient-profile-summary');
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('patient profile back link returns to patient list', async ({ context, isMobile }) => {
+  test('patient detail keeps profile information in the current card workspace', async ({
+    context,
+  }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to first patient profile view (the back link lives in its mini card)
-    const href = await openFirstPatientDetail(page, { view: 'profile' });
-    expect(page.url()).toContain(`${href}?view=profile`);
-
-    if (isMobile) {
-      // 「一覧へ戻る」を持つ患者ミニカードは md 以上のみ表示されるため、
-      // モバイルの実際の一覧復帰導線である下部ナビの「患者」を検証する。
-      await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-        page
-          .getByTestId('mobile-bottom-nav')
-          .getByRole('link', { name: '患者' })
-          .click({ noWaitAfter: true }),
-      );
-    } else {
-      // Click back link
-      await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-        page.getByRole('link', { name: '一覧へ戻る' }).click({ noWaitAfter: true }),
-      );
-    }
-
-    // Should be back on patient list
-    await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
+    const href = await openFirstPatientDetail(page);
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '患者プロフィール' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '基本情報を編集' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('action buttons on patient row link to correct pages', async ({ context, isMobile }) => {
+  test('patient board card action opens the current card workspace', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    if (isMobile) {
-      // テーブルの行アクション列(詳細/薬歴/処方受付)は mobileHidden のデスクトップ専用 UI。
-      // モバイルの行相当は patients-board カードのため、患者詳細への導線を検証する。
-      const firstCard = page.getByTestId('patient-board-card').first();
-      await expect(firstCard).toBeVisible({ timeout: 30_000 });
-
-      const detailLink = firstCard.getByTestId('patient-board-card-link');
-      await expect(detailLink).toBeVisible();
-      const cardDetailHref = await detailLink.getAttribute('href');
-      expect(cardDetailHref).toMatch(/\/patients\/.+/);
-
-      expect(errors).toEqual([]);
-      return;
-    }
-
-    const firstRow = page.locator('table tbody tr').first();
-
-    // "詳細" button should exist and point to patient detail
-    const detailLink = firstRow.getByRole('link', { name: '詳細' });
-    await expect(detailLink).toBeVisible();
+    const firstCard = page.getByTestId('patient-board-card').first();
+    await expect(firstCard).toBeVisible({ timeout: 30_000 });
+    const detailLink = firstCard.getByTestId('patient-board-card-link');
     const detailHref = await detailLink.getAttribute('href');
     expect(detailHref).toMatch(/\/patients\/.+/);
 
-    // "薬歴" button should exist
-    const medicationLink = firstRow.getByRole('link', { name: '薬歴' });
-    await expect(medicationLink).toBeVisible();
-    const medicationHref = await medicationLink.getAttribute('href');
-    expect(medicationHref).toMatch(/\/patients\/.+\/prescriptions/);
-
-    // "処方受付" button should exist
-    const prescriptionLink = firstRow.getByRole('link', { name: '処方受付' });
-    await expect(prescriptionLink).toBeVisible();
-    const prescriptionHref = await prescriptionLink.getAttribute('href');
-    expect(prescriptionHref).toMatch(/\/prescriptions\/new/);
+    await clickAndWaitForStableRoute(page, new RegExp(`${detailHref}$`), () =>
+      detailLink.click({ noWaitAfter: true }),
+    );
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -180,93 +131,64 @@ test.describe('patient list filters', () => {
     await attachLocalSession(context);
   });
 
-  test('filter panel is visible with all filter controls', async ({ context }) => {
+  test('current patient board controls are visible without the legacy table surface', async ({
+    context,
+  }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    const filterPanel = page.getByTestId('patients-filter-panel');
-    await expect(filterPanel).toBeVisible();
-
-    // Search input
-    await expect(page.getByLabel('患者検索')).toBeVisible();
-
-    // Filter selects (by aria-label)
-    await expect(page.getByLabel('リスクフィルタ')).toBeVisible();
-    await expect(page.getByLabel('ステータスフィルタ')).toBeVisible();
-
-    await page.getByRole('button', { name: /詳細フィルタ|詳細を閉じる/ }).click();
-    await expect(page.getByLabel('同意状態フィルタ')).toBeVisible();
-    await expect(page.getByLabel('施設フィルタ')).toBeVisible();
+    await expect(page.getByTestId('patients-board')).toBeVisible();
+    await expect(page.getByLabel('氏名・住所で検索')).toBeVisible();
+    await expect(page.getByLabel('担当範囲の切替')).toBeVisible();
+    await expect(page.getByLabel('対応カテゴリの絞り込み')).toBeVisible();
+    await expect(page.getByTestId('patients-board-grid')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('table')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
-  test('search input filters the patient table', async ({ context }) => {
+  test('search input filters the patient board cards', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    const rowsBefore = await page.locator('table tbody tr').count();
-    expect(rowsBefore).toBeGreaterThan(0);
+    await expect(page.getByTestId('patients-board-grid')).toBeVisible({ timeout: 30_000 });
+    const cardsBefore = await page.getByTestId('patient-board-card').count();
+    expect(cardsBefore).toBeGreaterThan(0);
 
     // Type a search that's unlikely to match any patient
-    const searchInput = page.getByLabel('患者検索');
+    const searchInput = page.getByLabel('氏名・住所で検索');
     await searchInput.fill('ZZZZNONEXISTENT');
 
-    // Should show no rows or an empty/no-results state
-    await expect
-      .poll(async () => page.locator('table tbody tr').count(), {
-        message: 'patient search should settle after debounce/refetch',
-      })
-      .toBeLessThanOrEqual(rowsBefore);
+    await expect(page.getByText('条件に一致する患者がいません。')).toBeVisible();
+    await expect(page.getByTestId('patient-board-card')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
-  test('risk filter changes the displayed patients', async ({ context }) => {
+  test('category filter keeps the current board surface visible', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Open risk filter dropdown
-    const riskTrigger = page.getByLabel('リスクフィルタ');
-    await riskTrigger.click();
-
-    // Select "安定"
-    await page.getByRole('option', { name: '安定' }).click();
-
-    // Wait for API response with the filter
-    await page
-      .waitForResponse(
-        (res) => res.url().includes('/api/patients') && res.url().includes('risk_level'),
-      )
-      .catch(() => null);
+    await expect(page.getByLabel('対応カテゴリの絞り込み')).toBeVisible();
+    await page.getByRole('button', { name: '本日訪問' }).click();
     await waitForStableUi(page);
 
-    // Table should still render (may have fewer rows)
-    const main = page.locator('main');
-    await expect(main).toBeVisible();
+    await expect(page.getByTestId('patients-board')).toBeVisible();
+    await expect(page.locator('table')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
-  test('filter reset clears all filters', async ({ context }) => {
+  test('scope toggle keeps the current board surface visible', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Apply a search filter
-    await page.getByLabel('患者検索').fill('テスト');
-    await page.waitForResponse((res) => res.url().includes('/api/patients')).catch(() => null);
+    await page.getByRole('button', { name: '全員' }).click();
     await waitForStableUi(page);
 
-    // Look for a reset button if active filters exist
-    const resetButton = page.getByRole('button', { name: /リセット|クリア|フィルタ解除/ });
-    if (await resetButton.isVisible().catch(() => false)) {
-      await resetButton.click();
-      await waitForStableUi(page);
-
-      // Search should be cleared
-      const searchValue = await page.getByLabel('患者検索').inputValue();
-      expect(searchValue).toBe('');
-    }
+    await expect(page.getByTestId('patients-board-scope-note')).toContainText('全体');
+    await expect(page.getByTestId('patients-board')).toBeVisible();
+    await expect(page.locator('table')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
@@ -281,23 +203,11 @@ test.describe('patient detail page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to the profile basic tab, where the patient master card lives
-    await openFirstPatientDetail(page, { view: 'profile', tab: 'basic' });
-    await expect(page.getByRole('heading', { name: '患者マスタ' })).toBeVisible();
-
-    // The gender field in patient master card should display Japanese label via a Select component
-    // Previously it was a plain <Input> showing raw "male"/"female"/"other"
-    // NOTE: `text=性別` の先頭マッチは受付票の「年齢 / 性別」行に当たることがあるため、
-    // aria-label で一意に特定する。
-    const genderTrigger = page.getByRole('combobox', { name: '性別' });
-    await expect(genderTrigger).toBeVisible();
-    const genderText = await genderTrigger.textContent();
-
-    // Gender should show Japanese label, not raw English enum value
-    expect(
-      ['男性', '女性', 'その他'].some((label) => genderText?.includes(label)),
-      `Gender field should show Japanese label but got "${genderText}"`,
-    ).toBe(true);
+    await openFirstPatientDetail(page);
+    const profileSummary = page.getByTestId('patient-profile-summary');
+    await expect(profileSummary).toBeVisible();
+    await expect(profileSummary).toContainText(/男性|女性|その他/);
+    await expect(profileSummary).not.toContainText(/\bmale\b|\bfemale\b|\bother\b/);
 
     expect(errors).toEqual([]);
   });
@@ -306,11 +216,13 @@ test.describe('patient detail page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    // Navigate to the profile basic tab, where the patient master card lives
-    await openFirstPatientDetail(page, { view: 'profile', tab: 'basic' });
+    await openFirstPatientDetail(page);
 
-    // The patient master card is the first card with a "保存" button on the detail page
-    // Locate "氏名" input (first input in master card) to confirm we're in the right card
+    await clickAndWaitForStableRoute(page, /\/patients\/.+\/edit$/, () =>
+      page.getByRole('link', { name: '基本情報を編集' }).click({ noWaitAfter: true }),
+    );
+
+    // Locate "氏名" input to confirm we're in the edit screen.
     const nameInput = page
       .locator('label:text("氏名") + input, label:text("氏名") ~ input')
       .first();
@@ -348,9 +260,6 @@ test.describe('patient detail page', () => {
       page.getByRole('button', { name: '保存' }).first().click(),
     ]);
 
-    // Success toast should appear
-    await expect(page.getByText('患者基本情報を更新しました')).toBeVisible();
-
     // Reload and verify persistence
     await reloadStablePage(page);
     const reloadedPhoneParent = page
@@ -368,100 +277,6 @@ test.describe('patient detail page', () => {
       ),
       page.getByRole('button', { name: '保存' }).first().click(),
     ]);
-
-    expect(errors).toEqual([]);
-  });
-});
-
-test.describe('patient profile tabs', () => {
-  test.beforeEach(async ({ context }) => {
-    await attachLocalSession(context);
-  });
-
-  // Visible tabs of the profile view (?view=profile). Hidden tabs (basic/cases/documents)
-  // stay reachable through ?tab= URLs only.
-  const TAB_LABELS = [
-    { value: 'memo', label: '薬剤師メモ' },
-    { value: 'process', label: '工程' },
-    { value: 'prescriptions', label: '処方・監査' },
-    { value: 'medications', label: 'セット' },
-    { value: 'visits', label: '訪問' },
-    { value: 'communications', label: '報告' },
-    { value: 'timeline', label: '履歴' },
-  ];
-
-  test('all 7 tabs are visible on the patient profile view', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/patients');
-
-    // Navigate to first patient profile view
-    await openFirstPatientDetail(page, { view: 'profile' });
-
-    const tablist = page.getByTestId('patient-detail-tablist');
-    for (const tab of TAB_LABELS) {
-      await expect(tablist.getByRole('tab', { name: tab.label, exact: true })).toBeVisible();
-    }
-
-    expect(errors).toEqual([]);
-  });
-
-  test('switching tabs updates content panel without errors', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/patients');
-
-    await openFirstPatientDetail(page, { view: 'profile' });
-
-    const tablist = page.getByTestId('patient-detail-tablist');
-
-    // Default tab should be "薬剤師メモ"
-    await expect(tablist.getByRole('tab', { name: '薬剤師メモ', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-
-    // Click each tab and verify content changes without errors
-    for (const tab of TAB_LABELS.slice(1)) {
-      const tabTrigger = tablist.getByRole('tab', { name: tab.label, exact: true });
-      await tabTrigger.click();
-      await expect(tabTrigger).toHaveAttribute('aria-selected', 'true');
-
-      // Only the active panel stays mounted. ただし leave/enter のトランジション中は
-      // 旧パネル(inert)と新パネルが一瞬共存して strict mode violation になるため、
-      // タブ名で対象パネルを特定する。
-      await expect(page.getByRole('tabpanel', { name: tab.label })).toBeVisible({
-        timeout: 5000,
-      });
-    }
-
-    // Switch back to first tab
-    const memoTab = tablist.getByRole('tab', { name: '薬剤師メモ', exact: true });
-    await memoTab.click();
-    await expect(memoTab).toHaveAttribute('aria-selected', 'true');
-
-    // No console/page errors during tab switching
-    expect(errors).toEqual([]);
-  });
-
-  test('selected tab persists in the URL across reload', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/patients');
-
-    await openFirstPatientDetail(page, { view: 'profile' });
-
-    // Switch to "工程" tab
-    const processTab = page
-      .getByTestId('patient-detail-tablist')
-      .getByRole('tab', { name: '工程', exact: true });
-    await processTab.click();
-    await expect(processTab).toHaveAttribute('aria-selected', 'true');
-
-    // Tab selection is reflected in the URL and survives a reload
-    await expect(page).toHaveURL(/view=profile/);
-    await expect(page).toHaveURL(/tab=process/);
-    await reloadStablePage(page);
-    await expect(
-      page.getByTestId('patient-detail-tablist').getByRole('tab', { name: '工程', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
 
     expect(errors).toEqual([]);
   });
@@ -514,7 +329,7 @@ test.describe('patient creation form', () => {
     expect(relevantErrors).toEqual([]);
   });
 
-  test('navigating from patient list to new patient form via header link', async ({ context }) => {
+  test('patient registration route loads from the current app route', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openNewPatientFormFromList(page);
 
@@ -527,16 +342,17 @@ test.describe('patient creation form', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cancel button navigates back without submission', async ({ context }) => {
+  test('back link navigates away without submission', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openNewPatientFormFromList(page);
 
     // Fill some data
     await page.getByLabel(/氏名/).first().fill('テスト患者');
 
-    // Click cancel
+    // Use the current page-header back link. The new patient form does not expose a separate
+    // legacy cancel button.
     await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-      page.getByRole('button', { name: 'キャンセル' }).click(),
+      page.getByRole('link', { name: '患者一覧へ戻る' }).click({ noWaitAfter: true }),
     );
 
     // Should navigate away from new patient page

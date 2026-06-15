@@ -98,7 +98,7 @@ export function PatientWorkspaceRail({
     {
       id: 'lab-memo',
       label: '検査値メモ',
-      onView: () => router.push(`/patients/${patientId}?tab=basic`),
+      onView: () => router.push(`/patients/${patientId}#patient-profile-summary`),
     },
   ];
 

@@ -568,7 +568,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           item.category,
           previewTimelineText(item.content),
         ]).join(' / ') || null,
-      href: `/patients/${patientId}?tab=communications`,
+      href: `/patients/${patientId}/collaboration`,
       action_label: '連携を確認',
       status: item.status,
       status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,

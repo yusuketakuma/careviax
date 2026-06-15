@@ -86,16 +86,9 @@ function queueBadge(row: DispenseQueueRow): { label: string; className: string }
   return { label: '通常', className: 'border-border bg-muted text-muted-foreground' };
 }
 
-function WorkbenchCard({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<'section'>) {
+function WorkbenchCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
-    <section
-      className={cn('rounded-lg border border-border/70 bg-card p-4', className)}
-      {...props}
-    >
+    <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
       {children}
     </section>
   );
@@ -139,7 +132,8 @@ function DispenseQueuePanel({
         <ul className="mt-3 space-y-2" role="list">
           {visibleRows.map((row, index) => {
             const isSelected = row.id === selectedTaskId;
-            const isAggregatedRow = index === QUEUE_VISIBLE_ROWS - 1 && totalCount > QUEUE_VISIBLE_ROWS;
+            const isAggregatedRow =
+              index === QUEUE_VISIBLE_ROWS - 1 && totalCount > QUEUE_VISIBLE_ROWS;
             const badge = queueBadge(row);
             const subline = isAggregatedRow
               ? `ほか${collapsedCount}件`
@@ -195,7 +189,9 @@ function buildChecklistItems(workbench: DispenseWorkbenchData | null): Checklist
   const changedRow = workbench?.comparison.find((row) => row.change_type != null) ?? null;
   const changeBadge = changedRow ? buildChangeBadge(changedRow) : null;
   const changeSuffix =
-    changedRow && changeBadge ? `(${changeBadge.label}: ${changedRow.drug_name.split(/\s+/)[0]})` : '';
+    changedRow && changeBadge
+      ? `(${changeBadge.label}: ${changedRow.drug_name.split(/\s+/)[0]})`
+      : '';
   return [
     { id: 'readback', label: `変更点を口頭読み上げで確認${changeSuffix}` },
     { id: 'renal', label: '腎機能と用量の整合を確認' },
@@ -232,10 +228,7 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
           const badge = buildChangeBadge(row);
           const isChanged = row.change_type != null;
           return (
-            <TableRow
-              key={row.key}
-              className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}
-            >
+            <TableRow key={row.key} className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}>
               <TableCell className="font-medium text-foreground">{row.drug_name}</TableCell>
               <TableCell className="text-muted-foreground">{row.previous_label ?? '—'}</TableCell>
               <TableCell className={cn(isChanged && 'font-bold text-foreground')}>
@@ -393,7 +386,10 @@ export function DispenseWorkbench() {
     workbench?.comparison.some((row) => row.inquiry_origin && row.change_type != null) ?? false;
 
   const pausedLabel = workbench?.resolved_inquiry
-    ? buildPausedLabel(workbench.resolved_inquiry.inquired_at, workbench.resolved_inquiry.resolved_at)
+    ? buildPausedLabel(
+        workbench.resolved_inquiry.inquired_at,
+        workbench.resolved_inquiry.resolved_at,
+      )
     : null;
 
   // ── 右レール ──
@@ -448,7 +444,7 @@ export function DispenseWorkbench() {
             id: 'previous-dispense',
             label: '前回の調剤記録',
             meta: format(new Date(workbench.previous_intake.prescribed_date), 'M/d'),
-            href: `/patients/${workbench.patient.id}?view=profile&tab=medications`,
+            href: `/patients/${workbench.patient.id}#card-prescription-section`,
           },
         ]
       : []),
@@ -593,7 +589,8 @@ export function DispenseWorkbench() {
             className="rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-2.5 text-sm leading-6 text-blue-900"
             data-testid="interrupt-guard-note"
           >
-            割り込み防護: この1件が終わるまで、新しい依頼は通知のみで画面は切り替わりません。緊急(赤)だけは例外です。
+            割り込み防護:
+            この1件が終わるまで、新しい依頼は通知のみで画面は切り替わりません。緊急(赤)だけは例外です。
           </p>
         </div>
 

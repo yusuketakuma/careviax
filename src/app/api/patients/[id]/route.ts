@@ -1417,7 +1417,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           item.category,
           previewTimelineText(item.content),
         ]).join(' / ') || null,
-      href: `/patients/${id}?tab=communications`,
+      href: `/patients/${id}/collaboration`,
       action_label: '連携を確認',
       status: item.status,
       status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,

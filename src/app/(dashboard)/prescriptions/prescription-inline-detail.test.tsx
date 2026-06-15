@@ -101,10 +101,10 @@ describe('PrescriptionInlineDetail', () => {
       '/patients/patient_1/prescriptions',
     );
     expect(screen.getByRole('link', { name: /訪問歴/ }).getAttribute('href')).toBe(
-      '/patients/patient_1?tab=visits',
+      '/patients/patient_1#card-recent-activities',
     );
     expect(screen.getByRole('link', { name: /統合履歴/ }).getAttribute('href')).toBe(
-      '/patients/patient_1?tab=timeline',
+      '/patients/patient_1#card-recent-activities',
     );
   });
 });

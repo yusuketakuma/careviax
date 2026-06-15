@@ -1,4 +1,8 @@
-import type { Proposal, VisitSchedule, VisitPriority } from '@/app/(dashboard)/schedules/day-view.shared';
+import type {
+  Proposal,
+  VisitSchedule,
+  VisitPriority,
+} from '@/app/(dashboard)/schedules/day-view.shared';
 import { buildScheduleProposalHref } from '@/app/(dashboard)/schedules/proposals/proposal-query-state';
 
 export type HomeVisitScope = 'pharmacy' | 'mine' | 'user';
@@ -116,34 +120,26 @@ export function countSchedulesByScope(
   return filterSchedulesByScope(schedules, scope, currentUserId, selectedUserId).length;
 }
 
-export function filterSchedulesByStatus(
-  schedules: VisitSchedule[],
-  filter: HomeVisitStatusFilter,
-) {
+export function filterSchedulesByStatus(schedules: VisitSchedule[], filter: HomeVisitStatusFilter) {
   switch (filter) {
     case 'before_departure':
       return schedules.filter(
         (schedule) =>
-          schedule.schedule_status === 'planned' ||
-          schedule.schedule_status === 'in_preparation',
+          schedule.schedule_status === 'planned' || schedule.schedule_status === 'in_preparation',
       );
     case 'ready_to_depart':
       return schedules.filter((schedule) => schedule.schedule_status === 'ready');
     case 'in_progress':
       return schedules.filter(
         (schedule) =>
-          schedule.schedule_status === 'departed' ||
-          schedule.schedule_status === 'in_progress',
+          schedule.schedule_status === 'departed' || schedule.schedule_status === 'in_progress',
       );
     default:
       return schedules;
   }
 }
 
-export function countSchedulesByStatus(
-  schedules: VisitSchedule[],
-  filter: HomeVisitStatusFilter,
-) {
+export function countSchedulesByStatus(schedules: VisitSchedule[], filter: HomeVisitStatusFilter) {
   return filterSchedulesByStatus(schedules, filter).length;
 }
 
@@ -178,7 +174,7 @@ export function buildScheduleBoardHref(
 }
 
 export function buildSchedulePatientHref(schedule: VisitSchedule) {
-  return `/patients/${schedule.case_.patient.id}?tab=visits`;
+  return `/patients/${schedule.case_.patient.id}#card-recent-activities`;
 }
 
 export function buildProposalBoardHref(proposal: Proposal): string {
@@ -212,7 +208,7 @@ export function buildProposalBoardHref(proposal: Proposal): string {
 }
 
 export function buildProposalPatientHref(proposal: Proposal) {
-  return `/patients/${proposal.case_.patient.id}?tab=visits`;
+  return `/patients/${proposal.case_.patient.id}#card-recent-activities`;
 }
 
 export function resolveProposalPrimaryAction(proposal: Proposal): HomeProposalAction {
@@ -287,10 +283,7 @@ export function resolveSchedulePrimaryAction(schedule: VisitSchedule): HomeSched
     };
   }
 
-  if (
-    schedule.schedule_status === 'departed' ||
-    schedule.schedule_status === 'in_progress'
-  ) {
+  if (schedule.schedule_status === 'departed' || schedule.schedule_status === 'in_progress') {
     return {
       href: `/visits/${schedule.id}/record`,
       label: '記録を再開',
@@ -374,10 +367,7 @@ export function countProposalsByReason(
   return filterProposalsByReason(proposals, reasonKey).length;
 }
 
-export function filterCoordinationProposals(
-  proposals: Proposal[],
-  filter: HomeProposalFilter,
-) {
+export function filterCoordinationProposals(proposals: Proposal[], filter: HomeProposalFilter) {
   switch (filter) {
     case 'pending':
       return proposals.filter(
@@ -386,9 +376,7 @@ export function filterCoordinationProposals(
           proposal.patient_contact_status === 'pending',
       );
     case 'change_requested':
-      return proposals.filter(
-        (proposal) => proposal.patient_contact_status === 'change_requested',
-      );
+      return proposals.filter((proposal) => proposal.patient_contact_status === 'change_requested');
     case 'reschedule':
       return proposals.filter(
         (proposal) =>
@@ -409,10 +397,14 @@ export function countCoordinationProposalsByFilter(
 
 export function sortHomeSchedules(schedules: VisitSchedule[]) {
   return [...schedules].sort((left, right) => {
-    const timeDiff = timeValue(left.time_window_start).localeCompare(timeValue(right.time_window_start));
+    const timeDiff = timeValue(left.time_window_start).localeCompare(
+      timeValue(right.time_window_start),
+    );
     if (timeDiff !== 0) return timeDiff;
 
-    const routeDiff = (left.route_order ?? Number.MAX_SAFE_INTEGER) - (right.route_order ?? Number.MAX_SAFE_INTEGER);
+    const routeDiff =
+      (left.route_order ?? Number.MAX_SAFE_INTEGER) -
+      (right.route_order ?? Number.MAX_SAFE_INTEGER);
     if (routeDiff !== 0) return routeDiff;
 
     return priorityRank(left.priority) - priorityRank(right.priority);
@@ -424,7 +416,9 @@ export function sortCoordinationProposals(proposals: Proposal[]) {
     const dateDiff = left.proposed_date.localeCompare(right.proposed_date);
     if (dateDiff !== 0) return dateDiff;
 
-    const timeDiff = timeValue(left.time_window_start).localeCompare(timeValue(right.time_window_start));
+    const timeDiff = timeValue(left.time_window_start).localeCompare(
+      timeValue(right.time_window_start),
+    );
     if (timeDiff !== 0) return timeDiff;
 
     return priorityRank(left.priority) - priorityRank(right.priority);
@@ -482,8 +476,9 @@ export function buildHomeScheduleStaffSummaries(
         totalVisits: staffSchedules.length,
         preparationPending: staffSchedules.filter(scheduleNeedsPreparation).length,
         timingGaps: staffSchedules.filter(scheduleHasTimingGap).length,
-        inProgress: staffSchedules.filter((schedule) =>
-          schedule.schedule_status === 'departed' || schedule.schedule_status === 'in_progress',
+        inProgress: staffSchedules.filter(
+          (schedule) =>
+            schedule.schedule_status === 'departed' || schedule.schedule_status === 'in_progress',
         ).length,
       };
     })
