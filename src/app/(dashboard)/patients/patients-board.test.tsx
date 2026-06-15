@@ -179,12 +179,22 @@ describe('PatientsBoard', () => {
 
     expect(screen.getByRole('heading', { name: '患者一覧' })).toBeTruthy();
     expect(screen.getByText(/6\/12\(金\) 09:42 — カードの色＝いま必要な対応/)).toBeTruthy();
-    expect(screen.getByText('並び: 対応が必要な順')).toBeTruthy();
 
     const scopeBar = screen.getByRole('group', { name: '担当範囲の切替' });
     expect(within(scopeBar).getByRole('button', { name: '私の担当' })).toBeTruthy();
     expect(within(scopeBar).getByRole('button', { name: '全員' })).toBeTruthy();
 
+    const summary = screen.getByLabelText('今日の患者判断サマリー');
+    expect(within(summary).getByText('最初に見る')).toBeTruthy();
+    expect(within(summary).getByText('田中 一郎様から確認')).toBeTruthy();
+    expect(within(summary).getByText('再開できる')).toBeTruthy();
+    expect(within(summary).getAllByText('1名')).toHaveLength(3);
+    expect(within(summary).getByText('本日訪問')).toBeTruthy();
+    expect(within(summary).getByText('2名+施設12名')).toBeTruthy();
+    expect(within(summary).getByText('止まっている')).toBeTruthy();
+    expect(within(summary).getByText('外部待ち0名 / 休止1名')).toBeTruthy();
+
+    expect(screen.getByText('並び: 対応が必要な順')).toBeTruthy();
     const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
     expect(within(chipBar).getByRole('button', { name: /今すぐ対応/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /本日訪問 3＋施設12名/ })).toBeTruthy();
@@ -215,7 +225,9 @@ describe('PatientsBoard', () => {
     ).toBeTruthy();
     expect(within(urgent as HTMLElement).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
     expect(
-      within(urgent as HTMLElement).getByTestId('process-progress-dots').getAttribute('aria-label'),
+      within(urgent as HTMLElement)
+        .getByTestId('process-progress-dots')
+        .getAttribute('aria-label'),
     ).toContain('監査');
 
     // タグなしは「安全タグなし」を明示
@@ -233,23 +245,35 @@ describe('PatientsBoard', () => {
   it('filters cards by chip selection and search query', () => {
     render(<PatientsBoard />);
 
-    fireEvent.click(screen.getByRole('button', { name: /休止/ }));
+    const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /休止/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
     expect(screen.getByText('吉田 進')).toBeTruthy();
 
     // 本日訪問チップは対応カテゴリに関わらず「今日訪問がある患者」(今すぐ対応の田中も含む)
-    fireEvent.click(screen.getByRole('button', { name: /本日訪問/ }));
+    fireEvent.click(within(chipBar).getByRole('button', { name: /本日訪問/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
     expect(screen.getByText('田中 一郎')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /今すぐ対応/ }));
+    fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
 
     fireEvent.change(screen.getByRole('searchbox', { name: '氏名・住所で検索' }), {
       target: { value: '伊藤' },
     });
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
+    expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
+  });
+
+  it('uses summary tiles as shortcuts into the visible patient groups', () => {
+    render(<PatientsBoard />);
+
+    fireEvent.click(screen.getByRole('button', { name: /本日訪問2名\+施設12名/ }));
+
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
+    expect(screen.getByText('田中 一郎')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
   });
 
@@ -285,16 +309,10 @@ describe('formatNextVisitLabel', () => {
 
   it('formats today / future dates / undecided labels', () => {
     expect(
-      formatNextVisitLabel(
-        card({ next_visit_date: '2026-06-12', next_visit_time: '14:00' }),
-        now,
-      ),
+      formatNextVisitLabel(card({ next_visit_date: '2026-06-12', next_visit_time: '14:00' }), now),
     ).toBe('本日 14:00');
     expect(
-      formatNextVisitLabel(
-        card({ next_visit_date: '2026-06-16', next_visit_time: null }),
-        now,
-      ),
+      formatNextVisitLabel(card({ next_visit_date: '2026-06-16', next_visit_time: null }), now),
     ).toBe('6/16(火)');
     expect(
       formatNextVisitLabel(card({ next_visit_date: null, next_visit_label: '退院連絡待ち' }), now),

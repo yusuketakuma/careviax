@@ -4,7 +4,14 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Search } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  MessageSquareWarning,
+  PauseCircle,
+  Search,
+  type LucideIcon,
+} from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -134,6 +141,23 @@ const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> 
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
 
+type SummaryTile = {
+  key: string;
+  label: string;
+  value: string;
+  description: string;
+  chip: BoardChipValue;
+  icon: LucideIcon;
+  className: string;
+};
+
+function countCards(
+  cards: PatientBoardCard[],
+  predicate: (card: PatientBoardCard) => boolean,
+): number {
+  return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
+}
+
 function formatTimeOfDay(iso: string): string {
   const date = new Date(iso);
   const hours = `${date.getHours()}`.padStart(2, '0');
@@ -172,6 +196,96 @@ function SafetyTagBadge({ tag }: { tag: string }) {
     >
       {label}
     </span>
+  );
+}
+
+function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): SummaryTile[] {
+  const urgentCount = data.chip_counts.urgent_now;
+  const waitReleaseCount = countCards(data.cards, (card) => card.attention === 'wait_release');
+  const todayVisitCount = countCards(data.cards, (card) => card.next_visit_date === todayKey);
+  const externalCount = countCards(
+    data.cards,
+    (card) => card.attention === 'external_wait' || card.attention === 'reply_wait',
+  );
+
+  return [
+    {
+      key: 'urgent',
+      label: '最初に見る',
+      value: `${urgentCount}名`,
+      description:
+        urgentCount > 0
+          ? `${data.next_action?.patient_name ?? '最優先患者'}様から確認`
+          : '期限超過の患者はいません',
+      chip: 'priority',
+      icon: AlertTriangle,
+      className: 'border-red-200 bg-red-50 text-red-700',
+    },
+    {
+      key: 'release',
+      label: '再開できる',
+      value: `${waitReleaseCount}名`,
+      description: waitReleaseCount > 0 ? '照会回答などで工程を戻せます' : '待ち解除はありません',
+      chip: 'priority',
+      icon: MessageSquareWarning,
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    },
+    {
+      key: 'visit',
+      label: '本日訪問',
+      value:
+        data.today_facility_patient_count > 0
+          ? `${todayVisitCount}名+施設${data.today_facility_patient_count}名`
+          : `${todayVisitCount}名`,
+      description:
+        todayVisitCount > 0 ? '出発前チェックとセット確認' : '今日の個別訪問はありません',
+      chip: 'visit_today',
+      icon: CalendarDays,
+      className: 'border-blue-200 bg-blue-50 text-blue-700',
+    },
+    {
+      key: 'hold',
+      label: '止まっている',
+      value: `${externalCount + data.chip_counts.paused}名`,
+      description:
+        externalCount + data.chip_counts.paused > 0
+          ? `外部待ち${externalCount}名 / 休止${data.chip_counts.paused}名`
+          : '外部待ち・休止はありません',
+      chip: externalCount > 0 ? 'external' : 'paused',
+      icon: PauseCircle,
+      className: 'border-violet-200 bg-violet-50 text-violet-700',
+    },
+  ];
+}
+
+function SummaryTileButton({
+  tile,
+  selected,
+  onSelect,
+}: {
+  tile: SummaryTile;
+  selected: boolean;
+  onSelect: (chip: BoardChipValue) => void;
+}) {
+  const Icon = tile.icon;
+  return (
+    <button
+      type="button"
+      className={cn(
+        'min-h-24 rounded-lg border bg-card p-3 text-left transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        tile.className,
+        selected && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
+      )}
+      aria-pressed={selected}
+      onClick={() => onSelect(tile.chip)}
+    >
+      <span className="flex items-center gap-2 text-xs font-semibold">
+        <Icon className="size-4" aria-hidden="true" />
+        {tile.label}
+      </span>
+      <span className="mt-2 block text-xl font-bold text-foreground">{tile.value}</span>
+      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{tile.description}</span>
+    </button>
   );
 }
 
@@ -361,6 +475,10 @@ export function PatientsBoard() {
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },
     ];
   }, [data]);
+  const summaryTiles = useMemo(
+    () => (data ? buildSummaryTiles(data, todayKey) : []),
+    [data, todayKey],
+  );
 
   const blockedReasons: BlockedReason[] = (data?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
@@ -400,55 +518,80 @@ export function PatientsBoard() {
 
   return (
     <section aria-label="患者カード一覧" data-testid="patients-board">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">患者一覧</h2>
-          {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
-          <p className="text-sm text-muted-foreground" suppressHydrationWarning>
-            {dateLabel}
-          </p>
-        </div>
-        <FilterChipBar
-          options={SCOPE_OPTIONS}
-          value={scope}
-          onChange={setScope}
-          ariaLabel="担当範囲の切替"
-        />
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-xs text-muted-foreground">並び: 対応が必要な順</span>
-        <FilterChipBar
-          options={chipOptions}
-          value={chip}
-          onChange={setChip}
-          ariaLabel="対応カテゴリの絞り込み"
-        />
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          {data ? (
-            <p className="text-xs text-muted-foreground" data-testid="patients-board-scope-note">
-              {scope === 'mine' ? '私の担当' : '全体'} {data.assigned_total}名のうち{' '}
-              {visibleCards.length}名を表示
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-xl font-bold text-foreground">患者一覧</h2>
+            {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
+            <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+              {dateLabel}
             </p>
-          ) : null}
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
+          </div>
+          <FilterChipBar
+            options={SCOPE_OPTIONS}
+            value={scope}
+            onChange={setScope}
+            ariaLabel="担当範囲の切替"
+          />
+        </div>
+
+        {summaryTiles.length > 0 ? (
+          <div
+            className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+            aria-label="今日の患者判断サマリー"
+          >
+            {summaryTiles.map((tile) => (
+              <SummaryTileButton
+                key={tile.key}
+                tile={tile}
+                selected={
+                  chip === tile.chip && !(tile.key === 'release' && tile.chip === 'priority')
+                }
+                onSelect={setChip}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        <div className="mt-4 border-t border-border/70 pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-xs text-muted-foreground">並び: 対応が必要な順</span>
+            <FilterChipBar
+              options={chipOptions}
+              value={chip}
+              onChange={setChip}
+              ariaLabel="対応カテゴリの絞り込み"
             />
-            <Input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="氏名・住所で検索"
-              aria-label="氏名・住所で検索"
-              className="h-9 w-56 pl-8"
-            />
+            <div className="ml-auto flex flex-wrap items-center gap-3">
+              {data ? (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="patients-board-scope-note"
+                >
+                  {scope === 'mine' ? '私の担当' : '全体'} {data.assigned_total}名のうち{' '}
+                  {visibleCards.length}名を表示
+                </p>
+              ) : null}
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="氏名・住所で検索"
+                  aria-label="氏名・住所で検索"
+                  className="h-9 w-56 pl-8"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-6">
         {isBootstrappingOrg || boardQuery.isLoading ? (
           <BoardSkeleton />
         ) : boardQuery.isError || !data ? (
