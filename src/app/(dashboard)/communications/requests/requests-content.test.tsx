@@ -33,8 +33,7 @@ import { CommunicationRequestsContent } from './requests-content';
 setupDomTestEnv();
 
 describe('CommunicationRequestsContent', () => {
-  const statusMutateMock = vi.fn();
-  const responseMutateMock = vi.fn();
+  const resolveFocusedMutateMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,15 +44,10 @@ describe('CommunicationRequestsContent', () => {
     useQueryClientMock.mockReturnValue({
       invalidateQueries: vi.fn(),
     });
-    useMutationMock
-      .mockReturnValueOnce({
-        mutate: statusMutateMock,
-        isPending: false,
-      })
-      .mockReturnValueOnce({
-        mutate: responseMutateMock,
-        isPending: false,
-      });
+    useMutationMock.mockReturnValue({
+      mutate: resolveFocusedMutateMock,
+      isPending: false,
+    });
     useQueryMock.mockReturnValue({
       data: { data: [] },
       isLoading: false,
@@ -69,22 +63,9 @@ describe('CommunicationRequestsContent', () => {
     ).toBeTruthy();
   });
 
-  it('requires a reason before mutating direct status transitions', () => {
-    useMutationMock.mockReset();
+  it('records the selected reply follow-up through the current workspace action', () => {
     useQueryMock.mockReset();
-    useMutationMock.mockReturnValue({
-      mutate: statusMutateMock,
-      isPending: false,
-    });
-    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
-      const scope = options.queryKey?.[0];
-      if (scope === 'communication-events') {
-        return {
-          data: { data: [] },
-          isLoading: false,
-        };
-      }
-
+    useQueryMock.mockImplementation(() => {
       return {
         data: {
           data: [
@@ -92,7 +73,7 @@ describe('CommunicationRequestsContent', () => {
               id: 'request_1',
               request_type: 'tracing_report',
               subject: '服薬情報提供書の確認',
-              status: 'received',
+              status: 'sent',
               requested_at: '2026-05-12T00:00:00.000Z',
               due_date: '2026-05-13T00:00:00.000Z',
               patient_id: 'patient_1',
@@ -109,23 +90,56 @@ describe('CommunicationRequestsContent', () => {
     });
     render(<CommunicationRequestsContent />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: '対応中へ' })[0]!);
-
-    expect(screen.getByRole('dialog', { name: 'ステータス変更を確認' })).toBeTruthy();
-    expect(screen.getByText(/患者・相手先・期限を確認/)).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: '理由を記録して更新' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-
-    fireEvent.change(screen.getByLabelText('変更理由'), {
-      target: { value: '電話で受領確認し、薬剤師が対応を開始' },
+    expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
+    expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('返信内容'), {
+      target: { value: '服薬状況の確認が取れました' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '理由を記録して更新' }));
+    fireEvent.change(screen.getByLabelText('次回カードへ残すこと'), {
+      target: { value: '夕食後薬の飲み忘れを確認' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '対応済みにする' }));
 
-    expect(statusMutateMock).toHaveBeenCalledWith({
-      id: 'request_1',
-      status: 'in_progress',
-      reason: '電話で受領確認し、薬剤師が対応を開始',
+    expect(resolveFocusedMutateMock).toHaveBeenCalledWith({
+      item: expect.objectContaining({ id: 'request_1', subject: '服薬情報提供書の確認' }),
+      responderName: '',
+      content: '服薬状況の確認が取れました',
+      followup: '夕食後薬の飲み忘れを確認',
     });
   }, 15_000);
+
+  it('renders the reply follow-up workspace as the single current view', () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('status=sent'));
+    useQueryMock.mockImplementation(() => {
+      return {
+        data: {
+          data: [
+            {
+              id: 'request_1',
+              request_type: 'tracing_report',
+              subject: '服薬情報提供書の確認',
+              status: 'sent',
+              requested_at: '2026-05-12T00:00:00.000Z',
+              due_date: '2026-05-13T00:00:00.000Z',
+              patient_id: 'patient_1',
+              related_entity_type: 'care_report',
+              related_entity_id: 'report_1',
+              recipient_name: '青葉ケアプラン',
+              recipient_role: 'care_manager',
+              responses: [],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<CommunicationRequestsContent initialStatus="sent" />);
+
+    expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
+    expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
+    expect(screen.getByText('絞り込みと文脈')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: '表示モード' })).toBeNull();
+    expect(screen.queryByText('連携ログ一覧')).toBeNull();
+  });
 });

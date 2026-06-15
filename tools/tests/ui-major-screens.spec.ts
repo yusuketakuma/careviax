@@ -677,24 +677,10 @@ async function writeScreenshot(page: Page, name: string) {
   });
 }
 
-async function openPatientDetailRoute(
-  page: Page,
-  patientId: string,
-  options: { view?: 'card' | 'profile'; tab?: string } = {},
-) {
-  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
-  const view = options.view ?? 'card';
-  const params = new URLSearchParams();
-  if (view === 'profile') {
-    params.set('view', 'profile');
-    if (options.tab) params.set('tab', options.tab);
-  }
-  const query = params.toString();
-  await openStableRoute(page, `/patients/${patientId}${query ? `?${query}` : ''}`);
+async function openPatientDetailRoute(page: Page, patientId: string) {
+  await openStableRoute(page, `/patients/${patientId}`);
 
-  const readyMarker = page.getByTestId(
-    view === 'profile' ? 'patient-detail-tablist' : 'card-workspace',
-  );
+  const readyMarker = page.getByTestId('card-workspace');
   const loading = page.locator('main').getByText('読み込み中...');
   if (await readyMarker.isVisible({ timeout: 60_000 }).catch(() => false)) {
     return;
@@ -778,7 +764,7 @@ test.describe('major authenticated screens', () => {
 
     await Promise.all([
       waitForPatientsSearch(page, demoContext.patientName),
-      page.getByLabel('患者検索').fill(demoContext.patientName),
+      page.getByLabel('氏名・住所で検索').fill(demoContext.patientName),
     ]);
 
     const patientLink = page
@@ -808,28 +794,20 @@ test.describe('major authenticated screens', () => {
 
   test('patient detail screen surfaces representative backend data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    // The profile basic tab renders side rails at xl, so widen the viewport to keep
-    // the intake summary card columns readable (and visible to the assertions).
     await page.setViewportSize({ width: 1600, height: 900 });
-    await openPatientDetailRoute(page, demoContext.patientId, { view: 'profile', tab: 'basic' });
+    await openPatientDetailRoute(page, demoContext.patientId);
     await dismissSheetOverlayIfPresent(page);
 
     await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible({
       timeout: 60_000,
     });
-    await expect(page.locator('main').getByText(demoContext.patientKana).first()).toBeVisible({
-      timeout: 60_000,
-    });
-    const intakeSummaryCard = page.getByTestId('patient-intake-summary-card');
-    await expect(intakeSummaryCard).toBeVisible();
-    await expect(
-      page.locator('main').getByText('訪問薬剤管理 新規依頼受付票').first(),
-    ).toBeVisible();
-    await expect(intakeSummaryCard).toContainText('要介護 3');
-    await expect(intakeSummaryCard).toContainText('在宅酸素');
-    await expect(intakeSummaryCard).toContainText('一包化');
-    await expect(intakeSummaryCard).toContainText('カレンダー');
-    await expect(page.locator('main').getByText(demoContext.conditionName).first()).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
+    await expect(page.getByTestId('patient-profile-summary')).toContainText(
+      demoContext.conditionName,
+    );
+    await expect(page.getByTestId('safety-board')).toBeVisible();
+    await expect(page.getByTestId('card-prescription-section')).toBeVisible();
     await writeScreenshot(page, 'patient-detail-data');
     expect(errors).toEqual([]);
   });

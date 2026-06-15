@@ -3,27 +3,14 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ColumnDef } from '@tanstack/react-table';
-import { differenceInCalendarDays, format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import { Clock, AlertTriangle } from 'lucide-react';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { AlertTriangle } from 'lucide-react';
 import { PageSection } from '@/components/layout/page-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { DataTable } from '@/components/ui/data-table';
-import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -54,85 +41,22 @@ type CommunicationRequestRow = {
   }>;
 };
 
-type CommunicationEventRow = {
-  id: string;
-  event_type: string;
-  patient_id: string | null;
-  channel: string;
-  direction: string;
-  counterpart_name: string | null;
-  subject: string | null;
-  content: string | null;
-  occurred_at: string;
+const RECIPIENT_ROLE_LABELS: Record<string, string> = {
+  physician: '主治医',
+  doctor: '主治医',
+  care_manager: 'ケアマネ',
+  nurse: '訪問看護',
+  visiting_nurse: '訪問看護',
+  facility: '施設',
+  family: '家族',
 };
 
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-> = {
-  draft: { label: '下書き', variant: 'outline' },
-  sent: { label: '送信済み', variant: 'secondary' },
-  received: { label: '受信済み', variant: 'secondary' },
-  in_progress: { label: '対応中', variant: 'default' },
-  responded: { label: '返信済み', variant: 'default' },
-  closed: { label: '完了', variant: 'outline' },
-  escalated: { label: 'エスカレ', variant: 'destructive' },
-  cancelled: { label: '取消', variant: 'outline' },
-  expired: { label: '期限切れ', variant: 'destructive' },
-};
-
-type StatusTransition = {
-  label: string;
-  nextStatus:
-    | 'sent'
-    | 'received'
-    | 'in_progress'
-    | 'responded'
-    | 'closed'
-    | 'escalated'
-    | 'expired';
-  variant: 'outline';
-  action?: 'response_dialog';
-};
-
-const STATUS_TRANSITIONS: Record<string, StatusTransition[]> = {
-  draft: [{ label: '送信済みにする', nextStatus: 'sent', variant: 'outline' }],
-  sent: [
-    { label: '受信済み', nextStatus: 'received', variant: 'outline' },
-    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
-  ],
-  received: [
-    { label: '対応中へ', nextStatus: 'in_progress', variant: 'outline' },
-    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
-    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
-  ],
-  in_progress: [
-    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
-    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
-  ],
-  responded: [{ label: '完了', nextStatus: 'closed', variant: 'outline' }],
-  escalated: [
-    { label: '対応再開', nextStatus: 'in_progress', variant: 'outline' },
-    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
-  ],
-};
-
-const REQUEST_TYPE_LABELS: Record<string, string> = {
-  inquiry: '疑義照会',
-  tracing_report: 'トレーシングレポート',
-  physician_inquiry: '医師照会',
-  care_manager_inquiry: 'ケアマネ照会',
-  other: 'その他',
-};
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  schedule_change: '訪問予定変更',
-  physician_report: '主治医報告',
-  care_manager_report: 'ケアマネ報告',
-  tracing_report: 'トレーシングレポート送付',
-  delivery_failure: '送達失敗',
-  resend: '再送',
-};
+function formatRecipientLabel(
+  item: Pick<CommunicationRequestRow, 'recipient_role' | 'recipient_name'>,
+) {
+  const roleLabel = item.recipient_role ? RECIPIENT_ROLE_LABELS[item.recipient_role] : null;
+  return [roleLabel, item.recipient_name ?? '宛先未設定'].filter(Boolean).join('：');
+}
 
 const FILTER_TABS = [
   { value: '', label: 'すべて' },
@@ -144,15 +68,6 @@ const FILTER_TABS = [
   { value: 'escalated', label: 'エスカレ' },
   { value: 'closed', label: '完了' },
 ];
-
-const DEFAULT_RESPONSE_FORM = {
-  responder_name: '',
-  content: '',
-};
-
-const DEFAULT_STATUS_REASON_FORM = {
-  reason: '',
-};
 
 // フォーカスモードの「返信待ち」: 未完了かつ取消・下書きでない依頼に絞り込む
 const FOLLOWUP_OPEN_STATUSES = new Set([
@@ -170,8 +85,6 @@ const DEFAULT_FOCUSED_FORM = {
   // 次回カードへ残すこと（運用タスクとして残す任意メモ）
   followup: '',
 };
-
-type ViewMode = 'table' | 'focused';
 
 // フォーカスモード左ペインの経過/期限バッジ。色だけに依存せずアイコン+テキストを併用。
 function resolveFollowupDueDisplay(item: CommunicationRequestRow): {
@@ -219,16 +132,8 @@ export function CommunicationRequestsContent({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState(initialStatus ?? '');
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [focusedSelectedId, setFocusedSelectedId] = useState<string | null>(null);
   const [focusedForm, setFocusedForm] = useState(DEFAULT_FOCUSED_FORM);
-  const [responseDialogOpen, setResponseDialogOpen] = useState(false);
-  const [responseTarget, setResponseTarget] = useState<CommunicationRequestRow | null>(null);
-  const [responseForm, setResponseForm] = useState(DEFAULT_RESPONSE_FORM);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [statusTarget, setStatusTarget] = useState<CommunicationRequestRow | null>(null);
-  const [statusTransition, setStatusTransition] = useState<StatusTransition | null>(null);
-  const [statusReasonForm, setStatusReasonForm] = useState(DEFAULT_STATUS_REASON_FORM);
   const patientFilter = initialPatientId ?? '';
   const relatedEntityTypeFilter = initialRelatedEntityType ?? '';
   const relatedEntityIdFilter = initialRelatedEntityId ?? '';
@@ -242,94 +147,6 @@ export function CommunicationRequestsContent({
         ? 'ホームから返信待ちの依頼・照会にフォーカスして開いています。'
         : 'ホームから依頼・照会の対応キューにフォーカスして開いています。'
       : null;
-
-  const statusMutation = useMutation({
-    mutationFn: async ({
-      id,
-      status,
-      reason,
-    }: {
-      id: string;
-      status:
-        | 'sent'
-        | 'received'
-        | 'in_progress'
-        | 'responded'
-        | 'closed'
-        | 'escalated'
-        | 'expired';
-      reason: string;
-    }) => {
-      const res = await fetch(`/api/communication-requests/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({ status, status_change_reason: reason }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '依頼ステータスの更新に失敗しました');
-      }
-      return res.json();
-    },
-    onSuccess: async () => {
-      toast.success('依頼ステータスを更新しました');
-      setStatusDialogOpen(false);
-      setStatusTarget(null);
-      setStatusTransition(null);
-      setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
-      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
-      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '依頼ステータスの更新に失敗しました');
-    },
-  });
-
-  const responseMutation = useMutation({
-    mutationFn: async ({
-      id,
-      responder_name,
-      content,
-    }: {
-      id: string;
-      responder_name: string;
-      content: string;
-    }) => {
-      const res = await fetch(`/api/communication-requests/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          response: {
-            responder_name,
-            content,
-            responded_at: new Date().toISOString(),
-          },
-        }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '返信記録の保存に失敗しました');
-      }
-      return res.json();
-    },
-    onSuccess: async () => {
-      toast.success('返信を記録しました');
-      setResponseDialogOpen(false);
-      setResponseTarget(null);
-      setResponseForm(DEFAULT_RESPONSE_FORM);
-      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
-      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '返信記録の保存に失敗しました');
-    },
-  });
 
   // フォーカスモードの「対応済みにする」: 返信内容の記録 → 次回カード作成 → 完了化 を順に実行。
   // 既存ミューテーションの副作用（ダイアログ開閉トースト）と切り離すため API を直接呼ぶ。
@@ -414,48 +231,6 @@ export function CommunicationRequestsContent({
     },
   });
 
-  const openResponseDialog = (item: CommunicationRequestRow) => {
-    setResponseTarget(item);
-    setResponseForm({
-      responder_name: item.recipient_name ?? '',
-      content: '',
-    });
-    setResponseDialogOpen(true);
-  };
-
-  const openStatusDialog = (item: CommunicationRequestRow, transition: StatusTransition) => {
-    setStatusTarget(item);
-    setStatusTransition(transition);
-    setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
-    setStatusDialogOpen(true);
-  };
-
-  async function handleExport() {
-    if (!orgId) return;
-    const params = new URLSearchParams();
-    if (statusFilter) params.set('status', statusFilter);
-    const response = await fetch(`/api/communication-requests/export?${params.toString()}`, {
-      headers: { 'x-org-id': orgId },
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      toast.error(payload.message ?? 'CSVエクスポートに失敗しました');
-      return;
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    const disposition = response.headers.get('Content-Disposition') ?? '';
-    const filenameMatch = disposition.match(/filename=\"?([^"]+)\"?/);
-    anchor.href = url;
-    anchor.download = filenameMatch?.[1] ?? 'communication_requests.csv';
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  }
-
   const { data, isLoading } = useQuery({
     queryKey: [
       'communication-requests',
@@ -486,241 +261,6 @@ export function CommunicationRequestsContent({
     },
     enabled: !!orgId,
   });
-
-  const { data: eventData, isLoading: isEventsLoading } = useQuery({
-    queryKey: ['communication-events', orgId, patientFilter],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (patientFilter) params.set('patient_id', patientFilter);
-      return fetchAllCursorPages<
-        CommunicationEventRow,
-        {
-          data: CommunicationEventRow[];
-          hasMore: boolean;
-        }
-      >({
-        path: '/api/communication-events',
-        params,
-        init: { headers: { 'x-org-id': orgId } },
-        errorMessage: '連携ログの取得に失敗しました',
-      });
-    },
-    enabled: !!orgId,
-  });
-
-  const eventColumns = useMemo<ColumnDef<CommunicationEventRow>[]>(
-    () => [
-      {
-        accessorKey: 'event_type',
-        header: 'イベント',
-        cell: ({ row }) => (
-          <span className="text-sm font-medium">
-            {EVENT_TYPE_LABELS[row.original.event_type] ?? row.original.event_type}
-          </span>
-        ),
-      },
-      {
-        id: 'patient',
-        header: '患者',
-        cell: ({ row }) =>
-          row.original.patient_id ? (
-            <Link
-              href={`/patients/${row.original.patient_id}`}
-              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
-            >
-              患者詳細
-            </Link>
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          ),
-      },
-      {
-        accessorKey: 'channel',
-        header: 'チャネル',
-        cell: ({ row }) => <Badge variant="outline">{row.original.channel}</Badge>,
-      },
-      {
-        id: 'counterpart',
-        header: '相手先',
-        cell: ({ row }) => (
-          <div className="text-sm">
-            <p className="font-medium">{row.original.counterpart_name ?? '未設定'}</p>
-            <p className="text-muted-foreground">{row.original.direction}</p>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'subject',
-        header: '件名',
-        cell: ({ row }) => (
-          <span className="max-w-sm truncate text-sm text-muted-foreground">
-            {row.original.subject ?? row.original.content ?? '—'}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'occurred_at',
-        header: '発生日時',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">
-            {format(parseISO(row.original.occurred_at), 'M/d HH:mm', { locale: ja })}
-          </span>
-        ),
-      },
-    ],
-    [],
-  );
-
-  const columns = useMemo<ColumnDef<CommunicationRequestRow>[]>(
-    () => [
-      {
-        accessorKey: 'request_type',
-        header: '依頼タイプ',
-        cell: ({ row }) => (
-          <span className="whitespace-nowrap text-sm">
-            {REQUEST_TYPE_LABELS[row.original.request_type] ?? row.original.request_type}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'subject',
-        header: '件名',
-        cell: ({ row }) => (
-          <span className="max-w-xs truncate text-sm font-medium">{row.original.subject}</span>
-        ),
-      },
-      {
-        id: 'recipient',
-        header: '宛先',
-        cell: ({ row }) => (
-          <div className="text-sm">
-            <p className="font-medium">{row.original.recipient_name ?? '宛先未設定'}</p>
-            <p className="text-muted-foreground">{row.original.recipient_role ?? '役割未設定'}</p>
-          </div>
-        ),
-      },
-      {
-        id: 'patient',
-        header: '患者',
-        cell: ({ row }) =>
-          row.original.patient_id ? (
-            <Link
-              href={`/patients/${row.original.patient_id}`}
-              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
-            >
-              患者詳細
-            </Link>
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          ),
-      },
-      {
-        id: 'related',
-        header: '関連',
-        cell: ({ row }) => {
-          const entityLink = resolveCommunicationEntityLink({
-            entityType: row.original.related_entity_type,
-            entityId: row.original.related_entity_id,
-          });
-
-          return entityLink ? (
-            <Link
-              href={entityLink.href}
-              className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
-            >
-              {entityLink.label}
-            </Link>
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          );
-        },
-      },
-      {
-        accessorKey: 'status',
-        header: 'ステータス',
-        cell: ({ row }) => {
-          const cfg = STATUS_CONFIG[row.original.status];
-          return (
-            <Badge variant={cfg?.variant ?? 'outline'}>{cfg?.label ?? row.original.status}</Badge>
-          );
-        },
-      },
-      {
-        accessorKey: 'requested_at',
-        header: '依頼日',
-        cell: ({ row }) =>
-          format(parseISO(row.original.requested_at), 'M/d HH:mm', {
-            locale: ja,
-          }),
-      },
-      {
-        accessorKey: 'due_date',
-        header: '期限',
-        cell: ({ row }) => {
-          const d = row.original.due_date;
-          if (!d) return <span className="text-muted-foreground">—</span>;
-          const isOverdue = new Date(d) < new Date();
-          return (
-            <span className={isOverdue ? 'flex items-center gap-1 text-destructive' : ''}>
-              {isOverdue && <AlertTriangle className="size-3" aria-hidden="true" />}
-              {format(parseISO(d), 'M/d', { locale: ja })}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'last_response',
-        header: '最終返信',
-        cell: ({ row }) => {
-          const r = row.original.responses[0];
-          if (!r)
-            return (
-              <span className="flex items-center gap-1 text-muted-foreground">
-                <Clock className="size-3" aria-hidden="true" />
-                未返信
-              </span>
-            );
-          return (
-            <span className="text-sm text-muted-foreground">
-              {r.responder_name} {format(parseISO(r.responded_at), 'M/d', { locale: ja })}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'actions',
-        header: '操作',
-        cell: ({ row }) => {
-          const item = row.original;
-          const transitions = STATUS_TRANSITIONS[item.status] ?? [];
-          return (
-            <div className="flex flex-wrap gap-2">
-              {transitions.map((t) => (
-                <Button
-                  key={t.label}
-                  size="sm"
-                  variant={t.variant}
-                  onClick={() =>
-                    t.action === 'response_dialog'
-                      ? openResponseDialog(item)
-                      : openStatusDialog(item, t)
-                  }
-                  disabled={
-                    t.action === 'response_dialog'
-                      ? responseMutation.isPending
-                      : statusMutation.isPending
-                  }
-                >
-                  {t.label}
-                </Button>
-              ))}
-            </div>
-          );
-        },
-      },
-    ],
-    [responseMutation.isPending, statusMutation],
-  );
 
   // フォーカスモード: 未完了の返信待ち依頼のみ（期限の近い順）
   const focusedRequests = useMemo(() => {
@@ -760,35 +300,6 @@ export function CommunicationRequestsContent({
         title="絞り込みと文脈"
         description="返信待ち、対応中、患者文脈を先に絞り込み、確認すべき依頼だけに集中できるようにします。"
         tone="subtle"
-        actions={
-          <ActionRail>
-            <div
-              className="inline-flex rounded-md border border-border bg-muted/40 p-0.5"
-              role="group"
-              aria-label="表示モード"
-            >
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                aria-pressed={viewMode === 'table'}
-                onClick={() => setViewMode('table')}
-              >
-                一覧
-              </Button>
-              <Button
-                variant={viewMode === 'focused' ? 'default' : 'ghost'}
-                size="sm"
-                aria-pressed={viewMode === 'focused'}
-                onClick={() => setViewMode('focused')}
-              >
-                返信待ち・フォロー
-              </Button>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              CSVエクスポート
-            </Button>
-          </ActionRail>
-        }
       >
         <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3">
           {FILTER_TABS.map((tab) => (
@@ -849,346 +360,120 @@ export function CommunicationRequestsContent({
         ) : null}
       </PageSection>
 
-      {viewMode === 'focused' ? (
-        <PageSection
-          title="返信待ち・フォロー"
-          description="返信待ちの依頼を1件ずつ確認し、返信内容と次回カードへ残すことを記録して対応済みにします。"
-          tone="subtle"
-          contentClassName="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]"
-        >
-          {/* 左ペイン: 返信待ちリスト */}
-          <div
-            className="space-y-2"
-            role="listbox"
-            aria-label="返信待ちの依頼"
-            data-testid="reply-followup-list"
-          >
-            <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
-            {isLoading ? (
-              <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
-            ) : focusedRequests.length === 0 ? (
-              <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                返信待ちの依頼はありません。
-              </p>
-            ) : (
-              focusedRequests.map((item) => {
-                const due = resolveFollowupDueDisplay(item);
-                const isSelected = focusedSelected?.id === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => selectFocusedRequest(item)}
-                    className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                      isSelected
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
-                    }`}
-                  >
-                    <p className="text-sm font-semibold text-foreground">
-                      {item.recipient_role ? `${item.recipient_role}：` : ''}
-                      {item.recipient_name ?? '宛先未設定'}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.subject}</p>
-                    <div className="mt-2">
-                      <StateBadge role={due.role}>{due.label}</StateBadge>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {/* 右ペイン: 返信内容と次の対応 */}
-          <div className="rounded-lg border border-border bg-card p-4">
-            {focusedSelected ? (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {focusedSelected.recipient_role ? `${focusedSelected.recipient_role}：` : ''}
-                    {focusedSelected.recipient_name ?? '宛先未設定'} / {focusedSelected.subject}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="focused_response_content">返信内容</Label>
-                  <Textarea
-                    id="focused_response_content"
-                    rows={5}
-                    placeholder="返信内容を記録します（任意）"
-                    value={focusedForm.content}
-                    onChange={(event) =>
-                      setFocusedForm((current) => ({ ...current, content: event.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="focused_followup">次回カードへ残すこと</Label>
-                  <Textarea
-                    id="focused_followup"
-                    rows={3}
-                    placeholder="例: 夕食後薬の飲み忘れを確認"
-                    aria-describedby="focused_followup_help"
-                    className="bg-state-done/5"
-                    value={focusedForm.followup}
-                    onChange={(event) =>
-                      setFocusedForm((current) => ({ ...current, followup: event.target.value }))
-                    }
-                  />
-                  <p id="focused_followup_help" className="text-xs text-muted-foreground">
-                    入力すると報告返信待ちフォローの運用タスクとして残します。
-                  </p>
-                </div>
-
-                <div className="flex justify-start pt-1">
-                  <Button
-                    className="bg-state-done text-white hover:bg-state-done/90"
-                    onClick={() =>
-                      resolveFocusedMutation.mutate({
-                        item: focusedSelected,
-                        responderName: focusedForm.responder_name.trim(),
-                        content: focusedForm.content.trim(),
-                        followup: focusedForm.followup.trim(),
-                      })
-                    }
-                    disabled={resolveFocusedMutation.isPending}
-                  >
-                    対応済みにする
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                左の返信待ちリストから依頼を選択してください。
-              </p>
-            )}
-          </div>
-        </PageSection>
-      ) : (
-        <>
-          <PageSection
-            title="依頼・照会一覧"
-            description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
-            tone="subtle"
-          >
-            <DataTable
-              columns={columns}
-              data={data?.data ?? []}
-              isLoading={isLoading}
-              caption="依頼・照会一覧"
-            />
-          </PageSection>
-
-          <PageSection
-            title="連携タイムライン"
-        description="訪問予定変更、報告送付、送達失敗・再送など主要な連携イベントを時系列で確認します。"
-        tone="subtle"
-        contentClassName="space-y-3"
-      >
-        {isEventsLoading ? (
-          <p className="text-sm text-muted-foreground">連携タイムラインを読み込み中...</p>
-        ) : (eventData?.data.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">連携イベントはまだありません。</p>
-        ) : (
-          eventData?.data.slice(0, 6).map((item) => (
-            <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-foreground">
-                    {EVENT_TYPE_LABELS[item.event_type] ?? item.event_type}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.counterpart_name ?? '相手先未設定'} / {item.channel}
-                  </p>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {format(parseISO(item.occurred_at), 'M/d HH:mm', { locale: ja })}
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {item.subject ?? item.content ?? '詳細なし'}
-              </p>
-              {item.patient_id ? (
-                <Link
-                  href={`/patients/${item.patient_id}`}
-                  className="mt-2 inline-flex min-h-11 min-w-11 items-center text-xs text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
-                >
-                  患者詳細へ
-                </Link>
-              ) : null}
-            </div>
-          ))
-        )}
-      </PageSection>
-
       <PageSection
-        title="連携ログ一覧"
-        description="タイムラインより広い履歴を一覧で確認するための履歴グループです。"
+        title="返信待ち・フォロー"
+        description="返信待ちの依頼を1件ずつ確認し、返信内容と次回カードへ残すことを記録して対応済みにします。"
         tone="subtle"
+        contentClassName="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]"
       >
-            <DataTable
-              columns={eventColumns}
-              data={eventData?.data ?? []}
-              isLoading={isEventsLoading}
-              caption="連携ログ一覧"
-            />
-          </PageSection>
-        </>
-      )}
+        <div
+          className="space-y-2"
+          role="listbox"
+          aria-label="返信待ちの依頼"
+          data-testid="reply-followup-list"
+        >
+          <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
+          {isLoading ? (
+            <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
+          ) : focusedRequests.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+              返信待ちの依頼はありません。
+            </p>
+          ) : (
+            focusedRequests.map((item) => {
+              const due = resolveFollowupDueDisplay(item);
+              const isSelected = focusedSelected?.id === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => selectFocusedRequest(item)}
+                  className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                    isSelected
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                      : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatRecipientLabel(item)}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.subject}</p>
+                  <div className="mt-2">
+                    <StateBadge role={due.role}>{due.label}</StateBadge>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
 
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ステータス変更を確認</DialogTitle>
-            <DialogDescription>
-              {statusTarget?.subject ?? '依頼'} を
-              {statusTransition ? `「${statusTransition.label}」` : '次の状態'}
-              へ進める理由を記録します。
-            </DialogDescription>
-          </DialogHeader>
+        <div className="rounded-lg border border-border bg-card p-4">
+          {focusedSelected ? (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {formatRecipientLabel(focusedSelected)} / {focusedSelected.subject}
+                </p>
+              </div>
 
-          <Alert className="border-amber-300 bg-amber-50 text-amber-950">
-            <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
-            <AlertDescription className="text-amber-900">
-              患者・相手先・期限を確認し、変更理由を監査ログに残してから更新します。
-            </AlertDescription>
-          </Alert>
+              <div className="space-y-2">
+                <Label htmlFor="focused_response_content">返信内容</Label>
+                <Textarea
+                  id="focused_response_content"
+                  rows={5}
+                  placeholder="返信内容を記録します（任意）"
+                  value={focusedForm.content}
+                  onChange={(event) =>
+                    setFocusedForm((current) => ({ ...current, content: event.target.value }))
+                  }
+                />
+              </div>
 
-          <div className="space-y-3">
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-              <p className="font-medium">{statusTarget?.recipient_name ?? '宛先未設定'}</p>
-              <p className="text-muted-foreground">
-                現在:{' '}
-                {statusTarget
-                  ? (STATUS_CONFIG[statusTarget.status]?.label ?? statusTarget.status)
-                  : '—'}
-                {statusTransition
-                  ? ` / 変更後: ${STATUS_CONFIG[statusTransition.nextStatus]?.label ?? statusTransition.nextStatus}`
-                  : ''}
-              </p>
+              <div className="space-y-2">
+                <Label htmlFor="focused_followup">次回カードへ残すこと</Label>
+                <Textarea
+                  id="focused_followup"
+                  rows={3}
+                  placeholder="例: 夕食後薬の飲み忘れを確認"
+                  aria-describedby="focused_followup_help"
+                  className="bg-state-done/5"
+                  value={focusedForm.followup}
+                  onChange={(event) =>
+                    setFocusedForm((current) => ({ ...current, followup: event.target.value }))
+                  }
+                />
+                <p id="focused_followup_help" className="text-xs text-muted-foreground">
+                  入力すると報告返信待ちフォローの運用タスクとして残します。
+                </p>
+              </div>
+
+              <div className="flex justify-start pt-1">
+                <Button
+                  className="bg-state-done text-white hover:bg-state-done/90"
+                  onClick={() =>
+                    resolveFocusedMutation.mutate({
+                      item: focusedSelected,
+                      responderName: focusedForm.responder_name.trim(),
+                      content: focusedForm.content.trim(),
+                      followup: focusedForm.followup.trim(),
+                    })
+                  }
+                  disabled={resolveFocusedMutation.isPending}
+                >
+                  対応済みにする
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="status_change_reason">変更理由</Label>
-              <Textarea
-                id="status_change_reason"
-                rows={4}
-                value={statusReasonForm.reason}
-                aria-describedby="status_change_reason_help"
-                onChange={(event) =>
-                  setStatusReasonForm({
-                    reason: event.target.value,
-                  })
-                }
-              />
-              <p id="status_change_reason_help" className="text-xs text-muted-foreground">
-                例: 電話で受領確認済み、医師へ再確認が必要、期限切れとして管理者へ引き継ぎ。
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setStatusDialogOpen(false);
-                setStatusTarget(null);
-                setStatusTransition(null);
-                setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
-              }}
-            >
-              キャンセル
-            </Button>
-            <Button
-              onClick={() => {
-                if (!statusTarget || !statusTransition) return;
-                statusMutation.mutate({
-                  id: statusTarget.id,
-                  status: statusTransition.nextStatus,
-                  reason: statusReasonForm.reason.trim(),
-                });
-              }}
-              disabled={statusMutation.isPending || statusReasonForm.reason.trim().length === 0}
-            >
-              理由を記録して更新
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={responseDialogOpen} onOpenChange={setResponseDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>返信を記録</DialogTitle>
-            <DialogDescription>
-              {responseTarget?.subject ?? '依頼'} に対する返信内容を記録します。
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="responder_name">返信者名</Label>
-              <Input
-                id="responder_name"
-                value={responseForm.responder_name}
-                onChange={(event) =>
-                  setResponseForm((current) => ({
-                    ...current,
-                    responder_name: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="response_content">返信内容</Label>
-              <Textarea
-                id="response_content"
-                rows={5}
-                value={responseForm.content}
-                onChange={(event) =>
-                  setResponseForm((current) => ({
-                    ...current,
-                    content: event.target.value,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setResponseDialogOpen(false);
-                setResponseTarget(null);
-                setResponseForm(DEFAULT_RESPONSE_FORM);
-              }}
-            >
-              キャンセル
-            </Button>
-            <Button
-              onClick={() => {
-                if (!responseTarget) return;
-                responseMutation.mutate({
-                  id: responseTarget.id,
-                  responder_name: responseForm.responder_name.trim(),
-                  content: responseForm.content.trim(),
-                });
-              }}
-              disabled={
-                responseMutation.isPending ||
-                responseForm.responder_name.trim().length === 0 ||
-                responseForm.content.trim().length === 0
-              }
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              左の返信待ちリストから依頼を選択してください。
+            </p>
+          )}
+        </div>
+      </PageSection>
     </div>
   );
 }

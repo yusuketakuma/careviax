@@ -23,7 +23,7 @@ export default async function CommunicationRequestsPage({
   const initialState = readCommunicationRequestsState(resolvedSearchParams);
 
   return (
-    <PageScaffold>
+    <PageScaffold variant="card">
       <WorkflowPageHeader
         eyebrow="Communications"
         title="依頼・照会一覧"

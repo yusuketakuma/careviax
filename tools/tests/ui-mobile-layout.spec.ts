@@ -45,8 +45,8 @@ const MOBILE_ROUTES = [
   {
     name: 'billing-mobile-layout',
     path: '/billing',
-    readyTestId: 'billing-action-strip',
-    primaryTarget: { role: 'heading' as const, name: '請求支援ダッシュボード' },
+    readyTestId: 'billing-check',
+    primaryTarget: { role: 'heading' as const, name: '算定チェック', level: 2 },
   },
 ] as const;
 

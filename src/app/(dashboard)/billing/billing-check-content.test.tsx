@@ -113,6 +113,7 @@ describe('BillingCheckContent', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, '', '/');
   });
 
   it('renders the header row with month summary and the month toggle', () => {
@@ -151,9 +152,7 @@ describe('BillingCheckContent', () => {
     render(<BillingCheckContent />);
 
     const table = screen.getByTestId('billing-check-review-table');
-    expect(
-      within(table).getByText('疑義 — 根拠とセットでしか出さない'),
-    ).toBeTruthy();
+    expect(within(table).getByText('疑義 — 根拠とセットでしか出さない')).toBeTruthy();
     expect(
       within(table).getByText('自動チェックを通らなかったものだけが人に届きます'),
     ).toBeTruthy();
@@ -227,9 +226,7 @@ describe('BillingCheckContent', () => {
 
     render(<BillingCheckContent />);
 
-    expect(
-      screen.getByText('疑義はありません — 自動チェックをすべて通過しています'),
-    ).toBeTruthy();
+    expect(screen.getByText('疑義はありません — 自動チェックをすべて通過しています')).toBeTruthy();
   });
 
   it('shows the error state with retry when the fetch fails', () => {

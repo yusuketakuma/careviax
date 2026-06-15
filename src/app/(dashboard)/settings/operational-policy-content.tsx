@@ -34,7 +34,6 @@ import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
  * (次にやること/止まっている理由/根拠・記録)。
  * 安全に関わるロック項目は「🔒 変更できません」で隠さず明示する。
  * 変更可能な項目は保存前に影響範囲(誰の・どの画面が変わるか)を確認してから反映する。
- * 旧 /settings(個人設定)はページ下部へ温存する。
  */
 
 export type SensitivityLevel = 'low' | 'standard' | 'high';
@@ -377,7 +376,7 @@ export function OperationalPolicyContent() {
   return (
     <section aria-label="薬局運用ポリシー" data-testid="operational-policy">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="text-xl font-bold text-foreground">設定</h2>
+        <h1 className="text-xl font-bold text-foreground">設定</h1>
         <p className="text-sm text-muted-foreground">
           薬局: {data?.pharmacy_label ?? '—'} — 安全項目はロック
         </p>
@@ -400,7 +399,11 @@ export function OperationalPolicyContent() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(260px,300px)]">
             {/* 左列: 安全 / 働き方 */}
             <div className="min-w-0 space-y-4">
-              <PolicyCard title="安全" note="下げられない項目はロック表示" testId="policy-safety-card">
+              <PolicyCard
+                title="安全"
+                note="下げられない項目はロック表示"
+                testId="policy-safety-card"
+              >
                 <PolicyRow
                   title="安全タグの表示"
                   description="麻薬・冷所・アレルギー等のタグはすべての画面で常時表示されます"

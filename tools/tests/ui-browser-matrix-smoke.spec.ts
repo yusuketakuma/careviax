@@ -3,10 +3,10 @@ import { attachLocalSession, createInstrumentedPage, openStableRoute } from './h
 
 const ROUTES = [
   { path: '/dashboard', readyTestId: 'dashboard-priority-actions' },
-  { path: '/patients', readyTestId: 'patients-filter-panel' },
-  { path: '/reports', readyTestId: 'reports-filter-panel' },
+  { path: '/patients', readyTestId: 'patients-board' },
+  { path: '/reports', readyTestId: 'report-share-workspace' },
   { path: '/workflow', readyTestId: 'workflow-control-center' },
-  { path: '/billing', readyTestId: 'billing-action-strip' },
+  { path: '/billing', readyTestId: 'billing-check' },
 ] as const;
 
 test.beforeEach(async ({ context }) => {

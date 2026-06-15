@@ -70,10 +70,7 @@ function KpiCard({
   testId: string;
 }) {
   return (
-    <article
-      className="rounded-lg border border-border/70 bg-card p-4"
-      data-testid={testId}
-    >
+    <article className="rounded-lg border border-border/70 bg-card p-4" data-testid={testId}>
       <p className="text-sm font-semibold text-foreground">{label}</p>
       <p className="mt-1 flex items-baseline gap-1">
         <span className={cn('text-[28px] font-bold leading-9 tabular-nums', valueClassName)}>
