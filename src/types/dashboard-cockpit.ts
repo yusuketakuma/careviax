@@ -60,9 +60,17 @@ export type CockpitTeamMember = {
   busy_ratio: number | null;
 };
 
+export type DashboardCockpitScope = 'mine' | 'team';
+
 export type DashboardCockpitResponse = {
   /** サーバー集計時刻(ISO)。右レール「今朝の同期」に表示 */
   generated_at: string;
+  /** 表示範囲。旧呼び出し互換のため optional。 */
+  scope?: {
+    requested: DashboardCockpitScope;
+    applied: DashboardCockpitScope;
+    can_view_team: boolean;
+  };
   /** MedicationCycle.overall_status → 件数(cancelled を除く)。工程の今(9工程)の元データ */
   cycle_status_counts: Record<string, number>;
   audit_pending_count: number;

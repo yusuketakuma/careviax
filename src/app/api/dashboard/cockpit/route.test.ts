@@ -45,8 +45,8 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
-function createRequest() {
-  return new NextRequest('http://localhost/api/dashboard/cockpit', {
+function createRequest(search = '') {
+  return new NextRequest(`http://localhost/api/dashboard/cockpit${search}`, {
     headers: { 'x-org-id': 'org_1' },
   });
 }
@@ -226,6 +226,51 @@ describe('/api/dashboard/cockpit', () => {
 
     expect(json.data.carryover_count).toBe(2);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the personal assignment scope when an admin requests mine', async () => {
+    authContextMock.role = 'admin';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_admin_1', patient_id: 'patient_admin_1' }]);
+
+    const response = (await GET(createRequest('?scope=mine'), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'mine',
+      applied: 'mine',
+      can_view_team: true,
+    });
+    expect(careCaseFindManyMock).toHaveBeenCalled();
+
+    const cycleWhere = medicationCycleGroupByMock.mock.calls.at(-1)?.[0]?.where;
+    expect(cycleWhere?.case_id).toEqual({ in: ['case_admin_1'] });
+
+    const taskWhere = taskCountMock.mock.calls.at(-1)?.[0]?.where;
+    expect(taskWhere?.OR).toEqual([
+      { assigned_to: 'user_1' },
+      { related_entity_type: 'patient', related_entity_id: { in: ['patient_admin_1'] } },
+      { related_entity_type: 'case', related_entity_id: { in: ['case_admin_1'] } },
+    ]);
+  });
+
+  it('falls back to mine when a non-admin requests team scope', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+
+    const response = (await GET(createRequest('?scope=team'), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.scope).toEqual({
+      requested: 'team',
+      applied: 'mine',
+      can_view_team: false,
+    });
+    expect(careCaseFindManyMock).toHaveBeenCalled();
+
+    const auditWhere = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0]?.where;
+    expect(auditWhere?.cycle).toEqual({ case_id: { in: ['case_1'] } });
   });
 
   it('JST でも scheduled_date(@db.Date)は UTC レンジ、created_at(DateTime)はローカル深夜で比較する', async () => {

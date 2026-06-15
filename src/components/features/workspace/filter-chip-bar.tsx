@@ -11,6 +11,8 @@ export type FilterChipOption<T extends string> = {
   value: T;
   label: string;
   count?: number;
+  disabled?: boolean;
+  disabledReason?: string;
 };
 
 export function FilterChipBar<T extends string>({
@@ -40,11 +42,15 @@ export function FilterChipBar<T extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={isActive}
+            disabled={option.disabled}
+            title={option.disabledReason}
             className={cn(
               'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors sm:min-h-9',
-              isActive
-                ? 'border-primary/20 bg-primary/10 text-primary'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              option.disabled
+                ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/70'
+                : isActive
+                  ? 'border-primary/20 bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground',
             )}
           >
             {option.label}

@@ -19,22 +19,20 @@ export type DashboardAssignmentScope = {
   assignedToUserId?: string;
 };
 
-export async function resolveDashboardAssignmentScope(args: {
+function unrestrictedDashboardAssignmentScope(): DashboardAssignmentScope {
+  return {
+    caseIds: undefined,
+    patientIds: undefined,
+    caseIdsByPatient: undefined,
+    assignedToUserId: undefined,
+  };
+}
+
+async function resolvePersonalDashboardAssignmentScope(args: {
   db: DashboardAssignmentScopeDb | PrismaClient;
   orgId: string;
   accessContext: VisitScheduleAccessContext;
 }): Promise<DashboardAssignmentScope> {
-  if (canViewAllDashboardWork(args.accessContext)) {
-    return {
-      caseIds: undefined,
-      patientIds: undefined,
-      caseIdsByPatient: undefined,
-      assignedToUserId: undefined,
-    };
-  }
-
-  // フルアクセス対象ロール(薬剤師等)でも、ダッシュボードは個人の担当を既定表示する。
-  // アクセス bypass に依存しない buildPersonalCareCaseAssignmentWhere で厳密に絞る。
   const assignmentWhere = buildPersonalCareCaseAssignmentWhere(args.accessContext);
   const careCases = await args.db.careCase.findMany({
     where: {
@@ -56,6 +54,28 @@ export async function resolveDashboardAssignmentScope(args: {
     caseIdsByPatient,
     assignedToUserId: args.accessContext.userId,
   };
+}
+
+export async function resolveDashboardAssignmentScope(args: {
+  db: DashboardAssignmentScopeDb | PrismaClient;
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+  scope?: 'role_default' | 'mine' | 'team';
+}): Promise<DashboardAssignmentScope> {
+  const scope = args.scope ?? 'role_default';
+  if (scope === 'team') {
+    return canViewAllDashboardWork(args.accessContext)
+      ? unrestrictedDashboardAssignmentScope()
+      : resolvePersonalDashboardAssignmentScope(args);
+  }
+
+  if (scope === 'role_default' && canViewAllDashboardWork(args.accessContext)) {
+    return unrestrictedDashboardAssignmentScope();
+  }
+
+  // フルアクセス対象ロール(薬剤師等)でも、ダッシュボードは個人の担当を既定表示する。
+  // アクセス bypass に依存しない buildPersonalCareCaseAssignmentWhere で厳密に絞る。
+  return resolvePersonalDashboardAssignmentScope(args);
 }
 
 export function buildDashboardTaskAssignmentWhere(args: {

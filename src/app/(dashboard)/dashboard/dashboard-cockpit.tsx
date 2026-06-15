@@ -27,6 +27,7 @@ import type {
   CockpitAuditQueueItem,
   CockpitTeamMember,
   CockpitVisit,
+  DashboardCockpitScope,
   DashboardCockpitResponse,
 } from '@/types/dashboard-cockpit';
 import {
@@ -53,8 +54,12 @@ import {
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
-export async function fetchDashboardCockpit(orgId: string): Promise<DashboardCockpitResponse> {
-  const res = await fetch('/api/dashboard/cockpit', {
+export async function fetchDashboardCockpit(
+  orgId: string,
+  scope: DashboardCockpitScope = 'mine',
+): Promise<DashboardCockpitResponse> {
+  const params = new URLSearchParams({ scope });
+  const res = await fetch(`/api/dashboard/cockpit?${params.toString()}`, {
     headers: { 'x-org-id': orgId },
   });
   if (!res.ok) throw new Error('ダッシュボード集計の取得に失敗しました');
@@ -593,15 +598,12 @@ function CockpitSkeleton() {
 
 export function DashboardCockpit() {
   const orgId = useOrgId();
-  // 「私の今日 / チーム全体」トグル: /api/dashboard 系の担当スコープは現状サーバー側の
-  // assignmentScope(ロール起点)で固定されており、スコープ切替のクエリパラメータが未実装。
-  // そのため第一版はクライアント状態のみの UI トグル(表示ラベル切替)とする。
   const [viewScope, setViewScope] = useState<DashboardViewScope>('mine');
   const isBootstrappingOrg = !orgId;
 
   const cockpitQuery = useRealtimeQuery({
-    queryKey: ['dashboard', 'cockpit', orgId],
-    queryFn: () => fetchDashboardCockpit(orgId),
+    queryKey: ['dashboard', 'cockpit', orgId, viewScope],
+    queryFn: () => fetchDashboardCockpit(orgId, viewScope),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
@@ -609,8 +611,10 @@ export function DashboardCockpit() {
 
   const now = new Date();
   const data = cockpitQuery.data ?? null;
+  const appliedScope = data?.scope?.applied ?? viewScope;
+  const canViewTeam = data?.scope?.can_view_team ?? true;
   const scopeLabel =
-    VIEW_SCOPE_OPTIONS.find((option) => option.value === viewScope)?.label ?? '私の今日';
+    VIEW_SCOPE_OPTIONS.find((option) => option.value === appliedScope)?.label ?? '私の今日';
   const dateLabel = `${format(now, 'M/d(EEE) HH:mm', { locale: ja })} — ${scopeLabel}`;
 
   const todayVisits = data?.today_visits ?? [];
@@ -656,12 +660,25 @@ export function DashboardCockpit() {
           </p>
         </div>
         <FilterChipBar
-          options={VIEW_SCOPE_OPTIONS}
-          value={viewScope}
+          options={VIEW_SCOPE_OPTIONS.map((option) =>
+            option.value === 'team' && !canViewTeam
+              ? {
+                  ...option,
+                  disabled: true,
+                  disabledReason: 'チーム全体は管理者だけが表示できます',
+                }
+              : option,
+          )}
+          value={appliedScope}
           onChange={setViewScope}
           ariaLabel="表示範囲の切替"
         />
       </div>
+      {data?.scope?.applied === 'mine' && !data.scope.can_view_team ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          この画面は担当患者・担当ケースの範囲で集計しています。チーム全体の集計は管理者だけが表示できます。
+        </p>
+      ) : null}
 
       <div className="mt-4">
         {isBootstrappingOrg || cockpitQuery.isLoading ? (

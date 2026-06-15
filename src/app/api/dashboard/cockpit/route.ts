@@ -8,11 +8,13 @@ import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
   CockpitVisit,
+  DashboardCockpitScope,
   DashboardCockpitResponse,
 } from '@/types/dashboard-cockpit';
 import { buildTeamCapacity } from './team-capacity';
@@ -26,6 +28,12 @@ import { buildTeamCapacity } from './team-capacity';
 const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
+
+function parseDashboardScope(req: Request): DashboardCockpitScope | null {
+  const scope = new URL(req.url).searchParams.get('scope');
+  if (scope === 'mine' || scope === 'team') return scope;
+  return null;
+}
 
 const TASK_PRIORITY_WEIGHT: Record<string, number> = {
   emergency: 0,
@@ -85,6 +93,18 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
 export const GET = withAuthContext(
   async (req, ctx) => {
     const now = new Date();
+    const requestedScope = parseDashboardScope(req);
+    const canViewTeam = canViewAllDashboardWork(ctx);
+    const appliedScope: DashboardCockpitScope =
+      requestedScope === 'team'
+        ? canViewTeam
+          ? 'team'
+          : 'mine'
+        : requestedScope === 'mine'
+          ? 'mine'
+          : canViewTeam
+            ? 'team'
+            : 'mine';
     // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
     const todayRange = todayUtcRange(now);
     // created_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜
@@ -95,6 +115,7 @@ export const GET = withAuthContext(
       db: prisma,
       orgId: ctx.orgId,
       accessContext: ctx,
+      scope: requestedScope ? appliedScope : 'role_default',
     });
     const cycleCaseScope = assignmentScope.caseIds
       ? { case_id: { in: assignmentScope.caseIds } }
@@ -286,6 +307,11 @@ export const GET = withAuthContext(
 
     const responseData: DashboardCockpitResponse = {
       generated_at: now.toISOString(),
+      scope: {
+        requested: requestedScope ?? appliedScope,
+        applied: appliedScope,
+        can_view_team: canViewTeam,
+      },
       cycle_status_counts: cycleStatusCounts,
       audit_pending_count: auditQueueAll.length,
       narcotic_audit_count: auditQueueAll.filter((item) => item.has_narcotic).length,

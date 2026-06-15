@@ -171,9 +171,36 @@ describe('DashboardCockpit', () => {
 
     expect(screen.getByRole('heading', { name: 'ダッシュボード' })).toBeTruthy();
     expect(screen.getByText(/6\/12\(金\) 09:42 — 私の今日/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '私の今日' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'チーム全体' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'チーム全体' }));
-    expect(screen.getByText(/— チーム全体/)).toBeTruthy();
+  it('disables the team scope when the API applies mine-only dashboard access', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        ...buildFixture(),
+        scope: { requested: 'team', applied: 'mine', can_view_team: false },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(
+      screen.getByText(
+        'この画面は担当患者・担当ケースの範囲で集計しています。チーム全体の集計は管理者だけが表示できます。',
+      ),
+    ).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'チーム全体' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('renders the condition banner with bold counts and deadline', () => {
