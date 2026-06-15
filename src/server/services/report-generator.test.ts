@@ -12,10 +12,11 @@ const {
   careCaseFindFirstMock,
   prescriptionLineFindManyMock,
   careReportFindManyMock,
-  careReportCreateMock,
   careReportCreateManyMock,
   buildPhysicianReportMock,
   buildCareManagerReportMock,
+  buildVisitingNurseReportMock,
+  buildFacilityReportMock,
   withOrgContextMock,
   getHomeVisitIntakeMock,
 } = vi.hoisted(() => ({
@@ -30,10 +31,11 @@ const {
   careCaseFindFirstMock: vi.fn(),
   prescriptionLineFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
-  careReportCreateMock: vi.fn(),
   careReportCreateManyMock: vi.fn(),
   buildPhysicianReportMock: vi.fn(),
   buildCareManagerReportMock: vi.fn(),
+  buildVisitingNurseReportMock: vi.fn(),
+  buildFacilityReportMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   getHomeVisitIntakeMock: vi.fn(),
 }));
@@ -61,6 +63,8 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('./report-templates', () => ({
   buildPhysicianReport: buildPhysicianReportMock,
   buildCareManagerReport: buildCareManagerReportMock,
+  buildVisitingNurseReport: buildVisitingNurseReportMock,
+  buildFacilityReport: buildFacilityReportMock,
 }));
 
 vi.mock('@/lib/patient/home-visit-intake', () => ({
@@ -377,7 +381,7 @@ describe('generateReportsFromVisit', () => {
         data: [
           expect.objectContaining({
             content: expect.objectContaining({
-              billing_context: {
+              billing_context: expect.objectContaining({
                 payer_basis: 'medical',
                 applied_rule_keys: [],
                 recommended_rule_keys: [],
@@ -387,12 +391,143 @@ describe('generateReportsFromVisit', () => {
                 site_config_revision_code: null,
                 jahis_supplemental_record_count: null,
                 jahis_residual_confirmation_count: null,
-              },
+              }),
             }),
           }),
         ],
       }),
     );
+  });
+
+  it('persists source provenance for the visit, prescription lines, and billing evidence', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date('2026-03-10T01:00:00.000Z'),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-1',
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      id: 'billing-1',
+      cycle_id: 'cycle-1',
+      patient_id: 'p-1',
+      claimable: false,
+      exclusion_reason: 'report_delivery_incomplete',
+      report_delivery_ref: null,
+      updated_at: new Date('2026-03-10T02:00:00.000Z'),
+      payer_basis: 'medical',
+      applied_rule_keys: ['home_visit_single'],
+      recommended_rule_keys: ['home_visit_single'],
+      validation_notes: '送付未完了',
+      calculation_context: {
+        effective_revision_code: '2026',
+      },
+    });
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line-1',
+        intake_id: 'intake-1',
+        drug_name: '薬A',
+        drug_code: '123456789',
+        dose: '1錠',
+        frequency: '朝食後',
+        days: 14,
+        quantity: 14,
+        unit: '錠',
+        route: 'internal',
+        dispensing_method: 'standard',
+        intake: {
+          prescribed_date: new Date('2026-03-09T00:00:00.000Z'),
+        },
+      },
+    ]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
+          },
+        }),
+    );
+
+    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(careReportCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            content: expect.objectContaining({
+              billing_context: expect.objectContaining({
+                billing_evidence_id: 'billing-1',
+                payer_basis: 'medical',
+                claimable: false,
+                exclusion_reason: 'report_delivery_incomplete',
+                updated_at: '2026-03-10T02:00:00.000Z',
+              }),
+              source_provenance: expect.objectContaining({
+                schema_version: 1,
+                visit_record_id: 'vr-1',
+                schedule_id: 'vs-1',
+                patient_id: 'p-1',
+                case_id: 'case-1',
+                medication_cycle_id: 'cycle-1',
+                prescription_intake_ids: ['intake-1'],
+                prescription_line_ids: ['line-1'],
+                billing_evidence_id: 'billing-1',
+                billing_evidence_updated_at: '2026-03-10T02:00:00.000Z',
+                patient_insurance_basis: {
+                  payer_basis: 'medical',
+                  patient_id: 'p-1',
+                  cycle_id: 'cycle-1',
+                  claimable: false,
+                  exclusion_reason: 'report_delivery_incomplete',
+                },
+                generated_at: expect.any(String),
+              }),
+            }),
+          }),
+        ],
+      }),
+    );
+    expect(
+      careReportCreateManyMock.mock.calls[0][0].data[0].content.source_provenance,
+    ).toMatchObject({
+      prescription_lines: [
+        {
+          prescription_line_id: 'line-1',
+          prescription_intake_id: 'intake-1',
+          prescribed_date: '2026-03-09T00:00:00.000Z',
+          drug_code: '123456789',
+          drug_name: '薬A',
+          quantity: 14,
+          unit: '錠',
+        },
+      ],
+    });
   });
 
   it('drops non-object template content while keeping generated report metadata', async () => {
@@ -446,6 +581,13 @@ describe('generateReportsFromVisit', () => {
           expect.objectContaining({
             content: {
               billing_context: null,
+              source_provenance: expect.objectContaining({
+                visit_record_id: 'vr-1',
+                schedule_id: 'vs-1',
+                patient_id: 'p-1',
+                case_id: 'case-1',
+                prescription_line_ids: [],
+              }),
             },
           }),
         ],

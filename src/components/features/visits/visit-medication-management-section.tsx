@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { ClipboardCheck, FileText, Stethoscope, UsersRound } from 'lucide-react';
+import {
+  ClipboardCheck,
+  ClipboardList,
+  History,
+  MessageSquareText,
+  Pill,
+  Stethoscope,
+  UsersRound,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -15,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
@@ -142,29 +151,123 @@ function prescriptionChangeSummary(changes: VisitPrescriptionChanges | null | un
   return parts.length > 0 ? parts.join(' / ') : '前回から大きな変更なし';
 }
 
-function VisitMedicationCarryForwardBlock({
+function SourcePanel({ children, empty }: { children?: ReactNode; empty?: string }) {
+  return children ? (
+    <div className="rounded-lg border border-border/70 bg-background p-3">{children}</div>
+  ) : (
+    <div className="rounded-lg border border-dashed border-border/70 bg-background px-3 py-5 text-sm text-muted-foreground">
+      {empty ?? 'この情報ソースには表示できる内容がありません。'}
+    </div>
+  );
+}
+
+function SourceList({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <ul className="space-y-1.5 text-sm leading-6 text-foreground">
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`} className="flex gap-2">
+          <span
+            className="mt-2 size-1.5 shrink-0 rounded-full bg-foreground/50"
+            aria-hidden="true"
+          />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SourceSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function buildMedicationChangeLines(
+  prescriptionChanges: VisitPrescriptionChanges | null | undefined,
+) {
+  const changedItems = prescriptionChanges?.changed.flatMap((item) =>
+    item.reasons.map((reason) => `${item.drug_name}: ${reason}`),
+  );
+
+  return [
+    ...(prescriptionChanges?.added ?? []).map((name) => `追加: ${name}`),
+    ...(changedItems ?? []),
+    ...(prescriptionChanges?.removed ?? []).map((name) => `中止: ${name}`),
+  ];
+}
+
+function buildSoapHandoffLines(structuredSoap: StructuredSoap) {
+  return [
+    structuredSoap.plan.physician_report_items
+      ? `医師へ: ${structuredSoap.plan.physician_report_items}`
+      : null,
+    structuredSoap.plan.care_manager_report_items
+      ? `ケアマネへ: ${structuredSoap.plan.care_manager_report_items}`
+      : null,
+    structuredSoap.plan.care_service_coordination
+      ? `介護サービスへ: ${structuredSoap.plan.care_service_coordination}`
+      : null,
+  ].filter((value): value is string => value != null && value.trim().length > 0);
+}
+
+function VisitInformationSourceTabs({
+  structuredSoap,
   medicationPeriod,
   prescriptionChanges,
   previousVisitSummary,
+  conferenceContext,
 }: {
+  structuredSoap: StructuredSoap;
   medicationPeriod?: VisitMedicationPeriod | null;
   prescriptionChanges?: VisitPrescriptionChanges | null;
   previousVisitSummary?: string | null;
+  conferenceContext: VisitConferenceContext[];
 }) {
   const startDate =
     medicationPeriod?.schedule_start_date ?? medicationPeriod?.prescription_start_date ?? null;
   const endDate =
     medicationPeriod?.schedule_end_date ?? medicationPeriod?.prescription_end_date ?? null;
-  const changedItems = prescriptionChanges?.changed.flatMap((item) =>
-    item.reasons.map((reason) => `${item.drug_name}: ${reason}`),
+  const changeLines = buildMedicationChangeLines(prescriptionChanges);
+  const handoffLines = buildSoapHandoffLines(structuredSoap);
+  const conferenceActionLines = conferenceContext.flatMap((note) =>
+    note.action_items.map((item) => `${conferenceLabel(note.note_type)}: ${item}`),
   );
-  const changeLines = [
-    ...(prescriptionChanges?.added ?? []).map((name) => `追加: ${name}`),
-    ...(changedItems ?? []),
-    ...(prescriptionChanges?.removed ?? []).map((name) => `中止: ${name}`),
-  ];
+  const conferenceHighlightLines = conferenceContext.flatMap((note) =>
+    note.highlights.map((highlight) => `${conferenceLabel(note.note_type)}: ${highlight}`),
+  );
 
-  if (!medicationPeriod && !prescriptionChanges && !previousVisitSummary) return null;
+  const tabs = [
+    {
+      value: 'prescription',
+      label: '処方内容',
+      icon: Pill,
+      count: changeLines.length,
+    },
+    {
+      value: 'previous',
+      label: '前回記録',
+      icon: History,
+      count: previousVisitSummary ? 1 : 0,
+    },
+    {
+      value: 'team',
+      label: '他職種',
+      icon: UsersRound,
+      count: conferenceContext.length,
+    },
+    {
+      value: 'handoff',
+      label: '申し送り',
+      icon: ClipboardList,
+      count: handoffLines.length + conferenceActionLines.length,
+    },
+  ] as const;
 
   return (
     <section className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
@@ -172,115 +275,138 @@ function VisitMedicationCarryForwardBlock({
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-cyan-950">今日の聞き取りブリーフ</h3>
           <p className="text-xs leading-5 text-cyan-900/80">
-            患者へ向き合う前に、前回から変わった点と今日拾うべき話題だけを確認します。
+            情報ソースを切り替えて、患者へ向き合う前に今日拾う話題だけを確認します。
           </p>
         </div>
         <Badge variant="outline" className="w-fit border-cyan-300 bg-white text-cyan-900">
-          現地確認
-        </Badge>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-3">
-        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-          <p className="text-xs font-medium text-muted-foreground">服用期間</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {formatDateLabel(startDate)} - {formatDateLabel(endDate)}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            訪問予定の服用期間を優先し、未設定時は最新処方の開始・終了日を表示します。
-          </p>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-          <p className="text-xs font-medium text-muted-foreground">薬剤変更内容</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {prescriptionChangeSummary(prescriptionChanges)}
-          </p>
-          {changeLines.length > 0 ? (
-            <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
-              {changeLines.slice(0, 4).map((line, index) => (
-                <li key={`${line}-${index}`}>・{line}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-          <p className="text-xs font-medium text-muted-foreground">前回までの要約</p>
-          <p className="mt-1 text-sm leading-6 text-foreground">
-            {previousVisitSummary ?? '前回記録なし'}
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ConferenceContextBlock({ notes }: { notes: VisitConferenceContext[] }) {
-  if (notes.length === 0) return null;
-
-  return (
-    <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-sky-950">
-            <FileText className="size-4 text-sky-700" aria-hidden="true" />
-            会議からの引き継ぎ
-          </h3>
-          <p className="text-xs leading-5 text-sky-900/80">
-            退院前カンファ・担当者会議で決まった内容を、この訪問の確認事項として扱います。
-          </p>
-        </div>
-        <Badge variant="outline" className="w-fit border-sky-300 bg-white text-sky-900">
-          {notes.length}件
+          情報ソース別
         </Badge>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        {notes.slice(0, 2).map((note) => (
-          <article key={note.id} className="rounded-lg border border-sky-200 bg-white p-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="space-y-1">
-                <Badge variant="outline" className="border-sky-200 text-sky-900">
-                  {conferenceLabel(note.note_type)}
-                </Badge>
-                <h4 className="text-sm font-semibold text-foreground">{note.title}</h4>
-                <p className="text-xs text-muted-foreground">
-                  {formatConferenceDate(note.conference_date)}
-                  {note.participants.length > 0
-                    ? ` / ${note.participants
-                        .slice(0, 3)
-                        .map((participant) => participant.name ?? participant.role ?? '参加者')
-                        .join('、')}`
-                    : ''}
-                </p>
-              </div>
-              <Link
-                href={`/conferences?note_type=${note.note_type}&focus=notes`}
-                className="inline-flex min-h-8 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted"
+      <Tabs defaultValue="prescription" className="gap-3">
+        <TabsList
+          variant="line"
+          className="flex min-h-11 w-full justify-start gap-2 overflow-x-auto border-b border-cyan-200 p-0"
+          aria-label="訪問時に確認する情報ソース"
+        >
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="min-w-fit flex-none gap-2 rounded-none px-3 py-2 text-xs"
               >
-                会議一覧
-              </Link>
+                <Icon className="size-4" aria-hidden="true" />
+                {tab.label}
+                <Badge variant="outline" className="ml-0.5 h-5 rounded-full px-1.5 text-[10px]">
+                  {tab.count}
+                </Badge>
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        <TabsContent value="prescription" className="space-y-3">
+          <SourcePanel>
+            <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+              <SourceSection label="服用期間">
+                <p className="text-base font-semibold text-foreground">
+                  {formatDateLabel(startDate)} - {formatDateLabel(endDate)}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  訪問予定の服用期間を優先し、未設定時は最新処方の開始・終了日を表示します。
+                </p>
+              </SourceSection>
+              <SourceSection label="薬剤変更内容">
+                <p className="text-sm font-semibold text-foreground">
+                  {prescriptionChangeSummary(prescriptionChanges)}
+                </p>
+                <div className="mt-2">
+                  <SourceList items={changeLines.slice(0, 6)} />
+                </div>
+              </SourceSection>
             </div>
+          </SourcePanel>
+        </TabsContent>
 
-            {note.highlights.length > 0 ? (
-              <ul className="mt-3 space-y-1.5 text-xs leading-5 text-sky-950">
-                {note.highlights.slice(0, 4).map((highlight, index) => (
-                  <li key={`${note.id}-highlight-${index}`}>・{highlight}</li>
-                ))}
-              </ul>
+        <TabsContent value="previous" className="space-y-3">
+          <SourcePanel empty="前回記録の要約はまだありません。">
+            {previousVisitSummary ? (
+              <SourceSection label="前回までの要約">
+                <p className="text-sm leading-6 text-foreground">{previousVisitSummary}</p>
+              </SourceSection>
             ) : null}
+          </SourcePanel>
+        </TabsContent>
 
-            {note.action_items.length > 0 ? (
-              <div className="mt-3 rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-2">
-                <p className="text-[11px] font-semibold text-sky-900">今日拾う合意事項</p>
-                <ul className="mt-1 space-y-1 text-xs leading-5 text-sky-950">
-                  {note.action_items.slice(0, 3).map((item, index) => (
-                    <li key={`${note.id}-action-${index}`}>・{item}</li>
-                  ))}
-                </ul>
+        <TabsContent value="team" className="space-y-3">
+          <SourcePanel empty="会議・他職種共有からの表示対象はありません。">
+            {conferenceContext.length > 0 ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {conferenceContext.slice(0, 2).map((note) => (
+                  <article
+                    key={note.id}
+                    className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/60 p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <Badge variant="outline" className="border-sky-200 bg-white text-sky-900">
+                          {conferenceLabel(note.note_type)}
+                        </Badge>
+                        <h4 className="text-sm font-semibold text-foreground">{note.title}</h4>
+                        <p className="text-xs text-muted-foreground">
+                          {formatConferenceDate(note.conference_date)}
+                          {note.participants.length > 0
+                            ? ` / ${note.participants
+                                .slice(0, 3)
+                                .map(
+                                  (participant) => participant.name ?? participant.role ?? '参加者',
+                                )
+                                .join('、')}`
+                            : ''}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/conferences?note_type=${note.note_type}&focus=notes`}
+                        className="inline-flex min-h-8 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted"
+                      >
+                        会議一覧
+                      </Link>
+                    </div>
+                    <SourceList items={note.highlights.slice(0, 4)} />
+                  </article>
+                ))}
               </div>
             ) : null}
-          </article>
-        ))}
-      </div>
+          </SourcePanel>
+        </TabsContent>
+
+        <TabsContent value="handoff" className="space-y-3">
+          <SourcePanel empty="申し送り事項はまだありません。">
+            {handoffLines.length > 0 || conferenceActionLines.length > 0 ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <SourceSection label="記録から送る事項">
+                  <SourceList items={handoffLines} />
+                </SourceSection>
+                <SourceSection label="会議・他職種から今日拾うこと">
+                  <SourceList items={conferenceActionLines.slice(0, 6)} />
+                </SourceSection>
+              </div>
+            ) : null}
+          </SourcePanel>
+        </TabsContent>
+      </Tabs>
+
+      {conferenceHighlightLines.length > 0 ? (
+        <div className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-white/70 px-3 py-2 text-xs leading-5 text-cyan-950">
+          <MessageSquareText
+            className="mt-0.5 size-3.5 shrink-0 text-cyan-800"
+            aria-hidden="true"
+          />
+          <span>{conferenceHighlightLines[0]}</span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -528,14 +654,14 @@ export function VisitMedicationManagementSection({
             </div>
           )}
         </div>
-        <VisitMedicationCarryForwardBlock
+        <VisitInformationSourceTabs
+          structuredSoap={structuredSoap}
           medicationPeriod={medicationPeriod}
           prescriptionChanges={prescriptionChanges}
           previousVisitSummary={previousVisitSummary}
+          conferenceContext={conferenceContext}
         />
       </div>
-
-      <ConferenceContextBlock notes={conferenceContext} />
 
       <div className="space-y-5 rounded-xl border border-border/70 bg-card p-4">
         <EvidenceGroup

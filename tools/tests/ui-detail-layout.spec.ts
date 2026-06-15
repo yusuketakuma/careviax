@@ -584,11 +584,19 @@ test.describe('detail page layout', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: /主治医|報告書/ }).first()).toBeVisible();
-    const medicationManagementHeading = main.getByRole('heading', { name: '服薬管理状況' });
-    await medicationManagementHeading.scrollIntoViewIfNeeded();
-    await expect(medicationManagementHeading).toBeVisible();
-    await expect(main.getByRole('heading', { name: '残薬状況' })).toBeVisible();
-    await expect(main.getByText('退院後の服薬支援と残薬確認を継続しています。')).toBeVisible();
+    const medicationManagementTitle = main
+      .locator('[data-slot="card-title"]')
+      .filter({ hasText: '服薬管理状況' });
+    await medicationManagementTitle.scrollIntoViewIfNeeded();
+    await expect(medicationManagementTitle).toBeVisible();
+    await expect(
+      main.locator('[data-slot="card-title"]').filter({ hasText: '残薬状況' }),
+    ).toBeVisible();
+    await expect(
+      main
+        .getByRole('definition')
+        .filter({ hasText: '退院後の服薬支援と残薬確認を継続しています。' }),
+    ).toBeVisible();
     await expect(main.getByText('訪問後WF E2E 主治医報告')).toHaveCount(0);
 
     const metrics = await page.evaluate(() => ({

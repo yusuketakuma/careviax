@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -57,10 +57,21 @@ describe('VisitMedicationManagementSection', () => {
     );
 
     expect(screen.getByText('今日の聞き取りブリーフ')).toBeTruthy();
-    expect(screen.getByText('前回はふらつきと昼分の飲み忘れを確認。')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /処方内容/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /前回記録/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /他職種/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /申し送り/ })).toBeTruthy();
     expect(screen.getByText('追加 1 / 変更 1')).toBeTruthy();
     expect(screen.getByText(/アムロジピン錠: 夕食後へ変更/)).toBeTruthy();
-    expect(screen.getByText('会議からの引き継ぎ')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: /前回記録/ }));
+    expect(screen.getByText('前回はふらつきと昼分の飲み忘れを確認。')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: /他職種/ }));
+    expect(screen.getAllByText('担当者会議').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/夜間の転倒リスクを家族が心配/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('tab', { name: /申し送り/ }));
     expect(screen.getByText(/眠気と便秘を本人に確認/)).toBeTruthy();
   });
 });
