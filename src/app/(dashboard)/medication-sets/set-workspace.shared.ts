@@ -1,7 +1,7 @@
 /**
  * new_09_set(訪問単位・施設グルーピングのセット準備ワークスペース)の共有語彙。
  * /api/medication-sets/workspace のレスポンス型と、
- * 事務先行セット工程の状態(完了/数量確認中/進行中/事務完了後)の表示マッピング。
+ * 事務先行セット工程の状態(完了/監査待ち/部分承認/差戻し/進行中/事務完了後)の表示マッピング。
  * docs/design-gap-analysis-new.md 09_set セクション準拠。
  */
 
@@ -85,7 +85,7 @@ export type SetRowStatusPresentation = {
   label: string;
   /** 状態バッジ/テキストの配色(緑=完了 / 黄=確認中 / 青=進行中 / 灰=待機) */
   badgeClassName: string;
-  /** 注意行の背景(数量確認中=薄アンバー) */
+  /** 注意行の背景(監査待ち・再作業=薄い状態色) */
   rowClassName?: string;
 };
 

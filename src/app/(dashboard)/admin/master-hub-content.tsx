@@ -24,10 +24,8 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
-export async function fetchMasterHub(orgId: string): Promise<MasterHubResponse> {
-  const res = await fetch('/api/admin/master-hub', {
-    headers: orgId ? { 'x-org-id': orgId } : undefined,
-  });
+export async function fetchMasterHub(): Promise<MasterHubResponse> {
+  const res = await fetch('/api/admin/master-hub');
   if (!res.ok) throw new Error('マスター鮮度集計の取得に失敗しました');
   const json = await res.json();
   return json.data;
@@ -152,7 +150,7 @@ export function MasterHubContent() {
 
   const hubQuery = useQuery({
     queryKey: ['admin', 'master-hub', orgId || 'session-org'],
-    queryFn: () => fetchMasterHub(orgId),
+    queryFn: fetchMasterHub,
     staleTime: 30_000,
   });
 
