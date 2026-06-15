@@ -2536,11 +2536,7 @@ export function ScheduleProposalsContent({
       >
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
           <SheetHeader>
-            <SheetTitle>
-              {detailTargetLabel
-                ? `${detailTargetLabel} の訪問日時確定フロー`
-                : '訪問日時の確定フロー'}
-            </SheetTitle>
+            <SheetTitle>訪問日時確定フロー</SheetTitle>
             <SheetDescription>
               {detail
                 ? `${PROPOSAL_STATUS_LABELS[detail.proposal_status]} / ${CONTACT_STATUS_LABELS[detail.patient_contact_status]}。候補比較、当日ルート、患者連絡、再提案までここで完結させます。`
