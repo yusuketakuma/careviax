@@ -45,6 +45,7 @@ const {
   getFacilityVisitDefaultsMock,
   patientFieldRevisionCreateMock,
   patientFieldRevisionUpdateManyMock,
+  taskUpsertMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -89,6 +90,7 @@ const {
   getFacilityVisitDefaultsMock: vi.fn(),
   patientFieldRevisionCreateMock: vi.fn(),
   patientFieldRevisionUpdateManyMock: vi.fn(),
+  taskUpsertMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -241,6 +243,7 @@ describe('/api/patients/[id]', () => {
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'schedule_pref_1' });
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
     patientSchedulePreferenceFindUniqueMock.mockResolvedValue(null);
+    taskUpsertMock.mockResolvedValue({ id: 'task_1' });
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
@@ -385,6 +388,9 @@ describe('/api/patients/[id]', () => {
         patientFieldRevision: {
           updateMany: patientFieldRevisionUpdateManyMock,
           create: patientFieldRevisionCreateMock,
+        },
+        task: {
+          upsert: taskUpsertMock,
         },
       }),
     );
@@ -993,6 +999,19 @@ describe('/api/patients/[id]', () => {
       old_value: 'care_2',
       new_value: 'care_4',
     });
+
+    // 介護度変更は確認タスクを自動生成する(冪等 dedupe_key)
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id_dedupe_key: {
+            org_id: 'corg1234567890123456789012',
+            dedupe_key: 'patient-care-level-review:patient_1',
+          },
+        },
+        create: expect.objectContaining({ task_type: 'patient_change_review' }),
+      })
+    );
   });
 
   it('syncs facility acceptance window into patient schedule preferences on PATCH', async () => {

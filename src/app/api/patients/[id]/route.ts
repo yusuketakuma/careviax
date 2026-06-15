@@ -31,8 +31,10 @@ import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import {
   writePatientFieldRevisions,
   sortJsonArrayStable,
+  isJsonEqual,
   type PatientFieldRevisionEntry,
 } from '@/server/services/patient-field-revision';
+import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
@@ -2569,6 +2571,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             validFrom: revisionDate,
             entries: revisionEntries,
           });
+
+          // 重要な変更は確認タスクを自動生成する(dedupe_key で冪等)。
+          // 実変更のみ対象とするため writePatientFieldRevisions と同じ no-op フィルタを再適用する。
+          const changedFieldKeys = new Set(
+            revisionEntries
+              .filter((entry) => !isJsonEqual(entry.old_value, entry.new_value))
+              .map((entry) => entry.field_key)
+          );
+          if (changedFieldKeys.has('care_level')) {
+            await upsertOperationalTask(tx, {
+              orgId: ctx.orgId,
+              taskType: 'patient_change_review',
+              title: '介護度の変更: 保険・算定区分を確認',
+              priority: 'normal',
+              dedupeKey: `patient-care-level-review:${id}`,
+              relatedEntityType: 'patient',
+              relatedEntityId: id,
+            });
+          }
+          if (changedFieldKeys.has('facility_id')) {
+            await upsertOperationalTask(tx, {
+              orgId: ctx.orgId,
+              taskType: 'patient_change_review',
+              title: '居住・施設の変更: 単一建物人数を確認',
+              priority: 'normal',
+              dedupeKey: `patient-residence-review:${id}`,
+              relatedEntityType: 'patient',
+              relatedEntityId: id,
+            });
+          }
         }
 
         return updated;
