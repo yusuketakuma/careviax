@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { MasterEditorView } from '../master-editor-view';
 import { DrugMasterContent } from './drug-master-content';
 
 setupDomTestEnv();
@@ -304,6 +305,24 @@ describe('DrugMasterContent', () => {
     expect(screen.getByRole('button', { name: '鮮度チェック' })).toBeTruthy();
     expect(screen.getByLabelText('取込履歴ソース')).toBeTruthy();
     expect(screen.getByLabelText('取込履歴状態')).toBeTruthy();
+  });
+
+  it('renders the p0_39 three-column master editor', () => {
+    render(
+      <MasterEditorView
+        activeCategory="薬剤"
+        listTitle="薬剤マスター一覧"
+        itemPrefix="薬剤マスター"
+        testId="drug-master-editor"
+      />,
+    );
+
+    expect(screen.getByTestId('drug-master-editor')).toBeTruthy();
+    expect(screen.getByText('カテゴリ')).toBeTruthy();
+    expect(screen.getByText('薬剤マスター一覧')).toBeTruthy();
+    expect(screen.getByText('詳細を編集')).toBeTruthy();
+    expect(screen.getByText('薬剤マスター 8')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '保存する' })).toBeTruthy();
   });
 
   it('shows medication-safety filters for high-risk and LASA review', () => {

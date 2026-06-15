@@ -106,9 +106,7 @@ export function StaffKpiPanel() {
         header: '平均訪問時間',
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">
-            {row.original.avg_visit_minutes != null
-              ? `${row.original.avg_visit_minutes}分`
-              : '—'}
+            {row.original.avg_visit_minutes != null ? `${row.original.avg_visit_minutes}分` : '—'}
           </span>
         ),
       },
@@ -145,11 +143,11 @@ export function StaffKpiPanel() {
         ),
       },
     ],
-    []
+    [],
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-ready={!isLoading} data-testid="staff-kpi-panel">
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="staff-kpi-month">対象月</Label>

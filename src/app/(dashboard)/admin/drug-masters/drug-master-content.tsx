@@ -787,7 +787,9 @@ type DrugMasterContentProps = {
   variant?: 'master' | 'formulary';
 };
 
-export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps) {
+function DrugMasterOperationalContent({
+  variant = 'master',
+}: Pick<DrugMasterContentProps, 'variant'>) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
@@ -3203,7 +3205,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         title="取込履歴"
         description="取込ソースと実行状態を絞り込み、直近のマスター更新結果を確認します。"
       >
-        <div className="space-y-3">
+        <div
+          className="space-y-3"
+          data-ready={!isLoadingLogs}
+          data-testid="drug-master-import-history"
+        >
           <FilterSummaryBar
             items={[
               { label: '表示:', value: `${importLogs.length.toLocaleString()}件` },
@@ -4122,4 +4128,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       </Sheet>
     </PageScaffold>
   );
+}
+
+export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps) {
+  return <DrugMasterOperationalContent variant={variant} />;
 }
