@@ -207,6 +207,7 @@ model VisitRecord {
   structured_soap            Json? // StructuredSoap (構造化SOAP、薬学的評価シート7項目含む)
   visit_geo_log              Json? // optional geolocation log for visit start/end
   attachments                Json? // S3 URLs
+  patient_state_snapshot     Json? // 訪問時点の患者詳細スナップショット(過去訪問の不変参照 / 前回訪問差分の基準点)
   version                    Int           @default(1)
   created_at                 DateTime      @default(now())
   updated_at                 DateTime      @updatedAt

@@ -574,6 +574,9 @@ describe('/api/visit-records POST', () => {
         patient: {
           findFirst: patientFindFirstMock,
         },
+        patientInsurance: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
         visitRecord: {
           create: visitRecordCreateMock,
           findFirst: visitRecordFindFirstMock,
@@ -786,6 +789,11 @@ describe('/api/visit-records POST', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           soap_plan: expect.stringContaining('持参物一部未確定の警告確認'),
+          // 訪問時点の患者状態スナップショットが create に凍結配線されている
+          patient_state_snapshot: expect.objectContaining({
+            source: 'visit_record',
+            patient: expect.objectContaining({ name: '患者A' }),
+          }),
         }),
       }),
     );

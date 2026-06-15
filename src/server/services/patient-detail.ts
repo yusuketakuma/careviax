@@ -7,6 +7,7 @@ import {
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
@@ -140,6 +141,69 @@ async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
       },
     },
   });
+}
+
+/**
+ * 訪問記録作成時点の患者詳細スナップショット。findPatientOverviewBase の生の現在値読み出しを
+ * 再利用し(二重実装回避)、訪問時の患者状態(基本情報/住所/介護度/連絡先/多職種/医療処置・麻薬/保険)を
+ * JSON 安全な凍結オブジェクトとして返す。過去訪問の不変参照かつ前回訪問差分(訪問前確認ビュー)の基準点。
+ */
+export async function buildPatientStateSnapshot(
+  db: DbClient,
+  args: DetailArgs & { caseId: string; source?: string; capturedAt?: Date }
+): Promise<Prisma.InputJsonValue | null> {
+  const base = await findPatientOverviewBase(db, args);
+  if (!base) return null;
+
+  const insurances = await db.patientInsurance.findMany({
+    where: { org_id: args.orgId, patient_id: args.patientId, is_active: true },
+    select: {
+      insurance_type: true,
+      application_status: true,
+      insurer_number: true,
+      public_program_code: true,
+      copay_ratio: true,
+      valid_from: true,
+      valid_until: true,
+      confirmed_care_level: true,
+    },
+    orderBy: [{ insurance_type: 'asc' }, { valid_from: 'desc' }],
+  });
+
+  const cases = base.cases ?? [];
+  const visitedCase = cases.find((item) => item.id === args.caseId) ?? cases[0] ?? null;
+  const residences = base.residences ?? [];
+  const primaryResidence = residences.find((item) => item.is_primary) ?? residences[0] ?? null;
+
+  const snapshot = {
+    captured_at: (args.capturedAt ?? new Date()).toISOString(),
+    source: args.source ?? 'visit_record',
+    case_id: visitedCase?.id ?? null,
+    patient: {
+      id: base.id,
+      name: base.name,
+      name_kana: base.name_kana,
+      birth_date: base.birth_date,
+      gender: base.gender,
+      phone: base.phone,
+      medical_insurance_number: base.medical_insurance_number,
+      care_insurance_number: base.care_insurance_number,
+      allergy_info: base.allergy_info ?? null,
+      notes: base.notes ?? null,
+    },
+    primary_residence: primaryResidence,
+    scheduling_preference: base.scheduling_preference ?? null,
+    conditions: base.conditions ?? [],
+    contacts: base.contacts ?? [],
+    care_team_links: visitedCase?.care_team_links ?? [],
+    home_visit_intake: visitedCase
+      ? (getHomeVisitIntake(visitedCase.required_visit_support) ?? null)
+      : null,
+    insurances,
+  };
+
+  // Date/Decimal を ISO 文字列等の JSON 安全値へ正規化してから凍結する(page.tsx と同じ手法)
+  return JSON.parse(JSON.stringify(snapshot)) as Prisma.InputJsonValue;
 }
 
 export async function getPatientOverview(db: DbClient, args: DetailArgs) {
