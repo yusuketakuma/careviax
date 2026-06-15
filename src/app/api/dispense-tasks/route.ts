@@ -189,7 +189,7 @@ export const POST = withAuthContext(
           type: 'urgent',
           title: '緊急の調剤対応が追加されました',
           message: `${task.cycle.case_.patient.name} の緊急調剤タスクを確認してください${due_date ? `（期限 ${due_date.slice(0, 10)}）` : ''}`,
-          link: `/dispensing/${task.id}`,
+          link: `/dispensing?taskId=${encodeURIComponent(task.id)}`,
           metadata: {
             task_id: task.id,
             cycle_id,

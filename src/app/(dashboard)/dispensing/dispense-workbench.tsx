@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -28,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { SafetyBoard } from '@/components/features/workspace/safety-board';
+import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -54,7 +56,6 @@ import {
  * 左=調剤キュー / 中央=いまの1件(セーフティボード → 処方比較 → 確認チェックリスト → 主操作)
  * / 右=右レール(次にやること / 止まっている理由 / 根拠・記録)。
  * 1件集中・割り込み防護: この画面はキューの自動切替を行わず、選択中の 1 件だけを表示する。
- * 旧 DataTable キューと明細ページ(/dispensing/[taskId])は下部・別ページに温存。
  */
 
 // ── Queue types(/api/dispense-queue)──
@@ -263,6 +264,8 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
 export function DispenseWorkbench() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const focusedTaskId = searchParams.get('taskId');
 
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [guardOn, setGuardOn] = React.useState(true);
@@ -283,7 +286,7 @@ export function DispenseWorkbench() {
   });
 
   const queueRows = React.useMemo(() => queueQuery.data?.data ?? [], [queueQuery.data]);
-  const activeTaskId = selectedTaskId ?? queueRows[0]?.id ?? null;
+  const activeTaskId = selectedTaskId ?? focusedTaskId ?? queueRows[0]?.id ?? null;
 
   const workbenchQuery = useQuery({
     queryKey: ['dispense-workbench', activeTaskId, orgId],
@@ -322,7 +325,7 @@ export function DispenseWorkbench() {
     mutationFn: async () => {
       if (!workbench) throw new Error('ワークベンチ情報が未取得です');
       if (workbench.count_rows.some((row) => row.prescribed_quantity == null)) {
-        throw new Error('数量未確定の明細があります。詳細入力から登録してください。');
+        throw new Error('数量未確定の明細があります。処方取込内容を確認してください。');
       }
       const res = await fetch('/api/dispense-results', {
         method: 'POST',
@@ -454,9 +457,26 @@ export function DispenseWorkbench() {
 
   return (
     <section aria-label="調剤ワークベンチ" data-testid="dispense-workbench">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="text-xl font-bold text-foreground">調剤</h2>
-        <p className="text-sm text-muted-foreground">{dateLabel} — 1件集中・割り込み防護</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-xl font-bold text-foreground">調剤</h1>
+          <p className="text-sm text-muted-foreground">{dateLabel} — 1件集中・割り込み防護</p>
+        </div>
+        <nav className="flex flex-wrap gap-2" aria-label="調剤関連導線">
+          <Link href="/auditing" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            監査
+          </Link>
+          <Link href="/workflow" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            ワークフロー
+          </Link>
+        </nav>
+      </div>
+
+      <div className="mt-4">
+        <MainWorkflowCompactNav
+          currentSteps={['dispensing']}
+          description="調剤の安全確認、計数、監査送りまでを現行ワークベンチ上で完結します。"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">

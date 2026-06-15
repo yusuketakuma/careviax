@@ -135,7 +135,7 @@ test.describe('prescription intake flow', () => {
       { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '調剤キュー(全件一覧)' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible({
       timeout: 45_000,
     });
 
@@ -152,7 +152,7 @@ test.describe('dispensing → auditing flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispensing');
 
-    await expect(page.getByRole('heading', { name: '調剤キュー(全件一覧)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -169,7 +169,8 @@ test.describe('dispensing → auditing flow', () => {
     await clickAndWaitForStableRoute(
       page,
       /\/auditing/,
-      () => main.getByRole('link', { name: '調剤監査' }).first().click({ noWaitAfter: true }),
+      () =>
+        main.getByRole('link', { name: '監査', exact: true }).first().click({ noWaitAfter: true }),
       { timeout: 45_000 },
     );
 
@@ -206,14 +207,14 @@ test.describe('dispensing → auditing flow', () => {
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー(全件一覧)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
 
     // → auditing
     await clickAndWaitForStableRoute(
       page,
       /\/auditing/,
       () =>
-        page.locator('main').getByRole('link', { name: '調剤監査' }).first().click({
+        page.locator('main').getByRole('link', { name: '監査', exact: true }).first().click({
           noWaitAfter: true,
         }),
       { timeout: 90_000 },
@@ -224,7 +225,7 @@ test.describe('dispensing → auditing flow', () => {
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
       page.locator('main').getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー(全件一覧)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
 
     expect(errors).toEqual([]);
   });

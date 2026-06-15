@@ -44,7 +44,7 @@ const timelineEvents = [
     title: '調剤を記録',
     summary: 'アムロジピン 30錠 / 持参',
     href: '/prescriptions/intake_1',
-    action_label: '調剤詳細を開く',
+    action_label: '処方記録を開く',
     status: 'dispensed',
     status_label: '調剤済',
     actor_name: '薬剤師C',

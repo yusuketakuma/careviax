@@ -486,7 +486,7 @@ export const POST = withAuthContext(
           type: 'urgent',
           title: '調剤鑑査で差戻しが発生しました',
           message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${formatDateKey(task.due_date)}）` : ''}`,
-          link: `/dispensing/${task.id}`,
+          link: `/dispensing?taskId=${encodeURIComponent(task.id)}`,
           metadata: {
             task_id,
             cycle_id: task.cycle_id,

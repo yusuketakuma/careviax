@@ -65,18 +65,17 @@ test.describe('prescription intake flow', () => {
 
     // Patient should be pre-selected (patient name should appear somewhere)
     // Wait for patient data to load
-    await page.waitForResponse(
-      (res) => res.url().includes('/api/patients') && res.status() === 200,
-      { timeout: 5000 },
-    ).catch(() => null);
+    await page
+      .waitForResponse((res) => res.url().includes('/api/patients') && res.status() === 200, {
+        timeout: 5000,
+      })
+      .catch(() => null);
     await waitForStableUi(page);
 
     expect(errors).toEqual([]);
   });
 
-  test('navigating from prescription list to new intake via header link', async ({
-    context,
-  }) => {
+  test('navigating from prescription list to new intake via header link', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/prescriptions');
 
@@ -97,8 +96,6 @@ test.describe('prescription intake flow', () => {
       main.getByRole('link', { name: '調剤キュー' }).first().click(),
     );
 
-    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
-    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
     await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
@@ -114,12 +111,8 @@ test.describe('dispensing queue', () => {
     await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
-    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
-    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
+    await expect(main.getByTestId('dispense-workbench')).toBeVisible();
     await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
-    await expect(
-      main.getByText('緊急度、訪問先、疑義照会状況を上から確認し、調剤入力へ進みます。'),
-    ).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
     await expect(main.getByRole('link', { name: '監査', exact: true })).toBeVisible();
@@ -214,8 +207,6 @@ test.describe('workflow cross-navigation', () => {
     await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    // exact: true で調剤ワークベンチ左ペインの <h3>調剤キュー</h3> のみを対象にする
-    // (旧 <h1>調剤キュー(全件一覧)</h1> との strict-mode 衝突を回避)。
     await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
 
     // Navigate to auditing via shortcut (scope to main to avoid sidebar duplicate)

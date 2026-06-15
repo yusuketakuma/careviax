@@ -328,7 +328,7 @@ describe('/api/dispense-audits POST', () => {
       expect.anything(),
       expect.objectContaining({
         eventType: 'dispense_audit_rejected',
-        link: '/dispensing/task_1',
+        link: '/dispensing?taskId=task_1',
         message: '山田 太郎 の調剤結果が差戻しになりました（期限 2026-03-30）',
         explicitUserIds: expect.arrayContaining(['user_dispense', 'pharmacist_1', 'admin_1']),
       }),

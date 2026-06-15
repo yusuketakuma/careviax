@@ -10,6 +10,7 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
+const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -31,6 +32,9 @@ vi.mock('next/link', () => ({
       {children}
     </a>
   ),
+}));
+vi.mock('next/navigation', () => ({
+  useSearchParams: useSearchParamsMock,
 }));
 
 import { DispenseWorkbench } from './dispense-workbench';
@@ -196,6 +200,7 @@ describe('DispenseWorkbench', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
+    useSearchParamsMock.mockReturnValue(new URLSearchParams());
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
     useRealtimeQueryMock.mockReturnValue({ data: { data: QUEUE_ROWS }, isLoading: false });
@@ -291,5 +296,17 @@ describe('DispenseWorkbench', () => {
     fireEvent.click(screen.getByTestId('dispense-complete-button'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('taskId クエリがある場合はその調剤タスクを初期表示する', () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('taskId=task-watanabe'));
+
+    render(<DispenseWorkbench />);
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['dispense-workbench', 'task-watanabe', 'org_1'],
+      }),
+    );
   });
 });

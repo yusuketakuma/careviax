@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  getDispenseConfirmShortcutLinks,
   getManagementPlanPrintShortcutLinks,
   getMyDayShortcutLinks,
   getPatientConsentShortcutLinks,
@@ -84,13 +83,7 @@ describe('page shortcut presets', () => {
     ]);
   });
 
-  it('builds visit, dispensing, and referral shortcuts with stable targets', () => {
-    expect(getDispenseConfirmShortcutLinks('task-1')).toEqual([
-      { href: '/dispensing/task-1', label: '調剤入力' },
-      { href: '/auditing/task-1', label: '鑑査確認' },
-      { href: '/workflow', label: 'ワークフロー' },
-    ]);
-
+  it('builds visit and referral shortcuts with stable targets', () => {
     expect(getVisitDetailShortcutLinks('visit-1')).toEqual([
       { href: '/reports', label: '報告書' },
       { href: '/handoff', label: '申し送り確認' },

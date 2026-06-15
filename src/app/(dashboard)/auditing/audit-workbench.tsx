@@ -521,7 +521,7 @@ export function AuditWorkbench() {
                 id: 'dispense-record',
                 label: `調剤記録(${familyName(workbench.dispenser.name)})`,
                 meta: workbench.dispenser.time_label ?? undefined,
-                href: `/dispensing/${workbench.task.id}`,
+                href: `/dispensing?taskId=${encodeURIComponent(workbench.task.id)}`,
               },
             ]
           : []),

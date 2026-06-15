@@ -1,14 +1,6 @@
 import type { PageShortcutLink } from './page-shortcut-links';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 
-export function getDispenseConfirmShortcutLinks(taskId: string): PageShortcutLink[] {
-  return [
-    { href: `/dispensing/${taskId}`, label: '調剤入力' },
-    { href: `/auditing/${taskId}`, label: '鑑査確認' },
-    { href: '/workflow', label: 'ワークフロー' },
-  ];
-}
-
 export function getVisitDetailShortcutLinks(visitRecordId: string): PageShortcutLink[] {
   void visitRecordId;
   return [

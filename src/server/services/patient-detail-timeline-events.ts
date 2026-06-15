@@ -368,7 +368,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           CARRY_TYPE_LABELS[item.carry_type] ?? item.carry_type,
         ]).join(' / ') || null,
       href: `/prescriptions/${item.line.intake.id}`,
-      action_label: '調剤詳細を開く',
+      action_label: '処方記録を開く',
       status: item.task.cycle?.overall_status ?? 'dispensed',
       status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
       actor_name: actorNameMap.get(item.dispensed_by) ?? null,

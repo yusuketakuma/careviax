@@ -27,7 +27,7 @@ export default async function AuditDetailPage({ params }: { params: Promise<{ ta
           </div>
         }
         shortcuts={[
-          { href: `/dispensing/${taskId}`, label: '調剤入力' },
+          { href: `/dispensing?taskId=${encodeURIComponent(taskId)}`, label: '調剤' },
           { href: '/workflow', label: 'ワークフロー' },
         ]}
         mainWorkflowSteps={['auditing']}

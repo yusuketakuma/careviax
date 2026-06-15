@@ -85,17 +85,19 @@ describe('WorkflowPageIntro', () => {
     render(
       <WorkflowPageIntro
         backHref="/dispensing"
-        backLabel="調剤キューへ戻る"
-        title="調剤入力"
-        description="調剤の詳細入力です。"
+        backLabel="調剤へ戻る"
+        title="調剤"
+        description="調剤ワークベンチです。"
         mainWorkflowSteps={['dispensing']}
-        mainWorkflowDescription="詳細画面でも、主業務フローの現在地を固定表示します。"
+        mainWorkflowDescription="ワークベンチでも、主業務フローの現在地を固定表示します。"
       />,
     );
 
     expect(screen.getByTestId('main-workflow-compact-nav')).toBeTruthy();
     expect(screen.getByText('主業務フロー上の現在地')).toBeTruthy();
-    expect(screen.getByText('詳細画面でも、主業務フローの現在地を固定表示します。')).toBeTruthy();
+    expect(
+      screen.getByText('ワークベンチでも、主業務フローの現在地を固定表示します。'),
+    ).toBeTruthy();
     const workflowNav = screen.getByTestId('main-workflow-compact-nav');
     expect(
       Array.from(workflowNav.querySelectorAll('ol span')).filter(
