@@ -218,11 +218,13 @@ describe('SetWorkspace', () => {
     expect(within(laneChips).getByText(/冷所レーン/)).toBeTruthy();
     expect(within(laneChips).getByText(/(施錠保管)/)).toBeTruthy();
 
-    // 行: 完了 / アレルギータグ / 数量確認中 + ハンドオフ導線
+    // 行: 完了 / アレルギータグ / セット監査待ち + 統合セット画面内の監査導線
     expect(screen.getAllByText('完了')).toHaveLength(2);
     expect(screen.getByText('アレルギー')).toBeTruthy();
-    expect(screen.getByText('数量確認中')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '→ ハンドオフへ' })).toBeTruthy();
+    expect(screen.getAllByText('監査待ち').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('link', { name: '→ セット監査へ' }).getAttribute('href')).toBe(
+      '/medication-sets',
+    );
 
     // 末尾の進行中 6 行は 1 行へ集約される
     const aggregateRow = screen.getByTestId('set-workspace-aggregate-row');
@@ -260,6 +262,25 @@ describe('SetWorkspace', () => {
 
     expect(screen.getByText('本日分の施設セットはありません')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '工程待ちのセット' })).toBeTruthy();
+  });
+
+  it('部分承認と差戻しを再作業として表示する', () => {
+    const fixture = buildWorkspaceFixture();
+    fixture.facility_groups[0].rows = [
+      buildRow({
+        id: 'patient_partial',
+        name: '部分 承認',
+        room: '101',
+        status: 'partial_approved',
+      }),
+      buildRow({ id: 'patient_rejected', name: '差戻し 太郎', room: '102', status: 'rejected' }),
+    ];
+    mockQueries({ workspace: fixture, cockpit: buildCockpitFixture() });
+    render(<SetWorkspace />);
+
+    expect(screen.getByText('部分承認')).toBeTruthy();
+    expect(screen.getByText('差戻し')).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: '→ 再作業へ' })).toHaveLength(2);
   });
 });
 

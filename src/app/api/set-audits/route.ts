@@ -227,37 +227,6 @@ export const POST = withAuthContext(
         return { error: 'missing_scope' as const };
       }
 
-      const audit = await tx.setAudit.create({
-        data: {
-          org_id: ctx.orgId,
-          plan_id,
-          result,
-          approved_scope: effectiveApprovedScope
-            ? toPrismaJsonInput(effectiveApprovedScope)
-            : undefined,
-          reject_reason: reject_reason ?? null,
-          checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
-          photo_asset_ids: photo_asset_ids ?? [],
-          audited_by: ctx.userId,
-          audited_at: now,
-        },
-      });
-
-      // 監査ログ(audit-by-default): セット鑑査の判定・チェックリスト・写真資産を記録。
-      await createAuditLogEntry(tx, ctx, {
-        action: 'set_audit.create',
-        targetType: 'set_audit',
-        targetId: audit.id,
-        changes: {
-          plan_id,
-          cycle_id: plan.cycle_id,
-          result,
-          reject_reason: reject_reason ?? null,
-          checklist: checklist ?? null,
-          photo_asset_ids: photo_asset_ids ?? [],
-        },
-      });
-
       const transitionHelper = async (
         toStatus: string,
         options?: { exceptionStatus?: string | null },
@@ -457,6 +426,37 @@ export const POST = withAuthContext(
           },
         });
       }
+
+      const audit = await tx.setAudit.create({
+        data: {
+          org_id: ctx.orgId,
+          plan_id,
+          result,
+          approved_scope: effectiveApprovedScope
+            ? toPrismaJsonInput(effectiveApprovedScope)
+            : undefined,
+          reject_reason: reject_reason ?? null,
+          checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
+          photo_asset_ids: photo_asset_ids ?? [],
+          audited_by: ctx.userId,
+          audited_at: now,
+        },
+      });
+
+      // 監査ログ(audit-by-default): セット鑑査の判定・チェックリスト・写真資産を記録。
+      await createAuditLogEntry(tx, ctx, {
+        action: 'set_audit.create',
+        targetType: 'set_audit',
+        targetId: audit.id,
+        changes: {
+          plan_id,
+          cycle_id: plan.cycle_id,
+          result,
+          reject_reason: reject_reason ?? null,
+          checklist: checklist ?? null,
+          photo_asset_ids: photo_asset_ids ?? [],
+        },
+      });
 
       return audit;
     });

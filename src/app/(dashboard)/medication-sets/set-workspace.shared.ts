@@ -13,7 +13,13 @@ export type SetSlotKey = 'morning' | 'noon' | 'evening';
 export type SetSlotMark = 'set' | 'partial' | 'none';
 
 /** 事務先行セットの行状態 */
-export type SetRowStatusKey = 'completed' | 'quantity_check' | 'in_progress' | 'waiting';
+export type SetRowStatusKey =
+  | 'completed'
+  | 'partial_approved'
+  | 'rejected'
+  | 'quantity_check'
+  | 'in_progress'
+  | 'waiting';
 
 export type SetWorkspaceRow = {
   patient_id: string;
@@ -88,8 +94,18 @@ export const SET_ROW_STATUS_PRESENTATIONS: Record<SetRowStatusKey, SetRowStatusP
     label: '完了',
     badgeClassName: 'bg-emerald-100 text-emerald-700',
   },
+  partial_approved: {
+    label: '部分承認',
+    badgeClassName: 'bg-amber-100 text-amber-800',
+    rowClassName: 'bg-amber-50/60 hover:bg-amber-50',
+  },
+  rejected: {
+    label: '差戻し',
+    badgeClassName: 'bg-red-100 text-red-700',
+    rowClassName: 'bg-red-50/60 hover:bg-red-50',
+  },
   quantity_check: {
-    label: '数量確認中',
+    label: '監査待ち',
     badgeClassName: 'bg-amber-100 text-amber-800',
     rowClassName: 'bg-amber-50/60 hover:bg-amber-50',
   },
@@ -111,7 +127,5 @@ export const SET_SLOT_MARKS: Record<SetSlotMark, string> = {
 
 /** 朝/昼/夕 セルの表示(例「✓/✓/—」) */
 export function formatSlotMarks(slots: Record<SetSlotKey, SetSlotMark>): string {
-  return [slots.morning, slots.noon, slots.evening]
-    .map((mark) => SET_SLOT_MARKS[mark])
-    .join('/');
+  return [slots.morning, slots.noon, slots.evening].map((mark) => SET_SLOT_MARKS[mark]).join('/');
 }
