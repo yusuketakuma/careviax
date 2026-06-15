@@ -17,9 +17,7 @@ describe('layout navigation config', () => {
       '管理',
     ]);
 
-    expect(
-      SIDEBAR_MAIN_NAV_GROUPS.map((group) => group.items.map((item) => item.label)),
-    ).toEqual([
+    expect(SIDEBAR_MAIN_NAV_GROUPS.map((group) => group.items.map((item) => item.label))).toEqual([
       ['ダッシュボード', 'スケジュール', '訪問'],
       ['患者一覧'],
       ['処方取込', 'カード', '調剤', '監査', 'セット', '報告・共有', '算定チェック'],
@@ -53,9 +51,12 @@ describe('layout navigation config', () => {
     expect(dashboard?.activePrefixes).toEqual(
       expect.arrayContaining(['/workflow', '/tasks', '/today', '/notifications']),
     );
-    expect(handoff?.activePrefixes).toEqual(
-      expect.arrayContaining(['/handoff', '/visits/handoffs', '/communications', '/conferences', '/external']),
-    );
+    expect(handoff?.activePrefixes).toEqual([
+      '/handoff',
+      '/communications',
+      '/conferences',
+      '/external',
+    ]);
     expect(intake?.activePrefixes).toEqual(expect.arrayContaining(['/qr-scan']));
   });
 
@@ -106,7 +107,6 @@ describe('layout navigation config', () => {
     expect(MOBILE_BOTTOM_NAV_ITEMS.find((item) => item.label === '訪問')).toEqual(
       expect.objectContaining({
         activePrefixes: ['/visits', '/my-day', '/offline-sync'],
-        excludePrefixes: ['/visits/handoffs'],
       }),
     );
   });

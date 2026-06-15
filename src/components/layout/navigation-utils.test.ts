@@ -1,19 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { isLayoutNavItemActive } from './navigation-utils';
-import { MOBILE_BOTTOM_NAV_ITEMS, SIDEBAR_MAIN_NAV_GROUPS } from './navigation-config';
+import { SIDEBAR_MAIN_NAV_GROUPS } from './navigation-config';
 import { Home } from 'lucide-react';
 
 const allMainItems = SIDEBAR_MAIN_NAV_GROUPS.flatMap((group) => group.items);
 
 describe('layout navigation active matching', () => {
-  it('keeps handoff routes out of the visit mobile nav item', () => {
-    const visitItem = MOBILE_BOTTOM_NAV_ITEMS.find((item) => item.label === '訪問');
-    if (!visitItem) throw new Error('visit item is required');
-
-    expect(isLayoutNavItemActive('/visits/schedule_1/record', visitItem)).toBe(true);
-    expect(isLayoutNavItemActive('/visits/handoffs/record_1', visitItem)).toBe(false);
-  });
-
   it('highlights the dashboard item for workflow/tasks/notifications sub pages', () => {
     const dashboard = allMainItems.find((item) => item.label === 'ダッシュボード');
     if (!dashboard) throw new Error('dashboard item is required');

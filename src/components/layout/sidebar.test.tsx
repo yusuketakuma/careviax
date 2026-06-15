@@ -170,16 +170,6 @@ describe('Sidebar', () => {
     );
   });
 
-  it('keeps handoff detail routes in the handoff nav item instead of visits', () => {
-    mockPathname = '/visits/handoffs/visit-record-1';
-    render(<Sidebar />);
-
-    expect(screen.getByRole('link', { name: 'ハンドオフ' }).getAttribute('aria-current')).toEqual(
-      'page',
-    );
-    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBeNull();
-  });
-
   it('keeps communication requests inside the handoff nav item', () => {
     mockPathname = '/communications/requests';
     render(<Sidebar />);

@@ -339,7 +339,7 @@ describe('workflow-dashboard-sections', () => {
         }),
         expect.objectContaining({
           id: 'task:task_malformed',
-          action_href: '/visits/handoffs/visit_2',
+          action_href: '/handoff',
           action_label: '申し送りを確認',
           patient_name: null,
         }),

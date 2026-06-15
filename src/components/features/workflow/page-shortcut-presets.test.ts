@@ -24,7 +24,6 @@ import {
   getSettingsShortcutLinks,
   getSetPlanEditShortcutLinks,
   getVisitDetailShortcutLinks,
-  getVisitHandoffShortcutLinks,
 } from './page-shortcut-presets';
 
 describe('page shortcut presets', () => {
@@ -96,14 +95,8 @@ describe('page shortcut presets', () => {
 
     expect(getVisitDetailShortcutLinks('visit-1')).toEqual([
       { href: '/reports', label: '報告書' },
-      { href: '/visits/handoffs/visit-1', label: '申し送り確認' },
+      { href: '/handoff', label: '申し送り確認' },
       { href: '/schedules', label: 'スケジュール' },
-    ]);
-
-    expect(getVisitHandoffShortcutLinks('visit-1')).toEqual([
-      { href: '/visits/visit-1', label: '訪問記録詳細' },
-      { href: '/handoff', label: '申し送り一覧' },
-      { href: '/tasks', label: 'タスク' },
     ]);
 
     expect(getSetPlanEditShortcutLinks('plan-1')).toEqual([

@@ -52,13 +52,6 @@ describe('MobileNav', () => {
     expect(screen.getByRole('link', { name: 'ホーム' }).getAttribute('href')).toBe('/dashboard');
   });
 
-  it('does not mark handoff detail routes as the visits tab', () => {
-    mockPathname = '/visits/handoffs/visit-record-1';
-    render(<MobileNav />);
-
-    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBeNull();
-  });
-
   it('keeps schedule before visit for mobile field work', () => {
     render(<MobileNav />);
 
@@ -70,8 +63,6 @@ describe('MobileNav', () => {
     mockPathname = '/my-day';
     render(<MobileNav />);
 
-    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBe(
-      'page',
-    );
+    expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBe('page');
   });
 });

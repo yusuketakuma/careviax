@@ -128,14 +128,56 @@ const COCKPIT: DashboardCockpitResponse = {
   team_capacity: [],
 };
 
-function stubFetch(board: HandoffBoardResponse = BOARD) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+function stubFetch(
+  board: HandoffBoardResponse = BOARD,
+  options: { handoffTasks?: Array<Record<string, unknown>> } = {},
+) {
+  const handoffTasks = options.handoffTasks ?? [
+    {
+      id: 'task_handoff_1',
+      title: '申し送り確認: 田中 一郎',
+      task_type: 'handoff_confirmation',
+      priority: 'normal',
+      due_date: null,
+      related_entity_id: 'visit_record_1',
+      created_at: '2026-06-11T00:00:00.000Z',
+    },
+  ];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/handoff-board')) {
       return new Response(JSON.stringify({ data: board }), { status: 200 });
     }
     if (url.includes('/api/dashboard/cockpit')) {
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
+    }
+    if (url.includes('/api/tasks')) {
+      return new Response(JSON.stringify({ data: handoffTasks }), { status: 200 });
+    }
+    if (url.includes('/api/visit-records/visit_record_1/handoff')) {
+      if (init?.method === 'PUT') {
+        return new Response(
+          JSON.stringify({ data: { confirmed_at: '2026-06-11T01:00:00.000Z' } }),
+          {
+            status: 200,
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          data: {
+            next_check_items: ['残薬を確認'],
+            ongoing_monitoring: ['眠気'],
+            decision_rationale: '訪問時に眠気の訴えあり',
+            ai_extracted: true,
+            ai_confidence: 0.88,
+            confirmed_by: null,
+            confirmed_at: null,
+            extracted_at: '2026-06-11T00:00:00.000Z',
+          },
+        }),
+        { status: 200 },
+      );
     }
     throw new Error(`unexpected fetch: ${url}`);
   });
@@ -172,6 +214,13 @@ describe('HandoffWorkspace', () => {
     await waitFor(() => {
       expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
     });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-handoff-confirmation-workspace')).toBeTruthy();
+    });
+    expect(screen.getByText('訪問申し送り確認')).toBeTruthy();
+    expect(screen.getByText('申し送り確認: 田中 一郎')).toBeTruthy();
+    expect(screen.getByText('残薬を確認')).toBeTruthy();
 
     // ヘッダーメタ(渡した/来た)
     expect(screen.getByText(/渡した3・来た0/)).toBeTruthy();

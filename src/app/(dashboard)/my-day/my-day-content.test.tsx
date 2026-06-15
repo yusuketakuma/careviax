@@ -122,7 +122,7 @@ describe('MyDayContent', () => {
     render(<MyDayContent />);
 
     const taskLink = screen.getByRole('link', { name: /申し送り確認/ });
-    expect(taskLink.getAttribute('href')).toEqual('/visits/handoffs/visit_record_1');
+    expect(taskLink.getAttribute('href')).toEqual('/handoff');
     expect(screen.getByText('申し送り / 申し送りを確認')).toBeTruthy();
   });
 

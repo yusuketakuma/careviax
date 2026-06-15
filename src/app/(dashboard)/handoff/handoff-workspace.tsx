@@ -27,10 +27,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
+import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import type { VisitHandoff } from '@/types/visit-brief';
 import {
   buildHandoffEvidence,
   buildHeaderMeta,
@@ -75,6 +77,40 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
   });
   if (!res.ok) throw new Error('当日オペレーション情報の取得に失敗しました');
   const json = await res.json();
+  return json.data;
+}
+
+type HandoffConfirmationTask = {
+  id: string;
+  title: string;
+  priority: string;
+  due_date: string | null;
+  related_entity_id: string | null;
+  created_at: string;
+};
+
+async function fetchHandoffConfirmationTasks(orgId: string): Promise<HandoffConfirmationTask[]> {
+  const params = new URLSearchParams({
+    status: 'pending',
+    task_type: 'handoff_confirmation',
+  });
+  const res = await fetch(`/api/tasks?${params.toString()}`, {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) throw new Error('訪問申し送り確認タスクの取得に失敗しました');
+  const json = (await res.json()) as { data?: HandoffConfirmationTask[] };
+  return (json.data ?? []).filter((task) => Boolean(task.related_entity_id));
+}
+
+async function fetchVisitHandoff(orgId: string, visitRecordId: string): Promise<VisitHandoff> {
+  const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? '訪問申し送りの取得に失敗しました');
+  }
+  const json = (await res.json()) as { data: VisitHandoff };
   return json.data;
 }
 
@@ -640,6 +676,130 @@ function ConsultWorkspace({
   );
 }
 
+function VisitHandoffConfirmationWorkspace({
+  orgId,
+  tasks,
+  isLoading,
+  error,
+  onConfirmed,
+}: {
+  orgId: string;
+  tasks: HandoffConfirmationTask[];
+  isLoading: boolean;
+  error: Error | null;
+  onConfirmed: () => void;
+}) {
+  const [selectedVisitRecordId, setSelectedVisitRecordId] = useState<string | null>(null);
+
+  const availableTasks = tasks.filter((task) => Boolean(task.related_entity_id));
+  const selectedTask =
+    availableTasks.find((task) => task.related_entity_id === selectedVisitRecordId) ??
+    availableTasks[0] ??
+    null;
+  const visitRecordId = selectedTask?.related_entity_id ?? null;
+
+  const visitHandoffQuery = useQuery({
+    queryKey: ['visit-handoff', orgId, visitRecordId],
+    queryFn: () => {
+      if (!visitRecordId) throw new Error('訪問記録が選択されていません');
+      return fetchVisitHandoff(orgId, visitRecordId);
+    },
+    enabled: Boolean(orgId && visitRecordId),
+  });
+
+  if (isLoading) {
+    return (
+      <section
+        className="rounded-lg border border-border/70 bg-card p-4"
+        aria-label="訪問申し送り確認読み込み中"
+      >
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="rounded-lg border border-border/70 bg-card p-4">
+        <ErrorState
+          variant="server"
+          title="訪問申し送り確認を表示できません"
+          description="確認待ちタスクの取得に失敗しました。"
+          detail={error.message}
+        />
+      </section>
+    );
+  }
+
+  if (availableTasks.length === 0) return null;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="visit-handoff-confirm-heading"
+      data-testid="visit-handoff-confirmation-workspace"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 id="visit-handoff-confirm-heading" className="text-base font-bold text-foreground">
+          訪問申し送り確認
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          訪問記録から抽出された申し送りを確認し、タスクを完了します。
+        </p>
+      </div>
+
+      {selectedTask ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+          {selectedTask.title}
+        </p>
+      ) : null}
+
+      {availableTasks.length > 1 ? (
+        <div className="mt-3 flex flex-wrap gap-2" data-testid="visit-handoff-task-picker">
+          {availableTasks.map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => setSelectedVisitRecordId(task.related_entity_id)}
+              aria-pressed={task.related_entity_id === visitRecordId}
+              className={cn(
+                'min-h-[44px] rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                task.related_entity_id === visitRecordId
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border/70 text-muted-foreground hover:bg-muted/50',
+              )}
+            >
+              {task.title}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-3">
+        {visitHandoffQuery.isLoading ? (
+          <Skeleton className="h-40 w-full rounded-lg" />
+        ) : visitHandoffQuery.isError ? (
+          <ErrorState
+            variant="server"
+            title="申し送りを表示できません"
+            description="訪問記録の申し送り確認データを取得できませんでした。"
+            detail={
+              visitHandoffQuery.error instanceof Error ? visitHandoffQuery.error.message : undefined
+            }
+            action={{ label: '再試行', onClick: () => void visitHandoffQuery.refetch() }}
+          />
+        ) : visitRecordId && visitHandoffQuery.data ? (
+          <HandoffConfirmPanel
+            visitRecordId={visitRecordId}
+            handoff={visitHandoffQuery.data}
+            onConfirmed={onConfirmed}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 本体
 // ---------------------------------------------------------------------------
@@ -684,6 +844,12 @@ export function HandoffWorkspace() {
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
   });
+  const confirmationTasksQuery = useQuery({
+    queryKey: ['tasks', 'handoff-confirmation', orgId],
+    queryFn: () => fetchHandoffConfirmationTasks(orgId),
+    staleTime: 30_000,
+    enabled: !isBootstrappingOrg,
+  });
 
   const confirmReceiptMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -720,6 +886,7 @@ export function HandoffWorkspace() {
   const invalidateBoard = () => {
     void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });
     void queryClient.invalidateQueries({ queryKey: ['nav-badges', 'handoff'] });
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] });
   };
 
   return (
@@ -759,6 +926,17 @@ export function HandoffWorkspace() {
         ) : (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
+              <VisitHandoffConfirmationWorkspace
+                orgId={orgId}
+                tasks={confirmationTasksQuery.data ?? []}
+                isLoading={confirmationTasksQuery.isLoading}
+                error={
+                  confirmationTasksQuery.isError && confirmationTasksQuery.error instanceof Error
+                    ? confirmationTasksQuery.error
+                    : null
+                }
+                onConfirmed={invalidateBoard}
+              />
               <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
               <section
                 className="rounded-lg border border-border/70 bg-card p-4"

@@ -14,6 +14,7 @@ import type { VisitHandoff } from '@/types/visit-brief';
 type HandoffConfirmPanelProps = {
   visitRecordId: string;
   handoff: VisitHandoff;
+  onConfirmed?: () => void;
 };
 
 type EditableHandoff = {
@@ -97,7 +98,11 @@ function EditableTagList({
   );
 }
 
-export function HandoffConfirmPanel({ visitRecordId, handoff }: HandoffConfirmPanelProps) {
+export function HandoffConfirmPanel({
+  visitRecordId,
+  handoff,
+  onConfirmed,
+}: HandoffConfirmPanelProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const isUnconfirmed = !handoff.confirmed_at;
@@ -146,24 +151,26 @@ export function HandoffConfirmPanel({ visitRecordId, handoff }: HandoffConfirmPa
       toast.success('申し送りを確定しました');
       setEditMode(false);
       void queryClient.invalidateQueries({ queryKey: ['visit-record', visitRecordId] });
+      void queryClient.invalidateQueries({ queryKey: ['visit-handoff'] });
+      onConfirmed?.();
     },
     onError: (err: Error) => {
       toast.error(err.message);
     },
   });
 
-  const displayItems = editMode ? edits : {
-    next_check_items: handoff.next_check_items,
-    ongoing_monitoring: handoff.ongoing_monitoring,
-    decision_rationale: handoff.decision_rationale ?? '',
-  };
+  const displayItems = editMode
+    ? edits
+    : {
+        next_check_items: handoff.next_check_items,
+        ongoing_monitoring: handoff.ongoing_monitoring,
+        decision_rationale: handoff.decision_rationale ?? '',
+      };
 
   return (
     <Card
       className={
-        isUnconfirmed
-          ? 'border-amber-300 bg-amber-50/30 shadow-sm'
-          : 'border-slate-200 shadow-sm'
+        isUnconfirmed ? 'border-amber-300 bg-amber-50/30 shadow-sm' : 'border-slate-200 shadow-sm'
       }
     >
       <CardHeader className="pb-3">
@@ -183,11 +190,17 @@ export function HandoffConfirmPanel({ visitRecordId, handoff }: HandoffConfirmPa
               </Badge>
             )}
             {isUnconfirmed ? (
-              <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-700 text-xs">
+              <Badge
+                variant="outline"
+                className="border-amber-300 bg-amber-100 text-amber-700 text-xs"
+              >
                 未確認
               </Badge>
             ) : (
-              <Badge variant="outline" className="border-green-300 bg-green-50 text-green-700 text-xs">
+              <Badge
+                variant="outline"
+                className="border-green-300 bg-green-50 text-green-700 text-xs"
+              >
                 確認済
               </Badge>
             )}
@@ -217,7 +230,9 @@ export function HandoffConfirmPanel({ visitRecordId, handoff }: HandoffConfirmPa
               <p className="text-xs font-medium text-muted-foreground">判断根拠・申し送りメモ</p>
               <Textarea
                 value={edits.decision_rationale}
-                onChange={(e) => setEdits((prev) => ({ ...prev, decision_rationale: e.target.value }))}
+                onChange={(e) =>
+                  setEdits((prev) => ({ ...prev, decision_rationale: e.target.value }))
+                }
                 placeholder="判断の根拠や次の担当者へのメモを入力..."
                 rows={3}
                 className="resize-none text-sm"

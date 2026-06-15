@@ -11,7 +11,7 @@ export type OperationalTaskPresentationInput = {
 };
 
 export function describeOperationalTask(
-  task: OperationalTaskPresentationInput
+  task: OperationalTaskPresentationInput,
 ): OperationalTaskPresentation {
   switch (task.task_type) {
     case 'visit_demand':
@@ -139,9 +139,7 @@ export function describeOperationalTask(
       };
     case 'handoff_confirmation':
       return {
-        actionHref: task.related_entity_id
-          ? `/visits/handoffs/${task.related_entity_id}`
-          : '/visits',
+        actionHref: '/handoff',
         actionLabel: '申し送りを確認',
         queueLabel: '申し送り',
       };

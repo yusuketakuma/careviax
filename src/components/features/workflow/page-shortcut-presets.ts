@@ -10,18 +10,11 @@ export function getDispenseConfirmShortcutLinks(taskId: string): PageShortcutLin
 }
 
 export function getVisitDetailShortcutLinks(visitRecordId: string): PageShortcutLink[] {
+  void visitRecordId;
   return [
     { href: '/reports', label: '報告書' },
-    { href: `/visits/handoffs/${visitRecordId}`, label: '申し送り確認' },
+    { href: '/handoff', label: '申し送り確認' },
     { href: '/schedules', label: 'スケジュール' },
-  ];
-}
-
-export function getVisitHandoffShortcutLinks(visitRecordId: string): PageShortcutLink[] {
-  return [
-    { href: `/visits/${visitRecordId}`, label: '訪問記録詳細' },
-    { href: '/handoff', label: '申し送り一覧' },
-    { href: '/tasks', label: 'タスク' },
   ];
 }
 

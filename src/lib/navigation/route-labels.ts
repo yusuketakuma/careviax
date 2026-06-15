@@ -17,7 +17,6 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/schedules\/proposals(\/.*)?$/, label: '提案一覧' },
   { pattern: /^\/schedules\/route-compare(\/.*)?$/, label: 'ルート案を比べる' },
   { pattern: /^\/schedules(\/.*)?$/, label: 'スケジュール' },
-  { pattern: /^\/visits\/handoffs(\/.*)?$/, label: '申し送り確認' },
   { pattern: /^\/visits(\/.*)?$/, label: '訪問' },
   { pattern: /^\/reports\/analytics(\/.*)?$/, label: '送達分析' },
   { pattern: /^\/reports(\/.*)?$/, label: '報告' },
