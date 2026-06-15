@@ -22,7 +22,7 @@ const MOBILE_ROUTES = [
     name: 'dashboard-mobile-layout',
     path: '/dashboard',
     readyTestId: 'dashboard-cockpit',
-    primaryTarget: { role: 'heading' as const, name: 'ダッシュボード', level: 2 },
+    primaryTarget: { role: 'heading' as const, name: 'ダッシュボード', level: 1 },
   },
   {
     name: 'patients-mobile-layout',

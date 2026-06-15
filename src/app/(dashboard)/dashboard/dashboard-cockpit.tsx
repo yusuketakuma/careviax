@@ -649,7 +649,7 @@ export function DashboardCockpit() {
     <section aria-label="運用コックピット" data-testid="dashboard-cockpit">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">ダッシュボード</h2>
+          <h1 className="text-xl font-bold text-foreground">ダッシュボード</h1>
           {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
           <p className="text-sm text-muted-foreground" suppressHydrationWarning>
             {dateLabel}

@@ -14,12 +14,7 @@ export const DASHBOARD_PIPELINE_STEPS = [
   {
     key: 'intake',
     label: '受付',
-    statuses: [
-      'intake_received',
-      'structuring',
-      'inquiry_pending',
-      'inquiry_resolved',
-    ],
+    statuses: ['intake_received', 'structuring', 'inquiry_pending', 'inquiry_resolved'],
   },
   {
     key: 'dispensing',
@@ -359,12 +354,4 @@ export const DASHBOARD_ADMIN_LINKS: readonly DashboardNavigationLink[] = [
     description: '月次の進捗や送達状況を指標ベースで確認します。',
     href: '/admin/metrics',
   },
-] as const;
-
-export const DASHBOARD_HEADER_SHORTCUTS = [
-  // p1_01: よく使う絞り込み(/views)はナビに載せず、ここからの導線のみ
-  { href: '/views', label: 'よく使う絞り込み' },
-  { href: '/settings', label: 'ユーザー設定' },
-  { href: '/qr-scan', label: 'QRスキャン' },
-  { href: '/admin/notification-settings', label: '通知設定' },
 ] as const;

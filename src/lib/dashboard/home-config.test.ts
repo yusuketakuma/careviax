@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   DASHBOARD_PIPELINE_STEPS,
-  DASHBOARD_HEADER_SHORTCUTS,
   DASHBOARD_ADMIN_LINKS,
   DASHBOARD_COORDINATION_LINKS,
   DASHBOARD_WORKBENCH_LINKS,
@@ -12,9 +11,7 @@ import {
 
 describe('DASHBOARD_WORKFLOW_LINKS', () => {
   it('includes a direct medication-set entry point', () => {
-    expect(
-      DASHBOARD_WORKFLOW_LINKS.find((item) => item.key === 'medication_sets'),
-    ).toEqual(
+    expect(DASHBOARD_WORKFLOW_LINKS.find((item) => item.key === 'medication_sets')).toEqual(
       expect.objectContaining({
         href: '/medication-sets',
         title: 'セット管理',
@@ -35,14 +32,8 @@ describe('DASHBOARD_WORKFLOW_LINKS', () => {
   });
 
   it('surfaces referral intake and qr drafts from the home workflow grid', () => {
-    expect(
-      DASHBOARD_WORKFLOW_LINKS.map((item) => item.href),
-    ).toEqual(
-      expect.arrayContaining([
-        '/referrals/new',
-        '/prescriptions/qr-drafts',
-        '/qr-scan',
-      ]),
+    expect(DASHBOARD_WORKFLOW_LINKS.map((item) => item.href)).toEqual(
+      expect.arrayContaining(['/referrals/new', '/prescriptions/qr-drafts', '/qr-scan']),
     );
   });
 });
@@ -71,26 +62,8 @@ describe('dashboard home config', () => {
   });
 
   it('includes direct admin dashboard links for management surfaces', () => {
-    expect(
-      DASHBOARD_ADMIN_LINKS.map((item) => item.href),
-    ).toEqual(
-      expect.arrayContaining([
-        '/admin',
-        '/admin/data-explorer',
-        '/admin/jobs',
-        '/admin/metrics',
-      ]),
-    );
-  });
-
-  it('keeps dashboard header shortcuts for utility screens that are not in the main grids', () => {
-    expect(DASHBOARD_HEADER_SHORTCUTS).toEqual(
-      expect.arrayContaining([
-        { href: '/views', label: 'よく使う絞り込み' },
-        { href: '/settings', label: 'ユーザー設定' },
-        { href: '/qr-scan', label: 'QRスキャン' },
-        { href: '/admin/notification-settings', label: '通知設定' },
-      ]),
+    expect(DASHBOARD_ADMIN_LINKS.map((item) => item.href)).toEqual(
+      expect.arrayContaining(['/admin', '/admin/data-explorer', '/admin/jobs', '/admin/metrics']),
     );
   });
 
