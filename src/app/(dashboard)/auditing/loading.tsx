@@ -3,7 +3,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export default function AuditingLoading() {
   return (
-    <PageScaffold aria-label="鑑査を読み込み中">
+    <PageScaffold aria-label="調剤鑑査を読み込み中">
       <div className="space-y-3">
         <Skeleton className="h-3 w-28" />
         <Skeleton className="h-8 w-40" />

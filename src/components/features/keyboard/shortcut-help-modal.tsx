@@ -18,14 +18,17 @@ interface ShortcutHelpModalProps {
 const SCOPE_LABELS: Record<string, string> = {
   global: 'グローバル',
   dispensing: '調剤キュー',
-  auditing: '鑑査',
+  auditing: '調剤鑑査',
   'qr-drafts': 'QR下書き',
   prescriptions: '処方受付',
 };
 
 function formatKey(shortcut: ShortcutDefinition): string {
   const parts: string[] = [];
-  if (shortcut.metaKey) parts.push(typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl');
+  if (shortcut.metaKey)
+    parts.push(
+      typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl',
+    );
   if (shortcut.ctrlKey) parts.push('Ctrl');
   if (shortcut.shiftKey) parts.push('Shift');
 
@@ -59,9 +62,7 @@ export function ShortcutHelpModal({ open, onOpenChange, shortcuts }: ShortcutHel
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>キーボードショートカット</DialogTitle>
-          <DialogDescription>
-            利用可能なキーボードショートカットの一覧です
-          </DialogDescription>
+          <DialogDescription>利用可能なキーボードショートカットの一覧です</DialogDescription>
         </DialogHeader>
 
         <div className="max-h-80 space-y-4 overflow-y-auto">
