@@ -19,16 +19,8 @@ export default async function PatientEditPage({ params }: { params: Promise<{ id
         eyebrow="Patient Edit"
         title="患者情報編集"
         description="患者基本情報、紹介受付票、訪問初期情報をまとめて更新します。"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">編集の考え方</p>
-            <p className="text-sm text-muted-foreground">
-              患者詳細に散っていた入力項目を一括で見直し、紹介・訪問・服薬支援へ渡る基礎データを整えます。
-            </p>
-          </div>
-        }
         shortcuts={getPatientEditShortcutLinks(id)}
-        className="mb-6"
+        className="mb-4"
       />
 
       <PatientEditContent patientId={id} />

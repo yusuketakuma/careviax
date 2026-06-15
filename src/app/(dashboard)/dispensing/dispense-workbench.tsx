@@ -410,7 +410,7 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
                 key={row.key}
                 className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}
               >
-                <TableCell className="break-words pr-4 font-medium text-foreground">
+                <TableCell className="truncate pr-4 font-medium text-foreground">
                   {row.drug_name}
                 </TableCell>
                 <TableCell className="break-words text-muted-foreground">
