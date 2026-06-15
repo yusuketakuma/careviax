@@ -35,9 +35,8 @@ vi.mock('@/lib/stores/ui-store', () => ({
 }));
 
 vi.mock('@/lib/stores/auth-store', () => ({
-  useAuthStore: (
-    selector: (state: { currentUser: { name: string }; orgId: string }) => unknown,
-  ) => selector({ currentUser: { name: '山田 太郎' }, orgId: 'org_1' }),
+  useAuthStore: (selector: (state: { currentUser: { name: string }; orgId: string }) => unknown) =>
+    selector({ currentUser: { name: '山田 太郎' }, orgId: 'org_1' }),
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
@@ -57,10 +56,7 @@ vi.mock('@/components/features/notifications/notification-bell', () => ({
 // トリガー/項目を素のボタンとして描画するモックでヘッダー側のロジックを検証する。
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: (allProps: {
-    children?: React.ReactNode;
-    render?: React.ReactElement;
-  }) => {
+  DropdownMenuTrigger: (allProps: { children?: React.ReactNode; render?: React.ReactElement }) => {
     const { children, ...props } = allProps;
     delete props.render;
     return (
@@ -124,6 +120,10 @@ describe('AppHeader', () => {
     expect(sync.textContent).toBe('同期済み 09:42');
     expect(sync.className).toContain('emerald');
 
+    const communication = screen.getByTestId('app-header-communication');
+    expect(communication.getAttribute('href')).toBe(
+      '/tasks?work_request=1&work_request_type=staff_work_request_general&context=header_communication',
+    );
     expect(screen.getByRole('button', { name: '通知 6' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'ヘルプ' })).toBeTruthy();
     expect(screen.getByTestId('app-header-user-name').textContent).toBe('山田 太郎');

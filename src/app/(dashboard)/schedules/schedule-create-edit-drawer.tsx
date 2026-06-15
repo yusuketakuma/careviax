@@ -379,7 +379,7 @@ export function ScheduleCreateEditDrawer({
               </SelectContent>
             </Select>
             <p className="text-xs leading-5 text-muted-foreground">
-              確認済みは候補詳細の患者連絡ワークフローで連絡結果として記録します。
+              確認済みは確定フローの患者連絡ワークフローで連絡結果として記録します。
             </p>
           </div>
 

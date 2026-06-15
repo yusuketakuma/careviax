@@ -145,6 +145,11 @@ type TasksContentProps = {
   initialTaskType?: string | null;
   initialPriority?: TasksPriorityFilter;
   initialContext?: string | null;
+  initialWorkRequestType?: string | null;
+  initialWorkRequestTitle?: string | null;
+  initialWorkRequestDescription?: string | null;
+  initialRelatedEntityType?: string | null;
+  initialRelatedEntityId?: string | null;
 };
 
 export function TasksContent({
@@ -153,6 +158,11 @@ export function TasksContent({
   initialTaskType,
   initialPriority,
   initialContext,
+  initialWorkRequestType,
+  initialWorkRequestTitle,
+  initialWorkRequestDescription,
+  initialRelatedEntityType,
+  initialRelatedEntityId,
 }: TasksContentProps = {}) {
   const replaceTaskUrl = useSyncedSearchParams();
   const orgId = useOrgId();
@@ -165,11 +175,13 @@ export function TasksContent({
   const [priorityFilter, setPriorityFilter] = useState(initialPriority ?? '');
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([]);
   const [requestAssignee, setRequestAssignee] = useState('');
-  const [requestType, setRequestType] = useState('staff_work_request_visit');
+  const [requestType, setRequestType] = useState(
+    initialWorkRequestType ?? 'staff_work_request_visit',
+  );
   const [requestPriority, setRequestPriority] = useState('normal');
   const [requestDueDate, setRequestDueDate] = useState('');
-  const [requestTitle, setRequestTitle] = useState('');
-  const [requestDescription, setRequestDescription] = useState('');
+  const [requestTitle, setRequestTitle] = useState(initialWorkRequestTitle ?? '');
+  const [requestDescription, setRequestDescription] = useState(initialWorkRequestDescription ?? '');
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -210,6 +222,16 @@ export function TasksContent({
   const selectedAssignee = staffWorkload.find((staff) => staff.id === requestAssignee) ?? null;
   const selectedRequestTypeLabel =
     WORK_REQUEST_OPTIONS.find((option) => option.value === requestType)?.label ?? '業務を依頼';
+  const selectedRequestPriorityLabel =
+    PRIORITY_OPTIONS.find((option) => option.value === requestPriority)?.label ?? '通常';
+  const relatedEntitySummary =
+    initialRelatedEntityType && initialRelatedEntityId
+      ? initialRelatedEntityType === 'visit_schedule'
+        ? '対象の訪問予定に紐づけて依頼します。'
+        : initialRelatedEntityType === 'dispense_task'
+          ? '対象の監査タスクに紐づけて依頼します。'
+          : '対象業務に紐づけて依頼します。'
+      : null;
 
   const createRequestMutation = useMutation({
     mutationFn: async () => {
@@ -226,10 +248,14 @@ export function TasksContent({
           priority: requestPriority,
           assigned_to: requestAssignee,
           due_date: dueDateIso,
+          related_entity_type: initialRelatedEntityType ?? undefined,
+          related_entity_id: initialRelatedEntityId ?? undefined,
           metadata: {
             source: 'staff_work_request',
             requested_by: currentUserId,
             request_type_label: selectedRequestTypeLabel,
+            related_entity_type: initialRelatedEntityType ?? undefined,
+            related_entity_id: initialRelatedEntityId ?? undefined,
           },
         }),
       });
@@ -477,7 +503,7 @@ export function TasksContent({
             <Label htmlFor="work-request-type">依頼内容</Label>
             <Select value={requestType} onValueChange={(value) => setRequestType(value ?? '')}>
               <SelectTrigger id="work-request-type">
-                <SelectValue />
+                <span>{selectedRequestTypeLabel}</span>
               </SelectTrigger>
               <SelectContent>
                 {WORK_REQUEST_OPTIONS.map((option) => (
@@ -495,7 +521,7 @@ export function TasksContent({
               onValueChange={(value) => setRequestPriority(value ?? '')}
             >
               <SelectTrigger id="work-request-priority">
-                <SelectValue />
+                <span>{selectedRequestPriorityLabel}</span>
               </SelectTrigger>
               <SelectContent>
                 {PRIORITY_OPTIONS.filter((option) => option.value).map((option) => (
@@ -537,11 +563,14 @@ export function TasksContent({
           />
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {selectedAssignee
-              ? `${selectedAssignee.name}さんに「${selectedRequestTypeLabel}」を依頼します。`
-              : '依頼先スタッフを選ぶと、現在の抱え込みを見ながら依頼できます。'}
-          </p>
+          <div className="space-y-0.5 text-sm text-muted-foreground">
+            <p>
+              {selectedAssignee
+                ? `${selectedAssignee.name}さんに「${selectedRequestTypeLabel}」を依頼します。`
+                : '依頼先スタッフを選ぶと、現在の抱え込みを見ながら依頼できます。'}
+            </p>
+            {relatedEntitySummary ? <p>{relatedEntitySummary}</p> : null}
+          </div>
           <Button
             type="button"
             onClick={() => createRequestMutation.mutate()}

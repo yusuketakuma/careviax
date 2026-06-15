@@ -280,6 +280,12 @@ describe('ScheduleTeamBoard', () => {
     expect(screen.getAllByTestId('team-board-idle').length).toBe(2);
     expect(screen.getByText('斜線＝移動時間')).toBeTruthy();
     expect(screen.getByText('緑点線＝余白')).toBeTruthy();
+    const visitRequestLink = screen.getByRole('link', { name: '伊藤 キヨ様の訪問を依頼' });
+    expect(visitRequestLink.getAttribute('href')).toContain(
+      'work_request_type=staff_work_request_visit',
+    );
+    expect(visitRequestLink.getAttribute('href')).toContain('related_entity_type=visit_schedule');
+    expect(visitRequestLink.getAttribute('href')).toContain('related_entity_id=visit_1');
 
     // リスク警告(麻薬監査未完×14:00訪問)
     const banner = screen.getByTestId('schedule-risk-banner');
@@ -294,7 +300,7 @@ describe('ScheduleTeamBoard', () => {
     expect(
       within(pending).getByText(/確定すると佐藤さんの明日の余白は 70分 → 25分 になります/),
     ).toBeTruthy();
-    const proposalDetailLink = within(pending).getByRole('link', { name: '→ 候補詳細へ' });
+    const proposalDetailLink = within(pending).getByRole('link', { name: '→ 確定フローへ' });
     expect(proposalDetailLink.getAttribute('href')).toBe(
       '/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=proposal_1',
     );

@@ -16,13 +16,19 @@ export function describeOperationalTask(
   switch (task.task_type) {
     case 'staff_work_request_visit':
       return {
-        actionHref: '/schedules',
+        actionHref:
+          task.related_entity_type === 'visit_schedule' && task.related_entity_id
+            ? `/schedules?focus=schedule&schedule_id=${encodeURIComponent(task.related_entity_id)}`
+            : '/schedules',
         actionLabel: '訪問依頼を確認',
         queueLabel: '訪問依頼',
       };
     case 'staff_work_request_audit':
       return {
-        actionHref: '/auditing',
+        actionHref:
+          task.related_entity_type === 'dispense_task' && task.related_entity_id
+            ? `/auditing?taskId=${encodeURIComponent(task.related_entity_id)}`
+            : '/auditing',
         actionLabel: '監査依頼を確認',
         queueLabel: '監査依頼',
       };
@@ -200,7 +206,9 @@ export function describeOperationalTask(
     default:
       if (task.related_entity_type === 'visit_schedule') {
         return {
-          actionHref: '/schedules',
+          actionHref: task.related_entity_id
+            ? `/schedules?focus=schedule&schedule_id=${encodeURIComponent(task.related_entity_id)}`
+            : '/schedules',
           actionLabel: '予定を確認',
           queueLabel: '訪問',
         };

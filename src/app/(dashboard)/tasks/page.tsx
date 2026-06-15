@@ -47,6 +47,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           initialTaskType={initialState.initialTaskType}
           initialPriority={initialState.initialPriority}
           initialContext={initialState.initialContext}
+          initialWorkRequestType={initialState.initialWorkRequestType}
+          initialWorkRequestTitle={initialState.initialWorkRequestTitle}
+          initialWorkRequestDescription={initialState.initialWorkRequestDescription}
+          initialRelatedEntityType={initialState.initialRelatedEntityType}
+          initialRelatedEntityId={initialState.initialRelatedEntityId}
         />
       </Suspense>
     </PageScaffold>

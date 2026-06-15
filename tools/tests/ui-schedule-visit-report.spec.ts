@@ -347,12 +347,12 @@ test.describe('schedule page', () => {
     await expect(page.getByLabel('候補日 From')).toBeVisible();
     await expect(page.getByLabel('候補日 To')).toBeVisible();
 
-    const detailButton = page.getByRole('button', { name: /候補詳細を開く/ }).first();
+    const detailButton = page.getByRole('button', { name: /確定フローを開く/ }).first();
     await expect
       .poll(
         async () => {
           const hasDetail =
-            (await page.getByRole('button', { name: /候補詳細を開く/ }).count()) > 0;
+            (await page.getByRole('button', { name: /確定フローを開く/ }).count()) > 0;
           const hasEmpty = await page
             .locator('main')
             .getByText('条件に一致する訪問候補はありません。')
@@ -367,7 +367,7 @@ test.describe('schedule page', () => {
       )
       .toBe(true);
 
-    if ((await page.getByRole('button', { name: /候補詳細を開く/ }).count()) > 0) {
+    if ((await page.getByRole('button', { name: /確定フローを開く/ }).count()) > 0) {
       await expectMinTouchTargetHeight(detailButton);
       await detailButton.click();
       await expect(page.getByTestId('schedule-proposal-active-row')).toBeVisible({
@@ -494,7 +494,7 @@ test.describe('schedule page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/schedules/proposals?workspace=dashboard');
 
-    const detailButton = page.getByRole('button', { name: /候補詳細を開く/ }).first();
+    const detailButton = page.getByRole('button', { name: /確定フローを開く/ }).first();
     if (!(await detailButton.isVisible({ timeout: 90_000 }).catch(() => false))) {
       await expect(page.locator('main')).toContainText(
         /条件に一致する訪問候補はありません。|訪問候補を読み込み中/,

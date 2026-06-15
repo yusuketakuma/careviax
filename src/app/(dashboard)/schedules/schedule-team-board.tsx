@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, Lock, Plus } from 'lucide-react';
+import { AlertTriangle, Lock, Plus, Send } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
@@ -15,6 +15,7 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { DayBoardPendingProposal, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
@@ -139,6 +140,16 @@ function blockClassName(block: BoardBlock): string {
 function GanttBlock({ block }: { block: BoardBlock }) {
   const left = boardPercent(block.startMinutes);
   const width = Math.max(boardPercent(block.endMinutes) - left, 1.5);
+  const scheduleId = block.kind === 'visit' ? block.id.replace(/^visit:/, '') : null;
+  const requestHref = scheduleId
+    ? buildWorkRequestHref({
+        type: 'staff_work_request_visit',
+        title: `${block.label.replace(/様$/, '')}さんの訪問に行ってほしい`,
+        relatedEntityType: 'visit_schedule',
+        relatedEntityId: scheduleId,
+        context: 'schedule_visit_card',
+      })
+    : null;
   return (
     <li
       data-kind={block.kind}
@@ -152,6 +163,16 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       {block.locked ? <Lock className="size-3 shrink-0" aria-hidden="true" /> : null}
       <span className={cn('truncate', block.kind === 'travel' && 'sr-only')}>{block.label}</span>
       {block.risk ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
+      {requestHref ? (
+        <Link
+          href={requestHref}
+          aria-label={`${block.label}の訪問を依頼`}
+          className="ml-auto inline-flex size-6 shrink-0 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+          data-testid="visit-work-request-link"
+        >
+          <Send className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
       {block.locked ? <span className="sr-only">(確定・変更は理由必須)</span> : null}
     </li>
   );
@@ -375,7 +396,7 @@ function PendingProposalRow({
             className: 'shrink-0 bg-card',
           })}
         >
-          → 候補詳細へ
+          → 確定フローへ
         </Link>
       </div>
       {showImpact ? (

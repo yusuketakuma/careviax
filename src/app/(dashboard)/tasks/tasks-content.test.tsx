@@ -148,4 +148,22 @@ describe('TasksContent', () => {
     expect(screen.getByText('依頼: 監査依頼')).toBeTruthy();
     expect(screen.getByTestId('tasks-table').textContent).toContain('訪問準備');
   });
+
+  it('prefills work request fields from visit or audit deep links', () => {
+    render(
+      <TasksContent
+        initialWorkRequestType="staff_work_request_audit"
+        initialWorkRequestTitle="田中さんの監査をしてほしい"
+        initialWorkRequestDescription="14:00訪問前に完了"
+        initialRelatedEntityType="dispense_task"
+        initialRelatedEntityId="task-tanaka"
+      />,
+    );
+
+    expect(screen.getByText('監査をしてほしい')).toBeTruthy();
+    expect(screen.getByText('通常')).toBeTruthy();
+    expect(screen.getByDisplayValue('田中さんの監査をしてほしい')).toBeTruthy();
+    expect(screen.getByDisplayValue('14:00訪問前に完了')).toBeTruthy();
+    expect(screen.getByText('対象の監査タスクに紐づけて依頼します。')).toBeTruthy();
+  });
 });

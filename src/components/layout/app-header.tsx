@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, CircleHelp, CloudOff, Menu, Search } from 'lucide-react';
+import { ChevronDown, CircleHelp, CloudOff, Menu, MessageSquareText, Search } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
 import {
@@ -23,6 +23,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useUIStore, type CareMode } from '@/lib/stores/ui-store';
+import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 
 const CARE_MODE_LABELS: Record<string, string> = {
   home_visit: '在宅モード',
@@ -222,6 +223,20 @@ export function AppHeader() {
           </Button>
           <HeaderOfflineDrafts />
           <HeaderSyncStatus />
+          <Button
+            asChild
+            variant="outline"
+            className="min-h-[44px] min-w-[44px] gap-1.5 px-2 text-sm sm:min-h-9 sm:min-w-0 sm:px-3"
+          >
+            <Link
+              href={buildWorkRequestHref({ context: 'header_communication' })}
+              aria-label="コミュニケーション"
+              data-testid="app-header-communication"
+            >
+              <MessageSquareText className="size-4" aria-hidden="true" />
+              <span className="hidden md:inline">コミュニケーション</span>
+            </Link>
+          </Button>
           <NotificationBell />
           <Button
             asChild

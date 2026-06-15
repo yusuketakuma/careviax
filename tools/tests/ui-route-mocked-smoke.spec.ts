@@ -1662,10 +1662,10 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
       proposalId: PROPOSAL_SEARCH_B_ID,
     });
     await expect(
-      page.getByRole('button', { name: `${firstTarget} の候補詳細を開く` }),
+      page.getByRole('button', { name: `${firstTarget} の確定フローを開く` }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: `${secondTarget} の候補詳細を開く` }),
+      page.getByRole('button', { name: `${secondTarget} の確定フローを開く` }),
     ).toBeVisible();
 
     await page.getByLabel('ケース/患者検索').fill('佐藤');
@@ -1695,10 +1695,10 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
       )
       .toBe(true);
 
-    await expect(page.getByRole('button', { name: `${firstTarget} の候補詳細を開く` })).toHaveCount(
-      0,
-    );
-    const detailButton = page.getByRole('button', { name: `${secondTarget} の候補詳細を開く` });
+    await expect(
+      page.getByRole('button', { name: `${firstTarget} の確定フローを開く` }),
+    ).toHaveCount(0);
+    const detailButton = page.getByRole('button', { name: `${secondTarget} の確定フローを開く` });
     const approveButton = page.getByRole('button', {
       name: `${secondTarget} を承認して患者連絡へ進める`,
     });
@@ -1710,7 +1710,7 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
     await expectMinTouchBox(proposalCheckbox, 'same-name filtered proposal checkbox');
 
     await detailButton.click();
-    const detailDialog = page.getByRole('dialog', { name: `${secondTarget} の訪問候補詳細` });
+    const detailDialog = page.getByRole('dialog', { name: '訪問日時確定フロー' });
     await expect(detailDialog).toBeVisible();
     await expectMinTouchBox(
       detailDialog.getByRole('button', { name: `${secondTarget} を承認して患者連絡へ進める` }),
@@ -1777,10 +1777,10 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
       page.getByRole('checkbox', { name: `${failureTarget} の候補を選択` }),
     ).toHaveAttribute('aria-checked', 'true');
     await expect(
-      page.getByRole('button', { name: `${successTarget} の候補詳細を開く` }),
+      page.getByRole('button', { name: `${successTarget} の確定フローを開く` }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: `${failureTarget} の候補詳細を開く` }),
+      page.getByRole('button', { name: `${failureTarget} の確定フローを開く` }),
     ).toBeVisible();
 
     const rejectButton = page.getByRole('button', {
@@ -1870,9 +1870,7 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
       })
       .click();
     await expect(page.getByTestId('schedule-proposal-active-row')).toContainText('佐藤太郎');
-    await expect(
-      page.getByRole('dialog', { name: `${failureTarget} の訪問候補詳細` }),
-    ).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '訪問日時確定フロー' })).toBeVisible();
 
     await page.screenshot({
       path: testInfo.outputPath('schedule-proposals-bulk-reject-keyboard.png'),

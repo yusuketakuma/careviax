@@ -17,6 +17,11 @@ describe('tasks-query-state', () => {
       initialTaskType: 'visit_preparation',
       initialPriority: 'high',
       initialContext: 'dashboard_home',
+      initialWorkRequestType: undefined,
+      initialWorkRequestTitle: undefined,
+      initialWorkRequestDescription: undefined,
+      initialRelatedEntityType: undefined,
+      initialRelatedEntityId: undefined,
     });
   });
 
@@ -27,6 +32,7 @@ describe('tasks-query-state', () => {
         status: 'later',
         priority: 'soon',
         context: 'other',
+        work_request_type: 'other',
       }),
     ).toEqual({
       initialAssigned: undefined,
@@ -34,6 +40,34 @@ describe('tasks-query-state', () => {
       initialTaskType: undefined,
       initialPriority: undefined,
       initialContext: null,
+      initialWorkRequestType: undefined,
+      initialWorkRequestTitle: undefined,
+      initialWorkRequestDescription: undefined,
+      initialRelatedEntityType: undefined,
+      initialRelatedEntityId: undefined,
+    });
+  });
+
+  it('reads work request prefill search params', () => {
+    expect(
+      readTasksState({
+        work_request_type: 'staff_work_request_audit',
+        work_request_title: '田中さんの監査をしてほしい',
+        work_request_description: '14:00訪問前に完了',
+        related_entity_type: 'dispense_task',
+        related_entity_id: 'task_1',
+      }),
+    ).toEqual({
+      initialAssigned: undefined,
+      initialStatus: undefined,
+      initialTaskType: undefined,
+      initialPriority: undefined,
+      initialContext: null,
+      initialWorkRequestType: 'staff_work_request_audit',
+      initialWorkRequestTitle: '田中さんの監査をしてほしい',
+      initialWorkRequestDescription: '14:00訪問前に完了',
+      initialRelatedEntityType: 'dispense_task',
+      initialRelatedEntityId: 'task_1',
     });
   });
 });

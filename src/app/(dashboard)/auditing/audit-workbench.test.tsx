@@ -284,6 +284,12 @@ describe('AuditWorkbench', () => {
     expect(screen.getByText('調剤: 佐藤 09:30 完了')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
     expect(screen.getByText('山口 清 様(施設GH)')).toBeTruthy();
+    const requestLinks = screen.getAllByTestId('audit-work-request-link');
+    expect(requestLinks[0].getAttribute('href')).toContain(
+      'work_request_type=staff_work_request_audit',
+    );
+    expect(requestLinks[0].getAttribute('href')).toContain('related_entity_type=dispense_task');
+    expect(requestLinks[0].getAttribute('href')).toContain('related_entity_id=task-tanaka');
     expect(screen.getByText('ほか3件')).toBeTruthy();
     expect(screen.getByText('チーム全体では24件 — 詰まり工程')).toBeTruthy();
 

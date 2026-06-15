@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Check } from 'lucide-react';
+import { Check, Send } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
@@ -34,6 +34,7 @@ import {
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
@@ -191,6 +192,13 @@ function AuditQueuePanel({
             const isSelected = row.id === selectedTaskId;
             const badge = auditQueueBadge(row);
             const dueTime = formatDueTime(row.due_date);
+            const requestHref = buildWorkRequestHref({
+              type: 'staff_work_request_audit',
+              title: `${queueRowTitle(row).replace(/ 様/, 'さん')}の監査をしてほしい`,
+              relatedEntityType: 'dispense_task',
+              relatedEntityId: row.id,
+              context: 'audit_queue_row',
+            });
             return (
               <li key={row.id}>
                 <button
@@ -227,6 +235,14 @@ function AuditQueuePanel({
                     </span>
                   ) : null}
                 </button>
+                <Link
+                  href={requestHref}
+                  className="mt-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-primary hover:bg-primary/5 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  data-testid="audit-work-request-link"
+                >
+                  <Send className="size-3.5" aria-hidden="true" />
+                  この監査を依頼
+                </Link>
               </li>
             );
           })}
