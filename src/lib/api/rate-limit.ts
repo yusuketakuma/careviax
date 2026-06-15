@@ -469,7 +469,6 @@ export const API_ROUTE_TEMPLATES = [
   '/api/admin/flush-metrics',
   '/api/admin/inventory-forecast',
   '/api/admin/master-hub',
-  '/api/admin/master-readiness',
   '/api/admin/metrics',
   '/api/admin/operations-insights',
   '/api/admin/organizations',

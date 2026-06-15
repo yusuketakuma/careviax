@@ -787,55 +787,32 @@ test.describe('reports page', () => {
   });
 });
 
-test.describe('admin dashboard', () => {
+test.describe('admin master hub', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
 
-  test('admin dashboard loads with summary cards', async ({ context }) => {
+  test('admin master hub loads with current master cards', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/admin');
 
-    await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toBeVisible();
-
-    // Should have summary metrics or global empty state
-    const mainContent = page.locator('main');
-    const hasMetrics = await mainContent
-      .getByText(/未記録訪問|未送付報告|月間|例外/)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasEmptyAll = await mainContent
-      .getByText('現時点で重大な滞留はありません')
-      .isVisible()
-      .catch(() => false);
-    const contentLength = (await mainContent.textContent())?.trim().length ?? 0;
-
-    expect(hasMetrics || hasEmptyAll || contentLength > 100).toBe(true);
+    await expect(page.getByRole('heading', { name: 'マスター' })).toBeVisible();
+    await expect(page.getByTestId('master-hub')).toBeVisible();
+    await expect(page.getByTestId('master-hub-card').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
-  test('admin monthly navigation works without errors', async ({ context }) => {
+  test('admin master hub cross search opens without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/admin');
 
-    // Monthly navigation buttons
-    const prevMonth = page.getByRole('button', { name: '前月' });
-    const nextMonth = page.getByRole('button', { name: '翌月' });
+    await page.getByRole('link', { name: 'マスター横断検索' }).click();
+    await waitForStableUi(page);
 
-    if (await prevMonth.isVisible().catch(() => false)) {
-      await prevMonth.click();
-      await waitForStableUi(page);
-
-      await nextMonth.click();
-      await waitForStableUi(page);
-
-      // Page should still be functional
-      const main = page.locator('main');
-      const content = await main.textContent();
-      expect(content?.trim().length).toBeGreaterThan(0);
-    }
+    await expect(page).toHaveURL(/\/admin\/data-explorer/);
+    await expect(page.locator('main')).toContainText(/データ探索|マスター横断検索/);
 
     expect(errors).toEqual([]);
   });

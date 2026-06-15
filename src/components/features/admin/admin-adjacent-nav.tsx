@@ -9,7 +9,7 @@ type AdminAdjacentNavProps = {
 export function AdminAdjacentNav({ shortcuts }: AdminAdjacentNavProps) {
   return (
     <div className="space-y-3">
-      <WorkflowBackLink href="/admin" label="管理ダッシュボードへ戻る" />
+      <WorkflowBackLink href="/admin" label="マスターへ戻る" />
       <PageShortcutLinks links={shortcuts} />
     </div>
   );

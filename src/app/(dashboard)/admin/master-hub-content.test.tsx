@@ -37,8 +37,10 @@ function buildFixture(): MasterHubResponse {
         status: 'healthy',
         status_count: null,
         note: '安全タグ・代替薬・在庫連動の列を含む',
-        action_label: '→ 在庫へ',
-        action_href: '/admin/drug-stock',
+        issue_count: 0,
+        next_action_hint: '採用品と安全タグを確認する',
+        action_label: '→ 医薬品へ',
+        action_href: '/admin/drug-masters',
       },
       {
         key: 'professionals',
@@ -49,6 +51,8 @@ function buildFixture(): MasterHubResponse {
         status: 'checking',
         status_count: 1,
         note: 'やまもと内科の送付先FAXを事務が確認中 — 完了まで同院宛の送付はブロックされます',
+        issue_count: 1,
+        next_action_hint: 'やまもと内科の送付先FAXを確認する',
         action_label: '→ ハンドオフへ',
         action_href: '/handoff',
       },
@@ -61,6 +65,8 @@ function buildFixture(): MasterHubResponse {
         status: 'healthy',
         status_count: null,
         note: 'グリーンヒルの鍵・駐車情報は6/9更新 — 訪問パケットに反映済み',
+        issue_count: 0,
+        next_action_hint: '最新施設の訪問条件を確認する',
         action_label: '→ 訪問へ',
         action_href: '/visits',
       },
@@ -73,6 +79,8 @@ function buildFixture(): MasterHubResponse {
         status: 'healthy',
         status_count: null,
         note: '本日の休みはスケジュールに反映済み。権限はロール×モードのマトリクス管理',
+        issue_count: 0,
+        next_action_hint: '本日のシフトと権限を確認する',
         action_label: '→ スケジュールへ',
         action_href: '/schedules',
       },
@@ -85,6 +93,8 @@ function buildFixture(): MasterHubResponse {
         status: 'due_soon',
         status_count: null,
         note: '軽バン2号の点検期限 6/20(あと9日) — 期限切れで配車候補から自動除外されます',
+        issue_count: 1,
+        next_action_hint: '軽バン2号の点検を予約する',
         action_label: '点検を予約',
         action_href: '/schedules',
       },
@@ -160,7 +170,11 @@ describe('MasterHubContent', () => {
     expect(within(cards[0]).getByText('健全')).toBeTruthy();
     expect(within(cards[0]).getByText('1,248件')).toBeTruthy();
     expect(within(cards[0]).getByText(/最終更新 6\/10/)).toBeTruthy();
-    expect(within(cards[0]).getByRole('link', { name: '→ 在庫へ' })).toBeTruthy();
+    expect(within(cards[0]).getByText('採用品と安全タグを確認する')).toBeTruthy();
+    expect(within(cards[0]).getByText('未処理なし')).toBeTruthy();
+    expect(within(cards[0]).getByRole('link', { name: '→ 医薬品へ' }).getAttribute('href')).toBe(
+      '/admin/drug-masters',
+    );
 
     // 医療者マスター(確認中 1 + ブロック文言を隠さない)
     expect(within(cards[1]).getByText('確認中 1')).toBeTruthy();
@@ -170,6 +184,8 @@ describe('MasterHubContent', () => {
         'やまもと内科の送付先FAXを事務が確認中 — 完了まで同院宛の送付はブロックされます',
       ),
     ).toBeTruthy();
+    expect(within(cards[1]).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
+    expect(within(cards[1]).getByText('未処理 1件')).toBeTruthy();
     expect(within(cards[1]).getByRole('link', { name: '→ ハンドオフへ' })).toBeTruthy();
 
     // 車両マスター(期限接近)
@@ -179,11 +195,25 @@ describe('MasterHubContent', () => {
         '軽バン2号の点検期限 6/20(あと9日) — 期限切れで配車候補から自動除外されます',
       ),
     ).toBeTruthy();
+    expect(within(cards[4]).getByText('軽バン2号の点検を予約する')).toBeTruthy();
     expect(within(cards[4]).getByRole('link', { name: '点検を予約' })).toBeTruthy();
 
     expect(screen.getByTestId('master-hub-freshness-note').textContent).toContain(
       'マスターは鮮度の画面',
     );
+  });
+
+  it('shows a decision summary before the master cards', () => {
+    render(<MasterHubContent />);
+
+    const summary = screen.getByTestId('master-hub-summary');
+    expect(within(summary).getByText('今日の判定')).toBeTruthy();
+    expect(within(summary).getByText('確認あり')).toBeTruthy();
+    expect(within(summary).getByText('2マスターに注意')).toBeTruthy();
+    expect(within(summary).getByText('未処理')).toBeTruthy();
+    expect(within(summary).getByText('2件')).toBeTruthy();
+    expect(within(summary).getByText('医療者マスター')).toBeTruthy();
+    expect(within(summary).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
   });
 
   it('renders the action rail with a single primary action and 根拠・記録 rows', () => {

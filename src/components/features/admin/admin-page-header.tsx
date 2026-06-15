@@ -38,7 +38,7 @@ export function AdminPageHeader({
   return (
     <div className="space-y-4" data-page-header="true">
       <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
-        <WorkflowBackLink href="/admin" label="管理ダッシュボードへ戻る" />
+        <WorkflowBackLink href="/admin" label="マスターへ戻る" />
       </div>
       <WorkflowPageHeader
         eyebrow={eyebrow}

@@ -63,7 +63,7 @@ function statusBadgeLabel(card: MasterHubCard): string {
 function MasterCard({ card }: { card: MasterHubCard }) {
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border/70 bg-card p-4"
       data-testid="master-hub-card"
       data-master-key={card.key}
       data-status={card.status}
@@ -90,6 +90,17 @@ function MasterCard({ card }: { card: MasterHubCard }) {
         </span>
       </p>
       <p className="flex-1 text-sm leading-6 text-muted-foreground">{card.note}</p>
+      <div className="rounded-md border border-border/70 bg-muted/35 px-3 py-2">
+        <p className="text-[11px] font-bold text-muted-foreground">次にすること</p>
+        <p className="mt-1 text-sm font-semibold leading-5 text-foreground">
+          {card.next_action_hint}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {card.issue_count > 0
+            ? `未処理 ${card.issue_count.toLocaleString('ja-JP')}件`
+            : '未処理なし'}
+        </p>
+      </div>
       <div>
         <Button asChild variant="outline" size="sm" className="min-h-9 text-primary">
           <Link href={card.action_href}>{card.action_label}</Link>
@@ -97,6 +108,19 @@ function MasterCard({ card }: { card: MasterHubCard }) {
       </div>
     </article>
   );
+}
+
+function buildMasterHubSummary(data: MasterHubResponse) {
+  const attentionCards = data.masters.filter((card) => card.status !== 'healthy');
+  const issueCount = data.masters.reduce((total, card) => total + card.issue_count, 0);
+  const primaryAttention =
+    attentionCards.find((card) => card.status === 'checking') ?? attentionCards[0] ?? null;
+
+  return {
+    attentionCards,
+    issueCount,
+    primaryAttention,
+  };
 }
 
 function MasterHubSkeleton() {
@@ -135,6 +159,7 @@ export function MasterHubContent() {
   });
 
   const data = hubQuery.data ?? null;
+  const summary = data ? buildMasterHubSummary(data) : null;
   const blockedReasons: BlockedReason[] = (data?.rail.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
     label: reason.label,
@@ -165,7 +190,7 @@ export function MasterHubContent() {
     <section aria-label="マスター" data-testid="master-hub">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">マスター</h2>
+          <h1 className="text-xl font-bold text-foreground">マスター</h1>
           <p className="text-sm text-muted-foreground">
             · {data ? data.masters.length : 5}マスター — 鮮度がすべて
           </p>
@@ -194,6 +219,41 @@ export function MasterHubContent() {
         ) : (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
             <div className="min-w-0 space-y-4">
+              {summary ? (
+                <div
+                  className="rounded-lg border border-border/70 bg-card p-4"
+                  data-testid="master-hub-summary"
+                >
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <p className="text-xs font-bold text-muted-foreground">今日の判定</p>
+                      <p className="mt-1 text-lg font-bold text-foreground">
+                        {summary.attentionCards.length > 0 ? '確認あり' : '健全'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {summary.attentionCards.length}マスターに注意
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-muted-foreground">未処理</p>
+                      <p className="mt-1 text-lg font-bold text-foreground">
+                        {summary.issueCount.toLocaleString('ja-JP')}件
+                      </p>
+                      <p className="text-xs text-muted-foreground">FAX確認・点検予約・取込の残件</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-muted-foreground">最初に見る項目</p>
+                      <p className="mt-1 text-sm font-bold leading-5 text-foreground">
+                        {summary.primaryAttention?.title ?? '全マスター'}
+                      </p>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {summary.primaryAttention?.next_action_hint ??
+                          '変更履歴と鮮度ルールだけ確認してください'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div className="grid gap-4 sm:grid-cols-2" data-testid="master-hub-grid">
                 {data.masters.map((card) => (
                   <MasterCard key={card.key} card={card} />

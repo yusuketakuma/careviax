@@ -21,6 +21,10 @@ export type MasterHubCard = {
   status_count: number | null;
   /** 現場語の状況説明 1 行 */
   note: string;
+  /** ユーザーが次に処理すべき確認・予約・整備の件数 */
+  issue_count: number;
+  /** カード内に出す具体的な次操作 */
+  next_action_hint: string;
   action_label: string;
   action_href: string;
 };

@@ -1,21 +1,5 @@
 import type { PageShortcutLink } from '@/components/features/workflow/page-shortcut-links';
 
-export function getAdminDashboardShortcutLinks(): PageShortcutLink[] {
-  return [
-    { href: '/admin/settings', label: '管理設定' },
-    { href: '/admin/pharmacy-sites', label: '薬局情報' },
-    { href: '/admin/staff', label: 'スタッフ' },
-    { href: '/admin/facilities', label: '施設' },
-    { href: '/admin/contact-profiles', label: '連携先' },
-    { href: '/admin/pca-pumps', label: 'PCAポンプ' },
-    { href: '/admin/formulary', label: '採用薬' },
-    { href: '/admin/drug-masters', label: '医薬品' },
-    { href: '/admin/billing-rules', label: '請求ルール' },
-    { href: '/admin/document-templates', label: '文書' },
-    { href: '/admin/audit-logs', label: '監査ログ' },
-  ];
-}
-
 export function getAdminSettingsShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/admin/pharmacy-sites', label: '薬局情報' },

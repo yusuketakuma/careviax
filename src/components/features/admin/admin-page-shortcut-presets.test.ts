@@ -5,7 +5,6 @@ import {
   getAdminBusinessHolidaysShortcutLinks,
   getAdminContactProfilesShortcutLinks,
   getAdminDataExplorerShortcutLinks,
-  getAdminDashboardShortcutLinks,
   getAdminDocumentTemplatesShortcutLinks,
   getAdminDrugMasterShortcutLinks,
   getAdminExternalProfessionalsShortcutLinks,
@@ -22,43 +21,8 @@ import {
   getAdminSettingsShortcutLinks,
   getAdminStaffShortcutLinks,
 } from './admin-page-shortcut-presets';
-import { listAdminMasterReadinessHrefs } from '@/lib/admin/master-readiness';
 
 describe('admin page shortcut presets', () => {
-  it('returns stable admin dashboard shortcuts', () => {
-    expect(getAdminDashboardShortcutLinks()).toEqual([
-      { href: '/admin/settings', label: '管理設定' },
-      { href: '/admin/pharmacy-sites', label: '薬局情報' },
-      { href: '/admin/staff', label: 'スタッフ' },
-      { href: '/admin/facilities', label: '施設' },
-      { href: '/admin/contact-profiles', label: '連携先' },
-      { href: '/admin/pca-pumps', label: 'PCAポンプ' },
-      { href: '/admin/formulary', label: '採用薬' },
-      { href: '/admin/drug-masters', label: '医薬品' },
-      { href: '/admin/billing-rules', label: '請求ルール' },
-      { href: '/admin/document-templates', label: '文書' },
-      { href: '/admin/audit-logs', label: '監査ログ' },
-    ]);
-  });
-
-  it('keeps admin dashboard shortcuts aligned with core master readiness categories', () => {
-    const shortcutHrefs = getAdminDashboardShortcutLinks().map((link) => link.href);
-    const readinessHrefs = listAdminMasterReadinessHrefs();
-
-    expect(readinessHrefs).toEqual(expect.arrayContaining(shortcutHrefs));
-    expect(shortcutHrefs).toEqual(
-      expect.arrayContaining([
-        '/admin/settings',
-        '/admin/facilities',
-        '/admin/contact-profiles',
-        '/admin/pca-pumps',
-        '/admin/drug-masters',
-        '/admin/billing-rules',
-        '/admin/document-templates',
-      ]),
-    );
-  });
-
   it('returns stable related shortcuts for admin detail surfaces', () => {
     expect(getAdminSettingsShortcutLinks()).toEqual([
       { href: '/admin/pharmacy-sites', label: '薬局情報' },

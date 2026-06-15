@@ -172,8 +172,10 @@ export const GET = withAuthContext(
           drugCount > 0
             ? '安全タグ・代替薬・在庫連動の列を含む'
             : '薬剤マスターが未取込です — 取込まで安全チェックが動きません',
-        action_label: '→ 在庫へ',
-        action_href: '/admin/drug-stock',
+        issue_count: drugCount > 0 ? 0 : 1,
+        next_action_hint: drugCount > 0 ? '採用品と安全タグを確認する' : '医薬品マスターを取込む',
+        action_label: '→ 医薬品へ',
+        action_href: '/admin/drug-masters',
       };
 
       // ── 医療者マスター ──────────────────────────────────────────────
@@ -184,16 +186,19 @@ export const GET = withAuthContext(
         count: externalProfessionalCount + institutionCount,
         count_unit: '件',
         last_updated_at:
-          maxDate(
-            professionalLatest?.updated_at,
-            institutionLatest?.updated_at,
-          )?.toISOString() ?? null,
+          maxDate(professionalLatest?.updated_at, institutionLatest?.updated_at)?.toISOString() ??
+          null,
         status: pendingInstitutionCount > 0 ? 'checking' : 'healthy',
         status_count: pendingInstitutionCount > 0 ? pendingInstitutionCount : null,
         note:
           pendingInstitutionCount > 0
             ? `${pendingInstitutions[0].name}の送付先FAXを事務が確認中 — 完了まで同院宛の送付はブロックされます`
             : '処方医・医療機関・他職種の連絡先と送付先を管理します',
+        issue_count: pendingInstitutionCount,
+        next_action_hint:
+          pendingInstitutionCount > 0
+            ? `${pendingInstitutions[0].name}の送付先FAXを確認する`
+            : '送付先と職種リンクを点検する',
         action_label: '→ ハンドオフへ',
         action_href: '/handoff',
       };
@@ -210,6 +215,10 @@ export const GET = withAuthContext(
         note: facilityLatest
           ? `${facilityLatest.name}の鍵・駐車情報は${format(facilityLatest.updated_at, 'M/d')}更新 — 訪問パケットに反映済み`
           : '施設の鍵・駐車・受入時間を訪問パケットに反映します',
+        issue_count: 0,
+        next_action_hint: facilityLatest
+          ? '最新施設の訪問条件を確認する'
+          : '施設・訪問先を登録する',
         action_label: '→ 訪問へ',
         action_href: '/visits',
       };
@@ -224,6 +233,8 @@ export const GET = withAuthContext(
         status: 'healthy',
         status_count: null,
         note: '本日の休みはスケジュールに反映済み。権限はロール×モードのマトリクス管理',
+        issue_count: 0,
+        next_action_hint: '本日のシフトと権限を確認する',
         action_label: '→ スケジュールへ',
         action_href: '/schedules',
       };
@@ -254,6 +265,8 @@ export const GET = withAuthContext(
         count: vehicles.length,
         count_unit: '台',
         last_updated_at: vehicleLatest?.toISOString() ?? null,
+        issue_count: 0,
+        next_action_hint: '点検期限と稼働可否を確認する',
         action_label: '点検を予約',
         action_href: '/schedules',
       };
@@ -266,6 +279,8 @@ export const GET = withAuthContext(
           ...vehicleBase,
           status: 'due_soon',
           status_count: null,
+          issue_count: 1,
+          next_action_hint: `${nearestInspection.label}の点検を予約する`,
           note: `${nearestInspection.label}の点検期限 ${format(nearestInspection.deadline, 'M/d')}(あと${remaining}日) — 期限切れで配車候補から自動除外されます`,
         };
       } else if (unavailableVehicles.length > 0) {
@@ -273,6 +288,8 @@ export const GET = withAuthContext(
           ...vehicleBase,
           status: 'checking',
           status_count: unavailableVehicles.length,
+          issue_count: unavailableVehicles.length,
+          next_action_hint: `${unavailableVehicles[0].label}の稼働可否を確認する`,
           note: `${unavailableVehicles[0].label}が稼働停止中 — 配車候補から自動除外されています`,
         };
       } else if (vehicleStaleDays != null && vehicleStaleDays >= VEHICLE_STALE_DAYS) {
@@ -280,6 +297,8 @@ export const GET = withAuthContext(
           ...vehicleBase,
           status: 'due_soon',
           status_count: null,
+          issue_count: 1,
+          next_action_hint: '点検・整備記録を更新する',
           note: `点検・整備の記録が${vehicleStaleDays}日間更新されていません — 期限切れで配車候補から自動除外されます`,
         };
       } else {
