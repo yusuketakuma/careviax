@@ -572,10 +572,6 @@ export default function ReportDetailPage() {
   const recipientNameForConfirmation = sendForm.recipient_name.trim() || '未入力';
   const recipientContactForConfirmation = sendForm.recipient_contact.trim() || '未入力';
   const channelLabel = CHANNEL_LABELS[sendForm.channel] ?? sendForm.channel;
-  const genericReportTitle =
-    typeof reportContentObject?.title === 'string' ? reportContentObject.title : null;
-  const genericReportBody =
-    typeof reportContentObject?.body === 'string' ? reportContentObject.body : null;
   const billingContext = readReportBillingContext(report.content);
   const warnings = readReportWarnings(report.content);
   const complianceChecks = hasContentView
@@ -601,7 +597,7 @@ export default function ReportDetailPage() {
       key: 'content',
       label: '報告書本文',
       description: '訪問記録から生成された本文を確認し、必要に応じて編集します。',
-      done: hasContentView || Boolean(genericReportBody || genericReportTitle),
+      done: hasContentView,
     },
     {
       key: 'billing',
@@ -683,12 +679,15 @@ export default function ReportDetailPage() {
   );
   const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
   const canBulkSend =
-    selectedShareTargets.length > 0 && allPreSendChecksDone && !bulkSendMutation.isPending;
+    hasContentView &&
+    selectedShareTargets.length > 0 &&
+    allPreSendChecksDone &&
+    !bulkSendMutation.isPending;
   const shareTargetsLoading =
     externalProfessionalSuggestionsQuery.isLoading ||
     externalProfessionalSuggestionsQuery.isFetching;
 
-  const sendReportAction = (
+  const sendReportAction = hasContentView ? (
     <div className="flex flex-wrap gap-2">
       {shareTargets.length > 0 ? (
         <Button
@@ -728,7 +727,7 @@ export default function ReportDetailPage() {
         送付
       </Button>
     </div>
-  );
+  ) : null;
 
   return (
     <PageScaffold variant="card">
@@ -871,22 +870,14 @@ export default function ReportDetailPage() {
                       content={report.content}
                       onSaved={() => toast.success('報告内容を保存しました')}
                     />
-                  ) : reportContentObject ? (
-                    <div className="space-y-2 rounded-md border border-border p-4">
-                      {genericReportTitle ? (
-                        <p className="text-sm font-semibold text-foreground">
-                          {genericReportTitle}
-                        </p>
-                      ) : null}
-                      <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
-                        {genericReportBody ??
-                          'この報告書は構造化セクションを持たないため、本文のみ共有します。'}
-                      </p>
-                    </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      共有可能な報告内容がありません。
-                    </p>
+                    <Alert>
+                      <AlertTriangle className="size-4" aria-hidden="true" />
+                      <AlertTitle>共有できる報告内容がありません</AlertTitle>
+                      <AlertDescription>
+                        現行フォーマットの構造化された報告内容がないため、この画面から共有や送付はできません。訪問記録から報告書を再作成してください。
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </section>
 
@@ -1065,27 +1056,15 @@ export default function ReportDetailPage() {
                   </>
                 )}
               </>
-            ) : reportContentObject ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">報告書本文</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {genericReportTitle ? (
-                    <p className="text-sm font-semibold text-foreground">{genericReportTitle}</p>
-                  ) : null}
-                  {genericReportBody ? (
-                    <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
-                      {genericReportBody}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      この報告書は旧形式または最小形式の本文です。構造化ビューに必要な項目が不足しているため、保存済み本文のみ表示しています。
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ) : null}
+            ) : (
+              <Alert>
+                <AlertTriangle className="size-4" aria-hidden="true" />
+                <AlertTitle>構造化された報告内容がありません</AlertTitle>
+                <AlertDescription>
+                  この報告書は現行フォーマットの必須項目が不足しています。訪問記録から報告書を再作成してください。
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Delivery history */}
             <Card>

@@ -41,6 +41,48 @@ function jsonb(value: unknown) {
   return JSON.stringify(value);
 }
 
+const structuredPhysicianReportContent = {
+  patient: { name: '訪問後 太郎', birth_date: '1948-01-15', gender: 'male' },
+  report_date: '2026-04-25',
+  visit_date: '2026-04-25',
+  pharmacist_name: '薬剤師 E2E',
+  prescriber: { name: '青葉 医師', institution: '青葉内科' },
+  prescriptions: [
+    {
+      drug_name: 'アムロジピン錠5mg',
+      dose: '1錠',
+      frequency: '1日1回朝食後',
+      days: 14,
+    },
+  ],
+  medication_management: {
+    compliance_summary: '退院後の服薬支援と残薬確認を継続しています。',
+    adherence_score: 88,
+    self_management: '薬剤カレンダーと家族確認を併用しています。',
+    calendar_used: true,
+  },
+  adverse_events: { has_events: false, events: [] },
+  functional_assessment: {
+    sleep: '睡眠は安定しています。',
+    cognition: '服薬手順の理解に大きな変化はありません。',
+    diet_oral: '食事と水分摂取は維持できています。',
+    mobility: '屋内移動は見守りで可能です。',
+    excretion: '排泄状況に大きな変化はありません。',
+  },
+  residual_medications: [
+    {
+      drug_name: 'アムロジピン錠5mg',
+      remaining_qty: 6,
+      excess_days: 3,
+      reduction_proposal: false,
+    },
+  ],
+  assessment: '服薬管理は現行支援で維持できています。',
+  plan: '次回訪問で残薬とカレンダー利用状況を再確認します。',
+  physician_communication: '処方継続で問題ありません。',
+  warnings: [],
+};
+
 async function openFirstPatientCard(page: Page) {
   await openStableRoute(page, '/patients');
   const firstLink = page
@@ -356,10 +398,7 @@ async function ensureVisitWorkflowFixture() {
         VISIT_WORKFLOW_IDS.visitRecord,
         VISIT_WORKFLOW_IDS.patient,
         VISIT_WORKFLOW_IDS.caseId,
-        jsonb({
-          title: '訪問後WF E2E 主治医報告',
-          body: '退院後の服薬支援と残薬確認を継続しています。',
-        }),
+        jsonb(structuredPhysicianReportContent),
         base.user_id,
       ],
     );
@@ -534,7 +573,7 @@ test.describe('detail page layout', () => {
     expect(errors).toEqual([]);
   });
 
-  test('report detail renders DB-backed legacy report content without runtime errors', async ({
+  test('report detail renders DB-backed structured report content without runtime errors', async ({
     context,
   }) => {
     const ids = await ensureVisitWorkflowFixture();
@@ -545,10 +584,12 @@ test.describe('detail page layout', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: /主治医|報告書/ }).first()).toBeVisible();
-    const reportBodyTitle = main.getByText('訪問後WF E2E 主治医報告');
-    await reportBodyTitle.scrollIntoViewIfNeeded();
-    await expect(reportBodyTitle).toBeVisible();
+    const medicationManagementHeading = main.getByRole('heading', { name: '服薬管理状況' });
+    await medicationManagementHeading.scrollIntoViewIfNeeded();
+    await expect(medicationManagementHeading).toBeVisible();
+    await expect(main.getByRole('heading', { name: '残薬状況' })).toBeVisible();
     await expect(main.getByText('退院後の服薬支援と残薬確認を継続しています。')).toBeVisible();
+    await expect(main.getByText('訪問後WF E2E 主治医報告')).toHaveCount(0);
 
     const metrics = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

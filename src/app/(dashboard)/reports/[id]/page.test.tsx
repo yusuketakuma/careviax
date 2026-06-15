@@ -80,6 +80,48 @@ import ReportDetailPage from './page';
 
 setupDomTestEnv();
 
+const structuredPhysicianContent = {
+  patient: { name: '佐藤 花子', birth_date: '1940-01-01', gender: 'female' },
+  report_date: '2026-05-12',
+  visit_date: '2026-03-29',
+  pharmacist_name: '薬剤師 太郎',
+  prescriber: { name: '山田 太郎', institution: '青葉内科' },
+  prescriptions: [
+    {
+      drug_name: 'アムロジピン錠5mg',
+      dose: '1錠',
+      frequency: '1日1回朝食後',
+      days: 14,
+    },
+  ],
+  medication_management: {
+    compliance_summary: 'カレンダー管理で概ね服薬できています',
+    adherence_score: 92,
+    self_management: '家族確認あり',
+    calendar_used: true,
+  },
+  adverse_events: { has_events: false, events: [] },
+  functional_assessment: {
+    sleep: '良好',
+    cognition: '変化なし',
+    diet_oral: '摂取良好',
+    mobility: '屋内歩行可能',
+    excretion: '問題なし',
+  },
+  residual_medications: [
+    {
+      drug_name: 'アムロジピン錠5mg',
+      remaining_qty: 4,
+      excess_days: 2,
+      reduction_proposal: false,
+    },
+  ],
+  assessment: '服薬管理は安定しています',
+  plan: '次回訪問で残薬を再確認します',
+  physician_communication: '処方継続で問題ありません',
+  warnings: [],
+};
+
 function mockReport() {
   return {
     id: 'report_1',
@@ -97,10 +139,7 @@ function mockReport() {
     },
     report_type: 'physician_report',
     status: 'draft',
-    content: {
-      title: '服薬情報提供書',
-      body: '訪問記録から生成された報告内容',
-    },
+    content: structuredPhysicianContent,
     pdf_url: null,
     created_by: 'user_1',
     created_at: '2026-05-12T00:00:00.000Z',
@@ -216,6 +255,39 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByText('報告内容')).toBeTruthy();
     expect(screen.getByText('送付前チェック')).toBeTruthy();
     expect(screen.getByText('一括送付（1件）')).toBeTruthy();
+  });
+
+  it('does not display or send legacy title/body report content', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            content: {
+              title: '服薬情報提供書',
+              body: '訪問記録から生成された報告内容',
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByText('構造化された報告内容がありません')).toBeTruthy();
+    expect(screen.queryByText('服薬情報提供書')).toBeNull();
+    expect(screen.queryByText('訪問記録から生成された報告内容')).toBeNull();
+    expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
   });
 
   it('waits for share target suggestions before opening the auto-selected composer', () => {
