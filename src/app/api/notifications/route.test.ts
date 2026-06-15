@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, findManyMock, updateManyMock, withOrgContextMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    findManyMock: vi.fn(),
-    updateManyMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-  }));
+const {
+  authMock,
+  membershipFindFirstMock,
+  countMock,
+  findManyMock,
+  updateManyMock,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  countMock: vi.fn(),
+  findManyMock: vi.fn(),
+  updateManyMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -56,11 +63,13 @@ function createMalformedJsonPatchRequest() {
 describe('/api/notifications GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    countMock.mockResolvedValue(0);
     findManyMock.mockResolvedValue([]);
     updateManyMock.mockResolvedValue({ count: 0 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         notification: {
+          count: countMock,
           findMany: findManyMock,
           updateMany: updateManyMock,
         },
@@ -109,6 +118,28 @@ describe('/api/notifications GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns only unread count for header summary requests', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    countMock.mockResolvedValue(6);
+
+    const response = await GET(
+      createRequest('http://localhost/api/notifications?summary=1', { 'x-org-id': 'org_1' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { unreadCount: 6 } });
+    expect(countMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: 'user_1',
+        is_read: false,
+      },
+    });
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
   it('marks only valid unique notification ids as read', async () => {

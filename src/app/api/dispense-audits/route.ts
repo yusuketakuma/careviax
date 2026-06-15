@@ -20,9 +20,38 @@ import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
     const now = new Date();
+    const { searchParams } = new URL(req.url);
+    const badgeOnly = searchParams.get('badge') === '1';
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+
+    if (badgeOnly) {
+      const tasks = await prisma.dispenseTask.findMany({
+        where: {
+          org_id: ctx.orgId,
+          status: 'completed',
+          ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+        },
+        select: {
+          id: true,
+          audits: {
+            orderBy: { audited_at: 'desc' },
+            take: 1,
+            select: {
+              result: true,
+            },
+          },
+        },
+      });
+      const count = tasks.filter((task) => {
+        const latestAudit = task.audits[0] ?? null;
+        return latestAudit == null || latestAudit.result === 'hold';
+      }).length;
+
+      return success({ data: { count } });
+    }
+
     const tasks = await prisma.dispenseTask.findMany({
       where: {
         org_id: ctx.orgId,

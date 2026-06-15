@@ -43,12 +43,12 @@ export function useNavBadges(): NavBadgeCounts {
   const auditingQuery = useQuery({
     queryKey: ['nav-badges', 'auditing', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/dispense-audits', {
+      const res = await fetch('/api/dispense-audits?badge=1', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('監査キュー件数の取得に失敗しました');
-      const payload = (await res.json()) as { data?: unknown[] };
-      return payload.data?.length ?? 0;
+      const payload = (await res.json()) as { data?: { count?: number } };
+      return payload.data?.count ?? 0;
     },
     enabled: Boolean(orgId),
     refetchInterval: NAV_BADGE_REFETCH_INTERVAL_MS,
@@ -58,14 +58,12 @@ export function useNavBadges(): NavBadgeCounts {
   const handoffQuery = useQuery({
     queryKey: ['nav-badges', 'handoff', orgId, userId],
     queryFn: async () => {
-      const res = await fetch('/api/handoff-board', {
+      const res = await fetch('/api/handoff-board?badge=1', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ハンドオフ件数の取得に失敗しました');
-      const payload = (await res.json()) as {
-        data?: { items?: HandoffBoardItemSummary[] };
-      };
-      return countMyHandoffItems(payload.data?.items ?? [], userId);
+      const payload = (await res.json()) as { data?: { count?: number } };
+      return payload.data?.count ?? 0;
     },
     enabled: Boolean(orgId) && Boolean(userId),
     refetchInterval: NAV_BADGE_REFETCH_INTERVAL_MS,

@@ -52,6 +52,8 @@ describe('DashboardContent', () => {
     expect(screen.getByText('請求状況')).toBeTruthy();
     expect(screen.getByText('職種ごとの初動')).toBeTruthy();
     expect(screen.getByText('主業務フロー')).toBeTruthy();
+    expect(screen.queryByText('schedule-section')).toBeNull();
+    expect(screen.queryByText('billing-kpi-section')).toBeNull();
 
     expect(
       cockpit.compareDocumentPosition(schedule) & Node.DOCUMENT_POSITION_FOLLOWING,

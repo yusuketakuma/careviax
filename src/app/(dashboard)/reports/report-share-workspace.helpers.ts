@@ -117,7 +117,7 @@ export function buildReportEvidence(
       id: 'delivery-history',
       label: '送付履歴',
       meta: `今月${workspace?.evidence.monthly_delivery_count ?? 0}件`,
-      href: '#report-classic-tools',
+      href: '/communications/requests?status=sent',
     },
     {
       id: 'read-receipt',

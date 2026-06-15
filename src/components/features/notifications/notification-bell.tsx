@@ -37,6 +37,7 @@ export function NotificationBell() {
   const orgId = useOrgId();
   const { notificationDrawerOpen, setNotificationDrawerOpen } = useUIStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadSummaryCount, setUnreadSummaryCount] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const seenIdsRef = useRef(new Set<string>());
   const mountedRef = useRef(false);
@@ -92,9 +93,21 @@ export function NotificationBell() {
         );
         return unique.slice(0, 50);
       });
+      setUnreadSummaryCount(0);
     },
     [maybeShowBrowserNotifications],
   );
+
+  const refreshNotificationSummary = useCallback(async () => {
+    if (!orgId) return;
+    const res = await fetch('/api/notifications?summary=1', {
+      headers: { 'x-org-id': orgId },
+    });
+    if (!res.ok) return;
+    const payload = (await res.json()) as { data?: { unreadCount?: number } };
+    if (!mountedRef.current) return;
+    setUnreadSummaryCount(payload.data?.unreadCount ?? 0);
+  }, [orgId]);
 
   const refreshNotifications = useCallback(async () => {
     if (!orgId) return;
@@ -110,8 +123,8 @@ export function NotificationBell() {
   useEffect(() => {
     if (!orgId) return;
     if (NOTIFICATION_STREAM_DISABLED) {
-      // stream 無効環境(E2E 等)でも未読数バッジは初回取得で表示する
-      void refreshNotifications();
+      // stream 無効環境(E2E 等)では初回表示を件数取得に抑え、一覧はドロワー表示時に読む
+      void refreshNotificationSummary();
       return;
     }
     const controller = new AbortController();
@@ -119,7 +132,7 @@ export function NotificationBell() {
 
     (async () => {
       try {
-        await refreshNotifications();
+        await refreshNotificationSummary();
         const res = await fetch('/api/notifications/stream', {
           headers: { 'x-org-id': orgId },
           signal: controller.signal,
@@ -152,9 +165,15 @@ export function NotificationBell() {
     })();
 
     return () => controller.abort();
-  }, [mergeNotifications, orgId, refreshNotifications]);
+  }, [mergeNotifications, orgId, refreshNotificationSummary]);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  useEffect(() => {
+    if (!notificationDrawerOpen || notifications.length > 0) return;
+    void refreshNotifications();
+  }, [notificationDrawerOpen, notifications.length, refreshNotifications]);
+
+  const unreadCount =
+    notifications.length > 0 ? notifications.filter((n) => !n.is_read).length : unreadSummaryCount;
 
   const markRead = useCallback(
     async (ids: string[]) => {
@@ -170,6 +189,7 @@ export function NotificationBell() {
           ids.includes(notification.id) ? { ...notification, is_read: true } : notification,
         ),
       );
+      setUnreadSummaryCount((count) => Math.max(0, count - ids.length));
     },
     [orgId],
   );

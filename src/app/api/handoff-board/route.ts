@@ -36,6 +36,11 @@ function todayDateStr(): string {
 
 type HandoffDirection = 'outgoing' | 'incoming';
 
+type HandoffBadgeItemSummary = {
+  created_by: string;
+  read_by?: string[] | null;
+};
+
 /** 渡した/来たの判定。recipient 未設定の legacy 項目は作成者基準で振り分ける。 */
 function resolveHandoffDirection(
   item: { created_by: string; recipient_user_id?: string | null },
@@ -50,6 +55,12 @@ function resolveHandoffDirection(
   return 'outgoing';
 }
 
+function countMyHandoffBadgeItems(items: HandoffBadgeItemSummary[], viewerUserId: string): number {
+  return items.filter(
+    (item) => item.created_by === viewerUserId || !(item.read_by ?? []).includes(viewerUserId),
+  ).length;
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -62,6 +73,34 @@ export const GET = withAuthContext(
 
     const dateStr = parsed.data.date ?? todayDateStr();
     const shiftDate = toDateOnly(dateStr);
+    const badgeOnly = searchParams.get('badge') === '1';
+
+    if (badgeOnly) {
+      const board = await withOrgContext(
+        ctx.orgId,
+        (tx) =>
+          tx.handoffBoard.findUnique({
+            where: {
+              org_id_shift_date: {
+                org_id: ctx.orgId,
+                shift_date: shiftDate,
+              },
+            },
+            select: {
+              items: {
+                select: {
+                  created_by: true,
+                  read_by: true,
+                },
+              },
+            },
+          }),
+        { maxWaitMs: 10_000, timeoutMs: 20_000 },
+      );
+
+      return success({ data: { count: countMyHandoffBadgeItems(board?.items ?? [], ctx.userId) } });
+    }
+
     const monthStart = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth() + 1, 1));
 

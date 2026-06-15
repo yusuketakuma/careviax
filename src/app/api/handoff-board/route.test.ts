@@ -1,17 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  userFindManyMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  userFindManyMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, userFindManyMock, withOrgContextMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    userFindManyMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 
@@ -62,9 +59,7 @@ describe('/api/handoff-board', () => {
       id: 'board_1',
       org_id: 'org_1',
       shift_date: '2026-04-01',
-      items: [
-        { id: 'item_1', content: 'test', created_by: 'user_1', recipient_user_id: null },
-      ],
+      items: [{ id: 'item_1', content: 'test', created_by: 'user_1', recipient_user_id: null }],
     };
     mockBoardTx(board, 5);
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: 'Taro' }]);
@@ -94,7 +89,7 @@ describe('/api/handoff-board', () => {
         handoffItem: {
           count: vi.fn().mockResolvedValue(0),
         },
-      })
+      }),
     );
     userFindManyMock.mockResolvedValue([]);
 
@@ -104,6 +99,45 @@ describe('/api/handoff-board', () => {
     const json = await res!.json();
     expect(json.data.id).toBe('board_new');
     expect(json.data.summary).toEqual({ outgoing_count: 0, incoming_count: 0 });
+  });
+
+  it('returns a lightweight badge count without creating a missing board', async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      items: [
+        { created_by: 'user_1', read_by: ['user_2'] },
+        { created_by: 'user_2', read_by: [] },
+        { created_by: 'user_2', read_by: ['user_1'] },
+      ],
+    });
+    const create = vi.fn();
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffBoard: {
+          findUnique,
+          create,
+        },
+      }),
+    );
+
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01&badge=1');
+    const res = await GET(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(200);
+    await expect(res!.json()).resolves.toEqual({ data: { count: 2 } });
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          items: {
+            select: {
+              created_by: true,
+              read_by: true,
+            },
+          },
+        },
+      }),
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
   it('splits items into outgoing/incoming for the viewer (responsibility transfer)', async () => {

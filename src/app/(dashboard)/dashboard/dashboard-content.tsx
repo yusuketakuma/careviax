@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CalendarDays, FolderKanban, Receipt, Settings2, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { Separator } from '@/components/ui/separator';
@@ -70,11 +72,58 @@ function NavigationCluster({
   );
 }
 
+function DeferredDashboardMount({
+  anchorId,
+  label,
+  actionLabel,
+  children,
+}: {
+  anchorId: string;
+  label: string;
+  actionLabel: string;
+  children: ReactNode;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (mounted) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    if (window.location.hash === `#${anchorId}`) {
+      const timeout = window.setTimeout(() => setMounted(true), 0);
+      return () => window.clearTimeout(timeout);
+    }
+
+    const onHashChange = () => {
+      if (window.location.hash === `#${anchorId}`) {
+        setMounted(true);
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [anchorId, mounted]);
+
+  return (
+    <div ref={sentinelRef} aria-busy={!mounted} aria-label={mounted ? undefined : label}>
+      {mounted ? (
+        children
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border/80 bg-muted/10 px-4 py-3">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <Button type="button" variant="outline" onClick={() => setMounted(true)}>
+            {actionLabel}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * /dashboard 本文。最上部は new_01_dashboard の運用コックピット
  * (2 カラム: 条件バナー/今すぐ対応/今日の流れ/工程の今 + 右レール)。
- * 旧構成(集計バッジ・患者カード・ナビゲーションハブ・請求 KPI)は
- * 機能温存のためビューポート下部へ残置する。
  */
 export function DashboardContent({ focusRole = 'common' }: { focusRole?: DashboardFocusRole }) {
   return (
@@ -95,7 +144,13 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
             description="訪問実行と日程調整を見分けやすくするため、日次リストと全体カレンダーを同じ場所にまとめています。"
           />
           <div id="dashboard-schedule-section">
-            <ScheduleSection focusRole={focusRole} />
+            <DeferredDashboardMount
+              anchorId="dashboard-schedule-section"
+              label="スケジュールを読み込み中"
+              actionLabel="スケジュールを開く"
+            >
+              <ScheduleSection focusRole={focusRole} />
+            </DeferredDashboardMount>
           </div>
         </section>
       </DashboardSectionGroup>
@@ -182,7 +237,13 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
             description="候補数、未確定、止まっている理由を見て、月次締め前に対処が必要な項目を把握します。"
           />
           <div id="dashboard-billing-kpi-section">
-            <BillingKpiSection />
+            <DeferredDashboardMount
+              anchorId="dashboard-billing-kpi-section"
+              label="請求KPIを読み込み中"
+              actionLabel="請求KPIを開く"
+            >
+              <BillingKpiSection />
+            </DeferredDashboardMount>
           </div>
         </section>
       </DashboardSectionGroup>

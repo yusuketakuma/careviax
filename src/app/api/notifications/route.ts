@@ -7,6 +7,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 export const GET = withAuthContext(async (req, ctx) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
+  const summaryOnly = searchParams.get('summary') === '1';
 
   const userId = searchParams.get('user_id') ?? ctx.userId;
   if (userId !== ctx.userId && !isAdmin(ctx.role)) {
@@ -21,6 +22,22 @@ export const GET = withAuthContext(async (req, ctx) => {
     user_id: userId,
     ...(isRead !== undefined ? { is_read: isRead } : {}),
   };
+
+  if (summaryOnly) {
+    const unreadCount = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.notification.count({
+          where: {
+            ...where,
+            is_read: false,
+          },
+        }),
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    );
+
+    return success({ data: { unreadCount } });
+  }
 
   const notifications = await withOrgContext(
     ctx.orgId,

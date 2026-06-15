@@ -78,8 +78,8 @@ function createMalformedJsonRequest() {
   } satisfies NextRequestInit);
 }
 
-function createGetRequest() {
-  return new NextRequest('http://localhost/api/dispense-audits');
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/dispense-audits${search}`);
 }
 
 // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
@@ -167,6 +167,31 @@ describe('/api/dispense-audits GET', () => {
         where: {
           org_id: 'org_1',
           status: 'completed',
+        },
+      }),
+    );
+  });
+
+  it('returns only the visible audit count for nav badges', async () => {
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_no_audit', audits: [] },
+      { id: 'task_hold', audits: [{ result: 'hold' }] },
+      { id: 'task_approved', audits: [{ result: 'approved' }] },
+    ]);
+
+    const response = await GET(createGetRequest('?badge=1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { count: 2 } });
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          audits: expect.objectContaining({
+            take: 1,
+            select: { result: true },
+          }),
         },
       }),
     );

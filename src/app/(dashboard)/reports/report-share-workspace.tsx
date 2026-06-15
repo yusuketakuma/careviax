@@ -35,7 +35,6 @@ import {
  * 本文(今日書く報告 → 返信待ち/今日解決した待ち → テンプレート方針バー)+
  * 右レール(次にやること/止まっている理由/根拠・記録)の 2 カラム構成。
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
- * 旧 /reports の一覧・送達分析はビューポート下部(#report-classic-tools)に温存。
  */
 
 const DRAFT_STATUS_LABELS: Record<string, string> = {
@@ -281,7 +280,7 @@ export function ReportShareWorkspace() {
     queryKey: ['dashboard', 'cockpit', orgId],
     queryFn: () => fetchOperationCockpit(orgId),
     staleTime: 30_000,
-    enabled: !isBootstrappingOrg,
+    enabled: !isBootstrappingOrg && workspaceQuery.isSuccess,
   });
 
   const now = new Date();

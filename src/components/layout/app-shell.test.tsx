@@ -19,8 +19,8 @@ describe('resolveQuickCreateTarget', () => {
       notice: '報告書は一覧から対象記録を選択して開始します',
     });
     expect(resolveQuickCreateTarget('/schedules')).toEqual({
-      href: '/schedules#planner',
-      notice: 'スケジュールは一覧画面の新規予定エリアを開きます',
+      href: '/schedules/proposals?workspace=optimizer',
+      notice: 'スケジュールは候補作成・週次最適化画面から開始します',
     });
   });
 
@@ -85,7 +85,7 @@ describe('shouldRenderCompactSidebarSheet', () => {
         isDesktopLayout: false,
         isTabletLayout: false,
         isCompactLayout: false,
-      })
+      }),
     ).toBe(false);
   });
 });
