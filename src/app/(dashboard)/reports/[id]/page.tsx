@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -346,11 +346,9 @@ function resolveSuggestionDelivery(
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
-  const isComposerOnly = searchParams.get('view') === 'composer';
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -363,13 +361,13 @@ export default function ReportDetailPage() {
   const [sendFormErrors, setSendFormErrors] = useState<SendFormErrors>({});
 
   // p0_28: 報告書コンポーザー(共有先の複数選択 + 送付前チェック)
-  const [composerOpen, setComposerOpen] = useState(isComposerOnly);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
   const [preSendChecks, setPreSendChecks] = useState<Record<PreSendCheckKey, boolean>>({
-    recipient: isComposerOnly,
-    content: isComposerOnly,
-    consent: isComposerOnly,
-    channel: isComposerOnly,
+    recipient: false,
+    content: false,
+    consent: false,
+    channel: false,
   });
 
   const { data, isLoading } = useQuery({
@@ -678,16 +676,17 @@ export default function ReportDetailPage() {
     })),
   ].filter((target) => target.recipient_contact.trim().length > 0);
 
-  const effectiveSelectedTargetIds =
-    isComposerOnly && selectedTargetIds.length === 0
-      ? shareTargets.map((target) => target.id)
-      : selectedTargetIds;
+  const effectiveSelectedTargetIds = selectedTargetIds;
+  const shareTargetIds = shareTargets.map((target) => target.id);
   const selectedShareTargets = shareTargets.filter((target) =>
     effectiveSelectedTargetIds.includes(target.id),
   );
   const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
   const canBulkSend =
     selectedShareTargets.length > 0 && allPreSendChecksDone && !bulkSendMutation.isPending;
+  const shareTargetsLoading =
+    externalProfessionalSuggestionsQuery.isLoading ||
+    externalProfessionalSuggestionsQuery.isFetching;
 
   const sendReportAction = (
     <div className="flex flex-wrap gap-2">
@@ -696,9 +695,10 @@ export default function ReportDetailPage() {
           variant="outline"
           size="sm"
           className="min-h-[44px] sm:min-h-0"
+          disabled={shareTargetsLoading}
           onClick={() => {
             // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
-            setSelectedTargetIds(shareTargets.map((target) => target.id));
+            setSelectedTargetIds(shareTargetIds);
             setPreSendChecks({
               recipient: false,
               content: false,
@@ -709,7 +709,7 @@ export default function ReportDetailPage() {
           }}
         >
           <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-          共有を作成
+          {shareTargetsLoading ? '共有先を確認中...' : '共有を作成'}
         </Button>
       ) : null}
       <Button
@@ -731,87 +731,81 @@ export default function ReportDetailPage() {
   );
 
   return (
-    <PageScaffold variant={isComposerOnly ? 'bare' : 'card'}>
+    <PageScaffold variant="card">
       <div data-testid="report-detail-workspace" className="contents">
         {/* Header */}
-        {!isComposerOnly ? (
-          <>
-            <WorkflowPageIntro
-              backHref="/reports"
-              backLabel="報告書一覧へ戻る"
-              title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
-              description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
-              shortcuts={getReportDetailShortcutLinks(report.patient_id ?? null, report.id)}
-              mainWorkflowSteps={['reports']}
-              mainWorkflowDescription="報告書詳細でも、主業務フローの終点として現在地を上部に固定表示します。"
-              actions={
-                <>
-                  {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
-                  {hasContentView && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-h-[44px] sm:min-h-0"
-                      onClick={() => setEditMode((v) => !v)}
-                    >
-                      <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
-                      {editMode ? '表示に戻る' : '編集'}
-                    </Button>
-                  )}
-                  <a
-                    href={`/api/care-reports/${id}/pdf`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={cn(
-                      buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'min-h-[44px] sm:min-h-0',
-                    )}
-                  >
-                    <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
-                    PDFを開く
-                  </a>
-                  <Link href={`/reports/${id}/print`}>
-                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
-                      <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
-                      印刷ビュー
-                    </Button>
-                  </Link>
-                  {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
-                  <Link href={`/reports/${id}/share`}>
-                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
-                      <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-                      他職種共有
-                    </Button>
-                  </Link>
-                </>
-              }
-            />
-            <VisitReportReadinessPanel
-              mode="report_detail"
-              items={reportReadinessItems}
-              actions={sendReportAction}
-            />
-          </>
-        ) : null}
+        <WorkflowPageIntro
+          backHref="/reports"
+          backLabel="報告書一覧へ戻る"
+          title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
+          description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
+          shortcuts={getReportDetailShortcutLinks(report.patient_id ?? null, report.id)}
+          mainWorkflowSteps={['reports']}
+          mainWorkflowDescription="報告書詳細でも、主業務フローの終点として現在地を上部に固定表示します。"
+          actions={
+            <>
+              {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
+              {hasContentView && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] sm:min-h-0"
+                  onClick={() => setEditMode((v) => !v)}
+                >
+                  <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
+                  {editMode ? '表示に戻る' : '編集'}
+                </Button>
+              )}
+              <a
+                href={`/api/care-reports/${id}/pdf`}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'min-h-[44px] sm:min-h-0',
+                )}
+              >
+                <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
+                PDFを開く
+              </a>
+              <Link href={`/reports/${id}/print`}>
+                <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                  <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
+                  印刷ビュー
+                </Button>
+              </Link>
+              {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
+              <Link href={`/reports/${id}/share`}>
+                <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                  <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+                  他職種共有
+                </Button>
+              </Link>
+            </>
+          }
+        />
+        <VisitReportReadinessPanel
+          mode="report_detail"
+          items={reportReadinessItems}
+          actions={sendReportAction}
+        />
 
         {/* p0_28: 報告書コンポーザー(共有先複数選択 + 報告内容 + 送付前チェック) */}
-        {composerOpen || isComposerOnly ? (
+        {composerOpen ? (
           <Card data-testid="report-composer">
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Share2 className="size-4" aria-hidden="true" />
                 報告書を作成・共有
               </CardTitle>
-              {!isComposerOnly ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="min-h-[44px] sm:min-h-0"
-                  onClick={() => setComposerOpen(false)}
-                >
-                  閉じる
-                </Button>
-              ) : null}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-[44px] sm:min-h-0"
+                onClick={() => setComposerOpen(false)}
+              >
+                閉じる
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
@@ -946,209 +940,205 @@ export default function ReportDetailPage() {
         ) : null}
 
         {/* Main + Sidebar layout */}
-        {!isComposerOnly ? (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.28fr)] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
-            {/* Main content area */}
-            <div className="min-w-0 space-y-4 xl:space-y-5">
-              {/* Report meta */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.28fr)] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+          {/* Main content area */}
+          <div className="min-w-0 space-y-4 xl:space-y-5">
+            {/* Report meta */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileText className="size-4" aria-hidden="true" />
+                  報告書情報
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">患者ID</dt>
+                    <dd className="font-mono text-xs">{report.patient_id}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">報告書タイプ</dt>
+                    <dd>{REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">ステータス</dt>
+                    <dd>
+                      {statusCfg ? (
+                        <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                      ) : (
+                        report.status
+                      )}
+                    </dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">作成日時</dt>
+                    <dd className="tabular-nums">
+                      {format(new Date(report.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                    </dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">更新日時</dt>
+                    <dd className="tabular-nums">
+                      {format(new Date(report.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                    </dd>
+                  </div>
+                </dl>
+              </CardContent>
+            </Card>
+
+            {billingContext && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <FileText className="size-4" aria-hidden="true" />
-                    報告書情報
-                  </CardTitle>
+                  <CardTitle className="text-base">請求コンテキスト</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
                     <div className="space-y-1">
-                      <dt className="text-xs font-medium text-muted-foreground">患者ID</dt>
-                      <dd className="font-mono text-xs">{report.patient_id}</dd>
-                    </div>
-                    <div className="space-y-1">
-                      <dt className="text-xs font-medium text-muted-foreground">報告書タイプ</dt>
-                      <dd>{REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}</dd>
-                    </div>
-                    <div className="space-y-1">
-                      <dt className="text-xs font-medium text-muted-foreground">ステータス</dt>
+                      <dt className="text-xs font-medium text-muted-foreground">保険種別</dt>
                       <dd>
-                        {statusCfg ? (
-                          <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-                        ) : (
-                          report.status
-                        )}
+                        {typeof billingContext.payer_basis === 'string'
+                          ? billingContext.payer_basis
+                          : '—'}
                       </dd>
                     </div>
                     <div className="space-y-1">
-                      <dt className="text-xs font-medium text-muted-foreground">作成日時</dt>
-                      <dd className="tabular-nums">
-                        {format(new Date(report.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                      <dt className="text-xs font-medium text-muted-foreground">適用改定</dt>
+                      <dd>
+                        {typeof billingContext.effective_revision_code === 'string'
+                          ? billingContext.effective_revision_code
+                          : '—'}
                       </dd>
                     </div>
                     <div className="space-y-1">
-                      <dt className="text-xs font-medium text-muted-foreground">更新日時</dt>
-                      <dd className="tabular-nums">
-                        {format(new Date(report.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                      <dt className="text-xs font-medium text-muted-foreground">薬局設定</dt>
+                      <dd>
+                        {typeof billingContext.site_config_status === 'string'
+                          ? billingContext.site_config_status
+                          : '—'}
                       </dd>
                     </div>
                   </dl>
                 </CardContent>
               </Card>
+            )}
 
-              {billingContext && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">請求コンテキスト</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
-                      <div className="space-y-1">
-                        <dt className="text-xs font-medium text-muted-foreground">保険種別</dt>
-                        <dd>
-                          {typeof billingContext.payer_basis === 'string'
-                            ? billingContext.payer_basis
-                            : '—'}
-                        </dd>
-                      </div>
-                      <div className="space-y-1">
-                        <dt className="text-xs font-medium text-muted-foreground">適用改定</dt>
-                        <dd>
-                          {typeof billingContext.effective_revision_code === 'string'
-                            ? billingContext.effective_revision_code
-                            : '—'}
-                        </dd>
-                      </div>
-                      <div className="space-y-1">
-                        <dt className="text-xs font-medium text-muted-foreground">薬局設定</dt>
-                        <dd>
-                          {typeof billingContext.site_config_status === 'string'
-                            ? billingContext.site_config_status
-                            : '—'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </CardContent>
-                </Card>
-              )}
+            {/* p1_04: 下書きは AI 下書きレビュー(5見出し+宛先別プレビュー+薬剤師確認)を先に出す */}
+            {report.status === 'draft' && !editMode ? (
+              <ReportAiDraftReview
+                content={
+                  hasPhysicianContent || hasCareManagerContent
+                    ? (report.content as PhysicianReportContent | CareManagerReportContent)
+                    : null
+                }
+                reportType={report.report_type}
+                confirmPending={confirmDraftMutation.isPending}
+                onConfirm={() => confirmDraftMutation.mutate()}
+              />
+            ) : null}
 
-              {/* p1_04: 下書きは AI 下書きレビュー(5見出し+宛先別プレビュー+薬剤師確認)を先に出す */}
-              {report.status === 'draft' && !editMode ? (
-                <ReportAiDraftReview
-                  content={
-                    hasPhysicianContent || hasCareManagerContent
-                      ? (report.content as PhysicianReportContent | CareManagerReportContent)
-                      : null
-                  }
-                  reportType={report.report_type}
-                  confirmPending={confirmDraftMutation.isPending}
-                  onConfirm={() => confirmDraftMutation.mutate()}
-                />
-              ) : null}
-
-              {/* Report content view or edit form */}
-              {hasContentView ? (
-                <>
-                  {editMode ? (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">報告書を編集</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ReportEditForm
-                          reportId={id}
-                          reportType={report.report_type}
-                          content={report.content}
-                          onSaved={() => setEditMode(false)}
-                        />
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <>
-                      {hasPhysicianContent && (
-                        <PhysicianReportView content={report.content as PhysicianReportContent} />
-                      )}
-                      {hasCareManagerContent && (
-                        <CareManagerReportView
-                          content={report.content as CareManagerReportContent}
-                        />
-                      )}
-                    </>
-                  )}
-                </>
-              ) : reportContentObject ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">報告書本文</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {genericReportTitle ? (
-                      <p className="text-sm font-semibold text-foreground">{genericReportTitle}</p>
-                    ) : null}
-                    {genericReportBody ? (
-                      <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
-                        {genericReportBody}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        この報告書は旧形式または最小形式の本文です。構造化ビューに必要な項目が不足しているため、保存済み本文のみ表示しています。
-                      </p>
+            {/* Report content view or edit form */}
+            {hasContentView ? (
+              <>
+                {editMode ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">報告書を編集</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ReportEditForm
+                        reportId={id}
+                        reportType={report.report_type}
+                        content={report.content}
+                        onSaved={() => setEditMode(false)}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    {hasPhysicianContent && (
+                      <PhysicianReportView content={report.content as PhysicianReportContent} />
                     )}
-                  </CardContent>
-                </Card>
-              ) : null}
-
-              {/* Delivery history */}
+                    {hasCareManagerContent && (
+                      <CareManagerReportView content={report.content as CareManagerReportContent} />
+                    )}
+                  </>
+                )}
+              </>
+            ) : reportContentObject ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Clock className="size-4" aria-hidden="true" />
-                    送付履歴
-                  </CardTitle>
+                  <CardTitle className="text-base">報告書本文</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {report.delivery_records.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">送付履歴がありません</p>
+                <CardContent className="space-y-3">
+                  {genericReportTitle ? (
+                    <p className="text-sm font-semibold text-foreground">{genericReportTitle}</p>
+                  ) : null}
+                  {genericReportBody ? (
+                    <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+                      {genericReportBody}
+                    </p>
                   ) : (
-                    <div className="space-y-3">
-                      {report.delivery_records.map((rec) => (
-                        <div
-                          key={rec.id}
-                          className="flex items-start justify-between rounded-md border border-border px-4 py-3 text-sm"
-                        >
-                          <div className="space-y-0.5">
-                            <p className="font-medium">{rec.recipient_name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {CHANNEL_LABELS[rec.channel] ?? rec.channel}
-                              {rec.recipient_contact ? ` — ${rec.recipient_contact}` : ''}
-                            </p>
-                          </div>
-                          <div className="text-right text-xs text-muted-foreground">
-                            {rec.sent_at
-                              ? format(new Date(rec.sent_at), 'yyyy/MM/dd HH:mm', { locale: ja })
-                              : '—'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      この報告書は旧形式または最小形式の本文です。構造化ビューに必要な項目が不足しているため、保存済み本文のみ表示しています。
+                    </p>
                   )}
                 </CardContent>
               </Card>
-            </div>
+            ) : null}
 
-            {/* Sidebar: compliance checklist (desktop = right column, mobile = below) */}
-            {hasContentView && (
-              <div className="w-full space-y-4">
-                <ComplianceChecklist
-                  reportType={report.report_type}
-                  content={report.content}
-                  warnings={warnings}
-                />
-                {careTeamSuggestionContacts.length > 0 ? (
-                  <PatientCareTeamSourcePanel contacts={careTeamSuggestionContacts} compact />
-                ) : null}
-              </div>
-            )}
+            {/* Delivery history */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Clock className="size-4" aria-hidden="true" />
+                  送付履歴
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.delivery_records.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">送付履歴がありません</p>
+                ) : (
+                  <div className="space-y-3">
+                    {report.delivery_records.map((rec) => (
+                      <div
+                        key={rec.id}
+                        className="flex items-start justify-between rounded-md border border-border px-4 py-3 text-sm"
+                      >
+                        <div className="space-y-0.5">
+                          <p className="font-medium">{rec.recipient_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {CHANNEL_LABELS[rec.channel] ?? rec.channel}
+                            {rec.recipient_contact ? ` — ${rec.recipient_contact}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          {rec.sent_at
+                            ? format(new Date(rec.sent_at), 'yyyy/MM/dd HH:mm', { locale: ja })
+                            : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-        ) : null}
+
+          {/* Sidebar: compliance checklist (desktop = right column, mobile = below) */}
+          {hasContentView && (
+            <div className="w-full space-y-4">
+              <ComplianceChecklist
+                reportType={report.report_type}
+                content={report.content}
+                warnings={warnings}
+              />
+              {careTeamSuggestionContacts.length > 0 ? (
+                <PatientCareTeamSourcePanel contacts={careTeamSuggestionContacts} compact />
+              ) : null}
+            </div>
+          )}
+        </div>
 
         {/* Send dialog */}
         <Dialog

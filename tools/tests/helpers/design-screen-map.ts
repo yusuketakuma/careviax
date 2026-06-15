@@ -503,9 +503,10 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_28_report_composer_share',
     targetImage: 'images/P0/p0_28_report_composer_share.png',
-    // 加藤ミサのケアマネ向け報告書(seed-design-demo 固定 ID)を composer focus で開く
-    route: '/reports/cmnhdemorep001amq9ph-os?view=composer',
+    // 加藤ミサのケアマネ向け報告書(seed-design-demo 固定 ID)を標準詳細から composer state へ進める
+    route: '/reports/cmnhdemorep001amq9ph-os',
     setup: async (page) => {
+      await page.getByRole('button', { name: '共有を作成' }).click();
       await page.waitForSelector('[data-testid="report-composer"]', { timeout: 120_000 });
       await page.waitForSelector('text=送付前チェック', { timeout: 120_000 });
       await page.waitForTimeout(400);

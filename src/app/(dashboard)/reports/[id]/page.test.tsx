@@ -6,7 +6,6 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
-const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
@@ -18,7 +17,6 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: useParamsMock,
-  useSearchParams: useSearchParamsMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -118,7 +116,6 @@ describe('ReportDetailPage send safety dialog', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'report_1' });
-    useSearchParamsMock.mockReturnValue(new URLSearchParams(''));
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({
       mutate: sendMutateMock,
@@ -181,8 +178,7 @@ describe('ReportDetailPage send safety dialog', () => {
     });
   });
 
-  it('opens only the report composer for the p0_28 composer view', () => {
-    useSearchParamsMock.mockReturnValue(new URLSearchParams('view=composer'));
+  it('opens the report composer from the current report detail workspace', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];
       if (scope === 'care-report-external-professionals') {
@@ -212,11 +208,86 @@ describe('ReportDetailPage send safety dialog', () => {
 
     render(<ReportDetailPage />);
 
+    expect(screen.getByTestId('readiness-panel')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '共有を作成' }));
+
     expect(screen.getByTestId('report-composer')).toBeTruthy();
-    expect(screen.queryByTestId('readiness-panel')).toBeNull();
     expect(screen.getByText('共有先')).toBeTruthy();
     expect(screen.getByText('報告内容')).toBeTruthy();
     expect(screen.getByText('送付前チェック')).toBeTruthy();
     expect(screen.getByText('一括送付（1件）')).toBeTruthy();
+  });
+
+  it('waits for share target suggestions before opening the auto-selected composer', () => {
+    let externalSuggestions: unknown[] = [];
+    let externalSuggestionsLoading = true;
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: externalSuggestions },
+          isLoading: externalSuggestionsLoading,
+          isFetching: externalSuggestionsLoading,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            prescriber_institution_suggestion: {
+              id: 'institution_1',
+              name: '青葉内科',
+              phone: null,
+              fax: '03-1111-1111',
+              address: null,
+              recommended_channels: ['fax'],
+              prescribed_date: '2026-03-28T00:00:00.000Z',
+              prescriber_name: '青葉 医師',
+            },
+            delivery_rule_suggestion: {
+              document_type: 'care_report',
+              target_role: 'physician',
+              channel: 'fax',
+              fallback_channels: ['email'],
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    const { rerender } = render(<ReportDetailPage />);
+
+    const loadingButton = screen.getByRole('button', { name: '共有先を確認中...' });
+    expect((loadingButton as HTMLButtonElement).disabled).toBe(true);
+
+    externalSuggestions = [
+      {
+        id: 'professional_1',
+        name: '鈴木 ケアマネ',
+        profession_type: 'care_manager',
+        organization_name: '青葉ケアプラン',
+        email: 'care@example.com',
+        fax: null,
+        phone: '03-0000-0000',
+        department: null,
+        address: null,
+        preferred_contact_method: 'email',
+        preferred_contact_time: null,
+        last_contacted_at: null,
+        last_success_channel: null,
+        recommended_channels: ['email'],
+        is_primary: true,
+      },
+    ];
+    externalSuggestionsLoading = false;
+    rerender(<ReportDetailPage />);
+
+    const createButton = screen.getByRole('button', { name: '共有を作成' });
+    expect((createButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(createButton);
+
+    expect(screen.getByText('一括送付（2件）')).toBeTruthy();
   });
 });
