@@ -1,4 +1,5 @@
 import { differenceInMinutes, format, parseISO } from 'date-fns';
+import { generatePackagingGroups } from '@/lib/dispensing/packaging-group';
 
 /**
  * design/images/new 07_dispense / 08_audit ワークベンチ共通の純関数・型。
@@ -23,6 +24,8 @@ export type WorkbenchCountRow = {
   line_id: string;
   result_id: string | null;
   drug_name: string;
+  frequency: string;
+  route: string | null;
   tags: string[];
   is_narcotic: boolean;
   prescribed_label: string;
@@ -30,6 +33,10 @@ export type WorkbenchCountRow = {
   dispensed_label: string | null;
   dispensed_quantity: number | null;
   unit: string;
+  dispensing_method: string | null;
+  packaging_method: string | null;
+  packaging_instructions: string | null;
+  packaging_group_id: string | null;
 };
 
 export type DispenseWorkbenchData = {
@@ -70,6 +77,28 @@ export type DispenseSafetySummary = {
   missingActualQuantityCount: number;
   specialHandlingLabels: string[];
   nextCheckLabel: string;
+};
+
+export type DispenseMedicationGroupMethod =
+  | 'none'
+  | 'unit_dose'
+  | 'morning_evening_unit_dose'
+  | 'medication_box'
+  | 'calendar_pack'
+  | 'blister_pack'
+  | 'crush_and_pack'
+  | 'other';
+
+export type DispenseMedicationGroup = {
+  id: string;
+  label: string;
+  slot: string | null;
+  method: DispenseMedicationGroupMethod;
+  methodLabel: string;
+  lineIds: string[];
+  lineNames: string[];
+  crushProhibitedCount: number;
+  cautionLabels: string[];
 };
 
 // ── ラベル合成 ──
@@ -157,6 +186,110 @@ const HANDLING_TAG_LABELS: Record<string, string> = {
   lasa: 'LASA',
   unit_dose: '一包化',
 };
+
+const PACKAGING_METHOD_LABELS: Record<DispenseMedicationGroupMethod, string> = {
+  none: '指定なし',
+  unit_dose: '一包化',
+  morning_evening_unit_dose: '朝夕別一包化',
+  medication_box: 'お薬BOX',
+  calendar_pack: 'カレンダーセット',
+  blister_pack: 'ブリスター管理',
+  crush_and_pack: '粉砕・混合',
+  other: 'その他',
+};
+
+const PACKAGING_METHOD_VALUES = new Set(Object.keys(PACKAGING_METHOD_LABELS));
+
+function normalizePackagingMethod(value: string | null): DispenseMedicationGroupMethod {
+  if (value && PACKAGING_METHOD_VALUES.has(value)) {
+    return value as DispenseMedicationGroupMethod;
+  }
+  if (value === 'crushed') return 'crush_and_pack';
+  if (value === 'standard') return 'none';
+  return 'none';
+}
+
+function inferGroupMethod(rows: WorkbenchCountRow[]): DispenseMedicationGroupMethod {
+  const explicit = rows
+    .map((row) => normalizePackagingMethod(row.packaging_method ?? row.dispensing_method))
+    .find((method) => method !== 'none');
+  if (explicit) return explicit;
+  if (rows.some((row) => row.tags.includes('unit_dose'))) return 'unit_dose';
+  return 'unit_dose';
+}
+
+export function getDispenseMedicationGroupMethodLabel(method: DispenseMedicationGroupMethod) {
+  return PACKAGING_METHOD_LABELS[method];
+}
+
+export function buildDispenseMedicationGroups(
+  rows: WorkbenchCountRow[],
+): DispenseMedicationGroup[] {
+  const rowById = new Map(rows.map((row) => [row.line_id, row]));
+  const assignments = generatePackagingGroups(
+    rows.map((row) => ({
+      id: row.line_id,
+      drug_name: row.drug_name,
+      frequency: row.frequency,
+      route: row.route,
+      packaging_instruction_tags: row.tags,
+    })),
+  );
+
+  const grouped = new Map<
+    string,
+    {
+      label: string;
+      slot: string | null;
+      rows: WorkbenchCountRow[];
+      crushProhibitedCount: number;
+    }
+  >();
+
+  for (const assignment of assignments) {
+    if (!assignment.groupId) continue;
+    const row = rowById.get(assignment.lineId);
+    if (!row) continue;
+    const existing = grouped.get(assignment.groupId);
+    if (existing) {
+      if (!existing.rows.some((candidate) => candidate.line_id === row.line_id)) {
+        existing.rows.push(row);
+      }
+      existing.crushProhibitedCount += assignment.isCrushProhibited ? 1 : 0;
+    } else {
+      grouped.set(assignment.groupId, {
+        label: assignment.groupLabel,
+        slot: assignment.slot,
+        rows: [row],
+        crushProhibitedCount: assignment.isCrushProhibited ? 1 : 0,
+      });
+    }
+  }
+
+  return Array.from(grouped.entries()).map(([id, group]) => {
+    const method = inferGroupMethod(group.rows);
+    const cautionLabels = [
+      ...new Set(
+        group.rows.flatMap((row) =>
+          row.tags
+            .map((tag) => HANDLING_TAG_LABELS[tag] ?? null)
+            .filter((label): label is string => label != null),
+        ),
+      ),
+    ];
+    return {
+      id,
+      label: group.label,
+      slot: group.slot,
+      method,
+      methodLabel: PACKAGING_METHOD_LABELS[method],
+      lineIds: group.rows.map((row) => row.line_id),
+      lineNames: group.rows.map((row) => row.drug_name),
+      crushProhibitedCount: group.crushProhibitedCount,
+      cautionLabels,
+    };
+  });
+}
 
 export function buildDispenseSafetySummary(
   workbench: DispenseWorkbenchData,

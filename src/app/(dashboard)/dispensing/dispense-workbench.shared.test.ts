@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildChangeBadge,
+  buildDispenseMedicationGroups,
   buildDispenseSafetySummary,
   buildDispenseQueueSubline,
   buildPausedLabel,
@@ -10,6 +11,7 @@ import {
   formatAgeMinutesLabel,
   formatDueTime,
   formatRemainingLabel,
+  getDispenseMedicationGroupMethodLabel,
   judgeCountRow,
   type WorkbenchCountRow,
   type DispenseWorkbenchData,
@@ -20,6 +22,8 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
     line_id: 'line_1',
     result_id: 'result_1',
     drug_name: 'オキシコドン 5mg',
+    frequency: '朝食後',
+    route: 'internal',
     tags: ['narcotic'],
     is_narcotic: true,
     prescribed_label: '14錠',
@@ -27,6 +31,10 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
     dispensed_label: '14錠',
     dispensed_quantity: 14,
     unit: '錠',
+    dispensing_method: null,
+    packaging_method: null,
+    packaging_instructions: null,
+    packaging_group_id: null,
     ...overrides,
   };
 }
@@ -223,6 +231,47 @@ describe('dispense-workbench.shared', () => {
       unresolvedPrescriptionQuantityCount: 0,
       missingActualQuantityCount: 1,
     });
+  });
+
+  it('buildDispenseMedicationGroups は用法スロットごとに医薬品グループ候補を作る', () => {
+    const groups = buildDispenseMedicationGroups([
+      countRow({
+        line_id: 'line_1',
+        drug_name: 'アムロジピン 5mg',
+        frequency: '朝夕食後',
+        tags: ['unit_dose'],
+      }),
+      countRow({
+        line_id: 'line_2',
+        drug_name: 'ファモチジン 10mg',
+        frequency: '朝食後',
+        tags: ['crush_prohibited'],
+      }),
+      countRow({
+        line_id: 'line_3',
+        drug_name: 'ロキソプロフェン 60mg',
+        frequency: '疼痛時',
+        tags: [],
+      }),
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({
+      id: 'group_morning',
+      label: '朝食後',
+      method: 'unit_dose',
+      methodLabel: '一包化',
+      lineIds: ['line_1', 'line_2'],
+      lineNames: ['アムロジピン 5mg', 'ファモチジン 10mg'],
+      crushProhibitedCount: 1,
+      cautionLabels: ['一包化'],
+    });
+    expect(groups[1]).toMatchObject({
+      id: 'group_evening',
+      label: '夕食後',
+      lineIds: ['line_1'],
+    });
+    expect(getDispenseMedicationGroupMethodLabel('calendar_pack')).toBe('カレンダーセット');
   });
 
   it('formatAgeMinutesLabel は日/時間/分に丸める', () => {

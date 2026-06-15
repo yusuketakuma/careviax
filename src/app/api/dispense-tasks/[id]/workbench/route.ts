@@ -138,7 +138,22 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
                   days: true,
                   quantity: true,
                   unit: true,
+                  route: true,
+                  dispensing_method: true,
+                  packaging_method: true,
+                  packaging_instructions: true,
                   packaging_instruction_tags: true,
+                  packaging_group_id: true,
+                  dispensing_decisions: {
+                    where: { task_id: id },
+                    take: 1,
+                    select: {
+                      dispensing_method: true,
+                      packaging_method: true,
+                      packaging_instructions: true,
+                      packaging_group_id: true,
+                    },
+                  },
                 },
               },
             },
@@ -294,10 +309,13 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
   const resultByLineId = new Map(task.results.map((result) => [result.line_id, result]));
   const countRows = currentLines.map((line) => {
     const result = resultByLineId.get(line.id) ?? null;
+    const decision = line.dispensing_decisions[0] ?? null;
     return {
       line_id: line.id,
       result_id: result?.id ?? null,
       drug_name: result?.actual_drug_name ?? line.drug_name,
+      frequency: line.frequency,
+      route: line.route,
       tags: line.packaging_instruction_tags as string[],
       is_narcotic: isNarcoticLine(line),
       prescribed_label: formatQuantityLabel(line),
@@ -307,6 +325,11 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
         : null,
       dispensed_quantity: result?.actual_quantity ?? null,
       unit: result?.actual_unit ?? line.unit ?? '',
+      dispensing_method: decision?.dispensing_method ?? line.dispensing_method ?? null,
+      packaging_method: decision?.packaging_method ?? line.packaging_method ?? null,
+      packaging_instructions:
+        decision?.packaging_instructions ?? line.packaging_instructions ?? null,
+      packaging_group_id: decision?.packaging_group_id ?? line.packaging_group_id ?? null,
     };
   });
   countRows.sort((left, right) => Number(right.is_narcotic) - Number(left.is_narcotic));

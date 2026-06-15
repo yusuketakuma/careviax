@@ -494,6 +494,7 @@ describe('/api/dispense-results POST', () => {
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
     const membershipFindManyMock = vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]);
+    const dispensingDecisionUpsertMock = vi.fn().mockResolvedValue({});
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -537,6 +538,9 @@ describe('/api/dispense-results POST', () => {
           create: dispenseResultCreateMock,
           findMany: dispenseResultFindManyMock,
         },
+        dispensingDecision: {
+          upsert: dispensingDecisionUpsertMock,
+        },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
           findFirstOrThrow: vi
@@ -570,6 +574,10 @@ describe('/api/dispense-results POST', () => {
             actual_drug_code: '123',
             actual_quantity: 14,
             carry_type: 'carry',
+            packaging_group_id: 'group_morning',
+            packaging_method: 'unit_dose',
+            is_unit_dose: true,
+            special_notes: '朝食後 一包化',
           },
         ],
       }),
@@ -577,6 +585,31 @@ describe('/api/dispense-results POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(dispensingDecisionUpsertMock).toHaveBeenCalledWith({
+      where: {
+        task_id_line_id: {
+          task_id: 'task_1',
+          line_id: 'line_1',
+        },
+      },
+      create: expect.objectContaining({
+        org_id: 'org_1',
+        task_id: 'task_1',
+        line_id: 'line_1',
+        dispensing_method: 'unit_dose',
+        packaging_method: 'unit_dose',
+        packaging_instructions: '朝食後 一包化',
+        packaging_group_id: 'group_morning',
+        decided_by: 'user_1',
+      }),
+      update: expect.objectContaining({
+        dispensing_method: 'unit_dose',
+        packaging_method: 'unit_dose',
+        packaging_instructions: '朝食後 一包化',
+        packaging_group_id: 'group_morning',
+        decided_by: 'user_1',
+      }),
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

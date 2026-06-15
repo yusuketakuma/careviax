@@ -30,6 +30,18 @@ const dispenseResultLineSchema = z.object({
   special_notes: z.string().optional(),
   is_unit_dose: z.boolean().optional(),
   is_crushed: z.boolean().optional(),
+  packaging_method: z
+    .enum([
+      'none',
+      'unit_dose',
+      'morning_evening_unit_dose',
+      'medication_box',
+      'calendar_pack',
+      'blister_pack',
+      'crush_and_pack',
+      'other',
+    ])
+    .optional(),
   packaging_group_id: z.string().optional(),
 });
 
@@ -104,6 +116,29 @@ function buildDiscrepancyReasonErrors(input: {
       },
     ];
   });
+}
+
+function resolveDispensingDecision(line: z.infer<typeof dispenseResultLineSchema>) {
+  const method =
+    line.packaging_method ??
+    (line.is_unit_dose ? 'unit_dose' : line.is_crushed ? 'crush_and_pack' : null);
+  const groupId = line.packaging_group_id?.trim() || null;
+
+  if (!method && !groupId) return null;
+
+  return {
+    dispensing_method:
+      method === 'crush_and_pack'
+        ? 'crushed'
+        : method === 'none'
+          ? 'standard'
+          : method === 'other'
+            ? 'other'
+            : 'unit_dose',
+    packaging_method: method ?? 'none',
+    packaging_instructions: line.special_notes?.trim() || null,
+    packaging_group_id: groupId,
+  };
 }
 
 async function promoteCycleToDispensingIfNeeded(args: {
@@ -319,8 +354,39 @@ export const POST = withAuthContext(
       }
 
       const results = await Promise.all(
-        lines.map((line) =>
-          existingResultByLineId.has(line.line_id)
+        lines.map(async (line) => {
+          const decision = resolveDispensingDecision(line);
+          if (decision) {
+            await tx.dispensingDecision.upsert({
+              where: {
+                task_id_line_id: {
+                  task_id,
+                  line_id: line.line_id,
+                },
+              },
+              create: {
+                org_id: ctx.orgId,
+                task_id,
+                line_id: line.line_id,
+                dispensing_method: decision.dispensing_method,
+                packaging_method: decision.packaging_method,
+                packaging_instructions: decision.packaging_instructions,
+                packaging_group_id: decision.packaging_group_id,
+                decided_by: ctx.userId,
+                decided_at: now,
+              },
+              update: {
+                dispensing_method: decision.dispensing_method,
+                packaging_method: decision.packaging_method,
+                packaging_instructions: decision.packaging_instructions,
+                packaging_group_id: decision.packaging_group_id,
+                decided_by: ctx.userId,
+                decided_at: now,
+              },
+            });
+          }
+
+          return existingResultByLineId.has(line.line_id)
             ? tx.dispenseResult.update({
                 where: { id: existingResultByLineId.get(line.line_id)!.id },
                 data: {
@@ -350,8 +416,8 @@ export const POST = withAuthContext(
                   dispensed_by: ctx.userId,
                   dispensed_at: now,
                 },
-              }),
-        ),
+              });
+        }),
       );
 
       await tx.dispenseTask.update({

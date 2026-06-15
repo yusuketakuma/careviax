@@ -43,13 +43,17 @@ import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   buildChangeBadge,
+  buildDispenseMedicationGroups,
   buildDispenseSafetySummary,
   buildDispenseQueueSubline,
   buildPausedLabel,
   familyName,
   formatAgeMinutesLabel,
   formatDueTime,
+  getDispenseMedicationGroupMethodLabel,
   type DispenseWorkbenchData,
+  type DispenseMedicationGroup,
+  type DispenseMedicationGroupMethod,
   type DispenseSafetySummary,
 } from './dispense-workbench.shared';
 
@@ -213,6 +217,173 @@ const CHANGE_BADGE_TONES: Record<'amber' | 'red' | 'blue' | 'neutral', string> =
   neutral: 'text-muted-foreground',
 };
 
+const GROUP_METHOD_OPTIONS: Array<{
+  value: DispenseMedicationGroupMethod;
+  label: string;
+}> = [
+  { value: 'unit_dose', label: '一包化' },
+  { value: 'morning_evening_unit_dose', label: '朝夕別一包化' },
+  { value: 'calendar_pack', label: 'カレンダーセット' },
+  { value: 'medication_box', label: 'お薬BOX' },
+  { value: 'crush_and_pack', label: '粉砕・混合' },
+  { value: 'blister_pack', label: 'ブリスター管理' },
+  { value: 'other', label: 'その他' },
+  { value: 'none', label: '指定なし' },
+];
+
+type MedicationGroupSettings = Record<
+  string,
+  { enabled: boolean; method: DispenseMedicationGroupMethod }
+>;
+
+function buildDefaultGroupSettings(groups: DispenseMedicationGroup[]): MedicationGroupSettings {
+  return Object.fromEntries(
+    groups.map((group) => [group.id, { enabled: false, method: group.method }]),
+  );
+}
+
+function MedicationGroupPanel({
+  groups,
+  settings,
+  onCreateGroups,
+  onToggleGroup,
+  onMethodChange,
+}: {
+  groups: DispenseMedicationGroup[];
+  settings: MedicationGroupSettings;
+  onCreateGroups: () => void;
+  onToggleGroup: (groupId: string, enabled: boolean) => void;
+  onMethodChange: (groupId: string, method: DispenseMedicationGroupMethod) => void;
+}) {
+  const enabledCount = groups.filter((group) => settings[group.id]?.enabled).length;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-3"
+      aria-label="医薬品グループ設定"
+      data-testid="dispense-medication-groups"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-bold text-foreground">医薬品グループ設定</h4>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            用法スロットごとにまとめ、レセコン入力と同じ順序で包装方法を確定します。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={enabledCount > 0 ? 'secondary' : 'outline'}
+          size="sm"
+          className="min-h-8 shrink-0"
+          onClick={onCreateGroups}
+          disabled={groups.length === 0}
+        >
+          {enabledCount > 0 ? `作成済み ${enabledCount}件` : '医薬品グループを作成'}
+        </Button>
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="mt-3 rounded-md border border-dashed border-border/70 px-3 py-2 text-sm text-muted-foreground">
+          一包化候補になる内服用法がありません。
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-sm">
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                  作成
+                </th>
+                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                  グループ
+                </th>
+                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                  薬剤
+                </th>
+                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                  設定
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) => {
+                const setting = settings[group.id] ?? { enabled: false, method: group.method };
+                return (
+                  <tr key={group.id} className="align-top">
+                    <td className="border-b border-border/50 px-2 py-2">
+                      <Checkbox
+                        aria-label={`${group.label}を医薬品グループにする`}
+                        checked={setting.enabled}
+                        onCheckedChange={(value) => onToggleGroup(group.id, value === true)}
+                      />
+                    </td>
+                    <td className="border-b border-border/50 px-2 py-2">
+                      <div className="font-bold text-foreground">{group.label}</div>
+                      <div className="text-xs text-muted-foreground">{group.id}</div>
+                    </td>
+                    <td className="border-b border-border/50 px-2 py-2">
+                      <div className="space-y-1">
+                        {group.lineNames.map((name) => (
+                          <div key={name} className="leading-5 text-foreground">
+                            {name}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {group.cautionLabels.map((label) => (
+                          <span
+                            key={label}
+                            className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                        {group.crushProhibitedCount > 0 ? (
+                          <span className="inline-flex rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800">
+                            粉砕禁止 {group.crushProhibitedCount}件
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="border-b border-border/50 px-2 py-2">
+                      <label className="sr-only" htmlFor={`dispense-group-method-${group.id}`}>
+                        {group.label}の包装方法
+                      </label>
+                      <select
+                        id={`dispense-group-method-${group.id}`}
+                        className="h-9 w-full min-w-36 rounded-md border border-input bg-background px-2 text-sm"
+                        value={setting.method}
+                        onChange={(event) =>
+                          onMethodChange(
+                            group.id,
+                            event.target.value as DispenseMedicationGroupMethod,
+                          )
+                        }
+                        disabled={!setting.enabled}
+                      >
+                        {GROUP_METHOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {setting.enabled
+                          ? `${getDispenseMedicationGroupMethodLabel(setting.method)}で監査へ引継ぎ`
+                          : '未作成'}
+                      </p>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
   if (workbench.comparison.length === 0) {
     return (
@@ -342,6 +513,7 @@ export function DispenseWorkbench() {
   const [checked, setChecked] = React.useState<Record<string, boolean>>({});
   const [interruptOpen, setInterruptOpen] = React.useState(false);
   const [interruptReason, setInterruptReason] = React.useState('');
+  const [groupSettings, setGroupSettings] = React.useState<MedicationGroupSettings>({});
 
   const queueQuery = useRealtimeQuery({
     queryKey: ['dispense-queue', orgId],
@@ -383,12 +555,17 @@ export function DispenseWorkbench() {
   });
 
   const workbench = workbenchQuery.data ?? null;
+  const medicationGroups = React.useMemo(
+    () => (workbench ? buildDispenseMedicationGroups(workbench.count_rows) : []),
+    [workbench],
+  );
 
   // 選択タスクが変わったらチェックリストを初期化(1件集中: 件をまたいで持ち越さない)
   const [checklistTaskId, setChecklistTaskId] = React.useState(activeTaskId);
   if (checklistTaskId !== activeTaskId) {
     setChecklistTaskId(activeTaskId);
     setChecked({});
+    setGroupSettings(buildDefaultGroupSettings(medicationGroups));
   }
 
   const completeMutation = useMutation({
@@ -409,6 +586,21 @@ export function DispenseWorkbench() {
             actual_quantity: row.prescribed_quantity ?? 0,
             actual_unit: row.unit || undefined,
             carry_type: 'carry' as const,
+            ...(() => {
+              const group = medicationGroups.find(
+                (candidate) =>
+                  candidate.lineIds.includes(row.line_id) && groupSettings[candidate.id]?.enabled,
+              );
+              const method = group ? groupSettings[group.id]?.method : undefined;
+              if (!group || !method || method === 'none') return {};
+              return {
+                is_unit_dose: method === 'unit_dose' || method === 'morning_evening_unit_dose',
+                is_crushed: method === 'crush_and_pack',
+                packaging_group_id: group.id,
+                packaging_method: method,
+                special_notes: `${group.label} ${getDispenseMedicationGroupMethodLabel(method)}`,
+              };
+            })(),
           })),
         }),
       });
@@ -604,40 +796,86 @@ export function DispenseWorkbench() {
 
                 {safetySummary ? <SafetySummaryPanel summary={safetySummary} /> : null}
 
-                {/* セーフティボード(危険タグは隠さない) */}
-                <SafetyBoard
-                  className="mt-3"
-                  allergy={workbench.safety.allergy ?? undefined}
-                  renal={workbench.safety.renal ?? undefined}
-                  handlingTags={workbench.safety.handling_tags}
-                  swallowing={workbench.safety.swallowing ?? undefined}
-                  cautions={workbench.safety.cautions}
-                />
+                <div
+                  className="mt-3 grid gap-3 lg:grid-cols-[minmax(280px,0.92fr)_minmax(0,1.08fr)]"
+                  data-testid="dispense-terminal-layout"
+                >
+                  <div className="space-y-3">
+                    {/* セーフティボード(危険タグは隠さない) */}
+                    <SafetyBoard
+                      allergy={workbench.safety.allergy ?? undefined}
+                      renal={workbench.safety.renal ?? undefined}
+                      handlingTags={workbench.safety.handling_tags}
+                      swallowing={workbench.safety.swallowing ?? undefined}
+                      cautions={workbench.safety.cautions}
+                    />
+                    <MedicationGroupPanel
+                      groups={medicationGroups}
+                      settings={groupSettings}
+                      onCreateGroups={() =>
+                        setGroupSettings((prev) => ({
+                          ...prev,
+                          ...Object.fromEntries(
+                            medicationGroups.map((group) => [
+                              group.id,
+                              {
+                                enabled: true,
+                                method: prev[group.id]?.method ?? group.method,
+                              },
+                            ]),
+                          ),
+                        }))
+                      }
+                      onToggleGroup={(groupId, enabled) =>
+                        setGroupSettings((prev) => ({
+                          ...prev,
+                          [groupId]: {
+                            enabled,
+                            method:
+                              prev[groupId]?.method ??
+                              medicationGroups.find((group) => group.id === groupId)?.method ??
+                              'unit_dose',
+                          },
+                        }))
+                      }
+                      onMethodChange={(groupId, method) =>
+                        setGroupSettings((prev) => ({
+                          ...prev,
+                          [groupId]: {
+                            enabled: prev[groupId]?.enabled ?? true,
+                            method,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="min-w-0 space-y-3">
+                    {/* 処方比較(前回 / 今回 / 差) */}
+                    <ComparisonTable workbench={workbench} />
 
-                {/* 処方比較(前回 / 今回 / 差) */}
-                <ComparisonTable workbench={workbench} />
-
-                {/* 確認チェックリスト */}
-                <ul className="mt-4 space-y-3" data-testid="dispense-checklist">
-                  {checklistItems.map((item) => (
-                    <li key={item.id} className="flex items-center gap-3">
-                      <Checkbox
-                        id={`dispense-check-${item.id}`}
-                        checked={checked[item.id] ?? false}
-                        onCheckedChange={(value) =>
-                          setChecked((prev) => ({ ...prev, [item.id]: value === true }))
-                        }
-                        aria-label={item.label}
-                      />
-                      <label
-                        htmlFor={`dispense-check-${item.id}`}
-                        className="cursor-pointer select-none text-sm leading-6 text-foreground"
-                      >
-                        {item.label}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
+                    {/* 確認チェックリスト */}
+                    <ul className="space-y-3" data-testid="dispense-checklist">
+                      {checklistItems.map((item) => (
+                        <li key={item.id} className="flex items-center gap-3">
+                          <Checkbox
+                            id={`dispense-check-${item.id}`}
+                            checked={checked[item.id] ?? false}
+                            onCheckedChange={(value) =>
+                              setChecked((prev) => ({ ...prev, [item.id]: value === true }))
+                            }
+                            aria-label={item.label}
+                          />
+                          <label
+                            htmlFor={`dispense-check-${item.id}`}
+                            className="cursor-pointer select-none text-sm leading-6 text-foreground"
+                          >
+                            {item.label}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
 
                 {/* アクション行(主操作は 1 つだけ青) */}
                 <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">

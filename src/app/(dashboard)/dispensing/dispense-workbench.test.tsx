@@ -117,6 +117,8 @@ const WORKBENCH: DispenseWorkbenchData = {
       line_id: 'line-famotidine',
       result_id: null,
       drug_name: 'ファモチジン',
+      frequency: '朝夕食後',
+      route: 'internal',
       tags: [],
       is_narcotic: false,
       prescribed_label: '28錠',
@@ -124,6 +126,10 @@ const WORKBENCH: DispenseWorkbenchData = {
       dispensed_label: null,
       dispensed_quantity: null,
       unit: '錠',
+      dispensing_method: null,
+      packaging_method: null,
+      packaging_instructions: null,
+      packaging_group_id: null,
     },
   ],
   dispenser: null,
@@ -254,6 +260,16 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('eGFR 41 — 用量に注意')).toBeTruthy();
     expect(screen.getByText('なし(確認済 6/1)')).toBeTruthy();
 
+    // レセコン風の入力面: 安全確認と医薬品グループ設定を左、処方比較と確認を右に寄せる
+    expect(screen.getByTestId('dispense-terminal-layout')).toBeTruthy();
+    expect(screen.getByTestId('dispense-medication-groups')).toBeTruthy();
+    expect(screen.getByText('医薬品グループ設定')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '医薬品グループを作成' })).toBeTruthy();
+    expect(screen.getByText('朝食後')).toBeTruthy();
+    expect(screen.getByText('夕食後')).toBeTruthy();
+    expect(screen.getByText('group_morning')).toBeTruthy();
+    expect(screen.getByLabelText('朝食後の包装方法')).toBeTruthy();
+
     // 処方比較(前回 / 今回 / 差)
     expect(screen.getByText('前回')).toBeTruthy();
     expect(screen.getByText('今回')).toBeTruthy();
@@ -344,6 +360,42 @@ describe('DispenseWorkbench', () => {
     fireEvent.click(screen.getByTestId('dispense-complete-button'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('作成した医薬品グループの一包化設定を調剤実績 payload に含める', async () => {
+    const capturedMutationFns: Array<() => Promise<unknown>> = [];
+    useMutationMock.mockImplementation((options: { mutationFn: () => Promise<unknown> }) => {
+      capturedMutationFns.push(options.mutationFn);
+      return { mutate: mutateMock, isPending: false };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'result_1' } }),
+    } as Response);
+
+    render(<DispenseWorkbench />);
+
+    fireEvent.click(screen.getByRole('button', { name: '医薬品グループを作成' }));
+    expect(screen.getByRole('button', { name: '作成済み 2件' })).toBeTruthy();
+
+    const mutationFn = capturedMutationFns.at(-2) ?? capturedMutationFns[0];
+    if (!mutationFn) throw new Error('mutationFn is required');
+    await mutationFn();
+
+    const dispenseResultCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === '/api/dispense-results',
+    );
+    if (!dispenseResultCall) throw new Error('dispense result request is required');
+    const body = JSON.parse((dispenseResultCall[1] as RequestInit).body as string);
+    expect(body.lines[0]).toMatchObject({
+      line_id: 'line-famotidine',
+      packaging_group_id: 'group_morning',
+      packaging_method: 'unit_dose',
+      is_unit_dose: true,
+      special_notes: '朝食後 一包化',
+    });
+
+    fetchMock.mockRestore();
   });
 
   it('taskId クエリがある場合はその調剤タスクを初期表示する', () => {
