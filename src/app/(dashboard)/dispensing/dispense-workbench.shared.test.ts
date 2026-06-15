@@ -181,6 +181,48 @@ describe('dispense-workbench.shared', () => {
       inquiryResponseNeedsCheck: true,
       nextCheckLabel: '照会回答の変更点を読み上げ確認',
     });
+
+    expect(
+      buildDispenseSafetySummary(
+        workbench({
+          comparison: [
+            {
+              key: 'line_1',
+              drug_name: 'ファモチジン',
+              previous_label: '20mg 朝夕',
+              current_label: '10mg 朝夕',
+              change_type: 'dose_changed',
+              direction: 'decrease',
+              inquiry_origin: true,
+            },
+            {
+              key: 'line_2',
+              drug_name: 'トラセミド',
+              previous_label: null,
+              current_label: '4mg 朝',
+              change_type: 'added',
+              direction: null,
+              inquiry_origin: false,
+            },
+            {
+              key: 'line_3',
+              drug_name: '旧薬',
+              previous_label: '朝1錠',
+              current_label: null,
+              change_type: 'removed',
+              direction: null,
+              inquiry_origin: true,
+            },
+          ],
+          count_rows: [countRow({ dispensed_quantity: null })],
+        }),
+      ),
+    ).toMatchObject({
+      changedCount: 3,
+      inquiryChangeCount: 2,
+      unresolvedPrescriptionQuantityCount: 0,
+      missingActualQuantityCount: 1,
+    });
   });
 
   it('formatAgeMinutesLabel は日/時間/分に丸める', () => {

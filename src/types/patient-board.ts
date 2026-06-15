@@ -53,6 +53,8 @@ export type PatientBoardCard = {
   /** 状態の自然文(対応内容や期限) */
   status_text: string;
   status_tone: PatientStatusTone;
+  /** 一覧でクリック前に確認したい訪問条件(連絡先有無/駐車/介護度など、電話番号は含めない) */
+  operation_summary?: string[];
   /** 工程ショートカット(「→ 監査へ」等) */
   link_label: string;
   link_href: string;

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
+import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import {
   buildCareCaseAssignmentWhere,
@@ -124,12 +125,48 @@ function hasAllergyInfo(value: unknown): boolean {
   return false;
 }
 
+function buildOperationSummary(
+  patient: PatientQueryRow,
+  args: { visitToday: boolean; visitPrepared: boolean; facilityBatchPatientCount: number },
+): string[] {
+  const preference = patient.scheduling_preference;
+  const hasPreferredContact = Boolean(
+    preference?.preferred_contact_name?.trim() || preference?.preferred_contact_phone?.trim(),
+  );
+  const parking =
+    preference?.parking_available === true
+      ? '駐車場あり'
+      : preference?.parking_available === false
+        ? '駐車場なし'
+        : '駐車未確認';
+  const careLevel = preference?.care_level
+    ? (careLevelLabels[preference.care_level] ?? preference.care_level)
+    : null;
+
+  const visitLabels = args.visitToday
+    ? [
+        args.facilityBatchPatientCount > 0 ? `施設一括${args.facilityBatchPatientCount}名` : null,
+        args.visitPrepared ? '訪問準備済' : '準備未完',
+      ]
+    : [];
+
+  return [...visitLabels, hasPreferredContact ? '連絡先あり' : '連絡先未設定', parking, careLevel]
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 4);
+}
+
 type PatientQueryRow = {
   id: string;
   name: string;
   birth_date: Date;
   allergy_info: unknown;
-  scheduling_preference: { swallowing_route: string | null } | null;
+  scheduling_preference: {
+    swallowing_route: string | null;
+    preferred_contact_name: string | null;
+    preferred_contact_phone: string | null;
+    parking_available: boolean | null;
+    care_level: string | null;
+  } | null;
   residences: Array<{
     address: string;
     facility: { name: string } | null;
@@ -204,8 +241,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
   const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tagSet.has(tag));
 
   const hospitalized =
-    cycle?.exception_status === 'hospitalized' ||
-    openException?.exception_type === 'hospitalized';
+    cycle?.exception_status === 'hospitalized' || openException?.exception_type === 'hospitalized';
   const facilityName = patient.residences[0]?.facility?.name ?? null;
   const isFacility = facilityName != null || Boolean(patient.residences[0]?.building_id);
   const residenceKind = hospitalized ? 'hospital' : isFacility ? 'facility' : 'home';
@@ -279,14 +315,13 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
         : '医師回答待ち — 本日照会済み';
     tone = 'external';
     link = null;
-  } else if (
-    cycle &&
-    ['awaiting_reply', 'report_failed'].includes(cycle.exception_status ?? '')
-  ) {
+  } else if (cycle && ['awaiting_reply', 'report_failed'].includes(cycle.exception_status ?? '')) {
     attention = 'reply_wait';
     const waitingDays = daysBetween(cycle.updated_at, now);
     statusText =
-      waitingDays > 0 ? `報告先の返信待ち ${waitingDays}日 — 再送できます` : '報告先の返信待ち — 再送できます';
+      waitingDays > 0
+        ? `報告先の返信待ち ${waitingDays}日 — 再送できます`
+        : '報告先の返信待ち — 再送できます';
     tone = 'external';
     link = STEP_LINKS.report;
   } else if (openException) {
@@ -295,9 +330,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     tone = 'caution';
   } else {
     attention = 'steady';
-    statusText = currentStep
-      ? STEADY_STATUS_TEXT[currentStep]
-      : '進行中の処方サイクルはありません';
+    statusText = currentStep ? STEADY_STATUS_TEXT[currentStep] : '進行中の処方サイクルはありません';
     tone = 'neutral';
   }
 
@@ -307,6 +340,12 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 
   const batchPatientIds = nextSchedule?.facility_batch?.patient_ids;
   const facilityBatchPatientCount = Array.isArray(batchPatientIds) ? batchPatientIds.length : 0;
+
+  const operationSummary = buildOperationSummary(patient, {
+    visitToday,
+    visitPrepared: Boolean(nextSchedule?.preparation?.prepared_at),
+    facilityBatchPatientCount,
+  });
 
   return {
     patient_id: patient.id,
@@ -325,6 +364,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     current_step: attention === 'paused' || attention === 'acceptance' ? null : currentStep,
     status_text: statusText,
     status_tone: tone,
+    operation_summary: operationSummary,
     link_label: resolvedLink.label,
     link_href: linkHref,
     facility_batch_id: visitToday ? (nextSchedule?.facility_batch_id ?? null) : null,
@@ -383,7 +423,15 @@ export const GET = withAuthContext(
           name: true,
           birth_date: true,
           allergy_info: true,
-          scheduling_preference: { select: { swallowing_route: true } },
+          scheduling_preference: {
+            select: {
+              swallowing_route: true,
+              preferred_contact_name: true,
+              preferred_contact_phone: true,
+              parking_available: true,
+              care_level: true,
+            },
+          },
           residences: {
             where: { is_primary: true },
             take: 1,

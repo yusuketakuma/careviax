@@ -42,6 +42,7 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
     current_step: 'set',
     status_text: 'セット作成中(通常レーン)',
     status_tone: 'neutral',
+    operation_summary: ['連絡先未設定', '駐車未確認'],
     link_label: 'セットへ',
     link_href: '/medication-sets',
     ...overrides,
@@ -59,12 +60,13 @@ function buildFixture(): PatientBoardResponse {
         name: '田中 一郎',
         age: 84,
         attention: 'urgent_now',
-        safety_tags: ['narcotic', 'cold_storage'],
+        safety_tags: ['narcotic', 'cold_storage', 'unit_dose', 'renal'],
         next_visit_date: '2026-06-12',
         next_visit_time: '14:00',
         current_step: 'audit',
         status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
         status_tone: 'critical',
+        operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
         link_label: '監査へ',
         link_href: '/auditing',
       }),
@@ -219,11 +221,21 @@ describe('PatientsBoard', () => {
     expect(within(urgent as HTMLElement).getByText('今すぐ対応')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('麻薬')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('冷所')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('一包化')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('+1')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('本日 14:00')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('連絡先あり')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('駐車場なし')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('要介護 3')).toBeTruthy();
     expect(
       within(urgent as HTMLElement).getByText('麻薬監査 期限12:00 — 持参薬が未確定'),
     ).toBeTruthy();
     expect(within(urgent as HTMLElement).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
+    expect(
+      within(urgent as HTMLElement)
+        .getByRole('link', { name: '患者詳細' })
+        .getAttribute('href'),
+    ).toBe('/patients/pt_tanaka');
     expect(
       within(urgent as HTMLElement)
         .getByTestId('process-progress-dots')

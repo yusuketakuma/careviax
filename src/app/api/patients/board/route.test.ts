@@ -44,7 +44,13 @@ function buildPatientRow(scheduledDate: Date) {
     name: '佐藤 花子',
     birth_date: new Date('1940-01-15T00:00:00.000Z'),
     allergy_info: null,
-    scheduling_preference: null,
+    scheduling_preference: {
+      swallowing_route: null,
+      preferred_contact_name: null,
+      preferred_contact_phone: '090-1111-2222',
+      parking_available: false,
+      care_level: 'care_3',
+    },
     residences: [],
     lab_observations: [],
     cases: [
@@ -119,6 +125,8 @@ describe('/api/patients/board', () => {
     expect(json.data.cards[0]).toMatchObject({
       attention: 'visit_today',
       next_visit_date: '2026-06-12',
+      operation_summary: ['準備未完', '連絡先あり', '駐車場なし', '要介護 3'],
     });
+    expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
   });
 });
