@@ -1966,6 +1966,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const revisionEntries: PatientFieldRevisionEntry[] = [];
         const revisionDate = utcDateFromLocalKey(localDateKey());
 
+        // 反映導線の出所(source_visit_record_id)は provenance 汚染を防ぐため、
+        // 同一 org かつ同一患者の訪問記録に限り採用する(他患者/他org/不正IDは無視)。
+        let effectiveSourceVisitRecordId: string | null = null;
+        if (source_visit_record_id) {
+          const sourceVisit = await tx.visitRecord.findFirst({
+            where: { id: source_visit_record_id, org_id: ctx.orgId, patient_id: id },
+            select: { id: true },
+          });
+          effectiveSourceVisitRecordId = sourceVisit?.id ?? null;
+        }
+
         const primaryResidence = await tx.residence.findFirst({
           where: { patient_id: id, is_primary: true },
           select: {
@@ -2501,7 +2512,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               patientId: id,
               caseId: activeCase.id,
               intake: nextHomeVisitIntake,
-              source: source_visit_record_id ? 'visit_record' : 'patient_detail_edit',
+              source: effectiveSourceVisitRecordId ? 'visit_record' : 'patient_detail_edit',
               confirmedBy: ctx.userId,
               startDate: revisionDate,
             });
@@ -2605,8 +2616,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             actorId: ctx.userId,
             validFrom: revisionDate,
             // 反映導線(訪問記録→患者詳細)経由の更新は出所を visit_record として記録する
-            source: source_visit_record_id ? 'visit_record' : undefined,
-            sourceVisitRecordId: source_visit_record_id ?? undefined,
+            source: effectiveSourceVisitRecordId ? 'visit_record' : undefined,
+            sourceVisitRecordId: effectiveSourceVisitRecordId ?? undefined,
             entries: revisionEntries,
           });
 

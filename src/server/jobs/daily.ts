@@ -2121,14 +2121,16 @@ export async function checkConsentExpiry() {
 
 export async function checkPublicSubsidyExpiry() {
   return runJob('public_subsidy_expiry_check', async () => {
-    const now = new Date();
-    const in30Days = addDays(now, 30);
+    // valid_until(@db.Date)は UTC 深夜で保存されるため、当日分を取りこぼさないよう
+    // 今日もローカル日付の UTC 深夜で表して比較する(時刻付き now では当日が gte から漏れる)。
+    const today = utcDateFromLocalKey(localDateKey());
+    const in30Days = addUtcDays(today, 30);
 
     const expiring = await prisma.patientInsurance.findMany({
       where: {
         insurance_type: 'public_subsidy',
         is_active: true,
-        valid_until: { lte: in30Days, gte: now },
+        valid_until: { lte: in30Days, gte: today },
       },
       include: {
         patient: { select: { id: true, name: true } },
@@ -2141,7 +2143,7 @@ export async function checkPublicSubsidyExpiry() {
     for (const insurance of expiring) {
       if (!insurance.valid_until) continue;
       const daysUntilExpiry = Math.ceil(
-        (insurance.valid_until.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        (insurance.valid_until.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
       );
       const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const patientName = insurance.patient?.name ?? '不明';

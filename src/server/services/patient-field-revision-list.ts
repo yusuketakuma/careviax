@@ -29,6 +29,24 @@ export interface PatientFieldRevisionListItem {
 
 type RevisionRow = Awaited<ReturnType<typeof prisma.patientFieldRevision.findMany>>[number];
 
+// 識別子系(電話/住所/建物)および PHI を含むカテゴリ(連絡先/住所/保険)は、
+// 変更履歴 API で生値(old/new/value_label)を返さない。
+// UI/UX ガイドライン: 履歴では「変更あり + 項目名」のみ。生値マスクは表示層だけでなく
+// API 応答境界でも行い、GET /patients/[id] のマスク方針と一致させる(防御の二重化)。
+const SENSITIVE_FIELD_KEYS = new Set(['phone', 'address', 'building_id']);
+const SENSITIVE_CATEGORIES = new Set(['contacts', 'residence', 'insurance']);
+// 追加/解除/変更の判定(値の有無)だけに使う非PHIプレースホルダ。UI には表示されない。
+const MASKED_PRESENCE = '〔記録あり〕';
+
+function isSensitiveRevision(category: string, fieldKey: string): boolean {
+  return SENSITIVE_CATEGORIES.has(category) || SENSITIVE_FIELD_KEYS.has(fieldKey);
+}
+
+// 生値を返さず、値の有無のみを保持する(変更種別バッジの算出を維持しつつ PHI を出さない)。
+function maskPresence(value: Prisma.JsonValue | null): Prisma.JsonValue | null {
+  return value == null || value === '' ? null : MASKED_PRESENCE;
+}
+
 /** 行配列を表示用に整形し、更新者/確認者の User ID を氏名へ解決する(両 list で共通)。 */
 async function shapeRevisionRows(
   db: DbClient,
@@ -42,28 +60,31 @@ async function shapeRevisionRows(
   );
   const nameMap = await batchResolveNames(db as typeof prisma, orgId, actorIds);
 
-  return rows.map((row) => ({
-    id: row.id,
-    category: row.category,
-    field_key: row.field_key,
-    field_label: row.field_label,
-    value_label: row.value_label,
-    previous: row.old_value,
-    current: row.new_value,
-    source: row.source,
-    source_visit_record_id: row.source_visit_record_id,
-    change_reason: row.change_reason,
-    importance: row.importance,
-    confirmed_by: row.confirmed_by,
-    confirmed_by_name: row.confirmed_by ? (nameMap.get(row.confirmed_by) ?? null) : null,
-    confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
-    valid_from: row.valid_from.toISOString(),
-    valid_to: row.valid_to ? row.valid_to.toISOString() : null,
-    is_current: row.is_current,
-    updated_by: row.updated_by,
-    updated_by_name: nameMap.get(row.updated_by) ?? null,
-    created_at: row.created_at.toISOString(),
-  }));
+  return rows.map((row) => {
+    const sensitive = isSensitiveRevision(row.category, row.field_key);
+    return {
+      id: row.id,
+      category: row.category,
+      field_key: row.field_key,
+      field_label: row.field_label,
+      value_label: sensitive ? null : row.value_label,
+      previous: sensitive ? maskPresence(row.old_value) : row.old_value,
+      current: sensitive ? maskPresence(row.new_value) : row.new_value,
+      source: row.source,
+      source_visit_record_id: row.source_visit_record_id,
+      change_reason: row.change_reason,
+      importance: row.importance,
+      confirmed_by: row.confirmed_by,
+      confirmed_by_name: row.confirmed_by ? (nameMap.get(row.confirmed_by) ?? null) : null,
+      confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
+      valid_from: row.valid_from.toISOString(),
+      valid_to: row.valid_to ? row.valid_to.toISOString() : null,
+      is_current: row.is_current,
+      updated_by: row.updated_by,
+      updated_by_name: nameMap.get(row.updated_by) ?? null,
+      created_at: row.created_at.toISOString(),
+    };
+  });
 }
 
 interface ListArgs {

@@ -72,6 +72,54 @@ describe('listPatientFieldRevisions', () => {
     );
   });
 
+  it('機微項目(電話など)は生値を返さず、変更の有無のみマスクする', async () => {
+    const { db } = createDb(
+      [
+        {
+          ...baseRow,
+          id: 'rev_phone',
+          category: 'basic',
+          field_key: 'phone',
+          field_label: '電話番号',
+          value_label: '090-0000-0000 → 080-1111-2222',
+          old_value: '090-0000-0000',
+          new_value: '080-1111-2222',
+        },
+      ],
+      [{ id: 'user_u', name: '田中' }]
+    );
+    const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
+    // 生値(value_label/previous/current)は API 応答に出さない
+    expect(result[0].value_label).toBeNull();
+    expect(result[0].previous).not.toBe('090-0000-0000');
+    expect(result[0].current).not.toBe('080-1111-2222');
+    // ただし変更前後に値があった事実(=「変更」バッジ算出)は保持する
+    expect(result[0].previous).not.toBeNull();
+    expect(result[0].current).not.toBeNull();
+  });
+
+  it('連絡先カテゴリ(PHI配列)も生値を返さない', async () => {
+    const { db } = createDb(
+      [
+        {
+          ...baseRow,
+          id: 'rev_contacts',
+          category: 'contacts',
+          field_key: 'contacts',
+          field_label: '連絡先',
+          value_label: '2件 → 3件',
+          old_value: [{ name: '家族', phone: '090-0000-0000' }],
+          new_value: [{ name: '家族', phone: '080-1111-2222' }],
+        },
+      ],
+      [{ id: 'user_u', name: '田中' }]
+    );
+    const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
+    expect(result[0].value_label).toBeNull();
+    expect(JSON.stringify(result[0].previous)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(result[0].current)).not.toContain('080-1111-2222');
+  });
+
   it('confirmed_by が無い行は confirmed_by_name を null にする', async () => {
     const { db } = createDb([{ ...baseRow, confirmed_by: null, confirmed_at: null }], [
       { id: 'user_u', name: '田中' },

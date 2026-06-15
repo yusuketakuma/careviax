@@ -12,6 +12,7 @@ const {
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   visitRecordFindManyMock,
+  visitRecordFindFirstMock,
   careReportFindManyMock,
   communicationEventFindManyMock,
   patientSelfReportFindManyMock,
@@ -63,6 +64,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   communicationEventFindManyMock: vi.fn(),
   patientSelfReportFindManyMock: vi.fn(),
@@ -123,6 +125,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitRecord: {
       findMany: visitRecordFindManyMock,
+      findFirst: visitRecordFindFirstMock,
     },
     careReport: {
       findMany: careReportFindManyMock,
@@ -279,6 +282,8 @@ describe('/api/patients/[id]', () => {
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     visitRecordFindManyMock.mockResolvedValue([]);
+    // 反映導線の出所検証: 既定では同一org/患者の訪問記録が存在するものとして通す
+    visitRecordFindFirstMock.mockResolvedValue({ id: 'visit_1' });
     careReportFindManyMock.mockResolvedValue([]);
     communicationEventFindManyMock.mockResolvedValue([]);
     patientSelfReportFindManyMock.mockResolvedValue([]);
@@ -402,6 +407,9 @@ describe('/api/patients/[id]', () => {
         patientFieldRevision: {
           updateMany: patientFieldRevisionUpdateManyMock,
           create: patientFieldRevisionCreateMock,
+        },
+        visitRecord: {
+          findFirst: visitRecordFindFirstMock,
         },
         task: {
           upsert: taskUpsertMock,
@@ -994,6 +1002,38 @@ describe('/api/patients/[id]', () => {
       field_key: 'phone',
       source: 'visit_record',
       source_visit_record_id: 'visit_1',
+    });
+  });
+
+  it('drops source_visit_record_id provenance when the visit record is not this patient/org', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      phone: '090-0000-0000',
+      cases: [],
+    });
+    // 他患者/他org/不正IDは検証で見つからない
+    visitRecordFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest(
+        { phone: '080-1111-2222', source_visit_record_id: 'foreign_visit' },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const phoneCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'phone',
+    );
+    // 不正な出所は採用せず、通常の患者詳細編集として記録する
+    expect(phoneCreate?.[0]?.data).toMatchObject({
+      field_key: 'phone',
+      source: 'patient_detail_edit',
+      source_visit_record_id: null,
     });
   });
 
