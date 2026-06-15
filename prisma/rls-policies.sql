@@ -557,3 +557,11 @@ ALTER TABLE "PcaPumpRental" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpRentalAccessory" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpMaintenanceEvent" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "WebhookRegistration" FORCE ROW LEVEL SECURITY;
+
+-- ─── PatientFieldRevision (患者項目 業務差分履歴 層b/層c) ─────────────────────
+ALTER TABLE "PatientFieldRevision" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientFieldRevision";
+CREATE POLICY tenant_isolation ON "PatientFieldRevision"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientFieldRevision" FORCE ROW LEVEL SECURITY;

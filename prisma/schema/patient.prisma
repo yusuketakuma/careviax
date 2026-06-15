@@ -516,3 +516,38 @@ model PatientMcsMessage {
   @@index([patient_id, posted_at])
   @@index([source_message_id])
 }
+
+/// 患者項目の業務差分履歴(変更履歴 層b)+時点管理(層c)。
+/// AuditLog(層a: DBトリガが行単位 before/after を自動記録)とは別レイヤで、
+/// 現場が見る「項目単位の差分・確認元・適用開始日・更新者」を保持する。
+/// ContactParty/Residence/PatientCondition は audit トリガ対象外のため、本表が唯一の変更履歴となる。
+/// IncidentReport と同様に patient_id は FK を張らない緩い列とし、org_id + RLS でテナント分離する。
+model PatientFieldRevision {
+  id                     String    @id @default(cuid())
+  org_id                 String
+  patient_id             String
+  case_id                String? // ケースに紐づく項目(intake/home_visit_intake)用
+  category               String // 現状: basic/residence/contacts/conditions（pharmaceutical/medical_care/narcotic は後続スライスで追加）
+  field_key              String // 現状: name/phone/name_kana/gender/birth_date/allergy_info/notes/address/building_id/facility_id/facility_unit_id/unit_name/contacts/conditions（介護度等の臨床項目は後続スライス）
+  field_label            String? // 表示名(例: 介護度)
+  old_value              Json? // 変更前
+  new_value              Json? // 変更後
+  value_label            String? // 整形済み表示値(例: なし → あり)
+  source                 String    @default("patient_detail_edit") // 確認元/由来: patient_detail_edit/visit_record/mcs_sync/import
+  source_visit_record_id String? // 反映導線(訪問記録→患者詳細)で使用
+  confirmed_by           String? // 確認者(別スタッフ) User ID
+  confirmed_at           DateTime?
+  valid_from             DateTime  @db.Date // 適用開始日
+  valid_to               DateTime? @db.Date // 適用終了日(null=現在有効)
+  is_current             Boolean   @default(true)
+  change_reason          String? // 変更理由
+  importance             String    @default("normal") // normal/caution/urgent
+  updated_by             String // 入力者(actor) User ID
+  created_at             DateTime  @default(now()) // 変更日時(システム入力日時)
+  updated_at             DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id, field_key, valid_from(sort: Desc)])
+  @@index([patient_id, is_current])
+  @@index([source_visit_record_id])
+}

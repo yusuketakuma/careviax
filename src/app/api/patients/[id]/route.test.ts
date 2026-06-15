@@ -42,6 +42,8 @@ const {
   patientHomeCareFeatureSummaryMock,
   patientVisitBriefMock,
   getFacilityVisitDefaultsMock,
+  patientFieldRevisionCreateMock,
+  patientFieldRevisionUpdateManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -83,6 +85,8 @@ const {
   patientHomeCareFeatureSummaryMock: vi.fn(),
   patientVisitBriefMock: vi.fn(),
   getFacilityVisitDefaultsMock: vi.fn(),
+  patientFieldRevisionCreateMock: vi.fn(),
+  patientFieldRevisionUpdateManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -351,10 +355,12 @@ describe('/api/patients/[id]', () => {
           create: vi.fn(),
         },
         contactParty: {
+          findMany: vi.fn().mockResolvedValue([]),
           deleteMany: vi.fn(),
           createMany: vi.fn(),
         },
         patientCondition: {
+          findMany: vi.fn().mockResolvedValue([]),
           deleteMany: vi.fn(),
           createMany: vi.fn(),
         },
@@ -371,6 +377,10 @@ describe('/api/patients/[id]', () => {
         careCase: {
           findFirst: careCaseFindFirstMock,
           update: careCaseUpdateMock,
+        },
+        patientFieldRevision: {
+          updateMany: patientFieldRevisionUpdateManyMock,
+          create: patientFieldRevisionCreateMock,
         },
       }),
     );
@@ -822,8 +832,11 @@ describe('/api/patients/[id]', () => {
       where: { patient_id: 'patient_1', is_primary: true },
       select: {
         id: true,
+        address: true,
+        building_id: true,
         facility_id: true,
         facility_unit_id: true,
+        unit_name: true,
       },
     });
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
@@ -868,6 +881,81 @@ describe('/api/patients/[id]', () => {
         facility_time_to: null,
       },
     });
+  });
+
+  it('records a basic field revision for changed fields and skips no-op fields on PATCH', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      phone: '090-0000-0000',
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        { phone: '080-1111-2222', name: '山田 太郎' },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    // phone は変更 → 現在行クローズ + 新現在行作成
+    expect(patientFieldRevisionUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'corg1234567890123456789012',
+          patient_id: 'patient_1',
+          field_key: 'phone',
+          is_current: true,
+        }),
+      }),
+    );
+    const phoneCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'phone',
+    );
+    expect(phoneCreate?.[0]?.data).toMatchObject({
+      category: 'basic',
+      field_key: 'phone',
+      old_value: '090-0000-0000',
+      new_value: '080-1111-2222',
+      updated_by: 'user_1',
+      is_current: true,
+    });
+
+    // name は無変更 → 偽の履歴は作られない(no-op スキップ)
+    const nameCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'name',
+    );
+    expect(nameCreate).toBeUndefined();
+  });
+
+  it('snapshots contacts into a field revision when contacts are replaced on PATCH', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          contacts: [
+            { name: '山田 花子', relation: 'child', is_primary: true, is_emergency_contact: true },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const contactsCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'contacts',
+    );
+    expect(contactsCreate?.[0]?.data).toMatchObject({
+      category: 'contacts',
+      field_key: 'contacts',
+    });
+    expect((contactsCreate?.[0]?.data?.new_value as unknown[]).length).toBe(1);
   });
 
   it('syncs facility acceptance window into patient schedule preferences on PATCH', async () => {

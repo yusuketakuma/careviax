@@ -28,6 +28,11 @@ import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence'
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
 import { getPatientVisitBrief } from '@/server/services/visit-brief';
+import {
+  writePatientFieldRevisions,
+  sortJsonArrayStable,
+  type PatientFieldRevisionEntry,
+} from '@/server/services/patient-field-revision';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
@@ -1951,12 +1956,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const patient = await withOrgContext(
       ctx.orgId,
       async (tx) => {
+        // 患者項目の業務差分履歴(層b/層c)。各更新サイトで old→new を算出し、tx 末尾で一括追記する。
+        const revisionEntries: PatientFieldRevisionEntry[] = [];
+        const revisionDate = utcDateFromLocalKey(localDateKey());
+
         const primaryResidence = await tx.residence.findFirst({
           where: { patient_id: id, is_primary: true },
           select: {
             id: true,
+            address: true,
+            building_id: true,
             facility_id: true,
             facility_unit_id: true,
+            unit_name: true,
           },
         });
 
@@ -2004,6 +2016,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           } as Prisma.PatientUpdateInput,
         });
 
+        // (基本情報) Patient スカラ項目の差分を履歴化。
+        // 保険番号は PatientInsurance のテンポラル行がSoTのため、ここでは記録しない(二重実装回避)。
+        const basicFieldLabels: Record<string, string> = {
+          name: '氏名',
+          name_kana: 'フリガナ',
+          gender: '性別',
+          phone: '電話番号',
+          billing_support_flag: '請求支援フラグ',
+          allergy_info: 'アレルギー情報',
+          notes: 'メモ',
+        };
+        const restRecord = rest as Record<string, unknown>;
+        for (const [fieldKey, fieldLabel] of Object.entries(basicFieldLabels)) {
+          if (restRecord[fieldKey] === undefined) continue;
+          revisionEntries.push({
+            category: 'basic',
+            field_key: fieldKey,
+            field_label: fieldLabel,
+            old_value: (existing as Record<string, unknown>)[fieldKey] ?? null,
+            new_value: restRecord[fieldKey] ?? null,
+          });
+        }
+        if (birth_date !== undefined) {
+          revisionEntries.push({
+            category: 'basic',
+            field_key: 'birth_date',
+            field_label: '生年月日',
+            old_value:
+              existing.birth_date instanceof Date
+                ? format(existing.birth_date, 'yyyy-MM-dd')
+                : (existing.birth_date ?? null),
+            new_value: birth_date,
+          });
+        }
+
         if (
           address !== undefined ||
           building_id !== undefined ||
@@ -2039,34 +2086,131 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
             });
           }
-        }
 
-        if (contacts) {
-          await tx.contactParty.deleteMany({
-            where: { org_id: ctx.orgId, patient_id: id },
-          });
-          if (contacts.length > 0) {
-            await tx.contactParty.createMany({
-              data: contacts.map((contact) => ({
-                org_id: ctx.orgId,
-                patient_id: id,
-                name: contact.name,
-                relation: contact.relation,
-                phone: contact.phone || null,
-                email: contact.email || null,
-                fax: contact.fax || null,
-                organization_name: contact.organization_name || null,
-                department: contact.department || null,
-                address: contact.address || null,
-                is_primary: contact.is_primary,
-                is_emergency_contact: contact.is_emergency_contact,
-                notes: contact.notes || null,
-              })),
+          // (居住情報) 提供された項目のみ差分を履歴化
+          if (address !== undefined) {
+            revisionEntries.push({
+              category: 'residence',
+              field_key: 'address',
+              field_label: '住所',
+              old_value: primaryResidence?.address ?? null,
+              new_value: address ?? null,
+            });
+          }
+          if (building_id !== undefined) {
+            revisionEntries.push({
+              category: 'residence',
+              field_key: 'building_id',
+              field_label: '建物',
+              old_value: primaryResidence?.building_id ?? null,
+              new_value: building_id || null,
+            });
+          }
+          if (facility_id !== undefined) {
+            revisionEntries.push({
+              category: 'residence',
+              field_key: 'facility_id',
+              field_label: '施設',
+              old_value: currentFacilityId,
+              new_value: nextFacilityId,
+            });
+          }
+          // DB 更新条件と揃える: facility 変更で unit が暗黙クリアされる場合も履歴化する
+          if (
+            facility_unit_id !== undefined ||
+            (facility_id !== undefined && nextFacilityId !== currentFacilityId)
+          ) {
+            revisionEntries.push({
+              category: 'residence',
+              field_key: 'facility_unit_id',
+              field_label: '施設ユニット',
+              old_value: primaryResidence?.facility_unit_id ?? null,
+              new_value: nextFacilityUnitId,
+            });
+          }
+          if (unit_name !== undefined) {
+            revisionEntries.push({
+              category: 'residence',
+              field_key: 'unit_name',
+              field_label: '部屋番号',
+              old_value: primaryResidence?.unit_name ?? null,
+              new_value: unit_name || null,
             });
           }
         }
 
+        if (contacts) {
+          // 破壊的置換(deleteMany+createMany)で旧値が失われるため、置換前にスナップショットを取り履歴化する。
+          // (ContactParty は audit トリガ対象外なので、本履歴が唯一の変更痕跡となる)
+          const previousContacts = await tx.contactParty.findMany({
+            where: { org_id: ctx.orgId, patient_id: id },
+            select: {
+              name: true,
+              relation: true,
+              phone: true,
+              email: true,
+              fax: true,
+              organization_name: true,
+              department: true,
+              address: true,
+              is_primary: true,
+              is_emergency_contact: true,
+              notes: true,
+            },
+            orderBy: { created_at: 'asc' },
+          });
+          const nextContacts = contacts.map((contact) => ({
+            name: contact.name,
+            relation: contact.relation,
+            phone: contact.phone || null,
+            email: contact.email || null,
+            fax: contact.fax || null,
+            organization_name: contact.organization_name || null,
+            department: contact.department || null,
+            address: contact.address || null,
+            is_primary: contact.is_primary,
+            is_emergency_contact: contact.is_emergency_contact,
+            notes: contact.notes || null,
+          }));
+
+          await tx.contactParty.deleteMany({
+            where: { org_id: ctx.orgId, patient_id: id },
+          });
+          if (nextContacts.length > 0) {
+            await tx.contactParty.createMany({
+              data: nextContacts.map((contact) => ({
+                org_id: ctx.orgId,
+                patient_id: id,
+                ...contact,
+              })),
+            });
+          }
+
+          revisionEntries.push({
+            category: 'contacts',
+            field_key: 'contacts',
+            field_label: '連絡先',
+            // 順序のみの差(UI 並び替え/GET と保存経路の orderBy 差)で偽の履歴を出さないため安定ソートして比較・保存する
+            old_value: previousContacts.length > 0 ? sortJsonArrayStable(previousContacts) : null,
+            new_value: nextContacts.length > 0 ? sortJsonArrayStable(nextContacts) : null,
+          });
+        }
+
         if (conditions) {
+          // 連絡先と同様、破壊的置換の前に旧値スナップショットを取得して履歴化する(PatientCondition も audit 対象外)
+          const previousConditions = await tx.patientCondition.findMany({
+            where: { org_id: ctx.orgId, patient_id: id },
+            select: {
+              condition_type: true,
+              name: true,
+              is_primary: true,
+              is_active: true,
+              noted_at: true,
+              notes: true,
+            },
+            orderBy: { created_at: 'asc' },
+          });
+
           await tx.patientCondition.deleteMany({
             where: { org_id: ctx.orgId, patient_id: id },
           });
@@ -2084,6 +2228,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               })),
             });
           }
+
+          // 比較の安定化のため noted_at は日付文字列へ正規化したスナップショットで保持する
+          const normalizeConditionSnapshot = (condition: {
+            condition_type: unknown;
+            name: unknown;
+            is_primary: unknown;
+            is_active: unknown;
+            noted_at?: Date | string | null;
+            notes?: unknown;
+          }) => ({
+            condition_type: condition.condition_type,
+            name: condition.name,
+            is_primary: condition.is_primary,
+            is_active: condition.is_active,
+            noted_at: condition.noted_at ? format(new Date(condition.noted_at), 'yyyy-MM-dd') : null,
+            notes: condition.notes ?? null,
+          });
+          // 順序のみの差(GET は is_primary desc, 保存経路は created_at asc)で偽の履歴を出さないため安定ソートする
+          const previousSnapshot = sortJsonArrayStable(
+            previousConditions.map(normalizeConditionSnapshot)
+          );
+          const nextSnapshot = sortJsonArrayStable(conditions.map(normalizeConditionSnapshot));
+          revisionEntries.push({
+            category: 'conditions',
+            field_key: 'conditions',
+            field_label: '病名・問題',
+            old_value: previousSnapshot.length > 0 ? previousSnapshot : null,
+            new_value: nextSnapshot.length > 0 ? nextSnapshot : null,
+          });
         }
 
         const schedulePreferenceCreateData: Prisma.PatientSchedulePreferenceUncheckedCreateInput = {
@@ -2301,8 +2474,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
             if (numberChanged) {
               // valid_from / valid_until(@db.Date)へはローカル日付の UTC 深夜で書き込む
-              // (ローカル深夜だと JST では前日の日付として保存される)
-              const today = utcDateFromLocalKey(localDateKey());
+              // (ローカル深夜だと JST では前日の日付として保存される)。tx 冒頭の revisionDate を共用する。
+              const today = revisionDate;
 
               // Close ALL active rows for this insurance type (Fix #3: multi-active guard)
               await tx.patientInsurance.updateMany({
@@ -2343,6 +2516,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
             });
           }
+        }
+
+        // 変更があった項目のみ業務差分履歴(層b)+時点管理(層c)を追記する。
+        // 差分は上の各更新サイトで算出済み。本呼び出しはDBを再読込しない(二重実装回避)。
+        if (revisionEntries.length > 0) {
+          await writePatientFieldRevisions(tx, {
+            orgId: ctx.orgId,
+            patientId: id,
+            actorId: ctx.userId,
+            validFrom: revisionDate,
+            entries: revisionEntries,
+          });
         }
 
         return updated;
