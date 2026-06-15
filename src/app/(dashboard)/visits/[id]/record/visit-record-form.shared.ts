@@ -88,6 +88,30 @@ export function getVisitReceiptReadiness(fields: VisitReceiptFields): VisitRecei
   };
 }
 
+export type ReflectPatientIntakeInput = {
+  careLevel?: string | null;
+  medicationManager?: string | null;
+};
+
+/**
+ * ⑤ 反映導線: 訪問記録で確認した患者情報のうち、入力された項目だけを
+ * 患者詳細(正本)へ送る intake パッチに整形する。
+ * 空欄は送らない(= mergeHomeVisitIntake で既存値を変更しない)。全項目が空なら null。
+ */
+export function buildReflectPatientIntake(
+  input: ReflectPatientIntakeInput,
+): Record<string, string> | null {
+  const intake: Record<string, string> = {};
+
+  const careLevel = input.careLevel?.trim();
+  if (careLevel) intake.care_level = careLevel;
+
+  const medicationManager = input.medicationManager?.trim();
+  if (medicationManager) intake.medication_manager = medicationManager;
+
+  return Object.keys(intake).length > 0 ? intake : null;
+}
+
 export function normalizeVisitReceiptPayload<T extends VisitReceiptFields>(values: T): T {
   const receiptName = normalizeReceiptText(values.receipt_person_name);
   const receiptRelation = normalizeReceiptText(values.receipt_person_relation);

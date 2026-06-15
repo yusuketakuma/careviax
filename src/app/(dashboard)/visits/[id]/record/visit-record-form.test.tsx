@@ -400,3 +400,151 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_at');
   });
 });
+
+describe('VisitRecordForm patient-detail reflect (⑤)', () => {
+  const patientPatchBodies: unknown[] = [];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadDraftMock.mockResolvedValue(null);
+    saveDraftMock.mockResolvedValue(undefined);
+    clearDraftMock.mockResolvedValue(undefined);
+    setupAutoSyncMock.mockReturnValue(vi.fn());
+    refreshSyncStateMock.mockResolvedValue(undefined);
+    visitRecordPostBodies.length = 0;
+    patientPatchBodies.length = 0;
+
+    Object.defineProperty(window, 'requestAnimationFrame', {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 0;
+      },
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'partial',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              data: {
+                pack: {
+                  care_team: [],
+                  billing_blockers: [],
+                  conference_context: [],
+                  medication_period: null,
+                  prescription_changes: null,
+                  previous_visit: null,
+                  facility_parallel_context: null,
+                  intake_context: null,
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-records') {
+          visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return new Response(
+            JSON.stringify({ record: { id: 'record_1', version: 1, patient_id: 'patient_1' } }),
+            { status: 201 },
+          );
+        }
+        if (url === '/api/patients/patient_1' && method === 'PATCH') {
+          patientPatchBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return new Response(JSON.stringify({ id: 'patient_1' }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${method} ${url}`);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function renderForm() {
+    return render(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />, {
+      wrapper: createWrapper(),
+    });
+  }
+
+  async function waitForPatientHydrated() {
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+  }
+
+  it('反映チェック時、保存後に入力した患者情報を患者詳細へ PATCH する', async () => {
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.change(screen.getByLabelText('介護度'), { target: { value: '要介護3' } });
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(patientPatchBodies).toHaveLength(1);
+    });
+    expect(patientPatchBodies[0]).toEqual({
+      intake: { care_level: '要介護3', medication_manager: 'family' },
+      source_visit_record_id: 'record_1',
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('確認した内容を患者詳細に反映しました');
+  });
+
+  it('反映チェック無しなら患者詳細へ PATCH しない', async () => {
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.change(screen.getByLabelText('介護度'), { target: { value: '要介護3' } });
+    // 反映チェックを入れずに保存する
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(patientPatchBodies).toHaveLength(0);
+  });
+
+  it('反映チェック有でも入力が空なら PATCH しない', async () => {
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(patientPatchBodies).toHaveLength(0);
+  });
+});

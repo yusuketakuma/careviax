@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getVisitReceiptReadiness, normalizeVisitReceiptPayload } from './visit-record-form.shared';
+import {
+  buildReflectPatientIntake,
+  getVisitReceiptReadiness,
+  normalizeVisitReceiptPayload,
+} from './visit-record-form.shared';
 
 describe('getVisitReceiptReadiness', () => {
   it('treats an untouched receipt block as optional and incomplete', () => {
@@ -86,5 +90,24 @@ describe('normalizeVisitReceiptPayload', () => {
       receipt_person_relation: 'child',
       receipt_at: '2026-06-15T14:30',
     });
+  });
+});
+
+describe('buildReflectPatientIntake', () => {
+  it('入力された項目だけを intake に含め、前後空白を除去する', () => {
+    expect(
+      buildReflectPatientIntake({ careLevel: ' 要介護2 ', medicationManager: 'family' }),
+    ).toEqual({ care_level: '要介護2', medication_manager: 'family' });
+  });
+
+  it('空欄・空白のみの項目は送らない(既存値を変更しないため)', () => {
+    expect(buildReflectPatientIntake({ careLevel: '要支援1', medicationManager: '   ' })).toEqual({
+      care_level: '要支援1',
+    });
+  });
+
+  it('全項目が空なら null を返す', () => {
+    expect(buildReflectPatientIntake({ careLevel: '', medicationManager: '' })).toBeNull();
+    expect(buildReflectPatientIntake({})).toBeNull();
   });
 });

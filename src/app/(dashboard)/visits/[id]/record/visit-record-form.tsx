@@ -124,6 +124,7 @@ import {
 } from '@/lib/visits/facility-visit-context';
 import {
   buildAttachmentId,
+  buildReflectPatientIntake,
   classifyVisitAttachment,
   getVisitReceiptReadiness,
   getVisitAttachmentConstraints,
@@ -171,6 +172,16 @@ const relationOptions = [
   { value: 'caregiver', label: '介護者' },
   { value: 'facility_staff', label: '施設職員' },
   { value: 'other', label: 'その他' },
+];
+
+// ⑤ 反映導線: 服薬管理者の選択肢(patientIntakeSchema.medication_manager と一致させる)
+const medicationManagerOptions = [
+  { value: 'self', label: '本人' },
+  { value: 'family', label: '家族' },
+  { value: 'visiting_nurse', label: '訪問看護師' },
+  { value: 'facility', label: '施設職員' },
+  { value: 'pharmacist', label: '薬剤師' },
+  { value: 'unknown', label: '不明' },
 ];
 
 const formSchema = visitRecordBaseSchema
@@ -404,6 +415,10 @@ export function VisitRecordForm({
   const [locationCaptureState, setLocationCaptureState] = useState<
     'idle' | 'capturing-start' | 'capturing-end'
   >('idle');
+  // ⑤ 反映導線: 訪問中に確認した患者情報を患者詳細(正本)へ反映する任意セクションの状態
+  const [reflectToPatientDetail, setReflectToPatientDetail] = useState(false);
+  const [reflectCareLevel, setReflectCareLevel] = useState('');
+  const [reflectMedicationManager, setReflectMedicationManager] = useState('');
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoCapturedStartRef = useRef(false);
   const draftSaveFailureNotifiedRef = useRef(false);
@@ -991,6 +1006,35 @@ export function VisitRecordForm({
             toast.warning('検査値の一部が保存できませんでした');
           }
         });
+      }
+
+      // ⑤ 反映導線: 確認した患者情報を正本(患者詳細)へ反映する(任意・オンライン時のみ・非ブロッキング)。
+      // source_visit_record_id を付けることで変更履歴の source が visit_record になる。
+      if (reflectToPatientDetail && labPatientId) {
+        const reflectIntake = buildReflectPatientIntake({
+          careLevel: reflectCareLevel,
+          medicationManager: reflectMedicationManager,
+        });
+        if (reflectIntake) {
+          void fetch(`/api/patients/${labPatientId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+            body: JSON.stringify({
+              intake: reflectIntake,
+              source_visit_record_id: record.id,
+            }),
+          })
+            .then((reflectRes) => {
+              if (reflectRes.ok) {
+                toast.success('確認した内容を患者詳細に反映しました');
+              } else {
+                toast.warning('患者詳細への反映に失敗しました');
+              }
+            })
+            .catch(() => {
+              toast.warning('患者詳細への反映に失敗しました');
+            });
+        }
       }
 
       if (selectedAttachments.length === 0) {
@@ -2114,6 +2158,73 @@ export function VisitRecordForm({
                   </h3>
                 </CardHeader>
                 <CardContent>{attachmentsField}</CardContent>
+              </Card>
+
+              {/* ⑤ 反映導線: 訪問中に確認した患者情報を患者詳細(正本)へ反映する任意セクション */}
+              <Card
+                id="patient-detail-reflect"
+                className={cn(
+                  'scroll-mt-24',
+                  mobileVisitStepSectionClassName(mobileStepId, ['visit-step-final-check']),
+                )}
+              >
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                    <User className="size-4 text-muted-foreground" aria-hidden="true" />
+                    患者情報の更新（任意）
+                  </h3>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    訪問中に確認した内容を患者詳細（正本）へ反映できます。入力した項目のみ反映され、空欄は変更しません。
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reflect-care-level">介護度</Label>
+                      <Input
+                        id="reflect-care-level"
+                        value={reflectCareLevel}
+                        onChange={(event) => setReflectCareLevel(event.target.value)}
+                        placeholder="要介護2 など"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reflect-medication-manager">服薬管理者</Label>
+                      <Select
+                        value={reflectMedicationManager || undefined}
+                        onValueChange={(value) => setReflectMedicationManager(value ?? '')}
+                      >
+                        <SelectTrigger id="reflect-medication-manager">
+                          <SelectValue placeholder="選択してください" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {medicationManagerOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <label className="flex min-h-11 items-start gap-2 text-sm leading-6">
+                    <Checkbox
+                      checked={reflectToPatientDetail}
+                      onCheckedChange={(checked) => setReflectToPatientDetail(checked === true)}
+                      aria-labelledby="patient-detail-reflect-label"
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span id="patient-detail-reflect-label" className="font-medium text-foreground">
+                        この内容を患者詳細に反映する
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        反映するとオンライン時に患者詳細が更新され、変更履歴に記録されます。
+                      </span>
+                    </span>
+                  </label>
+                </CardContent>
               </Card>
 
               {/* Submit(p0_23: モバイルはステップ9のみ表示。送信は下部バーの「訪問完了」) */}
