@@ -25,6 +25,7 @@ import {
   buildPcaPumpReturnInspectionPendingTaskKey,
   buildPcaPumpRentalOverdueTaskKey,
   buildPreparationTaskKey,
+  buildPublicSubsidyExpiryTaskKey,
   buildReportDeliveryTaskKey,
   buildSelfReportTaskKey,
   buildVisitDemandTaskKey,
@@ -2118,6 +2119,78 @@ export async function checkConsentExpiry() {
   });
 }
 
+export async function checkPublicSubsidyExpiry() {
+  return runJob('public_subsidy_expiry_check', async () => {
+    const now = new Date();
+    const in30Days = addDays(now, 30);
+
+    const expiring = await prisma.patientInsurance.findMany({
+      where: {
+        insurance_type: 'public_subsidy',
+        is_active: true,
+        valid_until: { lte: in30Days, gte: now },
+      },
+      include: {
+        patient: { select: { id: true, name: true } },
+      },
+    });
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const insurance of expiring) {
+      if (!insurance.valid_until) continue;
+      const daysUntilExpiry = Math.ceil(
+        (insurance.valid_until.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
+      const patientName = insurance.patient?.name ?? '不明';
+
+      const activeCase = await prisma.careCase.findFirst({
+        where: {
+          patient_id: insurance.patient_id,
+          status: { notIn: ['discharged', 'terminated'] },
+        },
+        select: { primary_pharmacist_id: true },
+      });
+      const pharmacistId = activeCase?.primary_pharmacist_id;
+      if (pharmacistId) {
+        await prisma.notification.create({
+          data: {
+            org_id: insurance.org_id,
+            user_id: pharmacistId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: '公費の有効期限',
+            message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
+            link: `/patients/${insurance.patient_id}`,
+            dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
+          },
+        });
+        notificationCount++;
+      }
+
+      taskSpecs.push({
+        orgId: insurance.org_id,
+        taskType: 'public_subsidy_expiry',
+        dedupeKey: buildPublicSubsidyExpiryTaskKey(insurance.id),
+        title: `公費更新: ${patientName}`,
+        description: `公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ`,
+        priority,
+        assignedTo: pharmacistId,
+        dueDate: insurance.valid_until,
+        relatedEntityType: 'patient_insurance',
+        relatedEntityId: insurance.id,
+      });
+    }
+
+    if (taskSpecs.length > 0) {
+      await syncGeneratedOperationalTasks(taskSpecs, ['public_subsidy_expiry']);
+    }
+
+    return { processedCount: notificationCount };
+  });
+}
+
 export async function trackAllOrgPatientStatuses() {
   return runJob('patient_status_tracking', async () => {
     const orgs = await prisma.organization.findMany({
@@ -2239,6 +2312,7 @@ export async function runDailyOperations() {
         checkFacilityStandardExpiry,
         checkCredentialExpiry,
         checkConsentExpiry,
+        checkPublicSubsidyExpiry,
         trackAllOrgPatientStatuses,
         cleanupAbandonedQrDrafts,
         cleanupTerminalQrDraftPayloads,

@@ -18,6 +18,7 @@ const {
   inquiryRecordFindManyMock,
   facilityStandardRegistrationFindManyMock,
   consentRecordFindManyMock,
+  patientInsuranceFindManyMock,
   medicationCycleFindManyMock,
   notificationCreateMock,
   dispatchNotificationEventMock,
@@ -46,6 +47,7 @@ const {
   inquiryRecordFindManyMock: vi.fn(),
   facilityStandardRegistrationFindManyMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
+  patientInsuranceFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
@@ -99,6 +101,9 @@ vi.mock('@/lib/db', () => ({
     },
     consentRecord: {
       findMany: consentRecordFindManyMock,
+    },
+    patientInsurance: {
+      findMany: patientInsuranceFindManyMock,
     },
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
@@ -176,6 +181,7 @@ import { evaluateInitialHomeVisitAssessmentRequirement } from '@/server/services
 import {
   checkCallbackFollowups,
   checkConsentExpiry,
+  checkPublicSubsidyExpiry,
   checkConferenceMeetingReminders,
   checkEmergencyCoverageGaps,
   checkFacilityStandardExpiry,
@@ -705,6 +711,41 @@ describe('daily job local date keys', () => {
         taskType: 'consent_expiry',
         description: '居宅療養管理指導 の同意が 2026-06-15 に期限切れ',
         dedupeKey: 'consent-expiry:consent_1',
+      }),
+    );
+  });
+
+  it('notifies and creates a task for public subsidy insurance nearing expiry', async () => {
+    patientInsuranceFindManyMock.mockResolvedValue([
+      {
+        id: 'insurance_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'public_subsidy',
+        valid_until: new Date('2026-06-14T15:30:00.000Z'),
+        patient: { id: 'patient_1', name: '山田 太郎' },
+      },
+    ]);
+    careCaseFindFirstMock.mockResolvedValue({ primary_pharmacist_id: 'pharmacist_1' });
+
+    const result = await checkPublicSubsidyExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_1',
+        title: '公費の有効期限',
+        link: '/patients/patient_1',
+      }),
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'public_subsidy_expiry',
+        dedupeKey: 'public-subsidy-expiry:insurance_1',
+        relatedEntityType: 'patient_insurance',
+        relatedEntityId: 'insurance_1',
       }),
     );
   });

@@ -146,6 +146,10 @@ export function buildConsentExpiryTaskKey(consentId: string) {
   return `consent-expiry:${consentId}`;
 }
 
+export function buildPublicSubsidyExpiryTaskKey(insuranceId: string) {
+  return `public-subsidy-expiry:${insuranceId}`;
+}
+
 export function buildPcaPumpRentalOverdueTaskKey(rentalId: string) {
   return `pca-pump-rental-overdue:${rentalId}`;
 }
