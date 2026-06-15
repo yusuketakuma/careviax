@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { type ComponentProps } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -143,13 +144,13 @@ function stubFetch(board: HandoffBoardResponse = BOARD) {
   return fetchMock;
 }
 
-function renderWorkspace() {
+function renderWorkspace(props?: ComponentProps<typeof HandoffWorkspace>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <HandoffWorkspace />
+      <HandoffWorkspace {...props} />
     </QueryClientProvider>,
   );
 }
@@ -281,6 +282,38 @@ describe('HandoffWorkspace', () => {
     });
     expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+
+  it('can focus the pharmacist consultation workspace without the handoff board chrome', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'consult_1',
+          content: '用法・用量の確認をお願いします。',
+          created_by: 'user_2',
+          created_by_name: '鈴木 事務',
+          recipient_user_id: 'user_1',
+          recipient_label: '山田さん(薬剤師)',
+          consult_status: 'open',
+          rationale: '確認してほしいこと\n・用法が妥当か\n・医師へ確認が必要か',
+          direction: 'incoming',
+        }),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 1 },
+    };
+    stubFetch(board);
+    renderWorkspace({ focus: 'consult' });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-consult-workspace')).toBeTruthy();
+    });
+    expect(screen.getByText('相談一覧')).toBeTruthy();
+    expect(screen.getByText('相談内容')).toBeTruthy();
+    expect(screen.getByText('薬剤師の対応')).toBeTruthy();
+    expect(screen.queryByTestId('handoff-open-transfer')).toBeNull();
+    expect(screen.queryByTestId('handoff-outgoing-section')).toBeNull();
   });
 });
 

@@ -86,6 +86,17 @@ function createMalformedPostRequest(headers?: Record<string, string>) {
   });
 }
 
+function completeSetAuditChecklist() {
+  return {
+    date_match: true,
+    timing_match: true,
+    quantity_match: true,
+    no_discontinued: true,
+    residual_usage_ok: true,
+    cold_storage_separated: true,
+  };
+}
+
 describe('/api/set-audits POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -171,6 +182,7 @@ describe('/api/set-audits POST', () => {
         {
           plan_id: 'plan_1',
           result: 'approved',
+          checklist: completeSetAuditChecklist(),
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -272,6 +284,26 @@ describe('/api/set-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects approval without the current checklist before transaction side effects', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '監査OKには全6項目のチェックが必要です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects approval with an incomplete checklist (server-side gate, 3-pane flow)', async () => {
     const response = await POST(
       createRequest(
@@ -304,6 +336,7 @@ describe('/api/set-audits POST', () => {
         {
           plan_id: 'plan_1',
           result: 'approved',
+          checklist: completeSetAuditChecklist(),
         },
         { 'x-org-id': 'org_1' },
       ),

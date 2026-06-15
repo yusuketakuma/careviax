@@ -128,15 +128,20 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { plan_id, result, approved_scope, reject_reason, audited_at, checklist, photo_asset_ids } =
-      parsed.data;
+    const {
+      plan_id,
+      result,
+      approved_scope,
+      reject_reason,
+      audited_at,
+      checklist,
+      photo_asset_ids,
+    } = parsed.data;
 
-    // 監査OK(3ペインUI)はサーバ側でもチェックリスト完了を必須にする（client gate のバイパス防止）。
-    // checklist を送らない旧UI(medication-sets-content)の承認は後方互換で従来どおり許可し、
-    // checklist を送る新フローでは空/部分チェックでの承認を拒否する。
-    if (result === 'approved' && checklist !== undefined) {
+    // 監査OKはサーバ側でも現行3ペインUIの全6項目チェック完了を必須にする。
+    if (result === 'approved') {
       const allChecked = SET_AUDIT_REQUIRED_CHECKLIST_KEYS.every(
-        (key) => checklist[key] === true,
+        (key) => checklist?.[key] === true,
       );
       if (!allChecked) {
         return validationError('監査OKには全6項目のチェックが必要です');

@@ -162,9 +162,7 @@ export function buildHeaderMeta(
 
 /** 期限までの残り時間ラベル(「30分」「2時間」)。期限超過は「超過」。 */
 export function remainingLabel(deadlineIso: string, now: Date): string {
-  const remainingMinutes = Math.floor(
-    (new Date(deadlineIso).getTime() - now.getTime()) / 60_000,
-  );
+  const remainingMinutes = Math.floor((new Date(deadlineIso).getTime() - now.getTime()) / 60_000);
   if (remainingMinutes < 0) return '超過';
   return formatAgeLabel(remainingMinutes);
 }
@@ -320,7 +318,7 @@ export function buildHandoffEvidence(board: HandoffBoardResponse | null): Eviden
       id: 'handoff-history',
       label: 'ハンドオフ履歴',
       meta: `今月${board?.month_item_count ?? 0}件`,
-      href: '#handoff-classic-board',
+      href: '/handoff',
     },
     {
       id: 'clerical-scope',
